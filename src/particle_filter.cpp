@@ -14,6 +14,9 @@
 #include<opencv2/core/core.hpp>
 #include<opencv2/highgui/highgui.hpp>
 
+#include <cuda_runtime.h>
+#include <device_launch_parameters.h>
+
 #define SIM_TIME 50.0
 #define DT 0.1
 #define PI 3.141592653
