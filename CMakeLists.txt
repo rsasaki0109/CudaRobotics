@@ -1,8 +1,8 @@
-cmake_minimum_required(VERSION 3.1)
-project(CPP_ROBOTICS)
+cmake_minimum_required(VERSION 3.18)
+project(CPP_ROBOTICS LANGUAGES CXX CUDA)
 
-set(CMAKE_CXX_STANDARD 11)
-# set(CMAKE_BUILD_TYPE Debug)
+set(CMAKE_CXX_STANDARD 14)
+set(CMAKE_CUDA_STANDARD 14)
 set(EXECUTABLE_OUTPUT_PATH ${PROJECT_SOURCE_DIR}/bin)
 set(LIBRARY_OUTPUT_PATH ${PROJECT_SOURCE_DIR}/lib)
 
@@ -12,16 +12,9 @@ set(LIBRARY_OUTPUT_PATH ${PROJECT_SOURCE_DIR}/lib)
 
 find_package(Eigen3 REQUIRED)
 find_package(OpenCV REQUIRED)
-find_package(CUDA REQUIRED)
 
 include_directories(${EIGEN3_INCLUDE_DIR})
-include_directories(${CUDA_INCLUDE_DIRS})
 include_directories(./include)
-
-#include_directories(/home/tai/Software/Ipopt-3.12.13/build/include)
-#link_directories(/home/tai/Software/Ipopt-3.12.13/build/lib)
-
-
 
 ##############################
 #Localization
@@ -30,8 +23,9 @@ include_directories(./include)
 # add_executable(ekf src/extended_kalman_filter.cpp)
 # target_link_libraries(ekf ${OpenCV_LIBS} )
 
-add_executable(pf src/particle_filter.cpp)
-target_link_libraries(pf ${OpenCV_LIBS} ${CUDA_LIBRARIES})
+add_executable(pf src/particle_filter.cu)
+target_link_libraries(pf ${OpenCV_LIBS})
+target_compile_options(pf PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
 
 ##############################
 #PathPlanning
@@ -40,17 +34,29 @@ target_link_libraries(pf ${OpenCV_LIBS} ${CUDA_LIBRARIES})
 # add_executable(dijkstra src/dijkstra.cpp)
 # target_link_libraries(dijkstra ${OpenCV_LIBS} )
 
+add_executable(dijkstra_cuda src/dijkstra.cu)
+target_link_libraries(dijkstra_cuda ${OpenCV_LIBS})
+
 # add_executable(astar src/a_star.cpp)
 # target_link_libraries(astar ${OpenCV_LIBS} )
+
+add_executable(astar_cuda src/a_star.cu)
+target_link_libraries(astar_cuda ${OpenCV_LIBS})
 
 # add_executable(rrt src/rrt.cpp)
 # target_link_libraries(rrt ${OpenCV_LIBS} )
 
+add_executable(rrt_cuda src/rrt.cu)
+target_link_libraries(rrt_cuda ${OpenCV_LIBS})
+
 # add_executable(rrtstar src/rrt_star.cpp)
 # target_link_libraries(rrtstar ${OpenCV_LIBS} )
 
-# add_executable(dwa src/dynamic_window_approach.cpp)
-# target_link_libraries(dwa ${OpenCV_LIBS} )
+add_executable(rrtstar_cuda src/rrt_star.cu)
+target_link_libraries(rrtstar_cuda ${OpenCV_LIBS})
+
+add_executable(dwa src/dynamic_window_approach.cu)
+target_link_libraries(dwa ${OpenCV_LIBS})
 
 # add_executable(mptg src/model_predictive_trajectory_generator.cpp)
 # target_link_libraries(mptg ${OpenCV_LIBS})
@@ -58,11 +64,15 @@ target_link_libraries(pf ${OpenCV_LIBS} ${CUDA_LIBRARIES})
 # add_executable(slp src/state_lattice_planner.cpp)
 # target_link_libraries(slp ${OpenCV_LIBS})
 
+add_executable(slp_cuda src/state_lattice_planner.cu)
+target_link_libraries(slp_cuda)
+
 # add_executable(csp src/cubic_spline_planner.cpp)
 # target_link_libraries(csp ${OpenCV_LIBS})
 
-# add_executable(frenet src/frenet_optimal_trajectory.cpp)
-# target_link_libraries(frenet ${OpenCV_LIBS})
+add_executable(frenet src/frenet_optimal_trajectory.cu)
+target_link_libraries(frenet ${OpenCV_LIBS})
+target_compile_options(frenet PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
 
 
 ##############################
