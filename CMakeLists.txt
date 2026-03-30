@@ -74,6 +74,15 @@ add_executable(frenet src/frenet_optimal_trajectory.cu)
 target_link_libraries(frenet ${OpenCV_LIBS})
 target_compile_options(frenet PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
 
+add_executable(potential_field src/potential_field.cu)
+target_link_libraries(potential_field ${OpenCV_LIBS})
+
+add_executable(prm_cuda src/prm.cu)
+target_link_libraries(prm_cuda ${OpenCV_LIBS})
+
+add_executable(voronoi_road_map src/voronoi_road_map.cu)
+target_link_libraries(voronoi_road_map ${OpenCV_LIBS})
+
 
 ##############################
 #PathTracking
