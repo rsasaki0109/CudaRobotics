@@ -20,6 +20,13 @@ make -j8
 
 Executables are in `bin/`.
 
+### Docker
+```bash
+docker build -t cuda-robotics .
+docker run --gpus all cuda-robotics ./bin/benchmark_pf
+```
+Requires [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html).
+
 ## Algorithms
 
 ### Localization
@@ -50,10 +57,13 @@ Combines particle filter (for robot pose) with per-particle EKF (for landmark po
 | RRT | `rrt_cuda` | Nearest neighbor search + collision checking |
 | RRT* | `rrtstar_cuda` | Nearest neighbor + near nodes + rewiring + collision |
 | **RRT* Reeds-Shepp** | `rrtstar_rs_cuda` | **Batch RS path computation + collision check (nonholonomic)** |
+| **Informed RRT*** | `informed_rrtstar_cuda` | **Ellipsoidal sampling + parallel NN/rewiring** |
+| **3D RRT*** | `rrtstar_3d_cuda` | **3D nearest neighbor + 3D collision (drone/UAV)** |
 | Dynamic Window Approach | `dwa` | ~120K velocity samples evaluated in parallel |
 | Frenet Optimal Trajectory | `frenet` | ~140 candidate paths: polynomial solve + spline + collision |
 | State Lattice Planner | `slp_cuda` | Parallel lookup table search + trajectory optimization |
 | Potential Field | `potential_field` | Grid-parallel potential computation (attractive + repulsive) |
+| **3D Potential Field** | `potential_field_3d` | **3D grid-parallel potential (216K+ cells, drone/UAV)** |
 | PRM | `prm_cuda` | Parallel collision check + k-NN + edge collision |
 | Voronoi Road Map | `voronoi_road_map` | Jump Flooding Algorithm for parallel Voronoi diagram |
 
@@ -73,6 +83,12 @@ GPU-accelerated nearest neighbor search with shared-memory reduction. Collision 
 #### RRT* Reeds-Shepp
 Extends RRT* with car-like kinematics (forward/reverse driving). The key GPU kernel evaluates Reeds-Shepp paths to all candidate parent nodes in parallel — each thread computes the analytical RS path (48 path types: CSC + CCC families), discretizes it, and checks collision along the entire path.
 
+#### Informed RRT*
+Extends RRT* with ellipsoidal focused sampling. Once an initial path is found, samples are drawn from an ellipse defined by start, goal, and current best cost — the ellipse shrinks as better paths are found, accelerating convergence. GPU handles parallel NN search, radius search, and collision checking.
+
+#### 3D RRT* (Drone/UAV)
+Full 3D extension of RRT* for aerial navigation. Nodes are (x,y,z), obstacles are spheres. GPU kernels handle 3D nearest neighbor search, 3D radius search, and batch 3D collision checking. Visualization shows XY (top) and XZ (side) projections.
+
 #### Dynamic Window Approach
 All (velocity, yaw_rate) combinations in the dynamic window are evaluated simultaneously on GPU. Each thread simulates a full trajectory and computes goal/speed/obstacle costs. Parallel reduction finds the optimal control.
 
@@ -90,6 +106,9 @@ Multiple target states are optimized simultaneously on GPU. Lookup table search 
 
 #### Potential Field
 GPU computes the entire potential field in one kernel launch: each thread calculates one grid cell's attractive potential (toward goal) and repulsive potential (from all obstacles). Path following uses gradient descent on CPU.
+
+#### 3D Potential Field (Drone/UAV)
+Extends potential field to 3D with spherical obstacles. GPU computes 216,000+ grid cells (60x60x60) in parallel. Each cell: 3D attractive potential + 3D repulsive potential from all spheres. Gradient descent over 26 neighbors (3^3 - 1). Visualization shows XY and XZ slice heatmaps.
 
 #### PRM (Probabilistic Road Map)
 Three GPU kernels: (1) parallel collision checking of N=500 random samples, (2) parallel k-NN search for roadmap construction, (3) parallel edge collision checking. Dijkstra path search on CPU.
@@ -118,7 +137,8 @@ Requires [CppAD](https://www.coin-or.org/CppAD/Doc/install.htm) and [IPOPT](http
 
 ## Benchmark: CPU vs CUDA
 
-Particle Filter, 100 steps (SIM_TIME=10s):
+### Particle Filter (`bin/benchmark_pf`)
+100 steps (SIM_TIME=10s):
 
 | Particles | CPU | CUDA | Speedup |
 |---|---|---|---|
@@ -126,6 +146,16 @@ Particle Filter, 100 steps (SIM_TIME=10s):
 | 1,000 | 1,410 ms | 6.9 ms | **204x** |
 | 5,000 | 19,417 ms | 12.2 ms | **1,592x** |
 | 10,000 | 75,618 ms | 27.2 ms | **2,776x** |
+
+### Dynamic Window Approach (`bin/benchmark_dwa`)
+100 iterations per resolution:
+
+| Samples | CPU | CUDA | Speedup |
+|---|---|---|---|
+| 9 | 1.1 ms | 1.3 ms | 0.9x |
+| 405 | 54 ms | 1.4 ms | **40x** |
+| 1,449 | 197 ms | 1.4 ms | **140x** |
+| 8,421 | 1,205 ms | 1.7 ms | **705x** |
 
 Run `bin/benchmark_pf` to reproduce.
 
