@@ -87,3 +87,10 @@ target_compile_options(frenet PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-
 
 #add_executable(mpc src/model_predictive_control.cpp)
 #target_link_libraries(mpc ${OpenCV_LIBS} ipopt)
+
+##############################
+#Benchmark
+##############################
+
+add_executable(benchmark_pf src/benchmark_pf.cu)
+target_compile_options(benchmark_pf PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
