@@ -62,6 +62,12 @@ target_link_libraries(rrtstar_cuda ${OpenCV_LIBS})
 add_executable(rrtstar_rs_cuda src/rrt_star_reeds_shepp.cu)
 target_link_libraries(rrtstar_rs_cuda ${OpenCV_LIBS})
 
+add_executable(informed_rrtstar_cuda src/informed_rrt_star.cu)
+target_link_libraries(informed_rrtstar_cuda ${OpenCV_LIBS})
+
+add_executable(rrtstar_3d_cuda src/rrt_star_3d.cu)
+target_link_libraries(rrtstar_3d_cuda ${OpenCV_LIBS})
+
 add_executable(dwa src/dynamic_window_approach.cu)
 target_link_libraries(dwa ${OpenCV_LIBS})
 
@@ -83,6 +89,9 @@ target_compile_options(frenet PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-
 
 add_executable(potential_field src/potential_field.cu)
 target_link_libraries(potential_field ${OpenCV_LIBS})
+
+add_executable(potential_field_3d src/potential_field_3d.cu)
+target_link_libraries(potential_field_3d ${OpenCV_LIBS})
 
 add_executable(prm_cuda src/prm.cu)
 target_link_libraries(prm_cuda ${OpenCV_LIBS})
@@ -110,3 +119,5 @@ target_link_libraries(voronoi_road_map ${OpenCV_LIBS})
 
 add_executable(benchmark_pf src/benchmark_pf.cu)
 target_compile_options(benchmark_pf PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
+
+add_executable(benchmark_dwa src/benchmark_dwa.cu)
