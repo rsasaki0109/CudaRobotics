@@ -433,8 +433,7 @@ std::vector<std::vector<float>> read_lookup_table(const char *path) {
     std::vector<std::vector<float>> table;
     std::ifstream file(path);
     if (!file.is_open()) {
-        fprintf(stderr, "Error: cannot open lookup table file: %s\n", path);
-        exit(EXIT_FAILURE);
+        return table;
     }
     std::string line;
     // skip header
@@ -606,6 +605,10 @@ std::vector<TrajectoryResult> lane_state_sample_test(const float *d_lookup, int 
 int main() {
     // Load lookup table from CSV
     auto lookup_table = read_lookup_table("../../lookuptable.csv");
+    if (lookup_table.empty())
+        lookup_table = read_lookup_table("../lookuptable.csv");
+    if (lookup_table.empty())
+        lookup_table = read_lookup_table("lookuptable.csv");
     int M = (int)lookup_table.size();
     printf("Loaded lookup table with %d entries\n", M);
 

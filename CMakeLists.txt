@@ -132,3 +132,6 @@ target_compile_options(benchmark_pf PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-re
 add_executable(benchmark_rrt src/benchmark_rrt.cu)
 
 add_executable(benchmark_dwa src/benchmark_dwa.cu)
+
+add_executable(comparison_dwa src/comparison_dwa.cu)
+target_link_libraries(comparison_dwa ${OpenCV_LIBS})
