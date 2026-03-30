@@ -157,4 +157,40 @@ target_compile_options(comparison_pf PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-r
 add_executable(comparison_rrt src/comparison_rrt.cu)
 target_link_libraries(comparison_rrt ${OpenCV_LIBS})
 
+add_executable(comparison_astar src/comparison_astar.cu)
+target_link_libraries(comparison_astar ${OpenCV_LIBS})
+
+add_executable(comparison_dijkstra src/comparison_dijkstra.cu)
+target_link_libraries(comparison_dijkstra ${OpenCV_LIBS})
+
+add_executable(comparison_frenet src/comparison_frenet.cu)
+target_link_libraries(comparison_frenet ${OpenCV_LIBS})
+target_compile_options(comparison_frenet PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
+
+add_executable(comparison_potential_field src/comparison_potential_field.cu)
+target_link_libraries(comparison_potential_field ${OpenCV_LIBS})
+
+add_executable(comparison_rrtstar src/comparison_rrtstar.cu)
+target_link_libraries(comparison_rrtstar ${OpenCV_LIBS})
+
+add_executable(comparison_prm src/comparison_prm.cu)
+target_link_libraries(comparison_prm ${OpenCV_LIBS})
+
+add_executable(comparison_rrt3d src/comparison_rrt3d.cu)
+target_link_libraries(comparison_rrt3d ${OpenCV_LIBS})
+
+add_executable(comparison_voronoi src/comparison_voronoi.cu)
+target_link_libraries(comparison_voronoi ${OpenCV_LIBS})
+
+add_executable(comparison_occupancy_grid src/comparison_occupancy_grid.cu)
+target_link_libraries(comparison_occupancy_grid ${OpenCV_LIBS})
+
+add_executable(comparison_fastslam src/comparison_fastslam.cu)
+target_link_libraries(comparison_fastslam ${OpenCV_LIBS})
+target_compile_options(comparison_fastslam PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
+
+add_executable(comparison_amcl src/comparison_amcl.cu)
+target_link_libraries(comparison_amcl ${OpenCV_LIBS})
+target_compile_options(comparison_amcl PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
+
 add_executable(cuda_streams_demo src/cuda_streams_demo.cu)
