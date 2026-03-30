@@ -248,6 +248,7 @@ void a_star_planning(float sx, float sy,
                img_reso * ywidth,
                CV_8UC3,
                cv::Scalar(255, 255, 255));
+    cv::VideoWriter video("gif/astar.avi", cv::VideoWriter::fourcc('X','V','I','D'), 30, cv::Size(bg.cols, bg.rows));
 
     cv::rectangle(bg,
                   cv::Point(nstart->x * img_reso + 1, nstart->y * img_reso + 1),
@@ -322,6 +323,7 @@ void a_star_planning(float sx, float sy,
 
             count++;
             cv::imshow("astar", bg);
+            video.write(bg);
             cv::waitKey(5);
 
             if (path_cost[node->x][node->y] + motion[i].sum_cost < path_cost[new_node->x][new_node->y]) {
@@ -336,6 +338,9 @@ void a_star_planning(float sx, float sy,
     delete nstart;
 
     cv::imshow("astar", bg);
+    video.write(bg);
+    video.release();
+    std::cout << "Video saved to videos/astar.avi" << std::endl;
     cv::waitKey(0);
 }
 

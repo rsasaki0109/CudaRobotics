@@ -581,6 +581,7 @@ int main() {
     // Visualization
     // ------------------------------------------
     cv::namedWindow("fastslam1", cv::WINDOW_NORMAL);
+    cv::VideoWriter video("gif/fastslam1.avi", cv::VideoWriter::fourcc('X','V','I','D'), 30, cv::Size(3500, 3500));
 
     std::cout << "FastSLAM 1.0 with CUDA (" << N_PARTICLES << " particles, "
               << N_TRUE_LM << " landmarks)" << std::endl;
@@ -746,8 +747,12 @@ int main() {
         }
 
         cv::imshow("fastslam1", bg);
+        video.write(bg);
         cv::waitKey(5);
     }
+
+    video.release();
+    std::cout << "Video saved to videos/fastslam1.avi" << std::endl;
 
     // --- Cleanup ---
     cudaFree(d_pose);

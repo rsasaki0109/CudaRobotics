@@ -628,6 +628,7 @@ int main() {
     float s0 = 0.0f;
 
     cv::namedWindow("frenet", cv::WINDOW_NORMAL);
+    cv::VideoWriter video("gif/frenet.avi", cv::VideoWriter::fourcc('X','V','I','D'), 30, cv::Size(8000, 2000));
     int threads = 256;
 
     for (int iter = 0; iter < SIM_LOOP; iter++) {
@@ -717,8 +718,12 @@ int main() {
                     cv::FONT_HERSHEY_SIMPLEX, 5, cv::Scalar(0, 0, 0), 10);
 
         cv::imshow("frenet", bg);
+        video.write(bg);
         cv::waitKey(5);
     }
+
+    video.release();
+    std::cout << "Video saved to videos/frenet.avi" << std::endl;
 
     // cleanup
     sx_buf.free();

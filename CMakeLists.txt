@@ -20,8 +20,8 @@ include_directories(./include)
 #Localization
 ##############################
 
-# add_executable(ekf src/extended_kalman_filter.cpp)
-# target_link_libraries(ekf ${OpenCV_LIBS} )
+add_executable(ekf src/extended_kalman_filter.cpp)
+target_link_libraries(ekf ${OpenCV_LIBS})
 
 add_executable(pf src/particle_filter.cu)
 target_link_libraries(pf ${OpenCV_LIBS})
@@ -31,30 +31,33 @@ add_executable(fastslam1 src/fastslam1.cu)
 target_link_libraries(fastslam1 ${OpenCV_LIBS})
 target_compile_options(fastslam1 PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
 
+add_executable(graph_slam src/graph_slam.cu)
+target_link_libraries(graph_slam ${OpenCV_LIBS})
+
 ##############################
 #PathPlanning
 ##############################
 
-# add_executable(dijkstra src/dijkstra.cpp)
-# target_link_libraries(dijkstra ${OpenCV_LIBS} )
+add_executable(dijkstra_cpp src/dijkstra.cpp)
+target_link_libraries(dijkstra_cpp ${OpenCV_LIBS})
 
 add_executable(dijkstra_cuda src/dijkstra.cu)
 target_link_libraries(dijkstra_cuda ${OpenCV_LIBS})
 
-# add_executable(astar src/a_star.cpp)
-# target_link_libraries(astar ${OpenCV_LIBS} )
+add_executable(astar_cpp src/a_star.cpp)
+target_link_libraries(astar_cpp ${OpenCV_LIBS})
 
 add_executable(astar_cuda src/a_star.cu)
 target_link_libraries(astar_cuda ${OpenCV_LIBS})
 
-# add_executable(rrt src/rrt.cpp)
-# target_link_libraries(rrt ${OpenCV_LIBS} )
+add_executable(rrt_cpp src/rrt.cpp)
+target_link_libraries(rrt_cpp ${OpenCV_LIBS})
 
 add_executable(rrt_cuda src/rrt.cu)
 target_link_libraries(rrt_cuda ${OpenCV_LIBS})
 
-# add_executable(rrtstar src/rrt_star.cpp)
-# target_link_libraries(rrtstar ${OpenCV_LIBS} )
+add_executable(rrtstar_cpp src/rrt_star.cpp)
+target_link_libraries(rrtstar_cpp ${OpenCV_LIBS})
 
 add_executable(rrtstar_cuda src/rrt_star.cu)
 target_link_libraries(rrtstar_cuda ${OpenCV_LIBS})
@@ -67,6 +70,9 @@ target_link_libraries(informed_rrtstar_cuda ${OpenCV_LIBS})
 
 add_executable(rrtstar_3d_cuda src/rrt_star_3d.cu)
 target_link_libraries(rrtstar_3d_cuda ${OpenCV_LIBS})
+
+add_executable(dwa_cpp src/dynamic_window_approach.cpp)
+target_link_libraries(dwa_cpp ${OpenCV_LIBS})
 
 add_executable(dwa src/dynamic_window_approach.cu)
 target_link_libraries(dwa ${OpenCV_LIBS})
@@ -99,16 +105,19 @@ target_link_libraries(prm_cuda ${OpenCV_LIBS})
 add_executable(voronoi_road_map src/voronoi_road_map.cu)
 target_link_libraries(voronoi_road_map ${OpenCV_LIBS})
 
+add_executable(multi_robot_planner src/multi_robot_planner.cu)
+target_link_libraries(multi_robot_planner ${OpenCV_LIBS})
+
 
 ##############################
 #PathTracking
 ##############################
 
-# add_executable(lqr src/lqr_steer_control.cpp)
-# target_link_libraries(lqr ${OpenCV_LIBS})
+add_executable(lqr src/lqr_steer_control.cpp)
+target_link_libraries(lqr ${OpenCV_LIBS})
 
-# add_executable(lqr_full src/lqr_speed_steer_control.cpp)
-# target_link_libraries(lqr_full ${OpenCV_LIBS})
+add_executable(lqr_full src/lqr_speed_steer_control.cpp)
+target_link_libraries(lqr_full ${OpenCV_LIBS})
 
 #add_executable(mpc src/model_predictive_control.cpp)
 #target_link_libraries(mpc ${OpenCV_LIBS} ipopt)
@@ -119,5 +128,7 @@ target_link_libraries(voronoi_road_map ${OpenCV_LIBS})
 
 add_executable(benchmark_pf src/benchmark_pf.cu)
 target_compile_options(benchmark_pf PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
+
+add_executable(benchmark_rrt src/benchmark_rrt.cu)
 
 add_executable(benchmark_dwa src/benchmark_dwa.cu)

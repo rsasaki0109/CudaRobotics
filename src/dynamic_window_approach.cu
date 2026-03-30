@@ -10,6 +10,7 @@
 #include <array>
 #include <cmath>
 #include <cfloat>
+#include <cstdlib>
 #include <opencv2/opencv.hpp>
 #include <opencv2/core/core.hpp>
 #include <opencv2/highgui/highgui.hpp>
@@ -296,6 +297,7 @@ int main() {
 
     bool terminal = false;
     cv::namedWindow("dwa", cv::WINDOW_NORMAL);
+    cv::VideoWriter video("gif/dwa.avi", cv::VideoWriter::fourcc('X','V','I','D'), 30, cv::Size(3500, 3500));
     int count = 0;
 
     std::cout << "DWA with CUDA (max " << max_samples << " samples/frame)" << std::endl;
@@ -388,9 +390,13 @@ int main() {
         }
 
         cv::imshow("dwa", bg);
+        video.write(bg);
         cv::waitKey(5);
         count++;
     }
+
+    video.release();
+    std::cout << "Video saved to videos/dwa.avi" << std::endl;
 
     // --- cleanup ---
     cudaFree(d_ob);

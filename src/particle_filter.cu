@@ -337,6 +337,7 @@ int main() {
     // Visualization
     // ------------------------------------------
     cv::namedWindow("pf", cv::WINDOW_NORMAL);
+    cv::VideoWriter video("gif/pf.avi", cv::VideoWriter::fourcc('X','V','I','D'), 30, cv::Size(3500, 3500));
     int count = 0;
 
     std::cout << "Particle Filter with CUDA (" << NP << " particles)" << std::endl;
@@ -498,9 +499,13 @@ int main() {
         ellipse_drawing(bg, PEst.block(0, 0, 2, 2), xEst.head(2));
 
         cv::imshow("pf", bg);
+        video.write(bg);
         cv::waitKey(5);
         count++;
     }
+
+    video.release();
+    std::cout << "Video saved to videos/pf.avi" << std::endl;
 
     // --- cleanup ---
     cudaFree(d_px);

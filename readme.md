@@ -40,13 +40,13 @@ Requires [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-nat
 #### Particle Filter
 Each particle's motion prediction and observation likelihood computation runs as an independent GPU thread. Systematic resampling uses parallel binary search.
 
-<img src="https://ram-lab.com/file/tailei/gif/pf.gif" alt="pf" width="400"/>
+<img src="gif/pf.gif" alt="pf" width="400"/>
 
 #### FastSLAM 1.0
 Combines particle filter (for robot pose) with per-particle EKF (for landmark positions). Each particle independently runs EKF updates for all observed landmarks on GPU. All 2x2 matrix operations (Jacobian, Kalman gain, covariance update) are inline — no Eigen on device.
 
 #### Extended Kalman Filter
-<img src="https://ram-lab.com/file/tailei/gif/ekf.gif" alt="ekf" width="400"/>
+<img src="gif/ekf.gif" alt="ekf" width="400"/>
 
 ### Path Planning
 
@@ -70,15 +70,15 @@ Combines particle filter (for robot pose) with per-particle EKF (for landmark po
 #### A*
 Obstacle map is constructed on GPU where each grid cell checks distance to all obstacles in parallel. Search uses CPU priority queue.
 
-<img src="https://ram-lab.com/file/tailei/gif/a_star.gif" alt="a_star" width="400"/>
+<img src="gif/astar.gif" alt="a_star" width="400"/>
 
 #### Dijkstra
-<img src="https://ram-lab.com/file/tailei/gif/dijkstra.gif" alt="dijkstra" width="400"/>
+<img src="gif/dijkstra.gif" alt="dijkstra" width="400"/>
 
 #### RRT
 GPU-accelerated nearest neighbor search with shared-memory reduction. Collision checking also runs on GPU.
 
-<img src="https://ram-lab.com/file/tailei/gif/rrt.gif" alt="rrt" width="400"/>
+<img src="gif/rrt.gif" alt="rrt" width="400"/>
 
 #### RRT* Reeds-Shepp
 Extends RRT* with car-like kinematics (forward/reverse driving). The key GPU kernel evaluates Reeds-Shepp paths to all candidate parent nodes in parallel — each thread computes the analytical RS path (48 path types: CSC + CCC families), discretizes it, and checks collision along the entire path.
@@ -92,17 +92,17 @@ Full 3D extension of RRT* for aerial navigation. Nodes are (x,y,z), obstacles ar
 #### Dynamic Window Approach
 All (velocity, yaw_rate) combinations in the dynamic window are evaluated simultaneously on GPU. Each thread simulates a full trajectory and computes goal/speed/obstacle costs. Parallel reduction finds the optimal control.
 
-<img src="https://ram-lab.com/file/tailei/gif/dwa.gif" alt="dwa" width="400"/>
+<img src="gif/dwa.gif" alt="dwa" width="400"/>
 
 #### Frenet Optimal Trajectory
 Each candidate path runs as one GPU thread: quintic/quartic polynomial coefficients solved via Cramer's rule (no Eigen on device), cubic spline evaluation with binary search, collision checking, and cost computation - all fused in a single kernel.
 
-<img src="https://ram-lab.com/file/tailei/gif/frenet.gif" alt="frenet" width="400"/>
+<img src="gif/frenet.gif" alt="frenet" width="400"/>
 
 #### State Lattice Planner
 Multiple target states are optimized simultaneously on GPU. Lookup table search and trajectory optimization (Newton's method with numerical Jacobian) run in parallel.
 
-<img src="https://ram-lab.com/file/tailei/gif/slp.gif" alt="slp" width="400"/>
+<img src="gif/slp.gif" alt="slp" width="400"/>
 
 #### Potential Field
 GPU computes the entire potential field in one kernel launch: each thread calculates one grid cell's attractive potential (toward goal) and repulsive potential (from all obstacles). Path following uses gradient descent on CPU.
@@ -125,15 +125,15 @@ Uses the Jump Flooding Algorithm (JFA) on GPU to construct a Voronoi diagram in 
 | MPC | *(CPU only)* | Requires IPOPT solver |
 
 #### LQR Steering Control
-<img src="https://ram-lab.com/file/tailei/gif/lqr_steering.gif" alt="lqr_steering" width="400"/>
+<img src="gif/lqr_steering.gif" alt="lqr_steering" width="400"/>
 
 #### LQR Speed and Steering Control
-<img src="https://ram-lab.com/file/tailei/gif/lqr_full.gif" alt="lqr_full" width="400"/>
+<img src="gif/lqr_full.gif" alt="lqr_full" width="400"/>
 
 #### MPC Speed and Steering Control
 Requires [CppAD](https://www.coin-or.org/CppAD/Doc/install.htm) and [IPOPT](https://coin-or.github.io/Ipopt/). Uncomment related lines in CMakeLists.txt to build.
 
-<img src="https://ram-lab.com/file/tailei/gif/mpc.gif" alt="mpc" width="400"/>
+<img src="gif/mpc.gif" alt="mpc" width="400"/>
 
 ## Benchmark: CPU vs CUDA
 
