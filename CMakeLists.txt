@@ -31,6 +31,10 @@ add_executable(fastslam1 src/fastslam1.cu)
 target_link_libraries(fastslam1 ${OpenCV_LIBS})
 target_compile_options(fastslam1 PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
 
+add_executable(amcl src/amcl.cu)
+target_link_libraries(amcl ${OpenCV_LIBS})
+target_compile_options(amcl PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
+
 add_executable(graph_slam src/graph_slam.cu)
 target_link_libraries(graph_slam ${OpenCV_LIBS})
 
@@ -110,6 +114,13 @@ target_link_libraries(multi_robot_planner ${OpenCV_LIBS})
 
 
 ##############################
+#Mapping
+##############################
+
+add_executable(occupancy_grid src/occupancy_grid_map.cu)
+target_link_libraries(occupancy_grid ${OpenCV_LIBS})
+
+##############################
 #PathTracking
 ##############################
 
@@ -135,3 +146,15 @@ add_executable(benchmark_dwa src/benchmark_dwa.cu)
 
 add_executable(comparison_dwa src/comparison_dwa.cu)
 target_link_libraries(comparison_dwa ${OpenCV_LIBS})
+
+add_executable(comparison_multi_robot src/comparison_multi_robot.cu)
+target_link_libraries(comparison_multi_robot ${OpenCV_LIBS})
+
+add_executable(comparison_pf src/comparison_pf.cu)
+target_link_libraries(comparison_pf ${OpenCV_LIBS})
+target_compile_options(comparison_pf PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
+
+add_executable(comparison_rrt src/comparison_rrt.cu)
+target_link_libraries(comparison_rrt ${OpenCV_LIBS})
+
+add_executable(cuda_streams_demo src/cuda_streams_demo.cu)
