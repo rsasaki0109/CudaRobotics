@@ -48,6 +48,9 @@ Each particle's motion prediction and observation likelihood computation runs as
 | Dynamic Window Approach | `dwa` | ~120K velocity samples evaluated in parallel |
 | Frenet Optimal Trajectory | `frenet` | ~140 candidate paths: polynomial solve + spline + collision |
 | State Lattice Planner | `slp_cuda` | Parallel lookup table search + trajectory optimization |
+| Potential Field | `potential_field` | Grid-parallel potential computation (attractive + repulsive) |
+| PRM | `prm_cuda` | Parallel collision check + k-NN + edge collision |
+| Voronoi Road Map | `voronoi_road_map` | Jump Flooding Algorithm for parallel Voronoi diagram |
 
 #### A*
 Obstacle map is constructed on GPU where each grid cell checks distance to all obstacles in parallel. Search uses CPU priority queue.
@@ -76,6 +79,15 @@ Each candidate path runs as one GPU thread: quintic/quartic polynomial coefficie
 Multiple target states are optimized simultaneously on GPU. Lookup table search and trajectory optimization (Newton's method with numerical Jacobian) run in parallel.
 
 <img src="https://ram-lab.com/file/tailei/gif/slp.gif" alt="slp" width="400"/>
+
+#### Potential Field
+GPU computes the entire potential field in one kernel launch: each thread calculates one grid cell's attractive potential (toward goal) and repulsive potential (from all obstacles). Path following uses gradient descent on CPU.
+
+#### PRM (Probabilistic Road Map)
+Three GPU kernels: (1) parallel collision checking of N=500 random samples, (2) parallel k-NN search for roadmap construction, (3) parallel edge collision checking. Dijkstra path search on CPU.
+
+#### Voronoi Road Map
+Uses the Jump Flooding Algorithm (JFA) on GPU to construct a Voronoi diagram in O(log N) fully-parallel passes. Each pass, every grid cell checks neighbors at decreasing step sizes and adopts the nearest seed. Road map extracted from Voronoi edges, path found with Dijkstra.
 
 ### Path Tracking
 
@@ -115,8 +127,9 @@ Run `bin/benchmark_pf` to reproduce.
 |---|---|
 | 1 sample = 1 thread (embarrassingly parallel) | PF, DWA, Frenet, State Lattice |
 | Shared-memory reduction | PF (weight normalize/mean), DWA (min cost), Frenet (min cost) |
-| GPU obstacle map construction | A*, Dijkstra |
-| GPU nearest neighbor search | RRT, RRT* |
+| GPU obstacle map / potential field | A*, Dijkstra, Potential Field |
+| GPU nearest neighbor search | RRT, RRT*, PRM |
+| Jump Flooding Algorithm (JFA) | Voronoi Road Map |
 | Inline linear algebra (Cramer's rule) | Frenet (quintic/quartic solve) |
 | cuRAND device-side RNG | PF |
 
