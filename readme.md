@@ -1,151 +1,128 @@
-# CppRobotics
+# CudaRobotics
 
-This is the cpp implementation of the [PythonRobotics](https://github.com/AtsushiSakai/PythonRobotics)
+CUDA-accelerated C++ implementations of robotics algorithms, based on [PythonRobotics](https://github.com/AtsushiSakai/PythonRobotics) and [CppRobotics](https://github.com/onlytailei/CppRobotics).
 
-## Requirment
-- cmake
-- opencv 3.3
+Each algorithm leverages GPU parallelism for significant speedup over CPU-only implementations.
+
+## Requirements
+- CMake >= 3.18
+- CUDA Toolkit >= 11.0
+- OpenCV 3.x / 4.x
 - Eigen 3
-- [CppAD](https://www.coin-or.org/CppAD/Doc/install.htm) / [IPOPT](https://www.coin-or.org/Ipopt/documentation/node14.html) (*for MPC convex optimization*) [install tips](https://github.com/udacity/CarND-MPC-Quizzes/blob/master/install_Ipopt_CppAD.md)
-- ~~ROS~~ (*~~To make the repo lightweight :)~~. Yet, we may still need it for 3D visualization.*)
 
 ## Build
-     $ mkdir build
-     $ cd build
-     $ cmake ../
-     $ make -j 8
+```bash
+mkdir build
+cd build
+cmake ../
+make -j8
+```
 
-Find all the executable files in ***build/bin***.
+Executables are in `bin/`.
 
-# Table of Contents
-* [Localization](#localization)
-    * [Extended kalmam filter](#extended-kalman-filter-localization)
-    * [Particle filter](#particle-filter-localization)
-    * Histogram filter
-* [Mapping](#mapping)
-    * Gaussian grid map
-* [SLAM](#SLAM)
-    * FastSLAM 1.0
-* [Path Planning](#path-planning)
-    * [Dijkstra](#dijkstra)
-    * [A Star](#a-star)
-    * [RRT](#rrt)
-    * [Dynamic Window Approach](#dynamic-window-approach)
-    * [Model Predictive Trajectory Generator](#model-predictive-trajectory-generator)
-    * [Cubic Spline Planner](#cubic-spline-planner)
-    * [State Lattice Planner](#state-lattice-planner)
-    * [Frenet Frame Trajectory](#frenet-frame-trajectory)
-* [Path Tracking Control](#path-tracking-control)
-    * [LQR Sterring Control](#lqr-steering-control)
-    * [LQR Speed and Steering Control](#lqr-speed-and-steering-control)
-    * [Model Predictive Speed and Steering Control](#mpc-speed-and-steering-control)
-* [Aerial Navigation](#aerial-navigation)
-     * Drone 3D Trajectory Following
-     * Rocket Powered Landing
+## Algorithms
 
-# Localization
-## Extended Kalman Filter Localization
-* green line: the groundtruth trajectory
-* black line: dead reckoning
-* red points: observations (e.g. GPS)
-* blue line: estimated positions
+### Localization
 
-<!-- ![ekf_gif](./gif/ekf.gif) -->
-<img src="https://ram-lab.com/file/tailei/gif/ekf.gif" alt="ekf" width="400"/>
+| Algorithm | Binary | CUDA Parallelization |
+|---|---|---|
+| Particle Filter | `pf` | 1000 particles: predict + weight update + resampling |
+| Extended Kalman Filter | *(CPU only)* | 4x4 matrices - no GPU benefit |
 
-[Probabilistic Robotics](http://www.probabilistic-robotics.org/)
+#### Particle Filter
+Each particle's motion prediction and observation likelihood computation runs as an independent GPU thread. Systematic resampling uses parallel binary search.
 
-## Particle Filter Localization
-* green line: the groundtruth trajectory
-* black line: dead reckoning
-* red points: landmarks
-* blue line: estimated positions
-
-<!-- ![pf_gif](./gif/pf.gif) -->
 <img src="https://ram-lab.com/file/tailei/gif/pf.gif" alt="pf" width="400"/>
 
-[Probabilistic Robotics](http://www.probabilistic-robotics.org/)
+#### Extended Kalman Filter
+<img src="https://ram-lab.com/file/tailei/gif/ekf.gif" alt="ekf" width="400"/>
 
-# Path Planning
+### Path Planning
 
-## Dijkstra
-* blue point: the start point
-* red point: the goal point
-<img src="https://ram-lab.com/file/tailei/gif/dijkstra.gif" alt="dijkstra" width="400"/>
+| Algorithm | Binary | CUDA Parallelization |
+|---|---|---|
+| A* | `astar_cuda` | Obstacle map construction (grid cells in parallel) |
+| Dijkstra | `dijkstra_cuda` | Obstacle map construction (grid cells in parallel) |
+| RRT | `rrt_cuda` | Nearest neighbor search + collision checking |
+| RRT* | `rrtstar_cuda` | Nearest neighbor + near nodes + rewiring + collision |
+| Dynamic Window Approach | `dwa` | ~120K velocity samples evaluated in parallel |
+| Frenet Optimal Trajectory | `frenet` | ~140 candidate paths: polynomial solve + spline + collision |
+| State Lattice Planner | `slp_cuda` | Parallel lookup table search + trajectory optimization |
 
-## A star
-* blue point: the start point
-* red point: the goal point
+#### A*
+Obstacle map is constructed on GPU where each grid cell checks distance to all obstacles in parallel. Search uses CPU priority queue.
+
 <img src="https://ram-lab.com/file/tailei/gif/a_star.gif" alt="a_star" width="400"/>
 
-## RRT
-* red circle: the start point
-* blue circle: the goal point
-* black circle: obstacles
+#### Dijkstra
+<img src="https://ram-lab.com/file/tailei/gif/dijkstra.gif" alt="dijkstra" width="400"/>
+
+#### RRT
+GPU-accelerated nearest neighbor search with shared-memory reduction. Collision checking also runs on GPU.
+
 <img src="https://ram-lab.com/file/tailei/gif/rrt.gif" alt="rrt" width="400"/>
 
-## Dynamic Window Approach
-* blue circle: the target point
-* red circle: the robot
+#### Dynamic Window Approach
+All (velocity, yaw_rate) combinations in the dynamic window are evaluated simultaneously on GPU. Each thread simulates a full trajectory and computes goal/speed/obstacle costs. Parallel reduction finds the optimal control.
 
-<!-- ![dwa_gif](./gif/dwa.gif) -->
 <img src="https://ram-lab.com/file/tailei/gif/dwa.gif" alt="dwa" width="400"/>
 
-[The dynamic window approach to collision avoidance](https://ieeexplore.ieee.org/document/580977)
-
-## Model Predictive Trajectory Generator
-This part is based on the bicycle motion model.
-* blue circle: the target point
-* red circle: the initial point
-
-<!-- ![mptg_gif](./gif/mptg.gif) -->
-<img src="https://ram-lab.com/file/tailei/gif/mptg.gif" alt="mptg" width="400"/>
-
-## Cubic Spline Planner
-
-<!-- ![mptg_gif](./gif/csp.png =500x) -->
-<img src="https://ram-lab.com/file/tailei/gif/csp.png" alt="csp" width="400"/>
-
-## State Lattice Planner
-* blue circle: the target point
-* red circle: the initial point
-
-<!-- ![mptg_gif](./gif/slp.gif) -->
-<img src="https://ram-lab.com/file/tailei/gif/slp.gif" alt="slp" width="400"/>
-
-[State Space Sampling of Feasible Motions for High-Performance Mobile Robot Navigation in Complex Environments](https://www.ri.cmu.edu/pub_files/pub4/howard_thomas_2008_1/howard_thomas_2008_1.pdf)
-
-## Frenet Frame Trajectory
-
-* black line: the planned spline path
-* red circle: the obstacle
-* blue circle: the planned trajectory
-* green circle: the real-time position of robot
+#### Frenet Optimal Trajectory
+Each candidate path runs as one GPU thread: quintic/quartic polynomial coefficients solved via Cramer's rule (no Eigen on device), cubic spline evaluation with binary search, collision checking, and cost computation - all fused in a single kernel.
 
 <img src="https://ram-lab.com/file/tailei/gif/frenet.gif" alt="frenet" width="400"/>
 
-[Optimal Trajectory Generation for Dynamic Street Scenarios in a Frenet Frame](https://www.researchgate.net/publication/224156269_Optimal_Trajectory_Generation_for_Dynamic_Street_Scenarios_in_a_Frenet_Frame)
+#### State Lattice Planner
+Multiple target states are optimized simultaneously on GPU. Lookup table search and trajectory optimization (Newton's method with numerical Jacobian) run in parallel.
 
+<img src="https://ram-lab.com/file/tailei/gif/slp.gif" alt="slp" width="400"/>
 
-# Path Tracking Control
-## LQR Steering Control
-* black line: the planned spline path
-* red circle: the position under lqr control
+### Path Tracking
 
+| Algorithm | Binary | CUDA Parallelization |
+|---|---|---|
+| LQR Steering Control | *(CPU only)* | Sequential control loop |
+| LQR Speed+Steering | *(CPU only)* | Sequential control loop |
+| MPC | *(CPU only)* | Requires IPOPT solver |
+
+#### LQR Steering Control
 <img src="https://ram-lab.com/file/tailei/gif/lqr_steering.gif" alt="lqr_steering" width="400"/>
 
-
-## LQR Speed and Steering Control
-* black line: the planned spline path
-* red circle: the position under lqr control
-
+#### LQR Speed and Steering Control
 <img src="https://ram-lab.com/file/tailei/gif/lqr_full.gif" alt="lqr_full" width="400"/>
 
-
-## MPC Speed and Steering Control
-* black line: the planned spline path
-* blue line: the passed path
-* yellow cross: the reference trajectory for MPC    
-(To compile this part, you need to uncomment the related lines in CMakeLists.txt and install [CppAD](https://www.coin-or.org/CppAD/Doc/install.htm) and [IPOPT](https://coin-or.github.io/Ipopt/).)
+#### MPC Speed and Steering Control
+Requires [CppAD](https://www.coin-or.org/CppAD/Doc/install.htm) and [IPOPT](https://coin-or.github.io/Ipopt/). Uncomment related lines in CMakeLists.txt to build.
 
 <img src="https://ram-lab.com/file/tailei/gif/mpc.gif" alt="mpc" width="400"/>
+
+## Benchmark: CPU vs CUDA
+
+Particle Filter, 100 steps (SIM_TIME=10s):
+
+| Particles | CPU | CUDA | Speedup |
+|---|---|---|---|
+| 100 | 84 ms | 3.4 ms | **25x** |
+| 1,000 | 1,410 ms | 6.9 ms | **204x** |
+| 5,000 | 19,417 ms | 12.2 ms | **1,592x** |
+| 10,000 | 75,618 ms | 27.2 ms | **2,776x** |
+
+Run `bin/benchmark_pf` to reproduce.
+
+## CUDA Implementation Patterns
+
+| Pattern | Used In |
+|---|---|
+| 1 sample = 1 thread (embarrassingly parallel) | PF, DWA, Frenet, State Lattice |
+| Shared-memory reduction | PF (weight normalize/mean), DWA (min cost), Frenet (min cost) |
+| GPU obstacle map construction | A*, Dijkstra |
+| GPU nearest neighbor search | RRT, RRT* |
+| Inline linear algebra (Cramer's rule) | Frenet (quintic/quartic solve) |
+| cuRAND device-side RNG | PF |
+
+## References
+- [PythonRobotics](https://github.com/AtsushiSakai/PythonRobotics)
+- [Probabilistic Robotics](http://www.probabilistic-robotics.org/)
+- [The Dynamic Window Approach to Collision Avoidance](https://ieeexplore.ieee.org/document/580977)
+- [Optimal Trajectory Generation for Dynamic Street Scenarios in a Frenet Frame](https://www.researchgate.net/publication/224156269)
+- [State Space Sampling of Feasible Motions for High-Performance Mobile Robot Navigation](https://www.ri.cmu.edu/pub_files/pub4/howard_thomas_2008_1/howard_thomas_2008_1.pdf)
