@@ -7,8 +7,14 @@ Each algorithm leverages GPU parallelism for significant speedup over CPU-only i
 ### CPU (C++) vs CUDA (GPU) — 500 Robots Collision Avoidance
 <img src="gif/comparison_multi_robot.gif" alt="CPU vs CUDA Multi-Robot comparison" width="800"/>
 
+### CPU (C++) vs CUDA (GPU) — Particle Filter
+<img src="gif/comparison_pf.gif" alt="CPU vs CUDA PF comparison" width="800"/>
+
 ### CPU (C++) vs CUDA (GPU) — Dynamic Window Approach
 <img src="gif/comparison_dwa.gif" alt="CPU vs CUDA DWA comparison" width="800"/>
+
+### CPU (C++) vs CUDA (GPU) — RRT Path Planning
+<img src="gif/comparison_rrt.gif" alt="CPU vs CUDA RRT comparison" width="800"/>
 
 ## Requirements
 - CMake >= 3.18
@@ -41,7 +47,9 @@ Requires [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-nat
 |---|---|---|
 | Particle Filter | `pf` | 1000 particles: predict + weight update + resampling |
 | Extended Kalman Filter | *(CPU only)* | 4x4 matrices - no GPU benefit |
-| **FastSLAM 1.0** | `fastslam1` | **Particle x Landmark parallel EKF update (NEW: SLAM category)** |
+| **AMCL** | `amcl` | **Adaptive particle count + GPU likelihood field + KLD-sampling** |
+| **FastSLAM 1.0** | `fastslam1` | **Particle x Landmark parallel EKF update (SLAM)** |
+| **Graph SLAM** | `graph_slam` | **GPU pose graph optimization with CG solver (SLAM)** |
 
 #### Particle Filter
 Each particle's motion prediction and observation likelihood computation runs as an independent GPU thread. Systematic resampling uses parallel binary search.
@@ -121,6 +129,24 @@ Three GPU kernels: (1) parallel collision checking of N=500 random samples, (2) 
 
 #### Voronoi Road Map
 Uses the Jump Flooding Algorithm (JFA) on GPU to construct a Voronoi diagram in O(log N) fully-parallel passes. Each pass, every grid cell checks neighbors at decreasing step sizes and adopts the nearest seed. Road map extracted from Voronoi edges, path found with Dijkstra.
+
+### Mapping
+
+| Algorithm | Binary | CUDA Parallelization |
+|---|---|---|
+| Occupancy Grid | `occupancy_grid` | Ray-parallel lidar update (360 threads/scan) |
+
+#### Occupancy Grid Mapping
+Each lidar ray is processed by one GPU thread using DDA line walking. Log-odds occupancy probability updated along each ray with atomicAdd.
+
+### Multi-Robot
+
+| Algorithm | Binary | CUDA Parallelization |
+|---|---|---|
+| Multi-Robot Planner | `multi_robot_planner` | N robots: force computation in parallel |
+
+#### Multi-Robot Collision Avoidance
+Each robot computes attractive/repulsive forces from goals, obstacles, and other robots on GPU. Scales to 500+ robots.
 
 ### Path Tracking
 
