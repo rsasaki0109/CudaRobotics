@@ -4,6 +4,9 @@ CUDA-accelerated C++ implementations of robotics algorithms, based on [PythonRob
 
 Each algorithm leverages GPU parallelism for significant speedup over CPU-only implementations.
 
+### CPU (C++) vs CUDA (GPU) — 500 Robots Collision Avoidance
+<img src="gif/comparison_multi_robot.gif" alt="CPU vs CUDA Multi-Robot comparison" width="800"/>
+
 ### CPU (C++) vs CUDA (GPU) — Dynamic Window Approach
 <img src="gif/comparison_dwa.gif" alt="CPU vs CUDA DWA comparison" width="800"/>
 

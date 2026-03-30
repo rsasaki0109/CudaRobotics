@@ -292,6 +292,9 @@ int main() {
         colors[i] = robot_color(i, N_ROBOTS);
     }
 
+    cv::VideoWriter video("gif/multi_robot.avi",
+                          cv::VideoWriter::fourcc('X','V','I','D'), 30, cv::Size(IMG_SIZE, IMG_SIZE));
+
     // CUDA launch config
     int blockSize = 32;
     int gridSize = (N_ROBOTS + blockSize - 1) / blockSize;
@@ -392,6 +395,7 @@ int main() {
                     0.6, cv::Scalar(0, 128, 0), 1);
 
         cv::imshow("multi_robot", img);
+        video.write(img);
         int key = cv::waitKey(1);
         if (key == 27) break;  // ESC to quit
 
@@ -402,6 +406,12 @@ int main() {
             break;
         }
     }
+
+    video.release();
+    system("ffmpeg -y -i gif/multi_robot.avi "
+           "-vf 'fps=15,scale=400:-1:flags=lanczos' -loop 0 "
+           "gif/multi_robot.gif 2>/dev/null");
+    std::cout << "GIF saved to gif/multi_robot.gif" << std::endl;
 
     // --- Cleanup ---
     CUDA_CHECK(cudaFree(d_px));
