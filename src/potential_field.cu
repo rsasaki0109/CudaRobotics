@@ -354,14 +354,19 @@ void draw_result(
     cv::circle(img, gp, cell_size * 3, cv::Scalar(255, 0, 0), -1);
 
     // Draw path as red line
+    cv::VideoWriter video("gif/potential_field.avi", cv::VideoWriter::fourcc('X','V','I','D'), 30, cv::Size(img.cols, img.rows));
     for (int i = 0; i < (int)rx.size() - 1; i++) {
         cv::Point p1 = to_pixel(rx[i], ry[i]);
         cv::Point p2 = to_pixel(rx[i + 1], ry[i + 1]);
         cv::line(img, p1, p2, cv::Scalar(0, 0, 255), 2);
+        video.write(img);
     }
 
     cv::namedWindow("potential_field", cv::WINDOW_AUTOSIZE);
     cv::imshow("potential_field", img);
+    video.write(img);
+    video.release();
+    std::cout << "Video saved to videos/potential_field.avi" << std::endl;
     cv::waitKey(0);
 }
 
