@@ -27,6 +27,10 @@ add_executable(pf src/particle_filter.cu)
 target_link_libraries(pf ${OpenCV_LIBS})
 target_compile_options(pf PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
 
+add_executable(fastslam1 src/fastslam1.cu)
+target_link_libraries(fastslam1 ${OpenCV_LIBS})
+target_compile_options(fastslam1 PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
+
 ##############################
 #PathPlanning
 ##############################
@@ -54,6 +58,9 @@ target_link_libraries(rrt_cuda ${OpenCV_LIBS})
 
 add_executable(rrtstar_cuda src/rrt_star.cu)
 target_link_libraries(rrtstar_cuda ${OpenCV_LIBS})
+
+add_executable(rrtstar_rs_cuda src/rrt_star_reeds_shepp.cu)
+target_link_libraries(rrtstar_rs_cuda ${OpenCV_LIBS})
 
 add_executable(dwa src/dynamic_window_approach.cu)
 target_link_libraries(dwa ${OpenCV_LIBS})

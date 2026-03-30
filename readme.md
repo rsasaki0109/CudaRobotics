@@ -28,11 +28,15 @@ Executables are in `bin/`.
 |---|---|---|
 | Particle Filter | `pf` | 1000 particles: predict + weight update + resampling |
 | Extended Kalman Filter | *(CPU only)* | 4x4 matrices - no GPU benefit |
+| **FastSLAM 1.0** | `fastslam1` | **Particle x Landmark parallel EKF update (NEW: SLAM category)** |
 
 #### Particle Filter
 Each particle's motion prediction and observation likelihood computation runs as an independent GPU thread. Systematic resampling uses parallel binary search.
 
 <img src="https://ram-lab.com/file/tailei/gif/pf.gif" alt="pf" width="400"/>
+
+#### FastSLAM 1.0
+Combines particle filter (for robot pose) with per-particle EKF (for landmark positions). Each particle independently runs EKF updates for all observed landmarks on GPU. All 2x2 matrix operations (Jacobian, Kalman gain, covariance update) are inline — no Eigen on device.
 
 #### Extended Kalman Filter
 <img src="https://ram-lab.com/file/tailei/gif/ekf.gif" alt="ekf" width="400"/>
@@ -45,6 +49,7 @@ Each particle's motion prediction and observation likelihood computation runs as
 | Dijkstra | `dijkstra_cuda` | Obstacle map construction (grid cells in parallel) |
 | RRT | `rrt_cuda` | Nearest neighbor search + collision checking |
 | RRT* | `rrtstar_cuda` | Nearest neighbor + near nodes + rewiring + collision |
+| **RRT* Reeds-Shepp** | `rrtstar_rs_cuda` | **Batch RS path computation + collision check (nonholonomic)** |
 | Dynamic Window Approach | `dwa` | ~120K velocity samples evaluated in parallel |
 | Frenet Optimal Trajectory | `frenet` | ~140 candidate paths: polynomial solve + spline + collision |
 | State Lattice Planner | `slp_cuda` | Parallel lookup table search + trajectory optimization |
@@ -64,6 +69,9 @@ Obstacle map is constructed on GPU where each grid cell checks distance to all o
 GPU-accelerated nearest neighbor search with shared-memory reduction. Collision checking also runs on GPU.
 
 <img src="https://ram-lab.com/file/tailei/gif/rrt.gif" alt="rrt" width="400"/>
+
+#### RRT* Reeds-Shepp
+Extends RRT* with car-like kinematics (forward/reverse driving). The key GPU kernel evaluates Reeds-Shepp paths to all candidate parent nodes in parallel — each thread computes the analytical RS path (48 path types: CSC + CCC families), discretizes it, and checks collision along the entire path.
 
 #### Dynamic Window Approach
 All (velocity, yaw_rate) combinations in the dynamic window are evaluated simultaneously on GPU. Each thread simulates a full trajectory and computes goal/speed/obstacle costs. Parallel reduction finds the optimal control.
