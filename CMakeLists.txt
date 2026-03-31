@@ -35,6 +35,14 @@ add_executable(amcl src/amcl.cu)
 target_link_libraries(amcl ${OpenCV_LIBS})
 target_compile_options(amcl PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
 
+add_executable(emcl2 src/emcl2.cu)
+target_link_libraries(emcl2 ${OpenCV_LIBS})
+target_compile_options(emcl2 PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
+
+add_executable(pf_on_episode src/pf_on_episode.cu)
+target_link_libraries(pf_on_episode ${OpenCV_LIBS})
+target_compile_options(pf_on_episode PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
+
 add_executable(graph_slam src/graph_slam.cu)
 target_link_libraries(graph_slam ${OpenCV_LIBS})
 
@@ -112,6 +120,9 @@ target_link_libraries(voronoi_road_map ${OpenCV_LIBS})
 add_executable(multi_robot_planner src/multi_robot_planner.cu)
 target_link_libraries(multi_robot_planner ${OpenCV_LIBS})
 
+add_executable(value_iteration src/value_iteration.cu)
+target_link_libraries(value_iteration ${OpenCV_LIBS})
+
 
 ##############################
 #Mapping
@@ -149,6 +160,9 @@ target_link_libraries(comparison_dwa ${OpenCV_LIBS})
 
 add_executable(comparison_multi_robot src/comparison_multi_robot.cu)
 target_link_libraries(comparison_multi_robot ${OpenCV_LIBS})
+
+add_executable(comparison_multi_robot_visual src/comparison_multi_robot_visual.cu)
+target_link_libraries(comparison_multi_robot_visual ${OpenCV_LIBS})
 
 add_executable(comparison_pf src/comparison_pf.cu)
 target_link_libraries(comparison_pf ${OpenCV_LIBS})
@@ -192,5 +206,16 @@ target_compile_options(comparison_fastslam PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--
 add_executable(comparison_amcl src/comparison_amcl.cu)
 target_link_libraries(comparison_amcl ${OpenCV_LIBS})
 target_compile_options(comparison_amcl PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
+
+add_executable(comparison_emcl2 src/comparison_emcl2.cu)
+target_link_libraries(comparison_emcl2 ${OpenCV_LIBS})
+target_compile_options(comparison_emcl2 PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
+
+add_executable(comparison_dwa_visual src/comparison_dwa_visual.cu)
+target_link_libraries(comparison_dwa_visual ${OpenCV_LIBS})
+
+add_executable(comparison_pf_visual src/comparison_pf_visual.cu)
+target_link_libraries(comparison_pf_visual ${OpenCV_LIBS})
+target_compile_options(comparison_pf_visual PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
 
 add_executable(cuda_streams_demo src/cuda_streams_demo.cu)
