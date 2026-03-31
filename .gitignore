@@ -1,7 +1,9 @@
 build
 bin
+lib
 .vscode
 code-server
+.claude
 deploy.sh
 *.avi
 videos/

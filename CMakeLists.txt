@@ -145,6 +145,31 @@ add_executable(mppi src/mppi.cu)
 target_link_libraries(mppi ${OpenCV_LIBS})
 
 ##############################
+#Neuroevolution
+##############################
+
+add_executable(neuroevo src/neuroevo.cu)
+target_link_libraries(neuroevo ${OpenCV_LIBS})
+
+add_executable(comparison_neuroevo src/comparison_neuroevo.cu)
+target_link_libraries(comparison_neuroevo ${OpenCV_LIBS})
+
+##############################
+#Point Cloud
+##############################
+
+add_library(pointcloud_ops STATIC
+    src/voxel_grid_filter.cu
+    src/statistical_filter.cu
+    src/normal_estimation.cu
+    src/gicp.cu
+    src/ransac_plane.cu
+)
+target_compile_options(pointcloud_ops PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
+add_executable(benchmark_pointcloud src/benchmark_pointcloud.cu)
+target_link_libraries(benchmark_pointcloud pointcloud_ops)
+
+##############################
 #Registration
 ##############################
 
@@ -260,4 +285,29 @@ target_link_libraries(comparison_orca ${OpenCV_LIBS})
 add_executable(comparison_mppi src/comparison_mppi.cu)
 target_link_libraries(comparison_mppi ${OpenCV_LIBS})
 
+##############################
+#SwarmOptimization
+##############################
+
+add_executable(pso_cuda src/pso.cu)
+target_link_libraries(pso_cuda ${OpenCV_LIBS})
+
+add_executable(differential_evolution src/differential_evolution.cu)
+target_link_libraries(differential_evolution ${OpenCV_LIBS})
+
+add_executable(cma_es src/cma_es.cu)
+target_link_libraries(cma_es ${OpenCV_LIBS})
+
+add_executable(aco_tsp src/aco_tsp.cu)
+target_link_libraries(aco_tsp ${OpenCV_LIBS})
+
+add_executable(comparison_swarm src/comparison_swarm.cu)
+target_link_libraries(comparison_swarm ${OpenCV_LIBS})
+
 add_executable(cuda_streams_demo src/cuda_streams_demo.cu)
+
+##############################
+# Common Foundation Tests
+##############################
+add_executable(test_autodiff src/test_autodiff.cu)
+add_executable(test_gpu_mlp src/test_gpu_mlp.cu)
