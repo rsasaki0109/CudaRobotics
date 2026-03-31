@@ -9,19 +9,19 @@ Each algorithm leverages GPU parallelism for significant speedup over CPU-only i
 | | |
 |---|---|
 | **500 Robots Collision Avoidance** | **Particle Filter** |
-| <img src="gif/comparison_multi_robot.gif" width="400"/> | <img src="gif/comparison_pf.gif" width="400"/> |
+| <img src="https://rsasaki0109.github.io/CudaRobotics/comparison_multi_robot.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/comparison_pf.gif" width="400"/> |
 | **Dynamic Window Approach** | **Frenet Optimal Trajectory** |
-| <img src="gif/comparison_dwa.gif" width="400"/> | <img src="gif/comparison_frenet.gif" width="400"/> |
+| <img src="https://rsasaki0109.github.io/CudaRobotics/comparison_dwa.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/comparison_frenet.gif" width="400"/> |
 | **RRT** | **RRT*** |
-| <img src="gif/comparison_rrt.gif" width="400"/> | <img src="gif/comparison_rrtstar.gif" width="400"/> |
+| <img src="https://rsasaki0109.github.io/CudaRobotics/comparison_rrt.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/comparison_rrtstar.gif" width="400"/> |
 | **A*** | **Dijkstra** |
-| <img src="gif/comparison_astar.gif" width="400"/> | <img src="gif/comparison_dijkstra.gif" width="400"/> |
+| <img src="https://rsasaki0109.github.io/CudaRobotics/comparison_astar.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/comparison_dijkstra.gif" width="400"/> |
 | **Potential Field** | **Voronoi Road Map** |
-| <img src="gif/comparison_potential_field.gif" width="400"/> | <img src="gif/comparison_voronoi.gif" width="400"/> |
+| <img src="https://rsasaki0109.github.io/CudaRobotics/comparison_potential_field.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/comparison_voronoi.gif" width="400"/> |
 | **3D RRT* (Drone)** | **Occupancy Grid Mapping** |
-| <img src="gif/comparison_rrt3d.gif" width="400"/> | <img src="gif/comparison_occupancy_grid.gif" width="400"/> |
+| <img src="https://rsasaki0109.github.io/CudaRobotics/comparison_rrt3d.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/comparison_occupancy_grid.gif" width="400"/> |
 | **FastSLAM 1.0** | **AMCL** |
-| <img src="gif/comparison_fastslam.gif" width="400"/> | <img src="gif/comparison_amcl.gif" width="400"/> |
+| <img src="https://rsasaki0109.github.io/CudaRobotics/comparison_fastslam.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/comparison_amcl.gif" width="400"/> |
 
 ## Requirements
 - CMake >= 3.18
@@ -61,13 +61,13 @@ Requires [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-nat
 #### Particle Filter
 Each particle's motion prediction and observation likelihood computation runs as an independent GPU thread. Systematic resampling uses parallel binary search.
 
-<img src="gif/pf.gif" alt="pf" width="400"/>
+<img src="https://rsasaki0109.github.io/CudaRobotics/pf.gif" alt="pf" width="400"/>
 
 #### FastSLAM 1.0
 Combines particle filter (for robot pose) with per-particle EKF (for landmark positions). Each particle independently runs EKF updates for all observed landmarks on GPU. All 2x2 matrix operations (Jacobian, Kalman gain, covariance update) are inline — no Eigen on device.
 
 #### Extended Kalman Filter
-<img src="gif/ekf.gif" alt="ekf" width="400"/>
+<img src="https://rsasaki0109.github.io/CudaRobotics/ekf.gif" alt="ekf" width="400"/>
 
 ### Path Planning
 
@@ -91,15 +91,15 @@ Combines particle filter (for robot pose) with per-particle EKF (for landmark po
 #### A*
 Obstacle map is constructed on GPU where each grid cell checks distance to all obstacles in parallel. Search uses CPU priority queue.
 
-<img src="gif/astar.gif" alt="a_star" width="400"/>
+<img src="https://rsasaki0109.github.io/CudaRobotics/astar.gif" alt="a_star" width="400"/>
 
 #### Dijkstra
-<img src="gif/dijkstra.gif" alt="dijkstra" width="400"/>
+<img src="https://rsasaki0109.github.io/CudaRobotics/dijkstra.gif" alt="dijkstra" width="400"/>
 
 #### RRT
 GPU-accelerated nearest neighbor search with shared-memory reduction. Collision checking also runs on GPU.
 
-<img src="gif/rrt.gif" alt="rrt" width="400"/>
+<img src="https://rsasaki0109.github.io/CudaRobotics/rrt.gif" alt="rrt" width="400"/>
 
 #### RRT* Reeds-Shepp
 Extends RRT* with car-like kinematics (forward/reverse driving). The key GPU kernel evaluates Reeds-Shepp paths to all candidate parent nodes in parallel — each thread computes the analytical RS path (48 path types: CSC + CCC families), discretizes it, and checks collision along the entire path.
@@ -113,17 +113,17 @@ Full 3D extension of RRT* for aerial navigation. Nodes are (x,y,z), obstacles ar
 #### Dynamic Window Approach
 All (velocity, yaw_rate) combinations in the dynamic window are evaluated simultaneously on GPU. Each thread simulates a full trajectory and computes goal/speed/obstacle costs. Parallel reduction finds the optimal control.
 
-<img src="gif/dwa.gif" alt="dwa" width="400"/>
+<img src="https://rsasaki0109.github.io/CudaRobotics/dwa.gif" alt="dwa" width="400"/>
 
 #### Frenet Optimal Trajectory
 Each candidate path runs as one GPU thread: quintic/quartic polynomial coefficients solved via Cramer's rule (no Eigen on device), cubic spline evaluation with binary search, collision checking, and cost computation - all fused in a single kernel.
 
-<img src="gif/frenet.gif" alt="frenet" width="400"/>
+<img src="https://rsasaki0109.github.io/CudaRobotics/frenet.gif" alt="frenet" width="400"/>
 
 #### State Lattice Planner
 Multiple target states are optimized simultaneously on GPU. Lookup table search and trajectory optimization (Newton's method with numerical Jacobian) run in parallel.
 
-<img src="gif/slp.gif" alt="slp" width="400"/>
+<img src="https://rsasaki0109.github.io/CudaRobotics/slp.gif" alt="slp" width="400"/>
 
 #### Potential Field
 GPU computes the entire potential field in one kernel launch: each thread calculates one grid cell's attractive potential (toward goal) and repulsive potential (from all obstacles). Path following uses gradient descent on CPU.
@@ -164,15 +164,15 @@ Each robot computes attractive/repulsive forces from goals, obstacles, and other
 | MPC | *(CPU only)* | Requires IPOPT solver |
 
 #### LQR Steering Control
-<img src="gif/lqr_steering.gif" alt="lqr_steering" width="400"/>
+<img src="https://rsasaki0109.github.io/CudaRobotics/lqr_steering.gif" alt="lqr_steering" width="400"/>
 
 #### LQR Speed and Steering Control
-<img src="gif/lqr_full.gif" alt="lqr_full" width="400"/>
+<img src="https://rsasaki0109.github.io/CudaRobotics/lqr_full.gif" alt="lqr_full" width="400"/>
 
 #### MPC Speed and Steering Control
 Requires [CppAD](https://www.coin-or.org/CppAD/Doc/install.htm) and [IPOPT](https://coin-or.github.io/Ipopt/). Uncomment related lines in CMakeLists.txt to build.
 
-<img src="gif/mpc.gif" alt="mpc" width="400"/>
+<img src="https://rsasaki0109.github.io/CudaRobotics/mpc.gif" alt="mpc" width="400"/>
 
 ## Benchmark: CPU vs CUDA
 
