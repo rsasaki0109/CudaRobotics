@@ -45,6 +45,7 @@ def parse_args():
     parser.add_argument("--csv", default="build/benchmark_diff_mppi.csv", help="Input CSV path")
     parser.add_argument("--markdown-out", help="Output Markdown summary path")
     parser.add_argument("--latex-out", help="Output LaTeX summary path")
+    parser.add_argument("--time-caps", default="1.1,1.5,2.0", help="Comma-separated wall-clock caps in ms")
     return parser.parse_args()
 
 
@@ -73,6 +74,16 @@ def fmt_md(mu, sigma, digits=2):
 
 def fmt_num(value, digits=2):
     return f"{value:.{digits}f}"
+
+
+def parse_float_list(text):
+    values = []
+    for token in text.split(","):
+        token = token.strip()
+        if not token:
+            continue
+        values.append(float(token))
+    return sorted(set(values))
 
 
 def load_rows(path):
@@ -166,6 +177,82 @@ def best_diff_per_budget(summary_rows):
     return result
 
 
+def rank_summary_row(row):
+    return (
+        -row["success_mean"],
+        row["final_distance_mean"],
+        row["cumulative_cost_mean"],
+        row["steps_mean"],
+        row["avg_control_ms_mean"],
+    )
+
+
+def select_under_time_caps(summary_rows, time_caps):
+    selected = []
+    by_scenario_planner = defaultdict(list)
+    for row in summary_rows:
+        by_scenario_planner[(row["scenario"], row["planner"])].append(row)
+
+    for (scenario, planner), group in sorted(by_scenario_planner.items()):
+        group = sorted(group, key=lambda r: (r["avg_control_ms_mean"], r["k_samples"]))
+        for cap in time_caps:
+            feasible = [r for r in group if r["avg_control_ms_mean"] <= cap]
+            if not feasible:
+                continue
+            best = min(feasible, key=rank_summary_row)
+            selected.append({
+                "scenario": scenario,
+                "planner": planner,
+                "time_cap_ms": cap,
+                "selected": best,
+            })
+    return selected
+
+
+def aggregate_by_planner_time_cap(time_cap_rows):
+    groups = defaultdict(list)
+    for row in time_cap_rows:
+        groups[(row["planner"], row["time_cap_ms"])].append(row["selected"])
+
+    agg = []
+    for key, group in sorted(groups.items(), key=lambda x: (x[0][1], x[0][0])):
+        item = {"planner": key[0], "time_cap_ms": key[1], "num_scenarios": len(group)}
+        item["k_samples_mean"] = mean([r["k_samples"] for r in group])
+        for field in SUMMARY_FIELDS:
+            values = [r[field + "_mean"] for r in group]
+            item[field + "_mean"] = mean(values)
+            item[field + "_std"] = stddev(values)
+        agg.append(item)
+    return agg
+
+
+def best_diff_per_time_cap(time_cap_rows):
+    result = []
+    by_scenario_cap = defaultdict(list)
+    for row in time_cap_rows:
+        by_scenario_cap[(row["scenario"], row["time_cap_ms"])].append(row)
+
+    for (scenario, time_cap_ms), group in sorted(by_scenario_cap.items()):
+        mppi_row = next((r for r in group if r["planner"] == "mppi"), None)
+        diff_rows = [r for r in group if r["planner"] != "mppi"]
+        if not mppi_row or not diff_rows:
+            continue
+        mppi = mppi_row["selected"]
+        best_diff_row = min(diff_rows, key=lambda r: rank_summary_row(r["selected"]))
+        best_diff = best_diff_row["selected"]
+        result.append({
+            "scenario": scenario,
+            "time_cap_ms": time_cap_ms,
+            "mppi": mppi,
+            "best_diff": best_diff,
+            "delta_success": best_diff["success_mean"] - mppi["success_mean"],
+            "delta_steps": best_diff["steps_mean"] - mppi["steps_mean"],
+            "delta_final_distance": best_diff["final_distance_mean"] - mppi["final_distance_mean"],
+            "delta_cost": best_diff["cumulative_cost_mean"] - mppi["cumulative_cost_mean"],
+        })
+    return result
+
+
 def markdown_table(headers, rows):
     lines = []
     lines.append("| " + " | ".join(headers) + " |")
@@ -175,7 +262,7 @@ def markdown_table(headers, rows):
     return "\n".join(lines)
 
 
-def build_markdown(summary_rows, aggregate_rows, budget_rows, csv_path):
+def build_markdown(summary_rows, aggregate_rows, budget_rows, time_cap_aggregate_rows, time_cap_rows, csv_path):
     lines = []
     lines.append("# Diff-MPPI Benchmark Summary")
     lines.append("")
@@ -218,6 +305,45 @@ def build_markdown(summary_rows, aggregate_rows, budget_rows, csv_path):
         budget_md_rows,
     ))
     lines.append("")
+    lines.append("## Aggregate Under Fixed Wall-Clock Budget")
+    lines.append("")
+    time_cap_md_rows = []
+    for row in time_cap_aggregate_rows:
+        time_cap_md_rows.append([
+            fmt_num(row["time_cap_ms"], 2),
+            row["planner"],
+            str(row["num_scenarios"]),
+            fmt_md(row["success_mean"], row["success_std"], 2),
+            fmt_md(row["steps_mean"], row["steps_std"], 1),
+            fmt_md(row["final_distance_mean"], row["final_distance_std"], 2),
+            fmt_md(row["cumulative_cost_mean"], row["cumulative_cost_std"], 1),
+            fmt_md(row["avg_control_ms_mean"], row["avg_control_ms_std"], 2),
+            fmt_num(row["k_samples_mean"], 0),
+        ])
+    lines.append(markdown_table(
+        ["Cap ms", "Planner", "Scenarios", "Success", "Steps", "Final Dist", "Cum. Cost", "Avg Control ms", "Mean K"],
+        time_cap_md_rows,
+    ))
+    lines.append("")
+    lines.append("## Best Diff Variant at Fixed Wall-Clock Budget")
+    lines.append("")
+    time_budget_md_rows = []
+    for row in time_cap_rows:
+        time_budget_md_rows.append([
+            row["scenario"],
+            fmt_num(row["time_cap_ms"], 2),
+            f"{row['mppi']['k_samples']} @ {fmt_num(row['mppi']['avg_control_ms_mean'])}",
+            f"{row['best_diff']['planner']} ({row['best_diff']['k_samples']} @ {fmt_num(row['best_diff']['avg_control_ms_mean'])})",
+            fmt_num(row["mppi"]["final_distance_mean"]),
+            fmt_num(row["best_diff"]["final_distance_mean"]),
+            f"{row['delta_final_distance']:.2f}",
+            f"{row['delta_steps']:.1f}",
+        ])
+    lines.append(markdown_table(
+        ["Scenario", "Cap ms", "MPPI K@ms", "Best Diff K@ms", "MPPI Dist", "Diff Dist", "Delta Dist", "Delta Steps"],
+        time_budget_md_rows,
+    ))
+    lines.append("")
 
     by_scenario = defaultdict(list)
     for row in summary_rows:
@@ -247,7 +373,7 @@ def build_markdown(summary_rows, aggregate_rows, budget_rows, csv_path):
     return "\n".join(lines)
 
 
-def build_latex(summary_rows, aggregate_rows, budget_rows, csv_path):
+def build_latex(summary_rows, aggregate_rows, budget_rows, time_cap_aggregate_rows, time_cap_rows, csv_path):
     lines = []
     lines.append("% Auto-generated by scripts/summarize_diff_mppi.py")
     lines.append(f"% Source CSV: {csv_path}")
@@ -289,6 +415,45 @@ def build_latex(summary_rows, aggregate_rows, budget_rows, csv_path):
     lines.append("\\hline")
     lines.append("\\end{tabular}")
     lines.append("\\end{table}")
+    lines.append("")
+    lines.append("\\begin{table}[t]")
+    lines.append("\\centering")
+    lines.append("\\caption{Best configurations selected under a fixed wall-clock budget.}")
+    lines.append("\\begin{tabular}{llrrrrrr}")
+    lines.append("\\hline")
+    lines.append("CapMs & Planner & Scenarios & Success & Steps & FinalDist & Cost & AvgMs \\\\")
+    lines.append("\\hline")
+    for row in time_cap_aggregate_rows:
+        lines.append(
+            f"{fmt_num(row['time_cap_ms'])} & {row['planner']} & {row['num_scenarios']} & "
+            f"{fmt_tex_pm(row['success_mean'], row['success_std'], 2)} & "
+            f"{fmt_tex_pm(row['steps_mean'], row['steps_std'], 1)} & "
+            f"{fmt_tex_pm(row['final_distance_mean'], row['final_distance_std'], 2)} & "
+            f"{fmt_tex_pm(row['cumulative_cost_mean'], row['cumulative_cost_std'], 1)} & "
+            f"{fmt_tex_pm(row['avg_control_ms_mean'], row['avg_control_ms_std'], 2)} \\\\"
+        )
+    lines.append("\\hline")
+    lines.append("\\end{tabular}")
+    lines.append("\\end{table}")
+    lines.append("")
+    lines.append("\\begin{table}[t]")
+    lines.append("\\centering")
+    lines.append("\\caption{Best gradient-refined variant relative to vanilla MPPI under the same wall-clock budget.}")
+    lines.append("\\begin{tabular}{llrrrrrr}")
+    lines.append("\\hline")
+    lines.append("Scenario & CapMs & MPPIDist & DiffDist & DeltaDist & DeltaSteps & MPPIK & DiffK \\\\")
+    lines.append("\\hline")
+    for row in time_cap_rows:
+        lines.append(
+            f"{row['scenario']} & {fmt_num(row['time_cap_ms'])} & "
+            f"{fmt_num(row['mppi']['final_distance_mean'])} & "
+            f"{fmt_num(row['best_diff']['final_distance_mean'])} & "
+            f"{row['delta_final_distance']:.2f} & {row['delta_steps']:.1f} & "
+            f"{row['mppi']['k_samples']} & {row['best_diff']['k_samples']} \\\\"
+        )
+    lines.append("\\hline")
+    lines.append("\\end{tabular}")
+    lines.append("\\end{table}")
     return "\n".join(lines)
 
 
@@ -309,9 +474,13 @@ def main():
     summary_rows = summarize_groups(rows)
     aggregate_rows = aggregate_by_planner_k(summary_rows)
     budget_rows = best_diff_per_budget(summary_rows)
+    time_caps = parse_float_list(args.time_caps)
+    time_cap_selected_rows = select_under_time_caps(summary_rows, time_caps)
+    time_cap_aggregate_rows = aggregate_by_planner_time_cap(time_cap_selected_rows)
+    time_cap_rows = best_diff_per_time_cap(time_cap_selected_rows)
 
-    markdown = build_markdown(summary_rows, aggregate_rows, budget_rows, csv_path)
-    latex = build_latex(summary_rows, aggregate_rows, budget_rows, csv_path)
+    markdown = build_markdown(summary_rows, aggregate_rows, budget_rows, time_cap_aggregate_rows, time_cap_rows, csv_path)
+    latex = build_latex(summary_rows, aggregate_rows, budget_rows, time_cap_aggregate_rows, time_cap_rows, csv_path)
 
     md_out, tex_out = default_output_paths(csv_path)
     if args.markdown_out:

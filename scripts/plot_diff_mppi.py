@@ -13,7 +13,7 @@ warnings.filterwarnings("ignore", message="Unable to import Axes3D.*")
 import matplotlib.pyplot as plt
 from matplotlib.ticker import ScalarFormatter
 
-from summarize_diff_mppi import load_rows, summarize_groups
+from summarize_diff_mppi import load_rows, parse_float_list, select_under_time_caps, summarize_groups
 
 
 PLANNER_STYLES = {
@@ -36,6 +36,7 @@ def parse_args():
     parser.add_argument("--csv", default="build/benchmark_diff_mppi.csv", help="Input CSV path")
     parser.add_argument("--out-dir", default="build/plots", help="Output directory for figures")
     parser.add_argument("--formats", default="png,pdf", help="Comma-separated output formats")
+    parser.add_argument("--time-caps", default="1.1,1.5,2.0", help="Comma-separated wall-clock caps in ms")
     return parser.parse_args()
 
 
@@ -184,6 +185,63 @@ def plot_budget_grid(summary_rows, metric, ylabel, title, out_dir, stem, formats
     plt.close(fig)
 
 
+def plot_time_cap_grid(time_cap_rows, metric, ylabel, title, out_dir, stem, formats):
+    grouped = defaultdict(list)
+    for row in time_cap_rows:
+        grouped[row["scenario"]].append(row)
+    scenarios = sorted(grouped)
+    mean_key, _ = metric_key(metric)
+    fig, axes = make_axes(len(scenarios))
+    axes_flat = axes.flatten()
+
+    legend_handles = None
+    legend_labels = None
+    xticks = sorted({row["time_cap_ms"] for row in time_cap_rows})
+    for ax, scenario in zip(axes_flat, scenarios):
+        rows = grouped[scenario]
+        for planner in PLOT_ORDER:
+            planner_rows = sorted((r for r in rows if r["planner"] == planner), key=lambda r: r["time_cap_ms"])
+            if not planner_rows:
+                continue
+            style = PLANNER_STYLES.get(planner, {"label": planner, "color": "#444444", "marker": "o"})
+            xs = [r["time_cap_ms"] for r in planner_rows]
+            ys = [r["selected"][mean_key] for r in planner_rows]
+            ax.plot(
+                xs,
+                ys,
+                label=style["label"],
+                color=style["color"],
+                marker=style["marker"],
+                linewidth=1.8,
+                markersize=6,
+            )
+            if legend_handles is None:
+                legend_handles, legend_labels = ax.get_legend_handles_labels()
+            for row in planner_rows:
+                ax.annotate(
+                    f"K={row['selected']['k_samples']}",
+                    (row["time_cap_ms"], row["selected"][mean_key]),
+                    textcoords="offset points",
+                    xytext=(4, 4),
+                    fontsize=7,
+                    color=style["color"],
+                )
+        ax.set_title(SCENARIO_TITLES.get(scenario, scenario.replace("_", " ").title()))
+        ax.set_xlabel("Wall-clock cap [ms]")
+        ax.set_ylabel(ylabel)
+        ax.set_xticks(xticks)
+        ax.grid(True, alpha=0.25)
+
+    for ax in axes_flat[len(scenarios):]:
+        ax.axis("off")
+
+    fig.suptitle(title, fontsize=14)
+    if legend_handles and legend_labels:
+        fig.legend(legend_handles, legend_labels, loc="upper center", ncol=3, frameon=False, bbox_to_anchor=(0.5, 1.02))
+    save_figure(fig, out_dir, stem, formats)
+    plt.close(fig)
+
+
 def save_figure(fig, out_dir, stem, formats):
     out_dir.mkdir(parents=True, exist_ok=True)
     for fmt in formats:
@@ -205,6 +263,8 @@ def main():
     configure_style()
     rows = load_rows(csv_path)
     summary_rows = summarize_groups(rows)
+    time_caps = parse_float_list(args.time_caps)
+    time_cap_rows = select_under_time_caps(summary_rows, time_caps)
     out_dir = Path(args.out_dir)
 
     plot_tradeoff_grid(
@@ -232,6 +292,15 @@ def main():
         title="Diff-MPPI Quality at Fixed Sample Budget",
         out_dir=out_dir,
         stem="diff_mppi_final_distance_vs_budget",
+        formats=formats,
+    )
+    plot_time_cap_grid(
+        time_cap_rows,
+        metric="final_distance",
+        ylabel="Best final distance under cap [px]",
+        title="Diff-MPPI at Fixed Wall-Clock Budget",
+        out_dir=out_dir,
+        stem="diff_mppi_final_distance_vs_time_cap",
         formats=formats,
     )
 
