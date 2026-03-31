@@ -46,6 +46,9 @@ target_compile_options(pf_on_episode PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-r
 add_executable(graph_slam src/graph_slam.cu)
 target_link_libraries(graph_slam ${OpenCV_LIBS})
 
+add_executable(ndt src/ndt.cu)
+target_link_libraries(ndt ${OpenCV_LIBS})
+
 ##############################
 #PathPlanning
 ##############################
@@ -120,9 +123,24 @@ target_link_libraries(voronoi_road_map ${OpenCV_LIBS})
 add_executable(multi_robot_planner src/multi_robot_planner.cu)
 target_link_libraries(multi_robot_planner ${OpenCV_LIBS})
 
+add_executable(orca src/orca.cu)
+target_link_libraries(orca ${OpenCV_LIBS})
+
 add_executable(value_iteration src/value_iteration.cu)
 target_link_libraries(value_iteration ${OpenCV_LIBS})
 
+add_executable(stomp src/stomp.cu)
+target_link_libraries(stomp ${OpenCV_LIBS})
+
+add_executable(hybrid_astar src/hybrid_astar.cu)
+target_link_libraries(hybrid_astar ${OpenCV_LIBS})
+
+##############################
+#Registration
+##############################
+
+add_executable(icp src/icp.cu)
+target_link_libraries(icp ${OpenCV_LIBS})
 
 ##############################
 #Mapping
@@ -217,5 +235,17 @@ target_link_libraries(comparison_dwa_visual ${OpenCV_LIBS})
 add_executable(comparison_pf_visual src/comparison_pf_visual.cu)
 target_link_libraries(comparison_pf_visual ${OpenCV_LIBS})
 target_compile_options(comparison_pf_visual PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
+
+add_executable(comparison_stomp src/comparison_stomp.cu)
+target_link_libraries(comparison_stomp ${OpenCV_LIBS})
+
+add_executable(comparison_icp src/comparison_icp.cu)
+target_link_libraries(comparison_icp ${OpenCV_LIBS})
+
+add_executable(comparison_hybrid_astar src/comparison_hybrid_astar.cu)
+target_link_libraries(comparison_hybrid_astar ${OpenCV_LIBS})
+
+add_executable(comparison_orca src/comparison_orca.cu)
+target_link_libraries(comparison_orca ${OpenCV_LIBS})
 
 add_executable(cuda_streams_demo src/cuda_streams_demo.cu)
