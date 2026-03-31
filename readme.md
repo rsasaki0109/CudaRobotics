@@ -4,17 +4,24 @@ CUDA-accelerated C++ implementations of robotics algorithms, based on [PythonRob
 
 Each algorithm leverages GPU parallelism for significant speedup over CPU-only implementations.
 
-### CPU (C++) vs CUDA (GPU) — 500 Robots Collision Avoidance
-<img src="gif/comparison_multi_robot.gif" alt="CPU vs CUDA Multi-Robot comparison" width="800"/>
+## CPU (C++) vs CUDA (GPU) Comparisons
 
-### CPU (C++) vs CUDA (GPU) — Particle Filter
-<img src="gif/comparison_pf.gif" alt="CPU vs CUDA PF comparison" width="800"/>
-
-### CPU (C++) vs CUDA (GPU) — Dynamic Window Approach
-<img src="gif/comparison_dwa.gif" alt="CPU vs CUDA DWA comparison" width="800"/>
-
-### CPU (C++) vs CUDA (GPU) — RRT Path Planning
-<img src="gif/comparison_rrt.gif" alt="CPU vs CUDA RRT comparison" width="800"/>
+| | |
+|---|---|
+| **500 Robots Collision Avoidance** | **Particle Filter** |
+| <img src="gif/comparison_multi_robot.gif" width="400"/> | <img src="gif/comparison_pf.gif" width="400"/> |
+| **Dynamic Window Approach** | **Frenet Optimal Trajectory** |
+| <img src="gif/comparison_dwa.gif" width="400"/> | <img src="gif/comparison_frenet.gif" width="400"/> |
+| **RRT** | **RRT*** |
+| <img src="gif/comparison_rrt.gif" width="400"/> | <img src="gif/comparison_rrtstar.gif" width="400"/> |
+| **A*** | **Dijkstra** |
+| <img src="gif/comparison_astar.gif" width="400"/> | <img src="gif/comparison_dijkstra.gif" width="400"/> |
+| **Potential Field** | **Voronoi Road Map** |
+| <img src="gif/comparison_potential_field.gif" width="400"/> | <img src="gif/comparison_voronoi.gif" width="400"/> |
+| **3D RRT* (Drone)** | **Occupancy Grid Mapping** |
+| <img src="gif/comparison_rrt3d.gif" width="400"/> | <img src="gif/comparison_occupancy_grid.gif" width="400"/> |
+| **FastSLAM 1.0** | **AMCL** |
+| <img src="gif/comparison_fastslam.gif" width="400"/> | <img src="gif/comparison_amcl.gif" width="400"/> |
 
 ## Requirements
 - CMake >= 3.18
