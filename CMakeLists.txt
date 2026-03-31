@@ -144,6 +144,12 @@ target_link_libraries(social_force ${OpenCV_LIBS})
 add_executable(mppi src/mppi.cu)
 target_link_libraries(mppi ${OpenCV_LIBS})
 
+add_executable(diff_mppi src/diff_mppi.cu)
+target_link_libraries(diff_mppi ${OpenCV_LIBS})
+
+add_executable(comparison_diff_mppi src/comparison_diff_mppi.cu)
+target_link_libraries(comparison_diff_mppi ${OpenCV_LIBS})
+
 ##############################
 #Neuroevolution
 ##############################
