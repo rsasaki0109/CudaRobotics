@@ -75,9 +75,10 @@ Recent additions push the repository beyond direct CUDA ports of classic robotic
 ```bash
 ./bin/benchmark_diff_mppi --quick
 python3 scripts/summarize_diff_mppi.py --csv build/benchmark_diff_mppi.csv
+python3 scripts/plot_diff_mppi.py --csv build/benchmark_diff_mppi.csv --out-dir build/plots
 ```
 
-The benchmark writes per-episode CSV metrics, and the summarizer emits Markdown and LaTeX tables for fixed-budget comparisons.
+The benchmark writes per-episode CSV metrics, the summarizer emits Markdown and LaTeX tables for fixed-budget comparisons, and the plotter generates paper-friendly PNG/PDF figures in `build/plots/`.
 
 ### Point-cloud benchmark snapshot
 

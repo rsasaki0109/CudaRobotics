@@ -1,0 +1,240 @@
+#!/usr/bin/env python3
+
+import argparse
+import math
+import warnings
+from collections import defaultdict
+from pathlib import Path
+
+import matplotlib
+
+matplotlib.use("Agg")
+warnings.filterwarnings("ignore", message="Unable to import Axes3D.*")
+import matplotlib.pyplot as plt
+from matplotlib.ticker import ScalarFormatter
+
+from summarize_diff_mppi import load_rows, summarize_groups
+
+
+PLANNER_STYLES = {
+    "mppi": {"label": "MPPI", "color": "#1a1a1a", "marker": "o"},
+    "diff_mppi_1": {"label": "Diff-MPPI (1 grad)", "color": "#c65d33", "marker": "s"},
+    "diff_mppi_3": {"label": "Diff-MPPI (3 grad)", "color": "#2a6f97", "marker": "^"},
+}
+
+PLOT_ORDER = ["mppi", "diff_mppi_1", "diff_mppi_3"]
+SCENARIO_TITLES = {
+    "cluttered": "Cluttered Field",
+    "corner_turn": "Corner Turn",
+    "narrow_passage": "Narrow Passage",
+    "slalom": "Slalom",
+}
+
+
+def parse_args():
+    parser = argparse.ArgumentParser(description="Plot Diff-MPPI benchmark figures from CSV summaries.")
+    parser.add_argument("--csv", default="build/benchmark_diff_mppi.csv", help="Input CSV path")
+    parser.add_argument("--out-dir", default="build/plots", help="Output directory for figures")
+    parser.add_argument("--formats", default="png,pdf", help="Comma-separated output formats")
+    return parser.parse_args()
+
+
+def configure_style():
+    plt.rcParams.update({
+        "font.family": "DejaVu Serif",
+        "axes.spines.top": False,
+        "axes.spines.right": False,
+        "axes.grid": True,
+        "grid.alpha": 0.25,
+        "grid.linestyle": "--",
+        "axes.labelsize": 11,
+        "axes.titlesize": 12,
+        "legend.fontsize": 10,
+        "xtick.labelsize": 10,
+        "ytick.labelsize": 10,
+        "figure.dpi": 140,
+        "savefig.bbox": "tight",
+    })
+
+
+def scenario_grid(summary_rows):
+    grouped = defaultdict(list)
+    for row in summary_rows:
+        grouped[row["scenario"]].append(row)
+    return grouped
+
+
+def metric_key(name):
+    return f"{name}_mean", f"{name}_std"
+
+
+def make_axes(num_scenarios):
+    cols = 2
+    rows = max(1, math.ceil(num_scenarios / cols))
+    fig, axes = plt.subplots(rows, cols, figsize=(7.2 * cols, 3.8 * rows), squeeze=False, constrained_layout=True)
+    return fig, axes
+
+
+def plot_tradeoff_grid(summary_rows, metric, ylabel, title, out_dir, stem, formats):
+    grouped = scenario_grid(summary_rows)
+    scenarios = sorted(grouped)
+    mean_key, std_key = metric_key(metric)
+    fig, axes = make_axes(len(scenarios))
+    axes_flat = axes.flatten()
+
+    legend_handles = None
+    legend_labels = None
+    for ax, scenario in zip(axes_flat, scenarios):
+        rows = grouped[scenario]
+        for planner in PLOT_ORDER:
+            planner_rows = sorted((r for r in rows if r["planner"] == planner), key=lambda r: r["k_samples"])
+            if not planner_rows:
+                continue
+            style = PLANNER_STYLES.get(planner, {"label": planner, "color": "#444444", "marker": "o"})
+            xs = [r["avg_control_ms_mean"] for r in planner_rows]
+            ys = [r[mean_key] for r in planner_rows]
+            xerr = [r["avg_control_ms_std"] for r in planner_rows]
+            yerr = [r[std_key] for r in planner_rows]
+            ax.errorbar(
+                xs,
+                ys,
+                xerr=xerr,
+                yerr=yerr,
+                label=style["label"],
+                color=style["color"],
+                marker=style["marker"],
+                linewidth=1.8,
+                markersize=6,
+                capsize=3,
+            )
+            if legend_handles is None:
+                legend_handles, legend_labels = ax.get_legend_handles_labels()
+            for row in planner_rows:
+                ax.annotate(
+                    f"K={row['k_samples']}",
+                    (row["avg_control_ms_mean"], row[mean_key]),
+                    textcoords="offset points",
+                    xytext=(5, 5),
+                    fontsize=8,
+                    color=style["color"],
+                )
+        ax.set_title(SCENARIO_TITLES.get(scenario, scenario.replace("_", " ").title()))
+        ax.set_xscale("log")
+        ax.set_xlabel("Average control time [ms]")
+        ax.set_ylabel(ylabel)
+        ax.grid(True, which="both", alpha=0.25)
+
+    for ax in axes_flat[len(scenarios):]:
+        ax.axis("off")
+
+    fig.suptitle(title, fontsize=14)
+    if legend_handles and legend_labels:
+        fig.legend(legend_handles, legend_labels, loc="upper center", ncol=3, frameon=False, bbox_to_anchor=(0.5, 1.02))
+    save_figure(fig, out_dir, stem, formats)
+    plt.close(fig)
+
+
+def plot_budget_grid(summary_rows, metric, ylabel, title, out_dir, stem, formats):
+    grouped = scenario_grid(summary_rows)
+    scenarios = sorted(grouped)
+    mean_key, std_key = metric_key(metric)
+    fig, axes = make_axes(len(scenarios))
+    axes_flat = axes.flatten()
+
+    legend_handles = None
+    legend_labels = None
+    xticks = sorted({r["k_samples"] for r in summary_rows})
+    for ax, scenario in zip(axes_flat, scenarios):
+        rows = grouped[scenario]
+        for planner in PLOT_ORDER:
+            planner_rows = sorted((r for r in rows if r["planner"] == planner), key=lambda r: r["k_samples"])
+            if not planner_rows:
+                continue
+            style = PLANNER_STYLES.get(planner, {"label": planner, "color": "#444444", "marker": "o"})
+            xs = [r["k_samples"] for r in planner_rows]
+            ys = [r[mean_key] for r in planner_rows]
+            yerr = [r[std_key] for r in planner_rows]
+            ax.errorbar(
+                xs,
+                ys,
+                yerr=yerr,
+                label=style["label"],
+                color=style["color"],
+                marker=style["marker"],
+                linewidth=1.8,
+                markersize=6,
+                capsize=3,
+            )
+            if legend_handles is None:
+                legend_handles, legend_labels = ax.get_legend_handles_labels()
+        ax.set_title(SCENARIO_TITLES.get(scenario, scenario.replace("_", " ").title()))
+        ax.set_xlabel("Samples per control step (K)")
+        ax.set_ylabel(ylabel)
+        ax.set_xticks(xticks)
+        ax.xaxis.set_major_formatter(ScalarFormatter())
+        ax.grid(True, alpha=0.25)
+
+    for ax in axes_flat[len(scenarios):]:
+        ax.axis("off")
+
+    fig.suptitle(title, fontsize=14)
+    if legend_handles and legend_labels:
+        fig.legend(legend_handles, legend_labels, loc="upper center", ncol=3, frameon=False, bbox_to_anchor=(0.5, 1.02))
+    save_figure(fig, out_dir, stem, formats)
+    plt.close(fig)
+
+
+def save_figure(fig, out_dir, stem, formats):
+    out_dir.mkdir(parents=True, exist_ok=True)
+    for fmt in formats:
+        path = out_dir / f"{stem}.{fmt}"
+        fig.savefig(path)
+        print(f"Saved {path}")
+
+
+def main():
+    args = parse_args()
+    csv_path = Path(args.csv)
+    if not csv_path.exists():
+        raise SystemExit(f"CSV not found: {csv_path}")
+
+    formats = [fmt.strip() for fmt in args.formats.split(",") if fmt.strip()]
+    if not formats:
+        raise SystemExit("No output formats requested")
+
+    configure_style()
+    rows = load_rows(csv_path)
+    summary_rows = summarize_groups(rows)
+    out_dir = Path(args.out_dir)
+
+    plot_tradeoff_grid(
+        summary_rows,
+        metric="final_distance",
+        ylabel="Final distance to goal [px]",
+        title="Diff-MPPI Quality vs Wall-Clock",
+        out_dir=out_dir,
+        stem="diff_mppi_final_distance_vs_time",
+        formats=formats,
+    )
+    plot_tradeoff_grid(
+        summary_rows,
+        metric="cumulative_cost",
+        ylabel="Cumulative trajectory cost",
+        title="Diff-MPPI Cost vs Wall-Clock",
+        out_dir=out_dir,
+        stem="diff_mppi_cost_vs_time",
+        formats=formats,
+    )
+    plot_budget_grid(
+        summary_rows,
+        metric="final_distance",
+        ylabel="Final distance to goal [px]",
+        title="Diff-MPPI Quality at Fixed Sample Budget",
+        out_dir=out_dir,
+        stem="diff_mppi_final_distance_vs_budget",
+        formats=formats,
+    )
+
+
+if __name__ == "__main__":
+    main()
