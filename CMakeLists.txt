@@ -135,6 +135,15 @@ target_link_libraries(stomp ${OpenCV_LIBS})
 add_executable(hybrid_astar src/hybrid_astar.cu)
 target_link_libraries(hybrid_astar ${OpenCV_LIBS})
 
+add_executable(rrt_connect src/rrt_connect.cu)
+target_link_libraries(rrt_connect ${OpenCV_LIBS})
+
+add_executable(social_force src/social_force.cu)
+target_link_libraries(social_force ${OpenCV_LIBS})
+
+add_executable(mppi src/mppi.cu)
+target_link_libraries(mppi ${OpenCV_LIBS})
+
 ##############################
 #Registration
 ##############################
@@ -247,5 +256,8 @@ target_link_libraries(comparison_hybrid_astar ${OpenCV_LIBS})
 
 add_executable(comparison_orca src/comparison_orca.cu)
 target_link_libraries(comparison_orca ${OpenCV_LIBS})
+
+add_executable(comparison_mppi src/comparison_mppi.cu)
+target_link_libraries(comparison_mppi ${OpenCV_LIBS})
 
 add_executable(cuda_streams_demo src/cuda_streams_demo.cu)
