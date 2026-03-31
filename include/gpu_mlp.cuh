@@ -27,6 +27,24 @@ struct MLPConfig {
     //      + hidden_dim*output_dim + output_dim  (出力層)
 };
 
+static constexpr int MLP_MAX_HIDDEN = 128;
+static constexpr int MLP_MAX_LAYERS = 8;
+static constexpr int MLP_MAX_OUTPUT = 32;
+
+__device__ inline float mlp_activate(float x, int activation) {
+    if (activation == 0) return x > 0.0f ? x : 0.0f;
+    if (activation == 1) return tanhf(x);
+    if (activation == 2) return 1.0f / (1.0f + expf(-x));
+    return x;
+}
+
+__device__ inline float mlp_activation_grad(float pre, float act, int activation) {
+    if (activation == 0) return pre > 0.0f ? 1.0f : 0.0f;
+    if (activation == 1) return 1.0f - act * act;
+    if (activation == 2) return act * (1.0f - act);
+    return 1.0f;
+}
+
 // デバイス側 forward pass
 // weights: GPU メモリ上の重み配列
 // input: 入力ベクトル（thread-local）
@@ -261,6 +279,236 @@ __global__ inline void mlp_loss_kernel(
     *d_loss = total_loss / batch_size;
 }
 
+__global__ inline void mlp_backprop_batch_kernel(
+    const float* weights,
+    float* d_grads,
+    const float* d_input,
+    const float* d_target,
+    int input_dim,
+    int output_dim,
+    int hidden_dim,
+    int n_layers,
+    int batch_size,
+    int activation,
+    float* d_loss
+) {
+    int sample_idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (sample_idx >= batch_size) return;
+
+    if (hidden_dim > MLP_MAX_HIDDEN || n_layers > MLP_MAX_LAYERS || output_dim > MLP_MAX_OUTPUT) {
+        return;
+    }
+
+    const float* input = d_input + sample_idx * input_dim;
+    const float* target = d_target + sample_idx * output_dim;
+    float inv_batch = 1.0f / batch_size;
+
+    float pre[MLP_MAX_LAYERS][MLP_MAX_HIDDEN];
+    float actv[MLP_MAX_LAYERS][MLP_MAX_HIDDEN];
+    float out[MLP_MAX_OUTPUT];
+    float delta_out[MLP_MAX_OUTPUT];
+    float delta_cur[MLP_MAX_HIDDEN];
+    float delta_prev[MLP_MAX_HIDDEN];
+
+    int offset = 0;
+
+    // input -> first hidden
+    for (int j = 0; j < hidden_dim; j++) {
+        float sum = weights[offset + input_dim * hidden_dim + j];
+        for (int i = 0; i < input_dim; i++) {
+            sum += weights[offset + i * hidden_dim + j] * input[i];
+        }
+        pre[0][j] = sum;
+        actv[0][j] = mlp_activate(sum, activation);
+    }
+    offset += input_dim * hidden_dim + hidden_dim;
+
+    // hidden -> hidden
+    for (int l = 1; l < n_layers; l++) {
+        int layer_offset = offset;
+        for (int j = 0; j < hidden_dim; j++) {
+            float sum = weights[layer_offset + hidden_dim * hidden_dim + j];
+            for (int i = 0; i < hidden_dim; i++) {
+                sum += weights[layer_offset + i * hidden_dim + j] * actv[l - 1][i];
+            }
+            pre[l][j] = sum;
+            actv[l][j] = mlp_activate(sum, activation);
+        }
+        offset += hidden_dim * hidden_dim + hidden_dim;
+    }
+
+    int output_w_offset = offset;
+    int output_b_offset = output_w_offset + hidden_dim * output_dim;
+
+    float sample_loss = 0.0f;
+    for (int j = 0; j < output_dim; j++) {
+        float sum = weights[output_b_offset + j];
+        for (int i = 0; i < hidden_dim; i++) {
+            sum += weights[output_w_offset + i * output_dim + j] * actv[n_layers - 1][i];
+        }
+        out[j] = sum;
+        float err = out[j] - target[j];
+        delta_out[j] = err;
+        sample_loss += err * err;
+    }
+    atomicAdd(d_loss, sample_loss * inv_batch);
+
+    // output gradients
+    for (int j = 0; j < output_dim; j++) {
+        atomicAdd(&d_grads[output_b_offset + j], delta_out[j] * inv_batch);
+        for (int i = 0; i < hidden_dim; i++) {
+            atomicAdd(&d_grads[output_w_offset + i * output_dim + j],
+                      delta_out[j] * actv[n_layers - 1][i] * inv_batch);
+        }
+    }
+
+    // last hidden delta
+    for (int i = 0; i < hidden_dim; i++) {
+        float sum = 0.0f;
+        for (int j = 0; j < output_dim; j++) {
+            sum += weights[output_w_offset + i * output_dim + j] * delta_out[j];
+        }
+        delta_cur[i] = sum * mlp_activation_grad(pre[n_layers - 1][i], actv[n_layers - 1][i], activation);
+    }
+
+    // hidden -> hidden gradients, back to first hidden
+    int layer_offset = output_w_offset;
+    for (int l = n_layers - 1; l >= 1; l--) {
+        layer_offset -= hidden_dim * hidden_dim + hidden_dim;
+        int bias_offset = layer_offset + hidden_dim * hidden_dim;
+        for (int j = 0; j < hidden_dim; j++) {
+            atomicAdd(&d_grads[bias_offset + j], delta_cur[j] * inv_batch);
+            for (int i = 0; i < hidden_dim; i++) {
+                atomicAdd(&d_grads[layer_offset + i * hidden_dim + j],
+                          delta_cur[j] * actv[l - 1][i] * inv_batch);
+            }
+        }
+
+        for (int i = 0; i < hidden_dim; i++) {
+            float sum = 0.0f;
+            for (int j = 0; j < hidden_dim; j++) {
+                sum += weights[layer_offset + i * hidden_dim + j] * delta_cur[j];
+            }
+            delta_prev[i] = sum * mlp_activation_grad(pre[l - 1][i], actv[l - 1][i], activation);
+        }
+        for (int i = 0; i < hidden_dim; i++) delta_cur[i] = delta_prev[i];
+    }
+
+    // input -> first hidden gradients
+    int first_bias_offset = input_dim * hidden_dim;
+    for (int j = 0; j < hidden_dim; j++) {
+        atomicAdd(&d_grads[first_bias_offset + j], delta_cur[j] * inv_batch);
+        for (int i = 0; i < input_dim; i++) {
+            atomicAdd(&d_grads[i * hidden_dim + j], delta_cur[j] * input[i] * inv_batch);
+        }
+    }
+}
+
+__global__ inline void mlp_backprop_output_grad_kernel(
+    const float* weights,
+    float* d_grads,
+    const float* d_input,
+    const float* d_output_grad,
+    int input_dim,
+    int output_dim,
+    int hidden_dim,
+    int n_layers,
+    int batch_size,
+    int activation
+) {
+    int sample_idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (sample_idx >= batch_size) return;
+
+    if (hidden_dim > MLP_MAX_HIDDEN || n_layers > MLP_MAX_LAYERS || output_dim > MLP_MAX_OUTPUT) {
+        return;
+    }
+
+    const float* input = d_input + sample_idx * input_dim;
+    const float* output_grad = d_output_grad + sample_idx * output_dim;
+    float inv_batch = 1.0f / batch_size;
+
+    float pre[MLP_MAX_LAYERS][MLP_MAX_HIDDEN];
+    float actv[MLP_MAX_LAYERS][MLP_MAX_HIDDEN];
+    float delta_out[MLP_MAX_OUTPUT];
+    float delta_cur[MLP_MAX_HIDDEN];
+    float delta_prev[MLP_MAX_HIDDEN];
+
+    int offset = 0;
+
+    for (int j = 0; j < hidden_dim; j++) {
+        float sum = weights[offset + input_dim * hidden_dim + j];
+        for (int i = 0; i < input_dim; i++) {
+            sum += weights[offset + i * hidden_dim + j] * input[i];
+        }
+        pre[0][j] = sum;
+        actv[0][j] = mlp_activate(sum, activation);
+    }
+    offset += input_dim * hidden_dim + hidden_dim;
+
+    for (int l = 1; l < n_layers; l++) {
+        int layer_offset = offset;
+        for (int j = 0; j < hidden_dim; j++) {
+            float sum = weights[layer_offset + hidden_dim * hidden_dim + j];
+            for (int i = 0; i < hidden_dim; i++) {
+                sum += weights[layer_offset + i * hidden_dim + j] * actv[l - 1][i];
+            }
+            pre[l][j] = sum;
+            actv[l][j] = mlp_activate(sum, activation);
+        }
+        offset += hidden_dim * hidden_dim + hidden_dim;
+    }
+
+    int output_w_offset = offset;
+    int output_b_offset = output_w_offset + hidden_dim * output_dim;
+
+    for (int j = 0; j < output_dim; j++) {
+        delta_out[j] = output_grad[j];
+        atomicAdd(&d_grads[output_b_offset + j], delta_out[j] * inv_batch);
+        for (int i = 0; i < hidden_dim; i++) {
+            atomicAdd(&d_grads[output_w_offset + i * output_dim + j],
+                      delta_out[j] * actv[n_layers - 1][i] * inv_batch);
+        }
+    }
+
+    for (int i = 0; i < hidden_dim; i++) {
+        float sum = 0.0f;
+        for (int j = 0; j < output_dim; j++) {
+            sum += weights[output_w_offset + i * output_dim + j] * delta_out[j];
+        }
+        delta_cur[i] = sum * mlp_activation_grad(pre[n_layers - 1][i], actv[n_layers - 1][i], activation);
+    }
+
+    int layer_offset = output_w_offset;
+    for (int l = n_layers - 1; l >= 1; l--) {
+        layer_offset -= hidden_dim * hidden_dim + hidden_dim;
+        int bias_offset = layer_offset + hidden_dim * hidden_dim;
+        for (int j = 0; j < hidden_dim; j++) {
+            atomicAdd(&d_grads[bias_offset + j], delta_cur[j] * inv_batch);
+            for (int i = 0; i < hidden_dim; i++) {
+                atomicAdd(&d_grads[layer_offset + i * hidden_dim + j],
+                          delta_cur[j] * actv[l - 1][i] * inv_batch);
+            }
+        }
+
+        for (int i = 0; i < hidden_dim; i++) {
+            float sum = 0.0f;
+            for (int j = 0; j < hidden_dim; j++) {
+                sum += weights[layer_offset + i * hidden_dim + j] * delta_cur[j];
+            }
+            delta_prev[i] = sum * mlp_activation_grad(pre[l - 1][i], actv[l - 1][i], activation);
+        }
+        for (int i = 0; i < hidden_dim; i++) delta_cur[i] = delta_prev[i];
+    }
+
+    int first_bias_offset = input_dim * hidden_dim;
+    for (int j = 0; j < hidden_dim; j++) {
+        atomicAdd(&d_grads[first_bias_offset + j], delta_cur[j] * inv_batch);
+        for (int i = 0; i < input_dim; i++) {
+            atomicAdd(&d_grads[i * hidden_dim + j], delta_cur[j] * input[i] * inv_batch);
+        }
+    }
+}
+
 // Xavier initialization kernel
 __global__ inline void mlp_init_weights_kernel(
     float* weights, int total_weights,
@@ -393,6 +641,58 @@ public:
         cudaFree(d_grads);
         cudaFree(d_loss);
         return loss;
+    }
+
+    float train_step_backprop(const float* d_input, const float* d_target,
+                              int batch_size, float lr = 0.001f, int activation = 0) {
+        float* d_grads;
+        float* d_loss;
+        cudaMalloc(&d_grads, config_.total_weights * sizeof(float));
+        cudaMalloc(&d_loss, sizeof(float));
+        cudaMemset(d_grads, 0, config_.total_weights * sizeof(float));
+        cudaMemset(d_loss, 0, sizeof(float));
+
+        int threads = 128;
+        int blocks = (batch_size + threads - 1) / threads;
+        mlp_backprop_batch_kernel<<<blocks, threads>>>(
+            d_weights_, d_grads, d_input, d_target,
+            config_.input_dim, config_.output_dim,
+            config_.hidden_dim, config_.n_layers,
+            batch_size, activation, d_loss);
+
+        int grad_threads = 256;
+        int grad_blocks = (config_.total_weights + grad_threads - 1) / grad_threads;
+        mlp_apply_gradients_kernel<<<grad_blocks, grad_threads>>>(
+            d_weights_, d_grads, config_.total_weights, lr);
+        cudaDeviceSynchronize();
+
+        float loss = 0.0f;
+        cudaMemcpy(&loss, d_loss, sizeof(float), cudaMemcpyDeviceToHost);
+        cudaFree(d_grads);
+        cudaFree(d_loss);
+        return loss;
+    }
+
+    void apply_output_grad(const float* d_input, const float* d_output_grad,
+                           int batch_size, float lr = 0.001f, int activation = 0) {
+        float* d_grads;
+        cudaMalloc(&d_grads, config_.total_weights * sizeof(float));
+        cudaMemset(d_grads, 0, config_.total_weights * sizeof(float));
+
+        int threads = 128;
+        int blocks = (batch_size + threads - 1) / threads;
+        mlp_backprop_output_grad_kernel<<<blocks, threads>>>(
+            d_weights_, d_grads, d_input, d_output_grad,
+            config_.input_dim, config_.output_dim,
+            config_.hidden_dim, config_.n_layers,
+            batch_size, activation);
+
+        int grad_threads = 256;
+        int grad_blocks = (config_.total_weights + grad_threads - 1) / grad_threads;
+        mlp_apply_gradients_kernel<<<grad_blocks, grad_threads>>>(
+            d_weights_, d_grads, config_.total_weights, lr);
+        cudaDeviceSynchronize();
+        cudaFree(d_grads);
     }
 
 private:
