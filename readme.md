@@ -70,6 +70,15 @@ Recent additions push the repository beyond direct CUDA ports of classic robotic
 | **Ant Colony Optimization for TSP** | |
 | <img src="https://rsasaki0109.github.io/CudaRobotics/aco_tsp.gif" width="400"/> | |
 
+### Diff-MPPI experiment workflow
+
+```bash
+./bin/benchmark_diff_mppi --quick
+python3 scripts/summarize_diff_mppi.py --csv build/benchmark_diff_mppi.csv
+```
+
+The benchmark writes per-episode CSV metrics, and the summarizer emits Markdown and LaTeX tables for fixed-budget comparisons.
+
 ### Point-cloud benchmark snapshot
 
 `bin/benchmark_pointcloud` generates a synthetic room cloud and compares CPU vs GPU implementations of voxel-grid filtering, statistical outlier removal, normal estimation, RANSAC plane fitting, and GICP registration.
