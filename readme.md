@@ -79,6 +79,7 @@ python3 scripts/plot_diff_mppi.py --csv build/benchmark_diff_mppi.csv --out-dir 
 ```
 
 The benchmark writes per-episode CSV metrics, the summarizer emits Markdown and LaTeX tables for fixed-budget comparisons, and the plotter generates paper-friendly PNG/PDF figures in `build/plots/`.
+A paper-style interpretation of the current benchmark is collected in `paper/diff_mppi_results.md`.
 
 ### Point-cloud benchmark snapshot
 
