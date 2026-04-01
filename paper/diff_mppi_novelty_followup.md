@@ -40,6 +40,9 @@ Artifacts used:
 - `build/benchmark_diff_mppi_exact_time_fused.csv`
 - `build/benchmark_diff_mppi_exact_time_fused_search.csv`
 - `build/benchmark_diff_mppi_exact_time_fused_summary.md`
+- `build/benchmark_diff_mppi_exact_time_cov.csv`
+- `build/benchmark_diff_mppi_exact_time_cov_search.csv`
+- `build/benchmark_diff_mppi_exact_time_cov_summary.md`
 - `build/benchmark_diff_mppi_exact_time.csv`
 - `build/benchmark_diff_mppi_exact_time_search.csv`
 - `build/benchmark_diff_mppi_exact_time_summary.md`
@@ -62,6 +65,7 @@ Artifacts used:
 - `build/plots_exact_time_ref/diff_mppi_final_distance_vs_equal_time.png`
 - `build/plots_exact_time_hf/diff_mppi_final_distance_vs_equal_time.png`
 - `build/plots_exact_time_fused/diff_mppi_final_distance_vs_equal_time.png`
+- `build/plots_exact_time_cov/diff_mppi_final_distance_vs_equal_time.png`
 - `build/plots_ablation/diff_mppi_final_distance_vs_budget.png`
 - `build/plots_ablation/diff_mppi_final_distance_vs_equal_time.png`
 
@@ -286,6 +290,8 @@ The newer architecture-gap and heavy-feedback exact-time runs are still informat
 - under a `1.00 ms` cap, the closer released-gain row on `dynamic_slalom` is `feedback_mppi_ref K=256 @ 0.63 ms`, final distance `11.89`
 - under a `3.50 ms` cap, the best current feedback row on `dynamic_slalom` is `feedback_mppi_fused K=256 @ 3.45 ms`, final distance `10.28`
 - under a `1.50 ms` equal-time target on the current fixed-`K` sweep, `feedback_mppi_cov K=256 @ 1.66 ms` is the closest lighter feedback row on `dynamic_slalom`, again with final distance `11.49`
+- under exact-time tuning, `feedback_mppi_cov` now reaches `dynamic_crossing: K=219 @ 1.474 ms, dist=1.92` and `K=292 @ 1.964 ms, dist=1.91`
+- under exact-time tuning, `feedback_mppi_cov` now reaches `dynamic_slalom: K=211 @ 1.490 ms, dist=11.72` and `K=293 @ 1.971 ms, dist=11.68`
 - under exact-time tuning, `feedback_mppi_hf` now reaches `dynamic_crossing: K=285 @ 0.978 ms, dist=2.77`, `K=368 @ 1.486 ms, dist=2.75`, and `K=443 @ 1.989 ms, dist=2.65`
 - under exact-time tuning, `feedback_mppi_hf` also reaches `dynamic_slalom: K=276 @ 0.989 ms, dist=13.63`, `K=369 @ 1.498 ms, dist=13.34`, and `K=441 @ 1.980 ms, dist=13.40`
 - under exact-time tuning, `feedback_mppi_fused` reaches `dynamic_crossing: K=153 @ 1.968 ms, success=1.00, dist=1.94`
@@ -293,7 +299,7 @@ The newer architecture-gap and heavy-feedback exact-time runs are still informat
 
 So the newer feedback family is materially stronger than the earlier baselines on the hard task, even though the hybrid controller still remains the only successful family.
 The current release-style row is especially useful for reviewer defense because it shows that the main qualitative claim survives even after moving one step closer to the public `Feedback-MPPI` gain computation.
-The new architecture-gap and heavy-feedback exact-time rows matter for the same reason: they remove the easy objection that those stronger in-repo baselines were only shown under fixed budgets or loose wall-clock caps.
+The new covariance, architecture-gap, and heavy-feedback exact-time rows matter for the same reason: they remove the easy objection that those stronger in-repo baselines were only shown under fixed budgets or loose wall-clock caps.
 
 It now also survives a targeted exact-time tuning pass.
 
@@ -430,8 +436,8 @@ The stronger current version is:
 ## What Is Still Missing
 
 The main remaining gaps are now:
-- the current `feedback_mppi`, `feedback_mppi_ref`, `feedback_mppi_sens`, `feedback_mppi_cov`, and `feedback_mppi_fused` comparisons are all materially stronger than the earlier fixed-gain tracker, but still not a full literature-faithful rollout-differentiation / feedback-MPPI baseline
-- the newer `feedback_mppi_hf` comparison narrows the controller-architecture gap, while `feedback_mppi_ref` narrows the released-gain gap, and both now also have exact-time evidence, but they are still in-repo proxies rather than paper-faithful reproductions
+- the current `feedback_mppi`, `feedback_mppi_ref`, `feedback_mppi_sens`, `feedback_mppi_cov`, and `feedback_mppi_fused` comparisons are all materially stronger than the earlier fixed-gain tracker, and all but the original `feedback_mppi_sens` now also have targeted exact-time evidence, but they still are not a full literature-faithful rollout-differentiation / feedback-MPPI baseline
+- the newer `feedback_mppi_hf` comparison narrows the controller-architecture gap, while `feedback_mppi_ref` narrows the released-gain gap and `feedback_mppi_cov` narrows the covariance-gain gap, but they are still in-repo proxies rather than paper-faithful reproductions
 - only two simple hand-designed 2D dynamic scenarios so far
 
 The gradient-only ablation, the six stronger feedback baselines, and the new trace-based mechanism analysis remove weaker alternative explanations, but they still do not close the stronger literature-baseline gap.

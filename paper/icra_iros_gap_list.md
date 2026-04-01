@@ -118,6 +118,9 @@ The newer baseline story is materially better than it was a few iterations ago:
 - a targeted exact-time sweep now tunes `feedback_mppi_ref` directly to shared `1.00 ms` and `1.50 ms` targets
 - at `1.00 ms`, `feedback_mppi_ref` reaches `dynamic_crossing: K=1263 @ 1.002 ms, success=1.00, dist=1.95` and `dynamic_slalom: K=1150 @ 1.023 ms, dist=11.89`
 - at `1.50 ms`, it reaches `dynamic_crossing: K=2362 @ 1.482 ms, success=1.00, dist=1.89` and `dynamic_slalom: K=2190 @ 1.472 ms, dist=11.89`
+- a targeted exact-time sweep now also tunes `feedback_mppi_cov` directly to shared `1.50 ms` and `2.00 ms` targets
+- at `1.50 ms`, `feedback_mppi_cov` reaches `dynamic_crossing: K=219 @ 1.474 ms, success=1.00, dist=1.92` and `dynamic_slalom: K=211 @ 1.490 ms, dist=11.72`
+- at `2.00 ms`, it reaches `dynamic_crossing: K=292 @ 1.964 ms, success=1.00, dist=1.91` and `dynamic_slalom: K=293 @ 1.971 ms, dist=11.68`
 - a targeted exact-time sweep now also tunes the heavier `feedback_mppi_fused` baseline to a shared `2.00 ms` target
 - at `2.00 ms`, `feedback_mppi_fused` reaches `dynamic_crossing: K=153 @ 1.968 ms, success=1.00, dist=1.94` and `dynamic_slalom: K=137 @ 1.993 ms, dist=10.51`
 
@@ -168,9 +171,8 @@ That is already much better than most quick research repos.
 But a skeptical reviewer can still say:
 - the exact-time tuning currently searches `K` only, not the full controller design space
 - the exact-time result is currently concentrated on the dynamic two-task suite, not the full benchmark portfolio
-- the heavier `feedback_mppi_cov` baseline still has only fixed-budget and cap-based evidence, not a refreshed exact-time sweep
 - the newer `feedback_mppi_ref` baseline narrows the released-gain gap and now has a targeted exact-time sweep, but it still remains an in-repo proxy rather than a paper-faithful controller reproduction
-- the newer `feedback_mppi_hf` and `feedback_mppi_fused` baselines now also have targeted exact-time sweeps, but those still cover only selected targets rather than a broad matched-time study
+- the newer `feedback_mppi_cov`, `feedback_mppi_hf`, and `feedback_mppi_fused` baselines now also have targeted exact-time sweeps, but those still cover only selected targets rather than a broad matched-time study
 - outside the base suite, the time-matched claim currently reaches only custom pilot domains, and the cleanest matched-time result is still the dynamic-obstacle base suite rather than the pilots
 
 The dynamic-bicycle exact-time result is still useful, but it currently reads as a conservative compute-matched spot check:
