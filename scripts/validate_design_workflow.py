@@ -265,6 +265,30 @@ def validate_generated_history() -> None:
         )
 
 
+def validate_snapshot_compare() -> None:
+    snapshots = sorted(HISTORY_DIR.glob("*.json"))
+    if len(snapshots) < 2:
+        return
+
+    out_dir = ROOT / "build" / "design_docs_validation"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    compare_output = out_dir / "snapshot_compare.md"
+    subprocess.run(
+        [
+            sys.executable,
+            "scripts/compare_design_snapshots.py",
+            "--output",
+            str(compare_output.relative_to(ROOT)),
+        ],
+        cwd=ROOT,
+        check=True,
+    )
+    if not compare_output.exists():
+        raise RuntimeError("compare_design_snapshots.py did not generate its validation output")
+    if "# Snapshot Comparison" not in compare_output.read_text():
+        raise RuntimeError("compare_design_snapshots.py produced an unexpected output format")
+
+
 def main() -> int:
     validate_docs()
     validate_fixture_manifest()
@@ -276,6 +300,7 @@ def main() -> int:
         validate_variant_module(module_name)
     validate_generated_experiments(modules)
     validate_generated_history()
+    validate_snapshot_compare()
     print("Design workflow validation passed")
     return 0
 

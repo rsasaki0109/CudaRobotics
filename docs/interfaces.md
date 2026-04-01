@@ -120,6 +120,7 @@ Comparison entrypoint:
 - [`scripts/refresh_design_fixtures.py`](../scripts/refresh_design_fixtures.py)
 - [`scripts/refresh_design_docs.py`](../scripts/refresh_design_docs.py)
 - [`scripts/snapshot_design_experiments.py`](../scripts/snapshot_design_experiments.py)
+- [`scripts/compare_design_snapshots.py`](../scripts/compare_design_snapshots.py)
 - [`scripts/check_scaffold_design_problem.py`](../scripts/check_scaffold_design_problem.py)
 
 Common evaluation rules:
@@ -138,6 +139,7 @@ Discovery rule:
 - the validator checks that every discovered module is represented in generated docs
 - the validator also checks that the checked-in `docs/experiments.md` matches the generated output, while normalizing the volatile runtime column
 - design-history snapshots are validated under `experiments/history/*.json`
+- `scripts/compare_design_snapshots.py` renders a targeted delta between two snapshots without touching checked-in docs
 - the scaffold checker verifies that new problem stubs still match the current module contract
 
 Current generated state:
