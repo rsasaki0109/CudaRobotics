@@ -95,6 +95,7 @@ struct PlannerVariant {
     float feedback_r_accel = 0.0f;
     float feedback_r_steer = 0.0f;
     float feedback_terminal_scale = 0.0f;
+    float feedback_cov_regularization = 0.0f;
 };
 
 struct EpisodeMetrics {
@@ -269,6 +270,50 @@ __device__ inline bool invert_2x2(const float A[2][2], float invA[2][2]) {
     invA[0][1] = -A[0][1] * inv_det;
     invA[1][0] = -A[1][0] * inv_det;
     invA[1][1] = A[0][0] * inv_det;
+    return true;
+}
+
+__device__ inline bool invert_4x4(const float A[4][4], float invA[4][4]) {
+    float aug[4][8];
+    for (int row = 0; row < 4; row++) {
+        for (int col = 0; col < 4; col++) aug[row][col] = A[row][col];
+        for (int col = 0; col < 4; col++) aug[row][4 + col] = (row == col) ? 1.0f : 0.0f;
+    }
+
+    for (int pivot = 0; pivot < 4; pivot++) {
+        int best_row = pivot;
+        float best_value = fabsf(aug[pivot][pivot]);
+        for (int row = pivot + 1; row < 4; row++) {
+            float value = fabsf(aug[row][pivot]);
+            if (value > best_value) {
+                best_value = value;
+                best_row = row;
+            }
+        }
+        if (best_value < 1.0e-8f) return false;
+        if (best_row != pivot) {
+            for (int col = 0; col < 8; col++) {
+                float tmp = aug[pivot][col];
+                aug[pivot][col] = aug[best_row][col];
+                aug[best_row][col] = tmp;
+            }
+        }
+
+        float diag = aug[pivot][pivot];
+        float inv_diag = 1.0f / diag;
+        for (int col = 0; col < 8; col++) aug[pivot][col] *= inv_diag;
+
+        for (int row = 0; row < 4; row++) {
+            if (row == pivot) continue;
+            float factor = aug[row][pivot];
+            if (fabsf(factor) < 1.0e-12f) continue;
+            for (int col = 0; col < 8; col++) aug[row][col] -= factor * aug[pivot][col];
+        }
+    }
+
+    for (int row = 0; row < 4; row++) {
+        for (int col = 0; col < 4; col++) invA[row][col] = aug[row][4 + col];
+    }
     return true;
 }
 
@@ -604,6 +649,69 @@ __global__ void compute_sensitivity_feedback_gains_kernel(
             }
             d_feedback_gains[t * 8 + 0 * 4 + j] = -(accel_cov - accel_mean * weighted_grad[j]) / lambda;
             d_feedback_gains[t * 8 + 1 * 4 + j] = -(steer_cov - steer_mean * weighted_grad[j]) / lambda;
+        }
+    }
+}
+
+__global__ void compute_covariance_feedback_gains_kernel(
+    const float* d_nominal,
+    const float* d_nominal_states,
+    const float* d_perturbed,
+    const float* d_rollout_states,
+    const float* d_weights,
+    float* d_feedback_gains,
+    int K,
+    int T,
+    float regularization)
+{
+    if (blockIdx.x != 0 || threadIdx.x != 0) return;
+
+    const float eps = fmaxf(1.0e-4f, regularization);
+    for (int t = 0; t < T; t++) {
+        float Sigma_xx[4][4] = {};
+        float Sigma_ux[2][4] = {};
+        float x_nom = d_nominal_states[t * 4 + 0];
+        float y_nom = d_nominal_states[t * 4 + 1];
+        float theta_nom = d_nominal_states[t * 4 + 2];
+        float v_nom = d_nominal_states[t * 4 + 3];
+        float accel_nom = d_nominal[t * 2 + 0];
+        float steer_nom = d_nominal[t * 2 + 1];
+
+        for (int k = 0; k < K; k++) {
+            float w = d_weights[k];
+            const float* rollout_state = &d_rollout_states[k * (T + 1) * 4 + t * 4];
+            float x_dev[4];
+            x_dev[0] = rollout_state[0] - x_nom;
+            x_dev[1] = rollout_state[1] - y_nom;
+            x_dev[2] = wrap_angle(rollout_state[2] - theta_nom);
+            x_dev[3] = rollout_state[3] - v_nom;
+
+            float u_dev[2];
+            u_dev[0] = d_perturbed[k * T * 2 + t * 2 + 0] - accel_nom;
+            u_dev[1] = d_perturbed[k * T * 2 + t * 2 + 1] - steer_nom;
+
+            for (int row = 0; row < 4; row++) {
+                for (int col = 0; col < 4; col++) Sigma_xx[row][col] += w * x_dev[row] * x_dev[col];
+            }
+            for (int row = 0; row < 2; row++) {
+                for (int col = 0; col < 4; col++) Sigma_ux[row][col] += w * u_dev[row] * x_dev[col];
+            }
+        }
+
+        for (int i = 0; i < 4; i++) Sigma_xx[i][i] += eps;
+
+        float Sigma_xx_inv[4][4];
+        if (!invert_4x4(Sigma_xx, Sigma_xx_inv)) {
+            for (int i = 0; i < 4; i++) Sigma_xx[i][i] += 10.0f * eps;
+            invert_4x4(Sigma_xx, Sigma_xx_inv);
+        }
+
+        for (int row = 0; row < 2; row++) {
+            for (int col = 0; col < 4; col++) {
+                float gain = 0.0f;
+                for (int k = 0; k < 4; k++) gain += Sigma_ux[row][k] * Sigma_xx_inv[k][col];
+                d_feedback_gains[t * 8 + row * 4 + col] = -gain;
+            }
         }
     }
 }
@@ -957,7 +1065,7 @@ private:
         int block = 256;
         if (variant_.use_sampling) {
             int open_loop_passes = 1;
-            if (variant_.use_feedback && variant_.feedback_mode == 1) open_loop_passes = 2;
+            if (variant_.use_feedback && (variant_.feedback_mode == 1 || variant_.feedback_mode == 3)) open_loop_passes = 2;
             for (int pass = 0; pass < open_loop_passes; pass++) {
                 rollout_kernel<<<(k_samples_ + block - 1) / block, block>>>(
                     sx, sy, stheta, sv, d_nominal_, d_costs_, d_perturbed_, d_rollout_states_, d_rng_,
@@ -979,6 +1087,15 @@ private:
                     compute_sensitivity_feedback_gains_kernel<<<1, 1>>>(
                         d_nominal_, d_perturbed_, d_weights_, d_rollout_init_grads_, d_feedback_gains_,
                         DEFAULT_LAMBDA, k_samples_, t_horizon_);
+                } else if (variant_.feedback_mode == 3) {
+                    rollout_kernel<<<(k_samples_ + block - 1) / block, block>>>(
+                        sx, sy, stheta, sv, d_nominal_, d_costs_, d_perturbed_, d_rollout_states_, d_rng_,
+                        planning_scenario_.params, planning_scenario_.cost_params,
+                        planning_scenario_.n_obs, planning_scenario_.n_dyn_obs, start_step, k_samples_, t_horizon_);
+                    compute_weights_kernel<<<1, 1>>>(d_costs_, d_weights_, k_samples_, DEFAULT_LAMBDA);
+                    compute_covariance_feedback_gains_kernel<<<1, 1>>>(
+                        d_nominal_, d_states_, d_perturbed_, d_rollout_states_, d_weights_, d_feedback_gains_,
+                        k_samples_, t_horizon_, variant_.feedback_cov_regularization);
                 } else {
                     compute_feedback_gains_kernel<<<1, 1>>>(
                         d_states_, d_nominal_, d_feedback_gains_, planning_scenario_.params, planning_scenario_.cost_params, t_horizon_,
@@ -1514,6 +1631,22 @@ int main(int argc, char** argv) {
         v.feedback_lateral_gain = 0.16f;
         v.feedback_heading_gain = 0.24f;
         v.feedback_setpoint_blend = 0.35f;
+        variants.push_back(v);
+    }
+    {
+        PlannerVariant v;
+        v.name = "feedback_mppi_cov";
+        v.use_feedback = true;
+        v.feedback_mode = 3;
+        v.feedback_gain_scale = 0.70f;
+        v.feedback_noise_accel = 0.65f;
+        v.feedback_noise_steer = 0.07f;
+        v.feedback_longitudinal_gain = 0.18f;
+        v.feedback_speed_gain = 0.24f;
+        v.feedback_lateral_gain = 0.28f;
+        v.feedback_heading_gain = 0.38f;
+        v.feedback_setpoint_blend = 0.10f;
+        v.feedback_cov_regularization = 0.20f;
         variants.push_back(v);
     }
     {
