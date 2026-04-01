@@ -52,7 +52,7 @@ The current line now has real positives:
 - a closer rollout-sensitivity `feedback_mppi_sens` baseline inside the same harness
 - a covariance-regression `feedback_mppi_cov` baseline inside the same harness
 - a `grad_only_3` ablation that removes one weak alternative explanation
-- two outside-domain pilots: nonlinear `CartPole` and dynamic-bicycle mobile navigation
+- three outside-domain pilots: nonlinear `CartPole`, dynamic-bicycle mobile navigation, and planar manipulator obstacle avoidance
 - a narrow claim that is honest and empirically supported
 
 The strongest current claim is:
@@ -125,14 +125,15 @@ It does make it harder to justify a main-track acceptance when nearby papers eva
 - 7-DOF manipulators
 - uncertain dynamic environments with perception noise
 
-There are now two partial exceptions:
+There are now three partial exceptions:
 - a pilot nonlinear CartPole benchmark outside the 2D navigation suite
 - a dynamic-bicycle mobile-navigation pilot with steering lag and drag
+- a planar-manipulator obstacle-avoidance pilot with second-order joint dynamics and workspace collisions
 
 That helps because the project is no longer purely a 2D kinematic story.
-The dynamic-bicycle result is the more useful of the two for reviewer defense, because it stays in obstacle-avoidance planning while adding richer vehicle dynamics.
-That pilot is now better than the earlier version because it also includes the closer `feedback_mppi_sens` baseline and a `1.80 ms` exact-time spot check, so the outside-domain story is no longer just `mppi` versus `Diff-MPPI`.
-But neither pilot yet counts as the kind of stronger robotics-domain evaluation that fully closes this gap.
+The dynamic-bicycle and planar-manipulator results are the more useful of the three for reviewer defense, because they stay in obstacle-avoidance planning while adding richer vehicle or manipulator dynamics.
+The manipulator pilot is especially helpful because it produces a real success-rate split on `arm_static_shelf`: vanilla `mppi` remains unsuccessful while `diff_mppi_1` reaches `0.75-1.00` success and `feedback_mppi_cov` reaches `1.00`.
+But none of these pilots yet counts as the kind of stronger robotics-domain evaluation that fully closes this gap.
 
 ### 4. The matched-time story is much better, and now has direct tuning, but is still not complete
 
@@ -147,7 +148,7 @@ That is already much better than most quick research repos.
 But a skeptical reviewer can still say:
 - the exact-time tuning currently searches `K` only, not the full controller design space
 - the exact-time result is currently concentrated on the dynamic two-task suite, not the full benchmark portfolio
-- outside the base suite, the time-matched claim currently reaches only a custom medium-fidelity dynamic-bicycle pilot
+- outside the base suite, the time-matched claim currently reaches only custom pilot domains, and the cleanest matched-time result is still the dynamic-obstacle base suite rather than the pilots
 
 The dynamic-bicycle exact-time result is still useful, but it currently reads as a conservative compute-matched spot check:
 - `mppi`, `feedback_mppi_sens`, and `diff_mppi_1` are all competitive on terminal distance at `1.80 ms`
@@ -202,7 +203,8 @@ Why this is critical:
 Current status:
 - partially addressed by the new `benchmark_diff_mppi_cartpole` pilot
 - partially addressed again by the new `benchmark_diff_mppi_dynamic_bicycle` pilot
-- not closed, because CartPole is still an underactuated control toy domain and the dynamic-bicycle benchmark is still a custom medium-fidelity pilot rather than a standardized high-fidelity robotics task
+- partially addressed further by the new `benchmark_diff_mppi_manipulator` pilot
+- not closed, because CartPole is still an underactuated control toy domain, the dynamic-bicycle benchmark is still a custom medium-fidelity pilot, and the manipulator benchmark is still a custom planar `2-link` task rather than a standardized or higher-fidelity manipulation suite
 
 3. Extend the direct time-tuning protocol
 
@@ -270,7 +272,7 @@ If the goal is a serious `ICRA/IROS full paper`, the minimum package I would tru
 5. exact matched-time tuning on the final evaluation suite
 6. one higher-fidelity experiment outside 2D kinematic navigation
 
-The new CartPole pilot means item `6` is now partially addressed, but not at the level that would make me remove it from the minimum list. Without item `4`, and without a stronger version of item `6`, and without carrying item `5` through the final evaluation suite, the paper is still too easy to down-score on originality and significance.
+The new CartPole, dynamic-bicycle, and planar-manipulator pilots mean item `6` is more substantially addressed than before, but still not at the level that would make me remove it from the minimum list. Without item `4`, and without a stronger version of item `6`, and without carrying item `5` through the final evaluation suite, the paper is still too easy to down-score on originality and significance.
 
 ## Fastest Acceptable Paper Framing
 
