@@ -46,7 +46,7 @@ Recent additions push the repository beyond direct CUDA ports of classic robotic
 | Project | Binaries | Highlights |
 |---|---|---|
 | Autodiff + GPU MLP foundation | `test_autodiff`, `test_gpu_mlp` | Dual-number forward-mode autodiff and a compact GPU MLP training/inference engine used as the base for later research-style experiments. |
-| Differentiable MPPI | `diff_mppi`, `comparison_diff_mppi`, `benchmark_diff_mppi` | Extends MPPI with a dual-number backward pass, side-by-side comparisons, and a CSV benchmark suite for both fixed-budget and cap-based wall-clock quality-vs-compute experiments. |
+| Differentiable MPPI | `diff_mppi`, `comparison_diff_mppi`, `benchmark_diff_mppi` | Extends MPPI with a dual-number backward pass, side-by-side comparisons, a `grad_only_3` ablation, and a CSV benchmark suite for fixed-budget, cap-based wall-clock, and equal-time quality-vs-compute experiments. |
 | Neural SDF Navigation | `neural_sdf`, `sdf_potential_field`, `sdf_mppi`, `comparison_sdf_nav` | Learns 2D signed distance fields with a GPU MLP, then uses them for potential-field planning and MPPI on non-circular obstacle layouts. |
 | Neuroevolution for Cart-Pole | `neuroevo`, `comparison_neuroevo` | Evolves 4096 neural policies in parallel on GPU and compares them against a CPU baseline with side-by-side learning curves. |
 | MiniIsaacGym | `mini_isaac`, `mini_isaac_rl` | Runs thousands of CartPole environments in parallel on GPU and trains a compact policy with GPU-side REINFORCE updates. |
@@ -88,7 +88,7 @@ python3 scripts/summarize_diff_mppi.py --csv build/benchmark_diff_mppi_wall_cloc
 python3 scripts/plot_diff_mppi.py --csv build/benchmark_diff_mppi_wall_clock.csv --out-dir build/plots --time-caps 1.1,1.5,2.0
 ```
 
-The benchmark writes per-episode CSV metrics, the summarizer emits Markdown and LaTeX tables for fixed-budget, cap-based wall-clock, and equal-time target comparisons, and the plotter generates paper-friendly PNG/PDF figures in `build/plots/`, including `diff_mppi_final_distance_vs_time_cap.*` and `diff_mppi_final_distance_vs_equal_time.*`.
+The benchmark writes per-episode CSV metrics, including the `grad_only_3` ablation. The summarizer emits Markdown and LaTeX tables for fixed-budget, cap-based wall-clock, and equal-time target comparisons, and the plotter generates paper-friendly PNG/PDF figures in `build/plots/`, including `diff_mppi_final_distance_vs_time_cap.*` and `diff_mppi_final_distance_vs_equal_time.*`.
 A paper-style interpretation of the current benchmark is collected in `paper/diff_mppi_results.md`.
 
 Dynamic-obstacle follow-up:
@@ -100,6 +100,16 @@ python3 scripts/plot_diff_mppi.py --csv build/benchmark_diff_mppi_dynamic.csv --
 ```
 
 This follow-up adds a moving-obstacle benchmark and an equal-time target analysis. The current write-up is in `paper/diff_mppi_novelty_followup.md`.
+
+Hybrid-versus-gradient-only ablation:
+
+```bash
+./bin/benchmark_diff_mppi --scenarios corner_turn,dynamic_crossing --seed-count 4 --k-values 256,512,1024,2048,4096,6144,8192 --csv build/benchmark_diff_mppi_ablation.csv
+python3 scripts/summarize_diff_mppi.py --csv build/benchmark_diff_mppi_ablation.csv --time-caps 1.0,1.5 --time-targets 1.0,1.5
+python3 scripts/plot_diff_mppi.py --csv build/benchmark_diff_mppi_ablation.csv --out-dir build/plots_ablation --time-caps 1.0,1.5 --time-targets 1.0,1.5
+```
+
+This ablation isolates whether local gradients alone explain the gains. In the current benchmark, `grad_only_3` improves `corner_turn` slightly over vanilla MPPI but fails the `dynamic_crossing` task completely, while the hybrid Diff-MPPI variants remain successful.
 
 ### Point-cloud benchmark snapshot
 

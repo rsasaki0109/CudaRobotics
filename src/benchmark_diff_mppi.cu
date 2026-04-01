@@ -70,6 +70,7 @@ struct Scenario {
 
 struct PlannerVariant {
     string name;
+    bool use_sampling = true;
     bool use_gradient = false;
     int grad_steps = 0;
     float alpha = 0.0f;
@@ -519,12 +520,14 @@ private:
     void controller_update(float sx, float sy, float stheta, float sv, int start_step) {
         CUDA_CHECK(cudaMemcpy(d_nominal_, h_nominal_.data(), h_nominal_.size() * sizeof(float), cudaMemcpyHostToDevice));
         int block = 256;
-        rollout_kernel<<<(k_samples_ + block - 1) / block, block>>>(
-            sx, sy, stheta, sv, d_nominal_, d_costs_, d_perturbed_, d_rng_,
-            scenario_.params, scenario_.cost_params, scenario_.n_obs, scenario_.n_dyn_obs, start_step, k_samples_, t_horizon_);
-        compute_weights_kernel<<<1, 1>>>(d_costs_, d_weights_, k_samples_, DEFAULT_LAMBDA);
-        update_controls_kernel<<<(t_horizon_ + block - 1) / block, block>>>(
-            d_nominal_, d_perturbed_, d_weights_, k_samples_, t_horizon_);
+        if (variant_.use_sampling) {
+            rollout_kernel<<<(k_samples_ + block - 1) / block, block>>>(
+                sx, sy, stheta, sv, d_nominal_, d_costs_, d_perturbed_, d_rng_,
+                scenario_.params, scenario_.cost_params, scenario_.n_obs, scenario_.n_dyn_obs, start_step, k_samples_, t_horizon_);
+            compute_weights_kernel<<<1, 1>>>(d_costs_, d_weights_, k_samples_, DEFAULT_LAMBDA);
+            update_controls_kernel<<<(t_horizon_ + block - 1) / block, block>>>(
+                d_nominal_, d_perturbed_, d_weights_, k_samples_, t_horizon_);
+        }
 
         if (variant_.use_gradient) {
             for (int gs = 0; gs < variant_.grad_steps; gs++) {
@@ -827,13 +830,17 @@ int main(int argc, char** argv) {
         scenarios.push_back(make_cluttered_scene());
         scenarios.push_back(make_narrow_passage_scene());
     } else {
-        scenarios = all_scenarios;
+        scenarios.push_back(make_cluttered_scene());
+        scenarios.push_back(make_narrow_passage_scene());
+        scenarios.push_back(make_slalom_scene());
+        scenarios.push_back(make_corner_scene());
     }
 
     vector<PlannerVariant> variants;
-    variants.push_back({"mppi", false, 0, 0.0f});
-    variants.push_back({"diff_mppi_1", true, 1, 0.010f});
-    variants.push_back({"diff_mppi_3", true, 3, 0.006f});
+    variants.push_back({"mppi", true, false, 0, 0.0f});
+    variants.push_back({"grad_only_3", false, true, 3, 0.004f});
+    variants.push_back({"diff_mppi_1", true, true, 1, 0.010f});
+    variants.push_back({"diff_mppi_3", true, true, 3, 0.006f});
 
     if (k_values.empty()) k_values = quick ? vector<int>{1024, 4096} : vector<int>{1024, 2048, 4096};
     if (seed_count <= 0) seed_count = quick ? 2 : 4;

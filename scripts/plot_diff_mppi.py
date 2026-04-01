@@ -24,11 +24,12 @@ from summarize_diff_mppi import (
 
 PLANNER_STYLES = {
     "mppi": {"label": "MPPI", "color": "#1a1a1a", "marker": "o"},
+    "grad_only_3": {"label": "Grad-Only (3 step)", "color": "#6c757d", "marker": "D"},
     "diff_mppi_1": {"label": "Diff-MPPI (1 grad)", "color": "#c65d33", "marker": "s"},
     "diff_mppi_3": {"label": "Diff-MPPI (3 grad)", "color": "#2a6f97", "marker": "^"},
 }
 
-PLOT_ORDER = ["mppi", "diff_mppi_1", "diff_mppi_3"]
+PLOT_ORDER = ["mppi", "grad_only_3", "diff_mppi_1", "diff_mppi_3"]
 SCENARIO_TITLES = {
     "cluttered": "Cluttered Field",
     "corner_turn": "Corner Turn",
