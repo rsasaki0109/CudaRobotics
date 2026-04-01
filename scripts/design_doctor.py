@@ -54,6 +54,11 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Skip scripts/check_scaffold_design_problem.py.",
     )
+    parser.add_argument(
+        "--skip-regression-check",
+        action="store_true",
+        help="Skip scripts/check_design_regressions.py.",
+    )
     args = parser.parse_args()
     if args.skip_fixtures and args.check_fixture_sync:
         parser.error("--skip-fixtures and --check-fixture-sync cannot be used together")
@@ -103,6 +108,9 @@ def main() -> int:
 
     if not args.skip_validate:
         run_step("validate design workflow", [sys.executable, "scripts/validate_design_workflow.py"])
+
+    if not args.skip_regression_check:
+        run_step("check design regressions", [sys.executable, "scripts/check_design_regressions.py"])
 
     if not args.skip_scaffold_check:
         run_step("check scaffold workflow", [sys.executable, "scripts/check_scaffold_design_problem.py"])
