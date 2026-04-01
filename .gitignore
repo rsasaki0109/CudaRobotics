@@ -5,5 +5,7 @@ lib
 code-server
 .claude
 deploy.sh
+__pycache__/
+*.pyc
 *.avi
 videos/
