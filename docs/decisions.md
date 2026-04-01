@@ -92,3 +92,20 @@ Default workflow for new package-level work:
 4. benchmark them
 5. generate or update the three docs
 6. only then consider extracting common structure
+
+## D-007: Design Experiments Use Version-Controlled Fixtures
+
+Status: accepted
+
+Decision:
+- keep lightweight fixture CSVs in `experiments/data/`
+- run `scripts/run_design_experiments.py` and `scripts/validate_design_workflow.py` against those fixtures by default
+
+Why:
+- the design-process checks should not depend on rerunning the full benchmark suite
+- CI needs deterministic, fast inputs
+- heavy research benchmarks and lightweight design comparisons serve different purposes
+
+Implication:
+- fixture data can lag the newest benchmark outputs briefly
+- when the benchmark meaningfully changes, refresh the fixtures intentionally instead of coupling every code edit to every heavy benchmark rerun

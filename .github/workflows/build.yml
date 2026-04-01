@@ -30,3 +30,7 @@ jobs:
 
       - name: Build
         run: cmake --build build -j$(nproc)
+
+      - name: Validate design workflow
+        run: |
+          python3 scripts/validate_design_workflow.py

@@ -22,9 +22,9 @@ from experiments.planner_selection import build_variants
 
 
 DEFAULT_DATASETS = [
-    "build/benchmark_diff_mppi.csv",
-    "build/benchmark_diff_mppi_uncertain.csv",
-    "build/benchmark_diff_mppi_dynamic_bicycle.csv",
+    "experiments/data/benchmark_diff_mppi.csv",
+    "experiments/data/benchmark_diff_mppi_uncertain.csv",
+    "experiments/data/benchmark_diff_mppi_dynamic_bicycle.csv",
 ]
 
 

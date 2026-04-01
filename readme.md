@@ -207,12 +207,24 @@ Concrete entrypoint:
 python3 scripts/run_design_experiments.py
 ```
 
+Scaffold a new concrete problem with 3 disposable variants:
+
+```bash
+python3 scripts/scaffold_design_problem.py cache_policy --dry-run
+```
+
+Validate that the experiment-first guardrails still hold:
+
+```bash
+python3 scripts/validate_design_workflow.py
+```
+
 The current comparison problem is intentionally concrete: selecting one planner configuration per benchmark scenario from the existing Diff-MPPI CSV outputs. It is implemented three different ways:
 - functional weighted scoring
 - OOP lexicographic objectives
 - staged pipeline filters
 
-All three consume the same aggregated input rows, answer the same request type, and are scored under the same benchmark, readability, and extensibility proxies. Nothing in `experiments/` is assumed to be permanent.
+All three consume the same aggregated input rows, answer the same request type, and are scored under the same benchmark, readability, and extensibility proxies. The process uses version-controlled fixture CSVs in `experiments/data/`, so design comparisons are reproducible without regenerating the heavy benchmark suite. Nothing in `experiments/` is assumed to be permanent.
 
 ### Docker
 ```bash
