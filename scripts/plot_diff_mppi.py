@@ -13,7 +13,13 @@ warnings.filterwarnings("ignore", message="Unable to import Axes3D.*")
 import matplotlib.pyplot as plt
 from matplotlib.ticker import ScalarFormatter
 
-from summarize_diff_mppi import load_rows, parse_float_list, select_under_time_caps, summarize_groups
+from summarize_diff_mppi import (
+    load_rows,
+    parse_float_list,
+    select_at_time_targets,
+    select_under_time_caps,
+    summarize_groups,
+)
 
 
 PLANNER_STYLES = {
@@ -26,6 +32,7 @@ PLOT_ORDER = ["mppi", "diff_mppi_1", "diff_mppi_3"]
 SCENARIO_TITLES = {
     "cluttered": "Cluttered Field",
     "corner_turn": "Corner Turn",
+    "dynamic_crossing": "Dynamic Crossing",
     "narrow_passage": "Narrow Passage",
     "slalom": "Slalom",
 }
@@ -37,6 +44,7 @@ def parse_args():
     parser.add_argument("--out-dir", default="build/plots", help="Output directory for figures")
     parser.add_argument("--formats", default="png,pdf", help="Comma-separated output formats")
     parser.add_argument("--time-caps", default="1.1,1.5,2.0", help="Comma-separated wall-clock caps in ms")
+    parser.add_argument("--time-targets", default="1.0,1.5", help="Comma-separated equal-time targets in ms")
     return parser.parse_args()
 
 
@@ -242,6 +250,63 @@ def plot_time_cap_grid(time_cap_rows, metric, ylabel, title, out_dir, stem, form
     plt.close(fig)
 
 
+def plot_time_target_grid(time_target_rows, metric, ylabel, title, out_dir, stem, formats):
+    grouped = defaultdict(list)
+    for row in time_target_rows:
+        grouped[row["scenario"]].append(row)
+    scenarios = sorted(grouped)
+    mean_key, _ = metric_key(metric)
+    fig, axes = make_axes(len(scenarios))
+    axes_flat = axes.flatten()
+
+    legend_handles = None
+    legend_labels = None
+    xticks = sorted({row["time_target_ms"] for row in time_target_rows})
+    for ax, scenario in zip(axes_flat, scenarios):
+        rows = grouped[scenario]
+        for planner in PLOT_ORDER:
+            planner_rows = sorted((r for r in rows if r["planner"] == planner), key=lambda r: r["time_target_ms"])
+            if not planner_rows:
+                continue
+            style = PLANNER_STYLES.get(planner, {"label": planner, "color": "#444444", "marker": "o"})
+            xs = [r["time_target_ms"] for r in planner_rows]
+            ys = [r["selected"][mean_key] for r in planner_rows]
+            ax.plot(
+                xs,
+                ys,
+                label=style["label"],
+                color=style["color"],
+                marker=style["marker"],
+                linewidth=1.8,
+                markersize=6,
+            )
+            if legend_handles is None:
+                legend_handles, legend_labels = ax.get_legend_handles_labels()
+            for row in planner_rows:
+                ax.annotate(
+                    f"K={row['selected']['k_samples']}",
+                    (row["time_target_ms"], row["selected"][mean_key]),
+                    textcoords="offset points",
+                    xytext=(4, 4),
+                    fontsize=7,
+                    color=style["color"],
+                )
+        ax.set_title(SCENARIO_TITLES.get(scenario, scenario.replace("_", " ").title()))
+        ax.set_xlabel("Equal-time target [ms]")
+        ax.set_ylabel(ylabel)
+        ax.set_xticks(xticks)
+        ax.grid(True, alpha=0.25)
+
+    for ax in axes_flat[len(scenarios):]:
+        ax.axis("off")
+
+    fig.suptitle(title, fontsize=14)
+    if legend_handles and legend_labels:
+        fig.legend(legend_handles, legend_labels, loc="upper center", ncol=3, frameon=False, bbox_to_anchor=(0.5, 1.02))
+    save_figure(fig, out_dir, stem, formats)
+    plt.close(fig)
+
+
 def save_figure(fig, out_dir, stem, formats):
     out_dir.mkdir(parents=True, exist_ok=True)
     for fmt in formats:
@@ -265,6 +330,8 @@ def main():
     summary_rows = summarize_groups(rows)
     time_caps = parse_float_list(args.time_caps)
     time_cap_rows = select_under_time_caps(summary_rows, time_caps)
+    time_targets = parse_float_list(args.time_targets)
+    time_target_rows = select_at_time_targets(summary_rows, time_targets)
     out_dir = Path(args.out_dir)
 
     plot_tradeoff_grid(
@@ -301,6 +368,15 @@ def main():
         title="Diff-MPPI at Fixed Wall-Clock Budget",
         out_dir=out_dir,
         stem="diff_mppi_final_distance_vs_time_cap",
+        formats=formats,
+    )
+    plot_time_target_grid(
+        time_target_rows,
+        metric="final_distance",
+        ylabel="Best final distance near target [px]",
+        title="Diff-MPPI at Equal-Time Targets",
+        out_dir=out_dir,
+        stem="diff_mppi_final_distance_vs_equal_time",
         formats=formats,
     )
 

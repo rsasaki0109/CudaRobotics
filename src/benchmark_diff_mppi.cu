@@ -34,11 +34,22 @@ using namespace cudabot;
 
 static const float WORKSPACE = 50.0f;
 static const int MAX_OBSTACLES = 16;
+static const int MAX_DYNAMIC_OBSTACLES = 8;
 static const float DEFAULT_LAMBDA = 8.0f;
 static const int DEFAULT_T_HORIZON = 30;
 static const int BENCH_WARMUP_ITERS = 4;
 
 __constant__ Obstacle d_obstacles_bench[MAX_OBSTACLES];
+
+struct DynamicObstacle {
+    float x;
+    float y;
+    float vx;
+    float vy;
+    float r;
+};
+
+__constant__ DynamicObstacle d_dynamic_obstacles_bench[MAX_DYNAMIC_OBSTACLES];
 
 struct Scenario {
     string name;
@@ -50,8 +61,11 @@ struct Scenario {
     int max_steps = 220;
     BicycleParams params;
     CostParams cost_params;
+    float grad_alpha_scale = 1.0f;
     int n_obs = 0;
     Obstacle obstacles[MAX_OBSTACLES];
+    int n_dyn_obs = 0;
+    DynamicObstacle dynamic_obstacles[MAX_DYNAMIC_OBSTACLES];
 };
 
 struct PlannerVariant {
@@ -110,6 +124,8 @@ __global__ void rollout_kernel(
     BicycleParams params,
     CostParams cost_params,
     int n_obs,
+    int n_dyn_obs,
+    int start_step,
     int K,
     int T)
 {
@@ -148,6 +164,17 @@ __global__ void rollout_kernel(
             float dx = x - d_obstacles_bench[i].x;
             float dy = y - d_obstacles_bench[i].y;
             float margin = sqrtf(dx * dx + dy * dy + 1e-6f) - d_obstacles_bench[i].r;
+            if (margin <= 0.1f) total_cost += cost_params.obs_weight * 100.0f;
+            else if (margin < cost_params.obs_influence) total_cost += cost_params.obs_weight / (margin * margin);
+        }
+
+        float tau = (start_step + t + 1) * params.dt;
+        for (int i = 0; i < n_dyn_obs; i++) {
+            float ox = d_dynamic_obstacles_bench[i].x + d_dynamic_obstacles_bench[i].vx * tau;
+            float oy = d_dynamic_obstacles_bench[i].y + d_dynamic_obstacles_bench[i].vy * tau;
+            float dx = x - ox;
+            float dy = y - oy;
+            float margin = sqrtf(dx * dx + dy * dy + 1e-6f) - d_dynamic_obstacles_bench[i].r;
             if (margin <= 0.1f) total_cost += cost_params.obs_weight * 100.0f;
             else if (margin < cost_params.obs_influence) total_cost += cost_params.obs_weight / (margin * margin);
         }
@@ -228,9 +255,29 @@ __device__ void terminal_grad(float x, float y, const CostParams& cp, float grad
     }
 }
 
+__device__ inline Dualf dynamic_obstacle_cost_diff(
+    Dualf px, Dualf py, float tau, int n_dyn_obs, float influence, float weight)
+{
+    Dualf cost = Dualf::constant(0.0f);
+    for (int i = 0; i < n_dyn_obs; i++) {
+        float ox = d_dynamic_obstacles_bench[i].x + d_dynamic_obstacles_bench[i].vx * tau;
+        float oy = d_dynamic_obstacles_bench[i].y + d_dynamic_obstacles_bench[i].vy * tau;
+        Dualf dx = px - Dualf::constant(ox);
+        Dualf dy = py - Dualf::constant(oy);
+        Dualf d = cudabot::sqrt(dx * dx + dy * dy + Dualf::constant(1e-6f))
+                - Dualf::constant(d_dynamic_obstacles_bench[i].r);
+        if (d.val < influence && d.val > 0.1f) {
+            cost = cost + Dualf::constant(weight) / (d * d);
+        } else if (d.val <= 0.1f) {
+            cost = cost + Dualf::constant(weight * 100.0f);
+        }
+    }
+    return cost;
+}
+
 __device__ void stage_cost_grad(
     float x, float y, float theta, float v, float accel, float steer,
-    const CostParams& cp, int n_obs, float grad[6])
+    const CostParams& cp, int n_obs, int n_dyn_obs, float tau, float grad[6])
 {
     for (int var = 0; var < 6; var++) {
         Dualf dx = (var == 0) ? Dualf::variable(x) : Dualf::constant(x);
@@ -242,6 +289,7 @@ __device__ void stage_cost_grad(
 
         Dualf cost = goal_cost_diff(dx, dy, cp.goal_x, cp.goal_y, cp.goal_weight)
                    + obstacle_cost_diff(dx, dy, d_obstacles_bench, n_obs, cp.obs_influence, cp.obs_weight)
+                   + dynamic_obstacle_cost_diff(dx, dy, tau, n_dyn_obs, cp.obs_influence, cp.obs_weight)
                    + control_cost_diff(da, ds, cp.control_weight)
                    + speed_cost_diff(dv, cp.target_speed, cp.speed_weight)
                    + heading_cost_diff(dx, dy, dtheta, cp.goal_x, cp.goal_y, cp.heading_weight);
@@ -251,7 +299,7 @@ __device__ void stage_cost_grad(
 
 __global__ void compute_gradient_kernel(
     const float* d_states, const float* d_nominal, float* d_grad,
-    BicycleParams params, CostParams cost_params, int n_obs, int T)
+    BicycleParams params, CostParams cost_params, int n_obs, int n_dyn_obs, int start_step, int T)
 {
     if (blockIdx.x != 0 || threadIdx.x != 0) return;
 
@@ -269,9 +317,10 @@ __global__ void compute_gradient_kernel(
         float J[4][6];
         float stage_grad[6];
         float next_adj[4];
+        float tau = (start_step + t) * params.dt;
 
         bicycle_jacobian(x, y, theta, v, accel, steer, params, J);
-        stage_cost_grad(x, y, theta, v, accel, steer, cost_params, n_obs, stage_grad);
+        stage_cost_grad(x, y, theta, v, accel, steer, cost_params, n_obs, n_dyn_obs, tau, stage_grad);
 
         d_grad[t * 2 + 0] = stage_grad[4];
         d_grad[t * 2 + 1] = stage_grad[5];
@@ -295,11 +344,20 @@ __global__ void gradient_step_kernel(float* d_nominal, const float* d_grad, int 
     d_nominal[t * 2 + 1] = clampf(d_nominal[t * 2 + 1] - alpha * d_grad[t * 2 + 1], -max_steer, max_steer);
 }
 
+static float dynamic_obstacle_margin(float x, float y, const DynamicObstacle& obs, float tau) {
+    float ox = obs.x + obs.vx * tau;
+    float oy = obs.y + obs.vy * tau;
+    float dx = x - ox;
+    float dy = y - oy;
+    return sqrtf(dx * dx + dy * dy + 1e-6f) - obs.r;
+}
+
 static float host_step_cost(
     float x, float y, float theta, float v, float accel, float steer,
-    const Scenario& scenario)
+    const Scenario& scenario, int step_index)
 {
     const CostParams& cp = scenario.cost_params;
+    float tau = step_index * scenario.params.dt;
     float dxg = x - cp.goal_x;
     float dyg = y - cp.goal_y;
     float cost = cp.goal_weight * sqrtf(dxg * dxg + dyg * dyg + 0.01f);
@@ -318,17 +376,27 @@ static float host_step_cost(
         else if (margin < cp.obs_influence) cost += cp.obs_weight / (margin * margin);
     }
 
+    for (int i = 0; i < scenario.n_dyn_obs; i++) {
+        float margin = dynamic_obstacle_margin(x, y, scenario.dynamic_obstacles[i], tau);
+        if (margin <= 0.1f) cost += cp.obs_weight * 100.0f;
+        else if (margin < cp.obs_influence) cost += cp.obs_weight / (margin * margin);
+    }
+
     if (x < 0.0f || x > WORKSPACE || y < 0.0f || y > WORKSPACE) cost += 500.0f;
     return cost;
 }
 
-static float min_obstacle_margin(float x, float y, const Scenario& scenario) {
+static float min_obstacle_margin(float x, float y, const Scenario& scenario, int step_index) {
     float best = 1.0e9f;
+    float tau = step_index * scenario.params.dt;
     for (int i = 0; i < scenario.n_obs; i++) {
         float dx = x - scenario.obstacles[i].x;
         float dy = y - scenario.obstacles[i].y;
         float margin = sqrtf(dx * dx + dy * dy + 1e-6f) - scenario.obstacles[i].r;
         best = std::min(best, margin);
+    }
+    for (int i = 0; i < scenario.n_dyn_obs; i++) {
+        best = std::min(best, dynamic_obstacle_margin(x, y, scenario.dynamic_obstacles[i], tau));
     }
     return best;
 }
@@ -387,7 +455,7 @@ public:
             }
 
             auto t0 = chrono::steady_clock::now();
-            controller_update(rx_, ry_, rtheta_, rv_);
+            controller_update(rx_, ry_, rtheta_, rv_, step);
             auto t1 = chrono::steady_clock::now();
             float control_ms = chrono::duration<float, milli>(t1 - t0).count();
             total_control_ms += control_ms;
@@ -398,9 +466,9 @@ public:
             float accel = h_nominal_[0];
             float steer = h_nominal_[1];
             bicycle_step(rx_, ry_, rtheta_, rv_, accel, steer, scenario_.params);
-            cumulative_cost_ += host_step_cost(rx_, ry_, rtheta_, rv_, accel, steer, scenario_);
+            cumulative_cost_ += host_step_cost(rx_, ry_, rtheta_, rv_, accel, steer, scenario_, step + 1);
 
-            float margin = min_obstacle_margin(rx_, ry_, scenario_);
+            float margin = min_obstacle_margin(rx_, ry_, scenario_, step + 1);
             if (margin <= 0.0f || rx_ < 0.0f || rx_ > WORKSPACE || ry_ < 0.0f || ry_ > WORKSPACE) collisions_++;
 
             for (int t = 0; t < t_horizon_ - 1; t++) {
@@ -448,12 +516,12 @@ private:
         CUDA_CHECK(cudaDeviceSynchronize());
     }
 
-    void controller_update(float sx, float sy, float stheta, float sv) {
+    void controller_update(float sx, float sy, float stheta, float sv, int start_step) {
         CUDA_CHECK(cudaMemcpy(d_nominal_, h_nominal_.data(), h_nominal_.size() * sizeof(float), cudaMemcpyHostToDevice));
         int block = 256;
         rollout_kernel<<<(k_samples_ + block - 1) / block, block>>>(
             sx, sy, stheta, sv, d_nominal_, d_costs_, d_perturbed_, d_rng_,
-            scenario_.params, scenario_.cost_params, scenario_.n_obs, k_samples_, t_horizon_);
+            scenario_.params, scenario_.cost_params, scenario_.n_obs, scenario_.n_dyn_obs, start_step, k_samples_, t_horizon_);
         compute_weights_kernel<<<1, 1>>>(d_costs_, d_weights_, k_samples_, DEFAULT_LAMBDA);
         update_controls_kernel<<<(t_horizon_ + block - 1) / block, block>>>(
             d_nominal_, d_perturbed_, d_weights_, k_samples_, t_horizon_);
@@ -461,9 +529,10 @@ private:
         if (variant_.use_gradient) {
             for (int gs = 0; gs < variant_.grad_steps; gs++) {
                 rollout_nominal_kernel<<<1, 1>>>(sx, sy, stheta, sv, d_nominal_, d_states_, scenario_.params, t_horizon_);
-                compute_gradient_kernel<<<1, 1>>>(d_states_, d_nominal_, d_grad_, scenario_.params, scenario_.cost_params, scenario_.n_obs, t_horizon_);
+                compute_gradient_kernel<<<1, 1>>>(d_states_, d_nominal_, d_grad_, scenario_.params, scenario_.cost_params,
+                                                  scenario_.n_obs, scenario_.n_dyn_obs, start_step, t_horizon_);
                 gradient_step_kernel<<<(t_horizon_ + block - 1) / block, block>>>(
-                    d_nominal_, d_grad_, t_horizon_, variant_.alpha, scenario_.params.max_steer);
+                    d_nominal_, d_grad_, t_horizon_, variant_.alpha * scenario_.grad_alpha_scale, scenario_.params.max_steer);
             }
         }
         CUDA_CHECK(cudaDeviceSynchronize());
@@ -471,7 +540,7 @@ private:
 
     void warmup_controller() {
         for (int iter = 0; iter < BENCH_WARMUP_ITERS; iter++) {
-            controller_update(scenario_.start_x, scenario_.start_y, scenario_.start_theta, scenario_.start_v);
+            controller_update(scenario_.start_x, scenario_.start_y, scenario_.start_theta, scenario_.start_v, 0);
         }
     }
 
@@ -604,6 +673,34 @@ static Scenario make_corner_scene() {
     return s;
 }
 
+static Scenario make_dynamic_crossing_scene() {
+    Scenario s;
+    s.name = "dynamic_crossing";
+    s.start_x = 4.0f;
+    s.start_y = 6.0f;
+    s.cost_params.goal_x = 46.0f;
+    s.cost_params.goal_y = 44.0f;
+    s.max_steps = 260;
+    s.cost_params.target_speed = 3.2f;
+    s.cost_params.goal_weight = 5.2f;
+    s.cost_params.obs_weight = 11.5f;
+    s.cost_params.obs_influence = 5.2f;
+    s.cost_params.heading_weight = 0.40f;
+    s.grad_alpha_scale = 0.20f;
+    const Obstacle obs[] = {
+        {16.0f, 16.0f, 2.8f}, {16.0f, 34.0f, 2.8f},
+        {34.0f, 14.0f, 2.6f}, {34.0f, 36.0f, 2.6f}
+    };
+    const DynamicObstacle dyn[] = {
+        {11.0f, 24.0f, 1.55f, 0.0f, 2.4f}
+    };
+    s.n_obs = static_cast<int>(sizeof(obs) / sizeof(obs[0]));
+    for (int i = 0; i < s.n_obs; i++) s.obstacles[i] = obs[i];
+    s.n_dyn_obs = static_cast<int>(sizeof(dyn) / sizeof(dyn[0]));
+    for (int i = 0; i < s.n_dyn_obs; i++) s.dynamic_obstacles[i] = dyn[i];
+    return s;
+}
+
 static void ensure_build_dir() {
     mkdir("build", 0755);
 }
@@ -615,6 +712,18 @@ static vector<int> parse_int_list(const string& text) {
     while (getline(ss, token, ',')) {
         if (token.empty()) continue;
         values.push_back(std::max(1, atoi(token.c_str())));
+    }
+    sort(values.begin(), values.end());
+    values.erase(unique(values.begin(), values.end()), values.end());
+    return values;
+}
+
+static vector<string> parse_string_list(const string& text) {
+    vector<string> values;
+    string token;
+    stringstream ss(text);
+    while (getline(ss, token, ',')) {
+        if (!token.empty()) values.push_back(token);
     }
     sort(values.begin(), values.end());
     values.erase(unique(values.begin(), values.end()), values.end());
@@ -683,6 +792,7 @@ int main(int argc, char** argv) {
     bool quick = false;
     string csv_path = "build/benchmark_diff_mppi.csv";
     vector<int> k_values;
+    vector<string> scenario_names;
     int seed_count = -1;
     for (int i = 1; i < argc; i++) {
         string arg = argv[i];
@@ -690,16 +800,34 @@ int main(int argc, char** argv) {
         else if (arg == "--csv" && i + 1 < argc) csv_path = argv[++i];
         else if (arg == "--k-values" && i + 1 < argc) k_values = parse_int_list(argv[++i]);
         else if (arg == "--seed-count" && i + 1 < argc) seed_count = std::max(1, atoi(argv[++i]));
+        else if (arg == "--scenarios" && i + 1 < argc) scenario_names = parse_string_list(argv[++i]);
     }
 
     ensure_build_dir();
 
+    vector<Scenario> all_scenarios;
+    all_scenarios.push_back(make_cluttered_scene());
+    all_scenarios.push_back(make_narrow_passage_scene());
+    all_scenarios.push_back(make_slalom_scene());
+    all_scenarios.push_back(make_corner_scene());
+    all_scenarios.push_back(make_dynamic_crossing_scene());
+
     vector<Scenario> scenarios;
-    scenarios.push_back(make_cluttered_scene());
-    scenarios.push_back(make_narrow_passage_scene());
-    if (!quick) {
-        scenarios.push_back(make_slalom_scene());
-        scenarios.push_back(make_corner_scene());
+    if (!scenario_names.empty()) {
+        for (const auto& wanted : scenario_names) {
+            auto it = find_if(all_scenarios.begin(), all_scenarios.end(),
+                              [&](const Scenario& s) { return s.name == wanted; });
+            if (it == all_scenarios.end()) {
+                fprintf(stderr, "Unknown scenario: %s\n", wanted.c_str());
+                return 1;
+            }
+            scenarios.push_back(*it);
+        }
+    } else if (quick) {
+        scenarios.push_back(make_cluttered_scene());
+        scenarios.push_back(make_narrow_passage_scene());
+    } else {
+        scenarios = all_scenarios;
     }
 
     vector<PlannerVariant> variants;
@@ -716,6 +844,10 @@ int main(int argc, char** argv) {
     for (size_t si = 0; si < scenarios.size(); si++) {
         const Scenario& scenario = scenarios[si];
         CUDA_CHECK(cudaMemcpyToSymbol(d_obstacles_bench, scenario.obstacles, sizeof(Obstacle) * scenario.n_obs));
+        if (scenario.n_dyn_obs > 0) {
+            CUDA_CHECK(cudaMemcpyToSymbol(d_dynamic_obstacles_bench, scenario.dynamic_obstacles,
+                                          sizeof(DynamicObstacle) * scenario.n_dyn_obs));
+        }
         for (int k_samples : k_values) {
             for (size_t vi = 0; vi < variants.size(); vi++) {
                 const PlannerVariant& variant = variants[vi];

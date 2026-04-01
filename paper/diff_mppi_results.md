@@ -5,6 +5,8 @@ Date: 2026-04-01
 This note turns the current benchmark outputs into a paper-style `Results` section draft for the `diff_mppi` line.
 It is intentionally narrow. The goal is not to oversell "differentiable MPPI" as a new idea, but to state a defensible empirical claim around a lightweight CUDA hybrid controller.
 
+A later dynamic-obstacle and equal-time follow-up is recorded separately in `paper/diff_mppi_novelty_followup.md`.
+
 Artifacts used:
 - `build/benchmark_diff_mppi.csv`
 - `build/benchmark_diff_mppi_summary.md`
@@ -163,11 +165,11 @@ Suggested captions:
 
 ## Limits To State Explicitly
 
-These points should remain in the paper draft unless new experiments remove them:
+These points should remain in the base multi-scenario draft unless new experiments remove them:
 - The evaluation is still 2D and kinematic.
-- The wall-clock comparison is cap-based rather than exact equal-time optimization.
+- The dynamic-obstacle evidence is currently isolated to a follow-up single-scenario study.
+- The equal-time comparison is based on the nearest sampled configuration, not a continuous tuning procedure.
 - `cluttered`, `corner_turn`, and `slalom` still end without full success in the current setup.
-- No dynamic-obstacle experiment is included yet.
 - No direct comparison to a feedback-MPPI style method is included yet.
 
 ## Next Empirical Step
@@ -175,6 +177,6 @@ These points should remain in the paper draft unless new experiments remove them
 If we want this section to become a stronger paper result, the next experiment should be:
 
 1. Add a direct feedback / rollout-differentiation baseline beyond vanilla MPPI.
-2. Tighten the wall-clock comparison from cap-based selection to stricter equal-time tuning.
-3. Add a dynamic-obstacle benchmark where local sensitivity should matter more.
-4. Keep both fixed-budget and cap-based results, rather than collapsing to only one view.
+2. Add more than one dynamic-obstacle scenario.
+3. Tighten the equal-time comparison from sampled nearest matches to stricter time-matched tuning.
+4. Keep fixed-budget, cap-based, and equal-time views, rather than collapsing to only one view.
