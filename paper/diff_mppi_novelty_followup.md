@@ -2,13 +2,14 @@
 
 Date: 2026-04-02
 
-This note records seven follow-up experiments added after the initial `diff_mppi` results draft:
+This note records eight follow-up experiments added after the initial `diff_mppi` results draft:
 - a dynamic-obstacle benchmark suite with two scenarios
 - an equal-time target comparison in addition to the earlier cap-based wall-clock analysis
 - an exact matched-time tuning workflow that searches `K` directly for shared wall-clock targets
 - a strengthened feedback-oriented MPPI baseline
 - a covariance-regression feedback baseline that is closer to rollout-feedback control than the nominal-linearization baseline
 - a fused covariance-plus-linearization feedback baseline that tightens the non-hybrid comparison again
+- a lower-rate-replan high-frequency feedback-execution baseline that is closer to the surrounding controller architecture
 - a gradient-only ablation to separate local-refinement effects from the hybrid controller
 
 A later uncertainty follow-up with nominal-vs-actual obstacle mismatch is recorded separately in `paper/diff_mppi_uncertainty_followup.md`.
@@ -23,6 +24,9 @@ Artifacts used:
 - `build/benchmark_diff_mppi_fused_dynamic_pair.csv`
 - `build/benchmark_diff_mppi_fused_dynamic_pair_summary.md`
 - `build/benchmark_diff_mppi_fused_dynamic_pair_summary.tex`
+- `build/benchmark_diff_mppi_gap_followup.csv`
+- `build/benchmark_diff_mppi_gap_followup_summary.md`
+- `build/benchmark_diff_mppi_gap_followup_summary.tex`
 - `build/benchmark_diff_mppi_exact_time.csv`
 - `build/benchmark_diff_mppi_exact_time_search.csv`
 - `build/benchmark_diff_mppi_exact_time_summary.md`
@@ -37,6 +41,8 @@ Artifacts used:
 - `build/plots_feedback_cov_dynamic_pair/diff_mppi_final_distance_vs_budget.png`
 - `build/plots_feedback_fused_dynamic_pair/diff_mppi_final_distance_vs_time_cap.png`
 - `build/plots_feedback_fused_dynamic_pair/diff_mppi_final_distance_vs_budget.png`
+- `build/plots_gap_followup/diff_mppi_final_distance_vs_time_cap.png`
+- `build/plots_gap_followup/diff_mppi_final_distance_vs_budget.png`
 - `build/plots_ablation/diff_mppi_final_distance_vs_budget.png`
 - `build/plots_ablation/diff_mppi_final_distance_vs_equal_time.png`
 
@@ -121,6 +127,19 @@ This variant uses:
 This is still not literature-faithful.
 But it is the strongest current non-hybrid controller in the repo because it combines sampled state-control covariance with nominal local dynamics instead of choosing only one of those feedback constructions.
 
+### 8. High-frequency feedback-execution baseline
+
+The benchmark now also includes `feedback_mppi_hf`, which is meant to narrow the controller-architecture gap to recent `Feedback-MPPI` work.
+
+This variant uses:
+- the same MPPI warm-start and local gain computation machinery as the in-repo feedback baselines
+- a lower-rate replan schedule, so the expensive MPPI solve is not repeated every benchmark step
+- direct local feedback execution between replans instead of a closed-loop rollout bundle followed by another weighted MPPI update
+- the same interpolated local setpoint idea already used inside the feedback rollout kernel
+
+This is still not literature-faithful.
+But it is a closer architecture proxy than the other in-repo baselines because it explicitly separates lower-rate replanning from per-step local feedback execution.
+
 ## Main Result
 
 The dynamic-obstacle suite with the added feedback baseline is now the strongest novelty-supporting result in the repository so far.
@@ -180,6 +199,20 @@ So `feedback_mppi_fused` still does not solve `dynamic_slalom`, but it is now th
 
 That is still not enough to explain away the hybrid result, but it reduces the risk that the repository is only beating a weak in-house baseline.
 
+The newer `feedback_mppi_hf` baseline addresses a different gap.
+
+At fixed rollout budgets:
+- `dynamic_crossing`, `feedback_mppi_hf K=256`: success `0.00`, final distance `2.83`
+- `dynamic_crossing`, `feedback_mppi_hf K=512`: success `0.00`, final distance `2.80`
+- `dynamic_slalom`, `feedback_mppi_hf K=256`: success `0.00`, final distance `13.62`
+- `dynamic_slalom`, `feedback_mppi_hf K=512`: success `0.00`, final distance `13.56`
+
+So the closer high-frequency architecture baseline does not solve either task, but it does improve over vanilla MPPI on both:
+- on `dynamic_crossing`, it lowers terminal distance from `3.07` to `2.83`
+- on `dynamic_slalom`, it lowers terminal distance from `14.36` to `13.62`
+
+That is weaker than the stronger non-hybrid feedback baselines above, but it matters because the improvement now survives even when the controller is forced into a lower-rate-replan, local-feedback-execution regime.
+
 The same pattern survived wall-clock matching.
 
 Under a `1.00 ms` cap:
@@ -201,6 +234,7 @@ The feedback baseline sits between them:
 For the heavier covariance-regression and fused controllers, the current repo only has cap-based and nearest-time spot checks rather than a full refreshed exact-time sweep.
 Those are still informative:
 - under a `2.00 ms` cap, the best lighter feedback row on `dynamic_slalom` is `feedback_mppi_cov K=256 @ 1.66 ms`, final distance `11.49`
+- under a `1.00 ms` cap, the closer architecture row on `dynamic_slalom` is `feedback_mppi_hf K=256 @ 0.82 ms`, final distance `13.62`
 - under a `3.50 ms` cap, the best current feedback row on `dynamic_slalom` is `feedback_mppi_fused K=256 @ 3.31 ms`, final distance `10.30`
 - under a `1.50 ms` equal-time target on the current fixed-`K` sweep, `feedback_mppi_cov K=256 @ 1.66 ms` is the closest lighter feedback row on `dynamic_slalom`, again with final distance `11.49`
 
@@ -302,9 +336,11 @@ After this follow-up, the story is stronger because:
 - a strengthened feedback-oriented baseline now exists inside the same harness
 - a covariance-regression baseline now also exists inside the same harness
 - a fused covariance-plus-linearization baseline now also exists inside the same harness
+- a lower-rate-replan high-frequency feedback-execution baseline now also exists inside the same harness
 - a closer rollout-sensitivity feedback baseline now also exists inside the same harness
-- all three stronger non-hybrid feedback baselines help on the easier dynamic crossing case, but none solves dynamic slalom
+- all four stronger non-hybrid feedback baselines help on the easier dynamic crossing case, but none solves dynamic slalom
 - the fused baseline is now the strongest non-hybrid feedback controller on `dynamic_slalom`
+- the high-frequency feedback-execution baseline narrows the controller-architecture gap even though its final performance remains modest
 - the advantage remains visible under an equal-time target, not only a loose cap
 - the advantage also survives direct exact-time tuning, where planner-specific `K` values are chosen to hit shared timing targets within roughly `0.01-0.03 ms`
 - the result is about success, not only smaller terminal distance
@@ -327,17 +363,19 @@ The stronger current version is:
 
 The main remaining gaps are now:
 - the current `feedback_mppi`, `feedback_mppi_sens`, `feedback_mppi_cov`, and `feedback_mppi_fused` comparisons are all materially stronger than the earlier fixed-gain tracker, but still not a full literature-faithful rollout-differentiation / feedback-MPPI baseline
+- the newer `feedback_mppi_hf` comparison narrows the controller-architecture gap, but is still an in-repo proxy rather than a paper-faithful reproduction
 - only two simple hand-designed 2D dynamic scenarios so far
 
-The gradient-only ablation, the four stronger feedback baselines, and the new trace-based mechanism analysis remove weaker alternative explanations, but they still do not close the stronger literature-baseline gap.
+The gradient-only ablation, the five stronger feedback baselines, and the new trace-based mechanism analysis remove weaker alternative explanations, but they still do not close the stronger literature-baseline gap.
 
 ## Next Step
 
 If we want to keep pushing the novelty argument, the next experiment should be:
 
-1. Strengthen the current `feedback_mppi_sens` / `feedback_mppi_cov` / `feedback_mppi_fused` comparisons into a more literature-faithful baseline.
+1. Strengthen the current `feedback_mppi_sens` / `feedback_mppi_cov` / `feedback_mppi_fused` / `feedback_mppi_hf` comparisons into a more literature-faithful baseline.
 2. Keep the heavier `feedback_mppi_fused` line only as a narrowing study unless it also gets a refreshed exact-time sweep.
-3. Add a harder dynamic scenario with interacting moving agents, not just one scripted obstacle.
-4. Keep exact-time tuned success and final-distance comparisons at one or two fixed targets in the main paper, instead of many configurations.
+3. Extend the newer `feedback_mppi_hf` line with a cleaner exact-time tuning protocol once the tuner supports that regime reliably.
+4. Add a harder dynamic scenario with interacting moving agents, not just one scripted obstacle.
+5. Keep exact-time tuned success and final-distance comparisons at one or two fixed targets in the main paper, instead of many configurations.
 
 A submission-oriented gap analysis for `ICRA/IROS` is recorded separately in `paper/icra_iros_gap_list.md`.
