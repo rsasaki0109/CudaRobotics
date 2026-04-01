@@ -225,6 +225,12 @@ Validate that the experiment-first guardrails still hold:
 python3 scripts/validate_design_workflow.py
 ```
 
+Check that the scaffolder still emits the current workflow contract:
+
+```bash
+python3 scripts/check_scaffold_design_problem.py
+```
+
 Current concrete problems:
 - `planner_selection`: choose one planner configuration per dataset/scenario pair
 - `time_budget_selection`: choose one planner configuration per dataset/scenario/time-budget request

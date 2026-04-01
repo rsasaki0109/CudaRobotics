@@ -165,6 +165,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("problem", help="Problem name, for example planner_selection or cache_policy")
     parser.add_argument("--force", action="store_true", help="Overwrite existing files")
     parser.add_argument("--dry-run", action="store_true", help="Print the files that would be created without writing them")
+    parser.add_argument(
+        "--root",
+        default=str(ROOT),
+        help="Target repository root. Defaults to the current repository.",
+    )
     return parser.parse_args()
 
 
@@ -197,28 +202,31 @@ def main() -> int:
     slug = slugify(args.problem)
     problem_class = to_class_name(slug)
     interface_import = f"core.{slug}_interface"
+    root = Path(args.root).resolve()
 
     files = {
-        ROOT / "core" / f"{slug}_interface.py": INTERFACE_TEMPLATE.format(problem_class=problem_class),
-        ROOT / "experiments" / slug / "__init__.py": INIT_TEMPLATE.format(
+        root / "core" / "__init__.py": "",
+        root / "experiments" / "__init__.py": "",
+        root / "core" / f"{slug}_interface.py": INTERFACE_TEMPLATE.format(problem_class=problem_class),
+        root / "experiments" / slug / "__init__.py": INIT_TEMPLATE.format(
             problem_kind=slug,
             interface_file=f"{slug}_interface.py",
             problem_title=to_title(slug),
         ),
-        ROOT / "experiments" / slug / "functional_variant.py": FUNCTIONAL_TEMPLATE.format(
+        root / "experiments" / slug / "functional_variant.py": FUNCTIONAL_TEMPLATE.format(
             interface_import=interface_import, problem_class=problem_class
         ),
-        ROOT / "experiments" / slug / "oop_variant.py": OOP_TEMPLATE.format(
+        root / "experiments" / slug / "oop_variant.py": OOP_TEMPLATE.format(
             interface_import=interface_import, problem_class=problem_class
         ),
-        ROOT / "experiments" / slug / "pipeline_variant.py": PIPELINE_TEMPLATE.format(
+        root / "experiments" / slug / "pipeline_variant.py": PIPELINE_TEMPLATE.format(
             interface_import=interface_import, problem_class=problem_class
         ),
     }
 
     for path, content in files.items():
         write_file(path, content, args.force, args.dry_run)
-        print(path.relative_to(ROOT))
+        print(path.relative_to(root))
 
     return 0
 

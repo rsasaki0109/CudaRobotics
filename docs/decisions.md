@@ -167,3 +167,15 @@ Why:
 
 Operational note:
 - the stale-doc comparison normalizes the `Runtime ms/request` column because that metric is environment-sensitive
+
+## D-011: The Scaffolder Is Part Of The Contract
+
+Status: accepted
+
+Decision:
+- `scripts/scaffold_design_problem.py` must support writing into an arbitrary root
+- CI must run a scaffold self-check against a temporary root
+
+Why:
+- the scaffolder is how new search spaces enter the repo
+- if the scaffold drifts from the validator contract, the workflow decays silently
