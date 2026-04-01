@@ -46,7 +46,7 @@ Recent additions push the repository beyond direct CUDA ports of classic robotic
 | Project | Binaries | Highlights |
 |---|---|---|
 | Autodiff + GPU MLP foundation | `test_autodiff`, `test_gpu_mlp` | Dual-number forward-mode autodiff and a compact GPU MLP training/inference engine used as the base for later research-style experiments. |
-| Differentiable MPPI | `diff_mppi`, `comparison_diff_mppi`, `benchmark_diff_mppi` | Extends MPPI with a dual-number backward pass, side-by-side comparisons, dynamic-obstacle suites, a simplified `feedback_mppi` baseline, a `grad_only_3` ablation, and a CSV benchmark suite for fixed-budget, cap-based wall-clock, and equal-time quality-vs-compute experiments. |
+| Differentiable MPPI | `diff_mppi`, `comparison_diff_mppi`, `benchmark_diff_mppi` | Extends MPPI with a dual-number backward pass, side-by-side comparisons, dynamic-obstacle suites, a nominal-linearization `feedback_mppi` baseline, a `grad_only_3` ablation, and a CSV benchmark suite for fixed-budget, cap-based wall-clock, and equal-time quality-vs-compute experiments. |
 | Neural SDF Navigation | `neural_sdf`, `sdf_potential_field`, `sdf_mppi`, `comparison_sdf_nav` | Learns 2D signed distance fields with a GPU MLP, then uses them for potential-field planning and MPPI on non-circular obstacle layouts. |
 | Neuroevolution for Cart-Pole | `neuroevo`, `comparison_neuroevo` | Evolves 4096 neural policies in parallel on GPU and compares them against a CPU baseline with side-by-side learning curves. |
 | MiniIsaacGym | `mini_isaac`, `mini_isaac_rl` | Runs thousands of CartPole environments in parallel on GPU and trains a compact policy with GPU-side REINFORCE updates. |
@@ -88,18 +88,18 @@ python3 scripts/summarize_diff_mppi.py --csv build/benchmark_diff_mppi_wall_cloc
 python3 scripts/plot_diff_mppi.py --csv build/benchmark_diff_mppi_wall_clock.csv --out-dir build/plots --time-caps 1.1,1.5,2.0
 ```
 
-The benchmark writes per-episode CSV metrics, including the simplified `feedback_mppi` baseline and the `grad_only_3` ablation. The summarizer emits Markdown and LaTeX tables for fixed-budget, cap-based wall-clock, and equal-time target comparisons, and the plotter generates paper-friendly PNG/PDF figures in `build/plots/`, including `diff_mppi_final_distance_vs_time_cap.*` and `diff_mppi_final_distance_vs_equal_time.*`.
+The benchmark writes per-episode CSV metrics, including the strengthened nominal-linearization `feedback_mppi` baseline and the `grad_only_3` ablation. The summarizer emits Markdown and LaTeX tables for fixed-budget, cap-based wall-clock, and equal-time target comparisons, and the plotter generates paper-friendly PNG/PDF figures in `build/plots/`, including `diff_mppi_final_distance_vs_time_cap.*` and `diff_mppi_final_distance_vs_equal_time.*`.
 A paper-style interpretation of the current benchmark is collected in `paper/diff_mppi_results.md`.
 
 Dynamic-obstacle follow-up:
 
 ```bash
-./bin/benchmark_diff_mppi --scenarios dynamic_crossing,dynamic_slalom --k-values 256,512,1024,2048,4096,6144,8192 --csv build/benchmark_diff_mppi_dynamic_pair.csv
-python3 scripts/summarize_diff_mppi.py --csv build/benchmark_diff_mppi_dynamic_pair.csv --time-caps 1.0,1.5 --time-targets 1.0,1.5
-python3 scripts/plot_diff_mppi.py --csv build/benchmark_diff_mppi_dynamic_pair.csv --out-dir build/plots_dynamic_pair --time-caps 1.0,1.5 --time-targets 1.0,1.5
+./bin/benchmark_diff_mppi --scenarios dynamic_crossing,dynamic_slalom --k-values 256,512,1024,2048,4096,6144,8192 --csv build/benchmark_diff_mppi_feedback_dynamic_pair.csv
+python3 scripts/summarize_diff_mppi.py --csv build/benchmark_diff_mppi_feedback_dynamic_pair.csv --time-caps 1.0,1.5 --time-targets 1.0,1.5
+python3 scripts/plot_diff_mppi.py --csv build/benchmark_diff_mppi_feedback_dynamic_pair.csv --out-dir build/plots_feedback_dynamic_pair --time-caps 1.0,1.5 --time-targets 1.0,1.5
 ```
 
-This follow-up now includes two moving-obstacle tasks, a simplified `feedback_mppi` baseline, and the earlier `grad_only_3` ablation. In the current benchmark, `feedback_mppi` solves `dynamic_crossing` but still fails `dynamic_slalom`, while Diff-MPPI remains successful on both tasks under fixed-budget and matched-time comparisons. The current write-up is in `paper/diff_mppi_novelty_followup.md`, and the current `ICRA/IROS` submission-gap assessment is in `paper/icra_iros_gap_list.md`.
+This follow-up now includes two moving-obstacle tasks, a strengthened nominal-linearization `feedback_mppi` baseline, and the earlier `grad_only_3` ablation. In the current benchmark, `feedback_mppi` recovers `dynamic_crossing` across the tested rollout budgets except the smallest `K=256` case, but still fails `dynamic_slalom`, while Diff-MPPI remains successful on both tasks under fixed-budget and matched-time comparisons. The current write-up is in `paper/diff_mppi_novelty_followup.md`, and the current `ICRA/IROS` submission-gap assessment is in `paper/icra_iros_gap_list.md`.
 
 Hybrid-versus-gradient-only ablation:
 
