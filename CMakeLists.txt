@@ -150,6 +150,8 @@ target_link_libraries(diff_mppi ${OpenCV_LIBS})
 add_executable(comparison_diff_mppi src/comparison_diff_mppi.cu)
 target_link_libraries(comparison_diff_mppi ${OpenCV_LIBS})
 
+add_executable(benchmark_diff_mppi src/benchmark_diff_mppi.cu)
+
 add_executable(neural_sdf src/neural_sdf.cu)
 target_link_libraries(neural_sdf ${OpenCV_LIBS})
 
