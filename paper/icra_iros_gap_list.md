@@ -28,7 +28,7 @@ Primary references:
 Current status:
 - `Workshop / spotlight demo / open-source systems contribution`: strong
 - `ICRA/IROS full paper, submitted today`: weak
-- `ICRA/IROS full paper after one more strong baseline and one higher-fidelity experiment`: plausible
+- `ICRA/IROS full paper after one more literature-faithful baseline and one higher-fidelity experiment`: plausible
 
 Short version:
 
@@ -38,7 +38,7 @@ The main reason is not that the results are bad.
 The main reason is that the current paper would still look like:
 - an incremental MPPI variant
 - tested in 2D kinematic toy scenarios
-- without the strongest direct baseline
+- without a literature-faithful direct baseline
 
 That combination usually struggles at `ICRA/IROS` unless the empirical evidence is unusually strong or the systems story is unusually concrete.
 
@@ -47,6 +47,7 @@ That combination usually struggles at `ICRA/IROS` unless the empirical evidence 
 The current line now has real positives:
 - fixed-budget, cap-based, and equal-time comparisons
 - two dynamic scenarios, not just one
+- a simplified `feedback_mppi` baseline inside the same harness
 - a `grad_only_3` ablation that removes one weak alternative explanation
 - a narrow claim that is honest and empirically supported
 
@@ -76,19 +77,20 @@ Because of that, the current paper cannot rely on any of these claims alone:
 
 Those claims are too broad relative to the literature above.
 
-### 2. The strongest missing baseline is exactly the one reviewers will ask for
+### 2. The direct baseline story is better, but still incomplete
 
 Right now you compare against:
 - vanilla `mppi`
+- simplified `feedback_mppi`
 - `grad_only_3`
 
-What is still missing is a direct sensitivity-aware MPPI baseline, for example:
-- a `Feedback-MPPI`-style local feedback baseline
+What is still missing is a literature-faithful sensitivity-aware MPPI baseline, for example:
+- a stronger `Feedback-MPPI`-style local feedback baseline
 - another rollout-differentiation or local linearization baseline
 
 This is the most dangerous missing experiment because a reviewer can reasonably say:
 
-> The paper shows that hybrid search plus local sensitivity helps over vanilla MPPI, but does not show whether the proposed implementation is actually better than existing sensitivity-aware MPPI variants.
+> The paper shows that hybrid search plus local sensitivity helps over vanilla MPPI and over a simplified in-repo feedback controller, but does not yet show whether the proposed implementation is actually better than existing sensitivity-aware MPPI variants.
 
 That is a direct novelty threat, not just a "future work" point.
 
@@ -145,10 +147,10 @@ These are ordered by importance, not by ease.
 
 ### Tier 1: Must-Have
 
-1. Add a direct sensitivity-aware MPPI baseline
+1. Strengthen the current direct sensitivity-aware baseline
 
 Minimum acceptable version:
-- implement a simplified `Feedback-MPPI`-style baseline inside the same benchmark harness
+- upgrade the current simplified `feedback_mppi` baseline into a closer `Feedback-MPPI`-style comparison inside the same benchmark harness
 - compare under fixed-budget and exact matched-time settings
 
 Why this is critical:
@@ -217,7 +219,7 @@ If the goal is a serious `ICRA/IROS full paper`, the minimum package I would tru
 1. Current static benchmark
 2. Current two dynamic tasks
 3. `grad_only_3` ablation
-4. direct `Feedback-MPPI`-style baseline
+4. literature-faithful `Feedback-MPPI`-style baseline beyond the current simplified `feedback_mppi`
 5. exact matched-time tuning
 6. one higher-fidelity experiment outside 2D kinematic navigation
 
@@ -240,7 +242,7 @@ That framing is narrower, but more defensible.
 ## Recommended Next Steps
 
 Immediate next work:
-1. Implement a `Feedback-MPPI`-style baseline in `benchmark_diff_mppi`.
+1. Strengthen the simplified `feedback_mppi` baseline in `benchmark_diff_mppi` into a more literature-faithful comparison.
 2. Replace nearest-match equal-time analysis with exact matched-time tuning.
 3. Port the benchmark to one higher-fidelity domain.
 
@@ -252,7 +254,7 @@ If time is limited:
 
 As of `2026-04-02`, my judgment is:
 - `today, as-is`: not strong enough for `ICRA/IROS` full paper
-- `after one strong baseline + one stronger experiment`: plausible
+- `after one more literature-faithful baseline + one stronger experiment`: plausible
 - `for workshop/demo right now`: yes
 
 That is a conservative judgment, but it is the one most likely to survive actual review pressure.

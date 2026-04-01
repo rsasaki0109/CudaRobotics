@@ -71,9 +71,14 @@ struct Scenario {
 struct PlannerVariant {
     string name;
     bool use_sampling = true;
+    bool use_feedback = false;
     bool use_gradient = false;
     int grad_steps = 0;
     float alpha = 0.0f;
+    float feedback_longitudinal = 0.0f;
+    float feedback_lateral = 0.0f;
+    float feedback_heading = 0.0f;
+    float feedback_speed = 0.0f;
 };
 
 struct EpisodeMetrics {
@@ -176,6 +181,110 @@ __global__ void rollout_kernel(
             float dx = x - ox;
             float dy = y - oy;
             float margin = sqrtf(dx * dx + dy * dy + 1e-6f) - d_dynamic_obstacles_bench[i].r;
+            if (margin <= 0.1f) total_cost += cost_params.obs_weight * 100.0f;
+            else if (margin < cost_params.obs_influence) total_cost += cost_params.obs_weight / (margin * margin);
+        }
+
+        if (x < 0.0f || x > WORKSPACE || y < 0.0f || y > WORKSPACE) total_cost += 500.0f;
+    }
+
+    float dx = x - cost_params.goal_x;
+    float dy = y - cost_params.goal_y;
+    total_cost += cost_params.terminal_weight * sqrtf(dx * dx + dy * dy + 0.01f);
+    d_costs[k] = total_cost;
+    d_rng[k] = local_rng;
+}
+
+__host__ __device__ inline float wrap_angle(float angle) {
+    while (angle > 3.14159265f) angle -= 6.28318531f;
+    while (angle < -3.14159265f) angle += 6.28318531f;
+    return angle;
+}
+
+__global__ void rollout_feedback_kernel(
+    float sx, float sy, float stheta, float sv,
+    const float* d_nominal,
+    const float* d_nominal_states,
+    float* d_costs,
+    float* d_perturbed,
+    curandState* d_rng,
+    BicycleParams params,
+    CostParams cost_params,
+    int n_obs,
+    int n_dyn_obs,
+    int start_step,
+    int K,
+    int T,
+    float k_longitudinal,
+    float k_lateral,
+    float k_heading,
+    float k_speed)
+{
+    int k = blockIdx.x * blockDim.x + threadIdx.x;
+    if (k >= K) return;
+
+    curandState local_rng = d_rng[k];
+    float x = sx;
+    float y = sy;
+    float theta = stheta;
+    float v = sv;
+    float total_cost = 0.0f;
+
+    for (int t = 0; t < T; t++) {
+        float x_nom = d_nominal_states[t * 4 + 0];
+        float y_nom = d_nominal_states[t * 4 + 1];
+        float theta_nom = d_nominal_states[t * 4 + 2];
+        float v_nom = d_nominal_states[t * 4 + 3];
+        float dx = x_nom - x;
+        float dy = y_nom - y;
+        float ct = cosf(theta_nom);
+        float st = sinf(theta_nom);
+        float longitudinal_err = ct * dx + st * dy;
+        float lateral_err = -st * dx + ct * dy;
+        float heading_err = wrap_angle(theta_nom - theta);
+        float speed_err = v_nom - v;
+
+        float accel = d_nominal[t * 2 + 0]
+                    + curand_normal(&local_rng) * 1.5f
+                    + k_longitudinal * longitudinal_err
+                    + k_speed * speed_err;
+        float steer = d_nominal[t * 2 + 1]
+                    + curand_normal(&local_rng) * 0.18f
+                    + k_lateral * lateral_err
+                    + k_heading * heading_err;
+        accel = clampf(accel, -4.0f, 4.0f);
+        steer = clampf(steer, -params.max_steer, params.max_steer);
+
+        d_perturbed[k * T * 2 + t * 2 + 0] = accel;
+        d_perturbed[k * T * 2 + t * 2 + 1] = steer;
+
+        bicycle_step(x, y, theta, v, accel, steer, params);
+
+        float dxg = x - cost_params.goal_x;
+        float dyg = y - cost_params.goal_y;
+        total_cost += cost_params.goal_weight * sqrtf(dxg * dxg + dyg * dyg + 0.01f) * params.dt;
+        total_cost += cost_params.control_weight * (accel * accel + steer * steer) * params.dt;
+        float desired_heading = atan2f(cost_params.goal_y - y, cost_params.goal_x - x);
+        float goal_heading_err = wrap_angle(theta - desired_heading);
+        total_cost += cost_params.heading_weight * goal_heading_err * goal_heading_err * params.dt;
+        float speed_goal_err = v - cost_params.target_speed;
+        total_cost += cost_params.speed_weight * speed_goal_err * speed_goal_err * params.dt;
+
+        for (int i = 0; i < n_obs; i++) {
+            float odx = x - d_obstacles_bench[i].x;
+            float ody = y - d_obstacles_bench[i].y;
+            float margin = sqrtf(odx * odx + ody * ody + 1e-6f) - d_obstacles_bench[i].r;
+            if (margin <= 0.1f) total_cost += cost_params.obs_weight * 100.0f;
+            else if (margin < cost_params.obs_influence) total_cost += cost_params.obs_weight / (margin * margin);
+        }
+
+        float tau = (start_step + t + 1) * params.dt;
+        for (int i = 0; i < n_dyn_obs; i++) {
+            float ox = d_dynamic_obstacles_bench[i].x + d_dynamic_obstacles_bench[i].vx * tau;
+            float oy = d_dynamic_obstacles_bench[i].y + d_dynamic_obstacles_bench[i].vy * tau;
+            float odx = x - ox;
+            float ody = y - oy;
+            float margin = sqrtf(odx * odx + ody * ody + 1e-6f) - d_dynamic_obstacles_bench[i].r;
             if (margin <= 0.1f) total_cost += cost_params.obs_weight * 100.0f;
             else if (margin < cost_params.obs_influence) total_cost += cost_params.obs_weight / (margin * margin);
         }
@@ -521,12 +630,28 @@ private:
         CUDA_CHECK(cudaMemcpy(d_nominal_, h_nominal_.data(), h_nominal_.size() * sizeof(float), cudaMemcpyHostToDevice));
         int block = 256;
         if (variant_.use_sampling) {
-            rollout_kernel<<<(k_samples_ + block - 1) / block, block>>>(
-                sx, sy, stheta, sv, d_nominal_, d_costs_, d_perturbed_, d_rng_,
-                scenario_.params, scenario_.cost_params, scenario_.n_obs, scenario_.n_dyn_obs, start_step, k_samples_, t_horizon_);
-            compute_weights_kernel<<<1, 1>>>(d_costs_, d_weights_, k_samples_, DEFAULT_LAMBDA);
-            update_controls_kernel<<<(t_horizon_ + block - 1) / block, block>>>(
-                d_nominal_, d_perturbed_, d_weights_, k_samples_, t_horizon_);
+            int open_loop_passes = variant_.use_feedback ? 2 : 1;
+            for (int pass = 0; pass < open_loop_passes; pass++) {
+                rollout_kernel<<<(k_samples_ + block - 1) / block, block>>>(
+                    sx, sy, stheta, sv, d_nominal_, d_costs_, d_perturbed_, d_rng_,
+                    scenario_.params, scenario_.cost_params, scenario_.n_obs, scenario_.n_dyn_obs, start_step, k_samples_, t_horizon_);
+                compute_weights_kernel<<<1, 1>>>(d_costs_, d_weights_, k_samples_, DEFAULT_LAMBDA);
+                update_controls_kernel<<<(t_horizon_ + block - 1) / block, block>>>(
+                    d_nominal_, d_perturbed_, d_weights_, k_samples_, t_horizon_);
+            }
+
+            if (variant_.use_feedback) {
+                rollout_nominal_kernel<<<1, 1>>>(sx, sy, stheta, sv, d_nominal_, d_states_, scenario_.params, t_horizon_);
+                rollout_feedback_kernel<<<(k_samples_ + block - 1) / block, block>>>(
+                    sx, sy, stheta, sv, d_nominal_, d_states_, d_costs_, d_perturbed_, d_rng_,
+                    scenario_.params, scenario_.cost_params, scenario_.n_obs, scenario_.n_dyn_obs,
+                    start_step, k_samples_, t_horizon_,
+                    variant_.feedback_longitudinal, variant_.feedback_lateral,
+                    variant_.feedback_heading, variant_.feedback_speed);
+                compute_weights_kernel<<<1, 1>>>(d_costs_, d_weights_, k_samples_, DEFAULT_LAMBDA);
+                update_controls_kernel<<<(t_horizon_ + block - 1) / block, block>>>(
+                    d_nominal_, d_perturbed_, d_weights_, k_samples_, t_horizon_);
+            }
         }
 
         if (variant_.use_gradient) {
@@ -866,10 +991,11 @@ int main(int argc, char** argv) {
     }
 
     vector<PlannerVariant> variants;
-    variants.push_back({"mppi", true, false, 0, 0.0f});
-    variants.push_back({"grad_only_3", false, true, 3, 0.004f});
-    variants.push_back({"diff_mppi_1", true, true, 1, 0.010f});
-    variants.push_back({"diff_mppi_3", true, true, 3, 0.006f});
+    variants.push_back({"mppi", true, false, false, 0, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f});
+    variants.push_back({"feedback_mppi", true, true, false, 0, 0.0f, 0.30f, 0.35f, 0.55f, 0.70f});
+    variants.push_back({"grad_only_3", false, false, true, 3, 0.004f, 0.0f, 0.0f, 0.0f, 0.0f});
+    variants.push_back({"diff_mppi_1", true, false, true, 1, 0.010f, 0.0f, 0.0f, 0.0f, 0.0f});
+    variants.push_back({"diff_mppi_3", true, false, true, 3, 0.006f, 0.0f, 0.0f, 0.0f, 0.0f});
 
     if (k_values.empty()) k_values = quick ? vector<int>{1024, 4096} : vector<int>{1024, 2048, 4096};
     if (seed_count <= 0) seed_count = quick ? 2 : 4;

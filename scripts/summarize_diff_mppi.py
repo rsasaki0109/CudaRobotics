@@ -90,6 +90,8 @@ def parse_float_list(text):
 def planner_family(name):
     if name == "mppi":
         return "mppi"
+    if name.startswith("feedback_mppi"):
+        return "feedback"
     if name.startswith("diff_mppi"):
         return "diff"
     if name.startswith("grad_only"):
@@ -447,8 +449,9 @@ def markdown_table(headers, rows):
     return "\n".join(lines)
 
 
-def build_markdown(summary_rows, aggregate_rows, budget_rows, grad_budget_rows, time_cap_aggregate_rows,
-                   time_cap_rows, grad_time_cap_rows, time_target_aggregate_rows, time_target_rows,
+def build_markdown(summary_rows, aggregate_rows, budget_rows, feedback_budget_rows, grad_budget_rows,
+                   time_cap_aggregate_rows, time_cap_rows, feedback_time_cap_rows, grad_time_cap_rows,
+                   time_target_aggregate_rows, time_target_rows, feedback_time_target_rows,
                    grad_time_target_rows, csv_path):
     lines = []
     lines.append("# Diff-MPPI Benchmark Summary")
@@ -490,6 +493,25 @@ def build_markdown(summary_rows, aggregate_rows, budget_rows, grad_budget_rows, 
     lines.append(markdown_table(
         ["Scenario", "K", "Best Diff", "MPPI Dist", "Diff Dist", "Delta Dist", "Delta Steps", "Time Ratio"],
         budget_md_rows,
+    ))
+    lines.append("")
+    lines.append("## Best Feedback Variant at Fixed Rollout Budget")
+    lines.append("")
+    feedback_budget_md_rows = []
+    for row in feedback_budget_rows:
+        feedback_budget_md_rows.append([
+            row["scenario"],
+            str(row["k_samples"]),
+            row["best"]["planner"],
+            fmt_num(row["mppi"]["final_distance_mean"]),
+            fmt_num(row["best"]["final_distance_mean"]),
+            f"{row['delta_final_distance']:.2f}",
+            f"{row['delta_steps']:.1f}",
+            f"{row['time_ratio']:.2f}x",
+        ])
+    lines.append(markdown_table(
+        ["Scenario", "K", "Best Feedback", "MPPI Dist", "Feedback Dist", "Delta Dist", "Delta Steps", "Time Ratio"],
+        feedback_budget_md_rows,
     ))
     lines.append("")
     lines.append("## Best Grad-Only Variant at Fixed Rollout Budget")
@@ -548,6 +570,25 @@ def build_markdown(summary_rows, aggregate_rows, budget_rows, grad_budget_rows, 
     lines.append(markdown_table(
         ["Scenario", "Cap ms", "MPPI K@ms", "Best Diff K@ms", "MPPI Dist", "Diff Dist", "Delta Dist", "Delta Steps"],
         time_budget_md_rows,
+    ))
+    lines.append("")
+    lines.append("## Best Feedback Variant at Fixed Wall-Clock Budget")
+    lines.append("")
+    feedback_time_budget_md_rows = []
+    for row in feedback_time_cap_rows:
+        feedback_time_budget_md_rows.append([
+            row["scenario"],
+            fmt_num(row["time_cap_ms"], 2),
+            f"{row['mppi']['k_samples']} @ {fmt_num(row['mppi']['avg_control_ms_mean'])}",
+            f"{row['best']['planner']} ({row['best']['k_samples']} @ {fmt_num(row['best']['avg_control_ms_mean'])})",
+            fmt_num(row["mppi"]["final_distance_mean"]),
+            fmt_num(row["best"]["final_distance_mean"]),
+            f"{row['delta_final_distance']:.2f}",
+            f"{row['delta_steps']:.1f}",
+        ])
+    lines.append(markdown_table(
+        ["Scenario", "Cap ms", "MPPI K@ms", "Best Feedback K@ms", "MPPI Dist", "Feedback Dist", "Delta Dist", "Delta Steps"],
+        feedback_time_budget_md_rows,
     ))
     lines.append("")
     lines.append("## Best Grad-Only Variant at Fixed Wall-Clock Budget")
@@ -609,6 +650,25 @@ def build_markdown(summary_rows, aggregate_rows, budget_rows, grad_budget_rows, 
         equal_time_md_rows,
     ))
     lines.append("")
+    lines.append("## Best Feedback Variant at Equal-Time Targets")
+    lines.append("")
+    feedback_equal_time_md_rows = []
+    for row in feedback_time_target_rows:
+        feedback_equal_time_md_rows.append([
+            row["scenario"],
+            fmt_num(row["time_target_ms"], 2),
+            f"{row['mppi']['k_samples']} @ {fmt_num(row['mppi']['avg_control_ms_mean'])} (gap {fmt_num(row['mppi_gap_ms'])})",
+            f"{row['best']['planner']} ({row['best']['k_samples']} @ {fmt_num(row['best']['avg_control_ms_mean'])}, gap {fmt_num(row['best_gap_ms'])})",
+            fmt_num(row["mppi"]["final_distance_mean"]),
+            fmt_num(row["best"]["final_distance_mean"]),
+            f"{row['delta_final_distance']:.2f}",
+            f"{row['delta_steps']:.1f}",
+        ])
+    lines.append(markdown_table(
+        ["Scenario", "Target ms", "MPPI K@ms", "Best Feedback K@ms", "MPPI Dist", "Feedback Dist", "Delta Dist", "Delta Steps"],
+        feedback_equal_time_md_rows,
+    ))
+    lines.append("")
     lines.append("## Best Grad-Only Variant at Equal-Time Targets")
     lines.append("")
     grad_equal_time_md_rows = []
@@ -657,8 +717,9 @@ def build_markdown(summary_rows, aggregate_rows, budget_rows, grad_budget_rows, 
     return "\n".join(lines)
 
 
-def build_latex(summary_rows, aggregate_rows, budget_rows, grad_budget_rows, time_cap_aggregate_rows,
-                time_cap_rows, grad_time_cap_rows, time_target_aggregate_rows, time_target_rows,
+def build_latex(summary_rows, aggregate_rows, budget_rows, feedback_budget_rows, grad_budget_rows,
+                time_cap_aggregate_rows, time_cap_rows, feedback_time_cap_rows, grad_time_cap_rows,
+                time_target_aggregate_rows, time_target_rows, feedback_time_target_rows,
                 grad_time_target_rows, csv_path):
     lines = []
     lines.append("% Auto-generated by scripts/summarize_diff_mppi.py")
@@ -686,6 +747,24 @@ def build_latex(summary_rows, aggregate_rows, budget_rows, grad_budget_rows, tim
     lines.append("")
     lines.append("\\begin{table}[t]")
     lines.append("\\centering")
+    lines.append("\\caption{Best feedback-oriented baseline at fixed rollout budget relative to vanilla MPPI.}")
+    lines.append("\\begin{tabular}{llrrrrrr}")
+    lines.append("\\hline")
+    lines.append("Scenario & K & BestFeedback & MPPIDist & FeedbackDist & DeltaDist & DeltaSteps & TimeRatio \\\\")
+    lines.append("\\hline")
+    for row in feedback_budget_rows:
+        lines.append(
+            f"{row['scenario']} & {row['k_samples']} & {row['best']['planner']} & "
+            f"{fmt_num(row['mppi']['final_distance_mean'])} & "
+            f"{fmt_num(row['best']['final_distance_mean'])} & "
+            f"{row['delta_final_distance']:.2f} & {row['delta_steps']:.1f} & {row['time_ratio']:.2f} \\\\"
+        )
+    lines.append("\\hline")
+    lines.append("\\end{tabular}")
+    lines.append("\\end{table}")
+    lines.append("")
+    lines.append("\\begin{table}[t]")
+    lines.append("\\centering")
     lines.append("\\caption{Best gradient-refined variant at fixed rollout budget relative to vanilla MPPI.}")
     lines.append("\\begin{tabular}{llrrrrrr}")
     lines.append("\\hline")
@@ -704,6 +783,25 @@ def build_latex(summary_rows, aggregate_rows, budget_rows, grad_budget_rows, tim
     lines.append("")
     lines.append("\\begin{table}[t]")
     lines.append("\\centering")
+    lines.append("\\caption{Best feedback-oriented baseline relative to vanilla MPPI under the same wall-clock budget.}")
+    lines.append("\\begin{tabular}{llrrrrrr}")
+    lines.append("\\hline")
+    lines.append("Scenario & CapMs & MPPIDist & FeedbackDist & DeltaDist & DeltaSteps & MPPIK & FeedbackK \\\\")
+    lines.append("\\hline")
+    for row in feedback_time_cap_rows:
+        lines.append(
+            f"{row['scenario']} & {fmt_num(row['time_cap_ms'])} & "
+            f"{fmt_num(row['mppi']['final_distance_mean'])} & "
+            f"{fmt_num(row['best']['final_distance_mean'])} & "
+            f"{row['delta_final_distance']:.2f} & {row['delta_steps']:.1f} & "
+            f"{row['mppi']['k_samples']} & {row['best']['k_samples']} \\\\"
+        )
+    lines.append("\\hline")
+    lines.append("\\end{tabular}")
+    lines.append("\\end{table}")
+    lines.append("")
+    lines.append("\\begin{table}[t]")
+    lines.append("\\centering")
     lines.append("\\caption{Best gradient-only ablation at fixed rollout budget relative to vanilla MPPI.}")
     lines.append("\\begin{tabular}{llrrrrrr}")
     lines.append("\\hline")
@@ -715,6 +813,25 @@ def build_latex(summary_rows, aggregate_rows, budget_rows, grad_budget_rows, tim
             f"{fmt_num(row['mppi']['final_distance_mean'])} & "
             f"{fmt_num(row['best']['final_distance_mean'])} & "
             f"{row['delta_final_distance']:.2f} & {row['delta_steps']:.1f} & {row['time_ratio']:.2f} \\\\"
+        )
+    lines.append("\\hline")
+    lines.append("\\end{tabular}")
+    lines.append("\\end{table}")
+    lines.append("")
+    lines.append("\\begin{table}[t]")
+    lines.append("\\centering")
+    lines.append("\\caption{Best feedback-oriented baseline relative to vanilla MPPI at matched equal-time targets.}")
+    lines.append("\\begin{tabular}{llrrrrrr}")
+    lines.append("\\hline")
+    lines.append("Scenario & TargetMs & MPPIDist & FeedbackDist & DeltaDist & DeltaSteps & MPPIK & FeedbackK \\\\")
+    lines.append("\\hline")
+    for row in feedback_time_target_rows:
+        lines.append(
+            f"{row['scenario']} & {fmt_num(row['time_target_ms'])} & "
+            f"{fmt_num(row['mppi']['final_distance_mean'])} & "
+            f"{fmt_num(row['best']['final_distance_mean'])} & "
+            f"{row['delta_final_distance']:.2f} & {row['delta_steps']:.1f} & "
+            f"{row['mppi']['k_samples']} & {row['best']['k_samples']} \\\\"
         )
     lines.append("\\hline")
     lines.append("\\end{tabular}")
@@ -855,28 +972,34 @@ def main():
     summary_rows = summarize_groups(rows)
     aggregate_rows = aggregate_by_planner_k(summary_rows)
     budget_rows = best_diff_per_budget(summary_rows)
+    feedback_budget_rows = best_family_per_budget(summary_rows, "feedback")
     grad_budget_rows = best_family_per_budget(summary_rows, "grad_only")
     time_caps = parse_float_list(args.time_caps)
     time_cap_selected_rows = select_under_time_caps(summary_rows, time_caps)
     time_cap_aggregate_rows = aggregate_by_planner_time_cap(time_cap_selected_rows)
     time_cap_rows = best_diff_per_time_cap(time_cap_selected_rows)
+    feedback_time_cap_rows = best_family_per_time_cap(time_cap_selected_rows, "feedback")
     grad_time_cap_rows = best_family_per_time_cap(time_cap_selected_rows, "grad_only")
     time_targets = parse_float_list(args.time_targets)
     time_target_selected_rows = select_at_time_targets(summary_rows, time_targets)
     time_target_aggregate_rows = aggregate_by_planner_time_target(time_target_selected_rows)
     time_target_rows = best_diff_per_time_target(time_target_selected_rows)
+    feedback_time_target_rows = best_family_per_time_target(time_target_selected_rows, "feedback")
     grad_time_target_rows = best_family_per_time_target(time_target_selected_rows, "grad_only")
 
     markdown = build_markdown(
         summary_rows,
         aggregate_rows,
         budget_rows,
+        feedback_budget_rows,
         grad_budget_rows,
         time_cap_aggregate_rows,
         time_cap_rows,
+        feedback_time_cap_rows,
         grad_time_cap_rows,
         time_target_aggregate_rows,
         time_target_rows,
+        feedback_time_target_rows,
         grad_time_target_rows,
         csv_path,
     )
@@ -884,12 +1007,15 @@ def main():
         summary_rows,
         aggregate_rows,
         budget_rows,
+        feedback_budget_rows,
         grad_budget_rows,
         time_cap_aggregate_rows,
         time_cap_rows,
+        feedback_time_cap_rows,
         grad_time_cap_rows,
         time_target_aggregate_rows,
         time_target_rows,
+        feedback_time_target_rows,
         grad_time_target_rows,
         csv_path,
     )
