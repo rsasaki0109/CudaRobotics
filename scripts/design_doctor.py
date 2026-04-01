@@ -45,6 +45,11 @@ def parse_args() -> argparse.Namespace:
         help="Skip regenerating docs/experiments_history.md or writing a new snapshot.",
     )
     parser.add_argument(
+        "--skip-convergence",
+        action="store_true",
+        help="Skip regenerating docs/convergence.md.",
+    )
+    parser.add_argument(
         "--skip-validate",
         action="store_true",
         help="Skip scripts/validate_design_workflow.py.",
@@ -105,6 +110,9 @@ def main() -> int:
         else:
             history_command.append("--render-only")
             run_step("refresh experiments history", history_command)
+
+    if not args.skip_convergence:
+        run_step("refresh convergence doc", [sys.executable, "scripts/render_design_convergence.py"])
 
     if not args.skip_validate:
         run_step("validate design workflow", [sys.executable, "scripts/validate_design_workflow.py"])
