@@ -5,7 +5,7 @@ Date: 2026-04-01
 This note turns the current benchmark outputs into a paper-style `Results` section draft for the `diff_mppi` line.
 It is intentionally narrow. The goal is not to oversell "differentiable MPPI" as a new idea, but to state a defensible empirical claim around a lightweight CUDA hybrid controller.
 
-A later dynamic-obstacle and equal-time follow-up is recorded separately in `paper/diff_mppi_novelty_followup.md`.
+A later dynamic-obstacle, equal-time, and gradient-only ablation follow-up is recorded separately in `paper/diff_mppi_novelty_followup.md`.
 
 Artifacts used:
 - `build/benchmark_diff_mppi.csv`

@@ -2,16 +2,22 @@
 
 Date: 2026-04-02
 
-This note records two follow-up experiments added after the initial `diff_mppi` results draft:
+This note records three follow-up experiments added after the initial `diff_mppi` results draft:
 - a dynamic-obstacle benchmark scenario
 - an equal-time target comparison in addition to the earlier cap-based wall-clock analysis
+- a gradient-only ablation to separate local-refinement effects from the hybrid controller
 
 Artifacts used:
 - `build/benchmark_diff_mppi_dynamic.csv`
 - `build/benchmark_diff_mppi_dynamic_summary.md`
 - `build/benchmark_diff_mppi_dynamic_summary.tex`
+- `build/benchmark_diff_mppi_ablation.csv`
+- `build/benchmark_diff_mppi_ablation_summary.md`
+- `build/benchmark_diff_mppi_ablation_summary.tex`
 - `build/plots_dynamic/diff_mppi_final_distance_vs_time_cap.png`
 - `build/plots_dynamic/diff_mppi_final_distance_vs_equal_time.png`
+- `build/plots_ablation/diff_mppi_final_distance_vs_budget.png`
+- `build/plots_ablation/diff_mppi_final_distance_vs_equal_time.png`
 
 ## What Changed
 
@@ -31,6 +37,14 @@ The analysis scripts now support two wall-clock views:
 - equal-time targets: closest configuration to a target time, planner by planner
 
 The equal-time target view is stricter than the earlier cap-only result because it removes the advantage of simply using much less time than the opponent.
+
+### 3. Gradient-only ablation
+
+The benchmark now also includes `grad_only_3`, which disables the MPPI sampling update and keeps only three local gradient refinement steps.
+
+This is not a substitute for a feedback-MPPI or rollout-differentiation baseline, but it is still useful because it asks a narrower question:
+
+> Are the gains coming from the hybrid sampling-plus-gradient structure, or would a pure local gradient controller already explain them?
 
 ## Main Result
 
@@ -55,6 +69,38 @@ So the dynamic obstacle follow-up gives a stronger claim than the earlier static
 
 > In a time-varying obstacle scenario, the lightweight MPPI + autodiff refinement controller reaches successful trajectories where vanilla MPPI remains unsuccessful, even under matched per-step compute budgets.
 
+## Hybrid vs Gradient-Only Ablation
+
+The ablation result is also informative.
+
+In `corner_turn`, `grad_only_3` is better than vanilla MPPI, but much weaker than the hybrid controller:
+- at `K=1024`, `mppi`: final distance `18.05`
+- at `K=1024`, `grad_only_3`: final distance `14.75`
+- at `K=1024`, `diff_mppi_3`: final distance `2.52`
+
+So gradients alone do help with local geometric steering, but they do not explain the full gain.
+
+In `dynamic_crossing`, the difference is much sharper:
+- at `K=1024`, `mppi`: success `0.00`, final distance `3.03`
+- at `K=1024`, `grad_only_3`: success `0.00`, final distance `46.49`
+- at `K=1024`, `diff_mppi_3`: success `1.00`, final distance `1.90`
+
+The same pattern remains under matched compute views.
+
+Under a `1.00 ms` cap:
+- `dynamic_crossing` MPPI: `K=4096`, success `0.00`, final distance `2.92`
+- `dynamic_crossing` grad-only: `K=4096`, success `0.00`, final distance `46.49`
+- `dynamic_crossing` Diff-MPPI: `diff_mppi_3 K=512`, success `1.00`, final distance `1.84`
+
+At a `1.00 ms` equal-time target:
+- `dynamic_crossing` MPPI: `K=8192 @ 1.03 ms`, success `0.00`, final distance `2.99`
+- `dynamic_crossing` grad-only: `K=8192 @ 0.78 ms`, success `0.00`, final distance `46.49`
+- `dynamic_crossing` Diff-MPPI: `diff_mppi_3 K=2048 @ 1.04 ms`, success `1.00`, final distance `1.90`
+
+This matters because it narrows the interpretation:
+
+> The observed gain is not just "adding gradients." The useful behavior comes from combining MPPI's global stochastic search with a short local refinement stage.
+
 ## Why This Helps the Novelty Story
 
 Before this follow-up, the strongest evidence was:
@@ -65,6 +111,7 @@ After this follow-up, the story is stronger because:
 - the dynamic obstacle introduces a genuinely time-dependent planning challenge
 - the advantage remains visible under an equal-time target, not only a loose cap
 - the result is about success, not only smaller terminal distance
+- the gradient-only ablation shows that hybridization, not just local gradient descent, is carrying the effect
 
 This is still not a broad novelty claim about all differentiable MPPI methods. But it is a more defensible narrow claim for this implementation direction.
 
@@ -79,6 +126,8 @@ The most defensible paper-style claim now looks like this:
 The two biggest gaps are now:
 - no direct comparison to a rollout-differentiation / feedback-MPPI style baseline
 - only a single dynamic-obstacle scenario so far
+
+The gradient-only ablation removes one weaker alternative explanation, but it does not close the stronger baseline gap.
 
 ## Next Step
 
