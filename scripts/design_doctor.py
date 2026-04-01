@@ -50,6 +50,11 @@ def parse_args() -> argparse.Namespace:
         help="Skip regenerating docs/convergence.md.",
     )
     parser.add_argument(
+        "--skip-actions",
+        action="store_true",
+        help="Skip regenerating docs/next_actions.md.",
+    )
+    parser.add_argument(
         "--skip-validate",
         action="store_true",
         help="Skip scripts/validate_design_workflow.py.",
@@ -113,6 +118,9 @@ def main() -> int:
 
     if not args.skip_convergence:
         run_step("refresh convergence doc", [sys.executable, "scripts/render_design_convergence.py"])
+
+    if not args.skip_actions:
+        run_step("refresh next-actions doc", [sys.executable, "scripts/render_design_actions.py"])
 
     if not args.skip_validate:
         run_step("validate design workflow", [sys.executable, "scripts/validate_design_workflow.py"])
