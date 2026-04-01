@@ -1,0 +1,434 @@
+#!/usr/bin/env python3
+
+import argparse
+import csv
+import subprocess
+import tempfile
+from collections import defaultdict
+from pathlib import Path
+
+from summarize_diff_mppi import load_rows, parse_float_list, planner_family, summarize_groups
+
+
+SUMMARY_METRICS = [
+    "success",
+    "steps",
+    "final_distance",
+    "min_goal_distance",
+    "cumulative_cost",
+    "collisions",
+    "avg_control_ms",
+    "total_control_ms",
+    "episode_ms",
+]
+
+
+def parse_args():
+    parser = argparse.ArgumentParser(description="Tune exact wall-clock-matched K values for benchmark_diff_mppi.")
+    parser.add_argument("--bin", default="./bin/benchmark_diff_mppi", help="Path to benchmark_diff_mppi binary")
+    parser.add_argument("--scenarios", default="dynamic_crossing,dynamic_slalom", help="Comma-separated scenario names")
+    parser.add_argument("--planners", default="mppi,feedback_mppi,diff_mppi_1,diff_mppi_3", help="Comma-separated planner names")
+    parser.add_argument("--time-targets", default="1.0,1.5", help="Comma-separated target controller times in ms")
+    parser.add_argument("--seed-count", type=int, default=4, help="Episodes per final tuned evaluation")
+    parser.add_argument("--k-min", type=int, default=128, help="Minimum K for search")
+    parser.add_argument("--k-max", type=int, default=16384, help="Maximum K for search")
+    parser.add_argument("--tolerance-ms", type=float, default=0.03, help="Target timing tolerance in ms")
+    parser.add_argument("--max-evals", type=int, default=8, help="Maximum search evaluations per scenario/planner/target")
+    parser.add_argument("--csv-out", default="build/benchmark_diff_mppi_exact_time.csv", help="Detailed tuned CSV output")
+    parser.add_argument("--search-csv-out", help="Optional CSV of all search evaluations")
+    parser.add_argument("--summary-out", help="Markdown summary output path")
+    return parser.parse_args()
+
+
+def parse_string_list(text):
+    values = []
+    for token in text.split(","):
+        token = token.strip()
+        if token:
+            values.append(token)
+    deduped = []
+    seen = set()
+    for value in values:
+        if value not in seen:
+            deduped.append(value)
+            seen.add(value)
+    return deduped
+
+
+def rank_summary(summary):
+    return (
+        -summary["success_mean"],
+        summary["final_distance_mean"],
+        summary["cumulative_cost_mean"],
+        summary["steps_mean"],
+        summary["avg_control_ms_mean"],
+    )
+
+
+def exact_time_rank(summary, target_ms):
+    return (
+        abs(summary["avg_control_ms_mean"] - target_ms),
+        -summary["success_mean"],
+        summary["final_distance_mean"],
+        summary["cumulative_cost_mean"],
+        summary["steps_mean"],
+        summary["k_samples"],
+    )
+
+
+class BenchmarkCache:
+    def __init__(self, bin_path, seed_count, workdir):
+        self.bin_path = Path(bin_path)
+        self.seed_count = seed_count
+        self.workdir = Path(workdir)
+        self.cache = {}
+
+    def evaluate(self, scenario, planner, k_samples, temp_dir):
+        key = (scenario, planner, int(k_samples), self.seed_count)
+        if key in self.cache:
+            return self.cache[key]
+
+        csv_path = Path(temp_dir) / f"{scenario}__{planner}__k{int(k_samples)}__s{self.seed_count}.csv"
+        cmd = [
+            str(self.bin_path),
+            "--scenarios", scenario,
+            "--planners", planner,
+            "--seed-count", str(self.seed_count),
+            "--k-values", str(int(k_samples)),
+            "--csv", str(csv_path),
+        ]
+        subprocess.run(
+            cmd,
+            cwd=self.workdir,
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+        )
+        rows = load_rows(csv_path)
+        summary_rows = summarize_groups(rows)
+        if len(summary_rows) != 1:
+            raise RuntimeError(f"Expected one summary row for {scenario}/{planner}/K={k_samples}, got {len(summary_rows)}")
+        record = {
+            "scenario": scenario,
+            "planner": planner,
+            "k_samples": int(k_samples),
+            "summary": summary_rows[0],
+            "rows": rows,
+        }
+        self.cache[key] = record
+        return record
+
+
+def tune_exact_target(cache, scenario, planner, target_ms, k_min, k_max, tolerance_ms, max_evals, temp_dir):
+    evaluated = {}
+
+    def evaluate(k_value):
+        k_value = max(k_min, min(k_max, int(round(k_value))))
+        if k_value not in evaluated:
+            evaluated[k_value] = cache.evaluate(scenario, planner, k_value, temp_dir)
+        return evaluated[k_value]
+
+    low = k_min
+    high = k_max
+    low_record = evaluate(low)
+    high_record = evaluate(high)
+    low_time = low_record["summary"]["avg_control_ms_mean"]
+    high_time = high_record["summary"]["avg_control_ms_mean"]
+
+    if low_time >= target_ms or low == high:
+        best = min((record["summary"] for record in evaluated.values()), key=lambda row: exact_time_rank(row, target_ms))
+        return best, list(evaluated.values())
+    if high_time <= target_ms:
+        best = min((record["summary"] for record in evaluated.values()), key=lambda row: exact_time_rank(row, target_ms))
+        return best, list(evaluated.values())
+
+    while len(evaluated) < max_evals:
+        if abs(low_time - target_ms) <= tolerance_ms or abs(high_time - target_ms) <= tolerance_ms:
+            break
+        if high - low <= 1:
+            break
+
+        slope = high_time - low_time
+        if slope <= 1.0e-6:
+            guess = (low + high) // 2
+        else:
+            guess = int(round(low + (target_ms - low_time) * (high - low) / slope))
+            guess = max(low + 1, min(high - 1, guess))
+
+        if guess in evaluated:
+            guess = (low + high) // 2
+        if guess <= low or guess >= high or guess in evaluated:
+            break
+
+        record = evaluate(guess)
+        guess_time = record["summary"]["avg_control_ms_mean"]
+        if guess_time <= target_ms:
+            low = guess
+            low_time = guess_time
+        else:
+            high = guess
+            high_time = guess_time
+
+    best_summary = min((record["summary"] for record in evaluated.values()), key=lambda row: exact_time_rank(row, target_ms))
+    return best_summary, list(evaluated.values())
+
+
+def aggregate_selected(selected_rows):
+    groups = defaultdict(list)
+    for row in selected_rows:
+        groups[(row["planner"], row["time_target_ms"])].append(row)
+
+    aggregate_rows = []
+    for (planner, target_ms), group in sorted(groups.items(), key=lambda item: (item[0][1], item[0][0])):
+        item = {
+            "planner": planner,
+            "time_target_ms": target_ms,
+            "num_scenarios": len(group),
+            "k_samples_mean": sum(row["k_samples"] for row in group) / len(group),
+            "time_gap_ms_mean": sum(abs(row["time_gap_ms"]) for row in group) / len(group),
+        }
+        for metric in SUMMARY_METRICS:
+            key = f"{metric}_mean"
+            values = [row[key] for row in group]
+            mean_value = sum(values) / len(values)
+            variance = 0.0
+            if len(values) > 1:
+                variance = sum((value - mean_value) ** 2 for value in values) / (len(values) - 1)
+            item[key] = mean_value
+            item[f"{metric}_std"] = variance ** 0.5
+        aggregate_rows.append(item)
+    return aggregate_rows
+
+
+def best_family_rows(selected_rows, family):
+    result = []
+    grouped = defaultdict(list)
+    for row in selected_rows:
+        grouped[(row["scenario"], row["time_target_ms"])].append(row)
+
+    for (scenario, target_ms), group in sorted(grouped.items()):
+        mppi = next((row for row in group if row["planner"] == "mppi"), None)
+        family_rows = [row for row in group if planner_family(row["planner"]) == family]
+        if not mppi or not family_rows:
+            continue
+        best = min(family_rows, key=lambda row: rank_summary(row))
+        result.append({
+            "scenario": scenario,
+            "time_target_ms": target_ms,
+            "mppi": mppi,
+            "best": best,
+            "delta_success": best["success_mean"] - mppi["success_mean"],
+            "delta_steps": best["steps_mean"] - mppi["steps_mean"],
+            "delta_final_distance": best["final_distance_mean"] - mppi["final_distance_mean"],
+            "delta_cost": best["cumulative_cost_mean"] - mppi["cumulative_cost_mean"],
+        })
+    return result
+
+
+def write_selected_csv(rows, path):
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fieldnames = [
+        "scenario",
+        "planner",
+        "seed",
+        "k_samples",
+        "t_horizon",
+        "grad_steps",
+        "alpha",
+        "reached_goal",
+        "collision_free",
+        "success",
+        "steps",
+        "final_distance",
+        "min_goal_distance",
+        "cumulative_cost",
+        "collisions",
+        "avg_control_ms",
+        "total_control_ms",
+        "episode_ms",
+        "sample_budget",
+        "time_target_ms",
+        "time_gap_ms",
+    ]
+    with open(path, "w", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer.writeheader()
+        for row in rows:
+            writer.writerow(row)
+
+
+def write_search_csv(rows, path):
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fieldnames = [
+        "scenario",
+        "planner",
+        "time_target_ms",
+        "k_samples",
+        "success_mean",
+        "steps_mean",
+        "final_distance_mean",
+        "cumulative_cost_mean",
+        "avg_control_ms_mean",
+        "time_gap_ms",
+    ]
+    with open(path, "w", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer.writeheader()
+        for row in rows:
+            writer.writerow(row)
+
+
+def fmt_pm(mean_value, std_value, digits=2):
+    return f"{mean_value:.{digits}f} ± {std_value:.{digits}f}"
+
+
+def build_markdown(selected_rows, aggregate_rows, diff_rows, feedback_rows, search_rows, csv_out):
+    lines = []
+    lines.append("# Diff-MPPI Exact-Time Tuning Summary")
+    lines.append("")
+    lines.append(f"Selected tuned CSV: `{csv_out}`")
+    lines.append("")
+    lines.append("## Aggregate Across Exact-Time Targets")
+    lines.append("")
+    lines.append("| Target ms | Planner | Scenarios | Success | Steps | Final Dist | Cum. Cost | Avg Control ms | Mean K | Mean |Gap| ms |")
+    lines.append("|---|---|---|---|---|---|---|---|---|---|")
+    for row in aggregate_rows:
+        lines.append(
+            f"| {row['time_target_ms']:.2f} | {row['planner']} | {row['num_scenarios']} | "
+            f"{fmt_pm(row['success_mean'], row['success_std'], 2)} | "
+            f"{fmt_pm(row['steps_mean'], row['steps_std'], 1)} | "
+            f"{fmt_pm(row['final_distance_mean'], row['final_distance_std'], 2)} | "
+            f"{fmt_pm(row['cumulative_cost_mean'], row['cumulative_cost_std'], 1)} | "
+            f"{fmt_pm(row['avg_control_ms_mean'], row['avg_control_ms_std'], 2)} | "
+            f"{row['k_samples_mean']:.0f} | {row['time_gap_ms_mean']:.3f} |"
+        )
+    lines.append("")
+    lines.append("## Best Diff Variant at Exact-Time Targets")
+    lines.append("")
+    lines.append("| Scenario | Target ms | MPPI K@ms | Best Diff K@ms | MPPI Dist | Diff Dist | Delta Dist | Delta Steps |")
+    lines.append("|---|---|---|---|---|---|---|---|")
+    for row in diff_rows:
+        lines.append(
+            f"| {row['scenario']} | {row['time_target_ms']:.2f} | "
+            f"{row['mppi']['k_samples']} @ {row['mppi']['avg_control_ms_mean']:.3f} | "
+            f"{row['best']['planner']} ({row['best']['k_samples']} @ {row['best']['avg_control_ms_mean']:.3f}) | "
+            f"{row['mppi']['final_distance_mean']:.2f} | {row['best']['final_distance_mean']:.2f} | "
+            f"{row['delta_final_distance']:.2f} | {row['delta_steps']:.1f} |"
+        )
+    lines.append("")
+    lines.append("## Best Feedback Variant at Exact-Time Targets")
+    lines.append("")
+    lines.append("| Scenario | Target ms | MPPI K@ms | Feedback K@ms | MPPI Dist | Feedback Dist | Delta Dist | Delta Steps |")
+    lines.append("|---|---|---|---|---|---|---|---|")
+    for row in feedback_rows:
+        lines.append(
+            f"| {row['scenario']} | {row['time_target_ms']:.2f} | "
+            f"{row['mppi']['k_samples']} @ {row['mppi']['avg_control_ms_mean']:.3f} | "
+            f"{row['best']['planner']} ({row['best']['k_samples']} @ {row['best']['avg_control_ms_mean']:.3f}) | "
+            f"{row['mppi']['final_distance_mean']:.2f} | {row['best']['final_distance_mean']:.2f} | "
+            f"{row['delta_final_distance']:.2f} | {row['delta_steps']:.1f} |"
+        )
+    lines.append("")
+    lines.append("## Search Trace")
+    lines.append("")
+    lines.append("| Scenario | Planner | Target ms | K | Avg Control ms | |Gap| ms | Success | Final Dist |")
+    lines.append("|---|---|---|---|---|---|---|---|")
+    for row in search_rows:
+        lines.append(
+            f"| {row['scenario']} | {row['planner']} | {row['time_target_ms']:.2f} | {row['k_samples']} | "
+            f"{row['avg_control_ms_mean']:.3f} | {abs(row['time_gap_ms']):.3f} | "
+            f"{row['success_mean']:.2f} | {row['final_distance_mean']:.2f} |"
+        )
+    lines.append("")
+    return "\n".join(lines)
+
+
+def main():
+    args = parse_args()
+    workdir = Path.cwd()
+    bin_path = Path(args.bin)
+    if not bin_path.is_absolute():
+        bin_path = (workdir / bin_path).resolve()
+    if not bin_path.exists():
+        raise SystemExit(f"Benchmark binary not found: {bin_path}")
+
+    scenarios = parse_string_list(args.scenarios)
+    planners = parse_string_list(args.planners)
+    time_targets = parse_float_list(args.time_targets)
+    seed_count = max(1, args.seed_count)
+    k_min = max(1, args.k_min)
+    k_max = max(k_min, args.k_max)
+
+    cache = BenchmarkCache(bin_path, seed_count, workdir)
+    selected_summary_rows = []
+    selected_episode_rows = []
+    search_trace_rows = []
+
+    with tempfile.TemporaryDirectory(prefix="diff_mppi_exact_time_", dir=str(workdir / "build")) as temp_dir:
+        for target_ms in time_targets:
+            for scenario in scenarios:
+                for planner in planners:
+                    best_summary, evaluated_records = tune_exact_target(
+                        cache,
+                        scenario,
+                        planner,
+                        target_ms,
+                        k_min,
+                        k_max,
+                        args.tolerance_ms,
+                        args.max_evals,
+                        temp_dir,
+                    )
+                    best_record = next(record for record in evaluated_records if record["summary"]["k_samples"] == best_summary["k_samples"])
+                    selected_row = dict(best_summary)
+                    selected_row["scenario"] = scenario
+                    selected_row["planner"] = planner
+                    selected_row["time_target_ms"] = target_ms
+                    selected_row["time_gap_ms"] = best_summary["avg_control_ms_mean"] - target_ms
+                    selected_summary_rows.append(selected_row)
+
+                    for record in sorted(evaluated_records, key=lambda item: item["k_samples"]):
+                        summary = record["summary"]
+                        search_trace_rows.append({
+                            "scenario": scenario,
+                            "planner": planner,
+                            "time_target_ms": target_ms,
+                            "k_samples": summary["k_samples"],
+                            "success_mean": summary["success_mean"],
+                            "steps_mean": summary["steps_mean"],
+                            "final_distance_mean": summary["final_distance_mean"],
+                            "cumulative_cost_mean": summary["cumulative_cost_mean"],
+                            "avg_control_ms_mean": summary["avg_control_ms_mean"],
+                            "time_gap_ms": summary["avg_control_ms_mean"] - target_ms,
+                        })
+
+                    for row in best_record["rows"]:
+                        episode_row = dict(row)
+                        episode_row["time_target_ms"] = target_ms
+                        episode_row["time_gap_ms"] = best_summary["avg_control_ms_mean"] - target_ms
+                        selected_episode_rows.append(episode_row)
+
+    csv_out = Path(args.csv_out)
+    summary_out = Path(args.summary_out) if args.summary_out else csv_out.with_name(f"{csv_out.stem}_summary.md")
+    search_csv_out = Path(args.search_csv_out) if args.search_csv_out else csv_out.with_name(f"{csv_out.stem}_search.csv")
+
+    write_selected_csv(selected_episode_rows, csv_out)
+    write_search_csv(search_trace_rows, search_csv_out)
+
+    aggregate_rows = aggregate_selected(selected_summary_rows)
+    diff_rows = best_family_rows(selected_summary_rows, "diff")
+    feedback_rows = best_family_rows(selected_summary_rows, "feedback")
+    markdown = build_markdown(selected_summary_rows, aggregate_rows, diff_rows, feedback_rows, search_trace_rows, csv_out)
+    summary_out.parent.mkdir(parents=True, exist_ok=True)
+    summary_out.write_text(markdown)
+
+    print(f"Exact-time selected CSV saved to {csv_out}")
+    print(f"Exact-time search trace saved to {search_csv_out}")
+    print(f"Exact-time summary saved to {summary_out}")
+
+
+if __name__ == "__main__":
+    main()
