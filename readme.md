@@ -99,7 +99,7 @@ python3 scripts/summarize_diff_mppi.py --csv build/benchmark_diff_mppi_dynamic_p
 python3 scripts/plot_diff_mppi.py --csv build/benchmark_diff_mppi_dynamic_pair.csv --out-dir build/plots_dynamic_pair --time-caps 1.0,1.5 --time-targets 1.0,1.5
 ```
 
-This follow-up now includes two moving-obstacle tasks: `dynamic_crossing`, where one obstacle sweeps across the path, and `dynamic_slalom`, where a descending obstacle intersects a static slalom course. In the current benchmark, vanilla MPPI fails both tasks across the tested `K` sweep, while Diff-MPPI remains successful under both fixed-budget and matched-time comparisons. The current write-up is in `paper/diff_mppi_novelty_followup.md`.
+This follow-up now includes two moving-obstacle tasks: `dynamic_crossing`, where one obstacle sweeps across the path, and `dynamic_slalom`, where a descending obstacle intersects a static slalom course. In the current benchmark, vanilla MPPI fails both tasks across the tested `K` sweep, while Diff-MPPI remains successful under both fixed-budget and matched-time comparisons. The current write-up is in `paper/diff_mppi_novelty_followup.md`, and the current `ICRA/IROS` submission-gap assessment is in `paper/icra_iros_gap_list.md`.
 
 Hybrid-versus-gradient-only ablation:
 
