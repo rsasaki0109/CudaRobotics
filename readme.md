@@ -88,8 +88,18 @@ python3 scripts/summarize_diff_mppi.py --csv build/benchmark_diff_mppi_wall_cloc
 python3 scripts/plot_diff_mppi.py --csv build/benchmark_diff_mppi_wall_clock.csv --out-dir build/plots --time-caps 1.1,1.5,2.0
 ```
 
-The benchmark writes per-episode CSV metrics, the summarizer emits Markdown and LaTeX tables for fixed-budget and cap-based wall-clock comparisons, and the plotter generates paper-friendly PNG/PDF figures in `build/plots/`, including `diff_mppi_final_distance_vs_time_cap.*`.
+The benchmark writes per-episode CSV metrics, the summarizer emits Markdown and LaTeX tables for fixed-budget, cap-based wall-clock, and equal-time target comparisons, and the plotter generates paper-friendly PNG/PDF figures in `build/plots/`, including `diff_mppi_final_distance_vs_time_cap.*` and `diff_mppi_final_distance_vs_equal_time.*`.
 A paper-style interpretation of the current benchmark is collected in `paper/diff_mppi_results.md`.
+
+Dynamic-obstacle follow-up:
+
+```bash
+./bin/benchmark_diff_mppi --scenarios dynamic_crossing --k-values 256,512,1024,2048,4096,6144,8192 --csv build/benchmark_diff_mppi_dynamic.csv
+python3 scripts/summarize_diff_mppi.py --csv build/benchmark_diff_mppi_dynamic.csv --time-caps 1.0,1.5 --time-targets 1.0,1.5
+python3 scripts/plot_diff_mppi.py --csv build/benchmark_diff_mppi_dynamic.csv --out-dir build/plots_dynamic --time-caps 1.0,1.5 --time-targets 1.0,1.5
+```
+
+This follow-up adds a moving-obstacle benchmark and an equal-time target analysis. The current write-up is in `paper/diff_mppi_novelty_followup.md`.
 
 ### Point-cloud benchmark snapshot
 
