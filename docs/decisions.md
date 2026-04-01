@@ -140,9 +140,11 @@ Status: accepted
 Decision:
 - each module under `experiments/` must expose its own `PROBLEM_KIND`, `INTERFACE_FILE`, and presentation metadata
 - each module must own its own `build_requests(rows)` function
+- each module must own its own `build_report(rows, iterations)` function
 - `scripts/run_design_experiments.py` should discover experiment modules instead of importing a hard-coded list
 
 Why:
 - adding a new concrete problem should mostly change that problem's package, not the central runner
 - request generation is part of the problem definition, so it belongs with the problem
+- report assembly is also part of the problem definition, so it should not live in a central `if/else` ladder
 - this keeps the workflow tidy without promoting problem-specific logic into `core/`

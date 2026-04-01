@@ -27,6 +27,7 @@ REQUIRED_MODULE_ATTRIBUTES = [
     "REQUEST_SUMMARY",
     "METRIC_NOTES",
     "build_requests",
+    "build_report",
 ]
 
 SUPPORTED_PROBLEM_KINDS = {

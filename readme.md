@@ -232,6 +232,7 @@ All variants consume the same aggregated input rows, answer the same request typ
 
 The workflow is now module-driven rather than import-driven:
 - each `experiments/<problem>/__init__.py` package declares its own metadata and request builder
+- each problem package also owns its own report builder
 - `scripts/run_design_experiments.py` discovers those modules automatically
 - `scripts/validate_design_workflow.py` fails if a discovered module is missing from generated docs
 

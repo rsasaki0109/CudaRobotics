@@ -70,6 +70,10 @@ def build_requests(rows):
     raise NotImplementedError("Define build_requests(rows) before enabling this problem in the experiment harness")
 
 
+def build_report(rows, iterations):
+    raise NotImplementedError("Define build_report(rows, iterations) before enabling this problem in the experiment harness")
+
+
 def build_variants():
     return [
         FunctionalVariant(),
