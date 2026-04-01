@@ -150,6 +150,9 @@ Why:
 - report assembly is also part of the problem definition, so it should not live in a central `if/else` ladder
 - this keeps the workflow tidy without promoting problem-specific logic into `core/`
 
+Operational note:
+- `PROBLEM_KIND` is now validated as a slug-like metadata field, not against a central allow-list
+
 ## D-010: Generated Docs Must Match The Checked-In State
 
 Status: accepted

@@ -89,7 +89,7 @@ Current experimental problems:
 - [`experiments/time_budget_selection`](../experiments/time_budget_selection)
 
 Each experiment module is now self-describing:
-- `PROBLEM_KIND`: selects the evaluation family
+- `PROBLEM_KIND`: slug-like metadata describing the problem family
 - `INTERFACE_FILE`: points back to the minimum matching contract in `core/`
 - `TITLE`, `DESCRIPTION_LINES`, `REQUEST_SUMMARY`, `METRIC_NOTES`: drive generated docs
 - `build_requests(rows)`: owns request generation for that problem

@@ -237,7 +237,7 @@ Each problem is implemented three different ways:
 All variants consume the same aggregated input rows, answer the same request type for their problem, and are scored under the same benchmark, readability, and extensibility proxies. The process uses version-controlled fixture CSVs in `experiments/data/`, so design comparisons are reproducible without regenerating the heavy benchmark suite. `scripts/validate_design_workflow.py` now also checks that every experiment module appears in generated docs, which keeps the process state externalized instead of hiding it in code only. Nothing in `experiments/` is assumed to be permanent.
 
 The workflow is now module-driven rather than import-driven:
-- each `experiments/<problem>/__init__.py` package declares its own metadata and request builder
+- each `experiments/<problem>/__init__.py` package declares its own slug-like metadata and request builder
 - each problem package also owns its own report builder
 - `scripts/run_design_experiments.py` discovers those modules automatically
 - `scripts/run_design_experiments.py` also discovers fixture CSVs automatically from `experiments/data/`
