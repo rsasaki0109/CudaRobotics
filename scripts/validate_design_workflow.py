@@ -20,6 +20,7 @@ REQUIRED_DOCS = [
     ROOT / "docs" / "experiments_history.md",
     ROOT / "docs" / "convergence.md",
     ROOT / "docs" / "next_actions.md",
+    ROOT / "docs" / "helper_promotion.md",
     ROOT / "docs" / "decisions.md",
     ROOT / "docs" / "interfaces.md",
 ]
@@ -28,6 +29,7 @@ FIXTURE_MANIFEST = FIXTURE_DIR / "manifest.json"
 HISTORY_DIR = ROOT / "experiments" / "history"
 HISTORY_POLICY = HISTORY_DIR / "policy.json"
 ACTIONS_POLICY = HISTORY_DIR / "actions_policy.json"
+HELPER_POLICY = HISTORY_DIR / "helper_policy.json"
 
 REQUIRED_MODULE_ATTRIBUTES = [
     "PROBLEM_KIND",
@@ -137,7 +139,7 @@ def validate_history_snapshots() -> None:
     if not HISTORY_DIR.exists():
         raise RuntimeError(f"Missing design history directory: {HISTORY_DIR.relative_to(ROOT)}")
 
-    excluded = {HISTORY_POLICY.name, ACTIONS_POLICY.name}
+    excluded = {HISTORY_POLICY.name, ACTIONS_POLICY.name, HELPER_POLICY.name}
     snapshots = sorted(path for path in HISTORY_DIR.glob("*.json") if path.name not in excluded)
     if not snapshots:
         raise RuntimeError("No design history snapshots found under experiments/history/")
@@ -207,6 +209,17 @@ def validate_actions_policy() -> None:
         raise RuntimeError("experiments/history/actions_policy.json must contain a defaults object")
     if not isinstance(data.get("actions"), dict) or not data["actions"]:
         raise RuntimeError("experiments/history/actions_policy.json must contain a non-empty actions object")
+
+
+def validate_helper_policy() -> None:
+    if not HELPER_POLICY.exists():
+        raise RuntimeError(f"Missing helper promotion policy: {HELPER_POLICY.relative_to(ROOT)}")
+    data = json.loads(HELPER_POLICY.read_text())
+    if data.get("schema_version") != 1:
+        raise RuntimeError("experiments/history/helper_policy.json must declare schema_version 1")
+    thresholds = data.get("thresholds")
+    if not isinstance(thresholds, dict) or not thresholds:
+        raise RuntimeError("experiments/history/helper_policy.json must contain a non-empty thresholds object")
 
 
 def normalize_generated_doc(text: str) -> str:
@@ -341,8 +354,32 @@ def validate_generated_next_actions() -> None:
         )
 
 
+def validate_generated_helper_promotion() -> None:
+    out_dir = ROOT / "build" / "design_docs_validation"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    subprocess.run(
+        [
+            sys.executable,
+            "scripts/render_helper_promotion.py",
+            "--output",
+            str((out_dir / "helper_promotion.md").relative_to(ROOT)),
+        ],
+        cwd=ROOT,
+        check=True,
+    )
+    generated = out_dir / "helper_promotion.md"
+    if not generated.exists():
+        raise RuntimeError("render_helper_promotion.py did not generate helper_promotion.md in validation output")
+    checked_in = ROOT / "docs" / "helper_promotion.md"
+    if checked_in.read_text() != generated.read_text():
+        raise RuntimeError(
+            "docs/helper_promotion.md is stale. "
+            "Run `python3 scripts/render_helper_promotion.py` and commit the refreshed doc."
+        )
+
+
 def validate_snapshot_compare() -> None:
-    excluded = {HISTORY_POLICY.name, ACTIONS_POLICY.name}
+    excluded = {HISTORY_POLICY.name, ACTIONS_POLICY.name, HELPER_POLICY.name}
     snapshots = sorted(path for path in HISTORY_DIR.glob("*.json") if path.name not in excluded)
     if len(snapshots) < 2:
         return
@@ -372,6 +409,7 @@ def main() -> int:
     validate_history_snapshots()
     validate_history_policy()
     validate_actions_policy()
+    validate_helper_policy()
     modules = experiment_modules()
     if not modules:
         raise RuntimeError("No experiment modules found under experiments/")
@@ -381,6 +419,7 @@ def main() -> int:
     validate_generated_history()
     validate_generated_convergence()
     validate_generated_next_actions()
+    validate_generated_helper_promotion()
     validate_snapshot_compare()
     print("Design workflow validation passed")
     return 0
