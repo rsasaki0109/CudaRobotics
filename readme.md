@@ -46,7 +46,7 @@ Recent additions push the repository beyond direct CUDA ports of classic robotic
 | Project | Binaries | Highlights |
 |---|---|---|
 | Autodiff + GPU MLP foundation | `test_autodiff`, `test_gpu_mlp` | Dual-number forward-mode autodiff and a compact GPU MLP training/inference engine used as the base for later research-style experiments. |
-| Differentiable MPPI | `diff_mppi`, `comparison_diff_mppi`, `benchmark_diff_mppi` | Extends MPPI with a dual-number backward pass, side-by-side comparisons, dynamic-obstacle suites, a nominal-linearization `feedback_mppi` baseline, a `grad_only_3` ablation, and a CSV benchmark suite for fixed-budget, cap-based wall-clock, and equal-time quality-vs-compute experiments. |
+| Differentiable MPPI | `diff_mppi`, `comparison_diff_mppi`, `benchmark_diff_mppi`, `benchmark_diff_mppi_cartpole` | Extends MPPI with a dual-number backward pass, side-by-side comparisons, dynamic-obstacle suites, a nominal-linearization `feedback_mppi` baseline, a `grad_only_3` ablation, a trace-based mechanism analysis, and a pilot CartPole benchmark outside the 2D navigation domain. |
 | Neural SDF Navigation | `neural_sdf`, `sdf_potential_field`, `sdf_mppi`, `comparison_sdf_nav` | Learns 2D signed distance fields with a GPU MLP, then uses them for potential-field planning and MPPI on non-circular obstacle layouts. |
 | Neuroevolution for Cart-Pole | `neuroevo`, `comparison_neuroevo` | Evolves 4096 neural policies in parallel on GPU and compares them against a CPU baseline with side-by-side learning curves. |
 | MiniIsaacGym | `mini_isaac`, `mini_isaac_rl` | Runs thousands of CartPole environments in parallel on GPU and trains a compact policy with GPU-side REINFORCE updates. |
@@ -127,6 +127,16 @@ python3 scripts/plot_diff_mppi.py --csv build/benchmark_diff_mppi_ablation.csv -
 ```
 
 This ablation isolates whether local gradients alone explain the gains. In the current benchmark, `grad_only_3` improves `corner_turn` slightly over vanilla MPPI but fails the `dynamic_crossing` task completely, while the hybrid Diff-MPPI variants remain successful.
+
+Outside-domain CartPole follow-up:
+
+```bash
+./bin/benchmark_diff_mppi_cartpole --csv build/benchmark_diff_mppi_cartpole.csv
+python3 scripts/summarize_diff_mppi.py --csv build/benchmark_diff_mppi_cartpole.csv --markdown-out build/benchmark_diff_mppi_cartpole_summary.md --latex-out build/benchmark_diff_mppi_cartpole_summary.tex --time-caps 0.25,0.5,0.75 --time-targets 0.25,0.5
+python3 scripts/plot_diff_mppi.py --csv build/benchmark_diff_mppi_cartpole.csv --out-dir build/plots_cartpole --time-caps 0.25,0.5,0.75 --time-targets 0.25,0.5
+```
+
+This pilot benchmark reuses the repository's nonlinear CartPole dynamics to test Diff-MPPI outside the 2D kinematic navigation setting. The current result is mixed by design rather than oversold: on `cartpole_recover`, `diff_mppi_3` improves over vanilla MPPI at `K=256` and `K=2048`, while on `cartpole_large_angle` the best Diff-MPPI variant slightly lowers terminal stabilization error at `K=512` and `K=1024` but none of the planners fully solve the task. This partially addresses the "2D-only" reviewer concern, but it is still a pilot underactuated-dynamics benchmark rather than a full high-fidelity robotics evaluation. The current write-up is in `paper/diff_mppi_cartpole_followup.md`.
 
 ### Point-cloud benchmark snapshot
 
