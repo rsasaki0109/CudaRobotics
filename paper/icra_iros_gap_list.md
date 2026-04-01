@@ -134,13 +134,14 @@ The project now has:
 - cap-based comparisons
 - equal-time nearest-match comparisons
 - exact matched-time tuning on the current dynamic two-task suite
+- exact matched-time tuning on the dynamic-bicycle follow-up pilot
 
 That is already much better than most quick research repos.
 
 But a skeptical reviewer can still say:
 - the exact-time tuning currently searches `K` only, not the full controller design space
 - the exact-time result is currently concentrated on the dynamic two-task suite, not the full benchmark portfolio
-- the time-matched claim is still limited to 2D toy domains
+- outside the base suite, the time-matched claim currently reaches only a custom medium-fidelity dynamic-bicycle pilot
 
 That is fixable, but right now it remains a vulnerability.
 
