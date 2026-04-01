@@ -39,6 +39,40 @@ GPU enables orders-of-magnitude more particles/samples, resulting in visually be
 
 </details>
 
+## Novel Research Extensions
+
+Recent additions push the repository beyond direct CUDA ports of classic robotics algorithms into differentiable building blocks, GPU-native learning systems, point-cloud processing, and large-scale swarm optimization.
+
+| Project | Binaries | Highlights |
+|---|---|---|
+| Autodiff + GPU MLP foundation | `test_autodiff`, `test_gpu_mlp` | Dual-number forward-mode autodiff and a compact GPU MLP training/inference engine used as the base for later research-style experiments. |
+| Neuroevolution for Cart-Pole | `neuroevo`, `comparison_neuroevo` | Evolves 4096 neural policies in parallel on GPU and compares them against a CPU baseline with side-by-side learning curves. |
+| CudaPointCloud | `voxel_grid_filter`, `statistical_filter`, `normal_estimation`, `gicp`, `ransac_plane`, `benchmark_pointcloud` | GPU voxel filtering, outlier removal, PCA normals, plane extraction, and GICP registration for synthetic indoor point clouds. |
+| Swarm Optimization | `pso_cuda`, `differential_evolution`, `cma_es`, `aco_tsp`, `comparison_swarm` | Large-scale PSO, DE, CMA-ES, and ACO implementations with animated convergence comparisons. |
+
+| | |
+|---|---|
+| **Neuroevolution: CPU 100 vs CUDA 4096 individuals** | **Swarm Optimization: PSO vs DE vs CMA-ES** |
+| <img src="https://rsasaki0109.github.io/CudaRobotics/comparison_neuroevo.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/comparison_swarm.gif" width="400"/> |
+| **GPU Neuroevolution Cart-Pole replay** | **Particle Swarm Optimization** |
+| <img src="https://rsasaki0109.github.io/CudaRobotics/neuroevo.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/pso.gif" width="400"/> |
+| **Ant Colony Optimization for TSP** | |
+| <img src="https://rsasaki0109.github.io/CudaRobotics/aco_tsp.gif" width="400"/> | |
+
+### Point-cloud benchmark snapshot
+
+`bin/benchmark_pointcloud` generates a synthetic room cloud and compares CPU vs GPU implementations of voxel-grid filtering, statistical outlier removal, normal estimation, RANSAC plane fitting, and GICP registration.
+
+Representative results from the current benchmark:
+
+| Points | Operation | CPU | GPU | Speedup |
+|---|---|---:|---:|---:|
+| 2,000 | Statistical Filter | 388.79 ms | 0.79 ms | **492.3x** |
+| 2,000 | Normal Estimation | 574.33 ms | 0.96 ms | **599.0x** |
+| 2,000 | RANSAC Plane | 14.97 ms | 0.18 ms | **82.9x** |
+| 20,000 | Voxel Grid | 10.83 ms | 2.31 ms | **4.7x** |
+| 20,000 | RANSAC Plane | 142.38 ms | 1.04 ms | **136.3x** |
+
 ## Requirements
 - CMake >= 3.18
 - CUDA Toolkit >= 11.0
@@ -73,6 +107,7 @@ Requires [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-nat
 | **AMCL** | `amcl` | **Adaptive particle count + GPU likelihood field + KLD-sampling** |
 | **FastSLAM 1.0** | `fastslam1` | **Particle x Landmark parallel EKF update (SLAM)** |
 | **Graph SLAM** | `graph_slam` | **GPU pose graph optimization with CG solver (SLAM)** |
+| PF on Episode | `pf_on_episode` | Particle-filter localization over full trajectory episodes |
 
 #### Particle Filter
 Each particle's motion prediction and observation likelihood computation runs as an independent GPU thread. Systematic resampling uses parallel binary search.
@@ -152,6 +187,33 @@ Three GPU kernels: (1) parallel collision checking of N=500 random samples, (2) 
 
 #### Voronoi Road Map
 Uses the Jump Flooding Algorithm (JFA) on GPU to construct a Voronoi diagram in O(log N) fully-parallel passes. Each pass, every grid cell checks neighbors at decreasing step sizes and adopts the nearest seed. Road map extracted from Voronoi edges, path found with Dijkstra.
+
+### Registration / Point Clouds
+
+| Algorithm | Binary | CUDA Parallelization |
+|---|---|---|
+| ICP | `icp` | GPU nearest-neighbor correspondences + batch transform updates |
+| NDT | `ndt` | Voxelized normal-distribution matching kernels |
+| GICP | `gicp` | GPU correspondences + point-to-plane system accumulation |
+| Voxel Grid Filter | `voxel_grid_filter` | Point-wise voxel assignment + centroid accumulation |
+| Statistical Outlier Removal | `benchmark_pointcloud` | Brute-force GPU k-NN mean-distance filtering |
+| Normal Estimation | `benchmark_pointcloud` | PCA normal estimation with one thread per point |
+| RANSAC Plane | `ransac_plane` | One RANSAC hypothesis per thread with device-side RNG |
+
+#### GICP
+Generalized ICP uses GPU nearest-neighbor search and point-to-plane system accumulation, then solves the 6x6 update on the host. The same infrastructure is reused by `bin/benchmark_pointcloud` to report CPU vs GPU registration throughput.
+
+### Learning / Optimization
+
+| Algorithm | Binary | CUDA Parallelization |
+|---|---|---|
+| Neuroevolution | `neuroevo` | One policy evaluation per individual, 4096 individuals in parallel |
+| Neuroevolution Comparison | `comparison_neuroevo` | CPU sequential evolution vs GPU population-scale evolution |
+| PSO | `pso_cuda` | 100K particles updated in parallel |
+| Differential Evolution | `differential_evolution` | Population-wide mutation, crossover, and selection on GPU |
+| CMA-ES | `cma_es` | GPU candidate evaluation and covariance-guided search |
+| ACO for TSP | `aco_tsp` | Thousands of ants concurrently construct tours |
+| Swarm Comparison | `comparison_swarm` | Side-by-side convergence visualization for PSO, DE, and CMA-ES |
 
 ### Mapping
 

@@ -285,7 +285,9 @@ static std::vector<std::pair<float,float>> dijkstra(
     pq.push({0.0f, start_id});
 
     while (!pq.empty()) {
-        auto [d, u] = pq.top(); pq.pop();
+        PQE current = pq.top();
+        pq.pop();
+        int u = current.second;
         if (visited[u]) continue;
         visited[u] = true;
         if (u == goal_id) break;
