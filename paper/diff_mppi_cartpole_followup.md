@@ -3,6 +3,7 @@
 Date: 2026-04-02
 
 This note records a reviewer-driven outside-domain follow-up for the `Diff-MPPI` line.
+It now sits alongside the later dynamic-bicycle mobile-navigation follow-up in `paper/diff_mppi_dynamic_bicycle_followup.md`.
 The goal is not to claim a full high-fidelity robotics evaluation.
 The goal is narrower:
 

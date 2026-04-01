@@ -50,6 +50,7 @@ The current line now has real positives:
 - a strengthened in-repo `feedback_mppi` baseline inside the same harness
 - a closer rollout-sensitivity `feedback_mppi_sens` baseline inside the same harness
 - a `grad_only_3` ablation that removes one weak alternative explanation
+- two outside-domain pilots: nonlinear `CartPole` and dynamic-bicycle mobile navigation
 - a narrow claim that is honest and empirically supported
 
 The strongest current claim is:
@@ -119,11 +120,13 @@ It does make it harder to justify a main-track acceptance when nearby papers eva
 - 7-DOF manipulators
 - uncertain dynamic environments with perception noise
 
-There is now one partial exception:
+There are now two partial exceptions:
 - a pilot nonlinear CartPole benchmark outside the 2D navigation suite
+- a dynamic-bicycle mobile-navigation pilot with steering lag and drag
 
 That helps because the project is no longer purely a 2D kinematic story.
-But it still does not count as the kind of stronger robotics-domain evaluation that fully closes this gap.
+The dynamic-bicycle result is the more useful of the two for reviewer defense, because it stays in obstacle-avoidance planning while adding richer vehicle dynamics.
+But neither pilot yet counts as the kind of stronger robotics-domain evaluation that fully closes this gap.
 
 ### 4. The matched-time story is much better, and now has direct tuning, but is still not complete
 
@@ -187,7 +190,8 @@ Why this is critical:
 
 Current status:
 - partially addressed by the new `benchmark_diff_mppi_cartpole` pilot
-- not closed, because CartPole is still an underactuated control toy domain rather than a high-fidelity robotics task
+- partially addressed again by the new `benchmark_diff_mppi_dynamic_bicycle` pilot
+- not closed, because CartPole is still an underactuated control toy domain and the dynamic-bicycle benchmark is still a custom medium-fidelity pilot rather than a standardized high-fidelity robotics task
 
 3. Extend the direct time-tuning protocol
 
