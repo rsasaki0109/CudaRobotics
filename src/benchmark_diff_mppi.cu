@@ -75,10 +75,12 @@ struct PlannerVariant {
     bool use_gradient = false;
     int grad_steps = 0;
     float alpha = 0.0f;
-    float feedback_longitudinal = 0.0f;
-    float feedback_lateral = 0.0f;
-    float feedback_heading = 0.0f;
-    float feedback_speed = 0.0f;
+    float feedback_q_position = 0.0f;
+    float feedback_q_heading = 0.0f;
+    float feedback_q_speed = 0.0f;
+    float feedback_r_accel = 0.0f;
+    float feedback_r_steer = 0.0f;
+    float feedback_terminal_scale = 0.0f;
 };
 
 struct EpisodeMetrics {
@@ -201,10 +203,151 @@ __host__ __device__ inline float wrap_angle(float angle) {
     return angle;
 }
 
+__device__ inline bool invert_2x2(const float A[2][2], float invA[2][2]) {
+    float det = A[0][0] * A[1][1] - A[0][1] * A[1][0];
+    if (fabsf(det) < 1.0e-8f) return false;
+    float inv_det = 1.0f / det;
+    invA[0][0] = A[1][1] * inv_det;
+    invA[0][1] = -A[0][1] * inv_det;
+    invA[1][0] = -A[1][0] * inv_det;
+    invA[1][1] = A[0][0] * inv_det;
+    return true;
+}
+
+__global__ void compute_feedback_gains_kernel(
+    const float* d_states,
+    const float* d_nominal,
+    float* d_feedback_gains,
+    BicycleParams params,
+    CostParams cost_params,
+    int T,
+    float q_position_scale,
+    float q_heading_scale,
+    float q_speed_scale,
+    float r_accel_scale,
+    float r_steer_scale,
+    float terminal_scale)
+{
+    if (blockIdx.x != 0 || threadIdx.x != 0) return;
+
+    float q_position = fmaxf(0.05f, cost_params.goal_weight * params.dt * q_position_scale);
+    float q_heading = fmaxf(0.02f, cost_params.heading_weight * params.dt * q_heading_scale);
+    float q_speed = fmaxf(0.02f, cost_params.speed_weight * params.dt * q_speed_scale);
+    float r_accel = fmaxf(0.05f, cost_params.control_weight * params.dt * r_accel_scale);
+    float r_steer = fmaxf(0.03f, cost_params.control_weight * params.dt * r_steer_scale);
+
+    float Q[4][4] = {};
+    Q[0][0] = q_position;
+    Q[1][1] = q_position;
+    Q[2][2] = q_heading;
+    Q[3][3] = q_speed;
+
+    float P[4][4] = {};
+    P[0][0] = fmaxf(0.25f, cost_params.terminal_weight * terminal_scale);
+    P[1][1] = fmaxf(0.25f, cost_params.terminal_weight * terminal_scale);
+    P[2][2] = fmaxf(0.10f, cost_params.heading_weight * terminal_scale);
+    P[3][3] = fmaxf(0.10f, cost_params.speed_weight * terminal_scale);
+
+    for (int t = T - 1; t >= 0; t--) {
+        float x = d_states[t * 4 + 0];
+        float y = d_states[t * 4 + 1];
+        float theta = d_states[t * 4 + 2];
+        float v = d_states[t * 4 + 3];
+        float accel = d_nominal[t * 2 + 0];
+        float steer = d_nominal[t * 2 + 1];
+
+        float J[4][6];
+        bicycle_jacobian(x, y, theta, v, accel, steer, params, J);
+
+        float A[4][4];
+        float B[4][2];
+        for (int row = 0; row < 4; row++) {
+            for (int col = 0; col < 4; col++) A[row][col] = J[row][col];
+            B[row][0] = J[row][4];
+            B[row][1] = J[row][5];
+        }
+
+        float PB[4][2] = {};
+        for (int row = 0; row < 4; row++) {
+            for (int col = 0; col < 2; col++) {
+                for (int k = 0; k < 4; k++) PB[row][col] += P[row][k] * B[k][col];
+            }
+        }
+
+        float BtPB[2][2] = {};
+        for (int row = 0; row < 2; row++) {
+            for (int col = 0; col < 2; col++) {
+                for (int k = 0; k < 4; k++) BtPB[row][col] += B[k][row] * PB[k][col];
+            }
+        }
+
+        float S[2][2] = {
+            {BtPB[0][0] + r_accel, BtPB[0][1]},
+            {BtPB[1][0], BtPB[1][1] + r_steer},
+        };
+        float S_inv[2][2];
+        if (!invert_2x2(S, S_inv)) {
+            S[0][0] += 0.10f;
+            S[1][1] += 0.10f;
+            invert_2x2(S, S_inv);
+        }
+
+        float PA[4][4] = {};
+        for (int row = 0; row < 4; row++) {
+            for (int col = 0; col < 4; col++) {
+                for (int k = 0; k < 4; k++) PA[row][col] += P[row][k] * A[k][col];
+            }
+        }
+
+        float BtPA[2][4] = {};
+        for (int row = 0; row < 2; row++) {
+            for (int col = 0; col < 4; col++) {
+                for (int k = 0; k < 4; k++) BtPA[row][col] += B[k][row] * PA[k][col];
+            }
+        }
+
+        float K[2][4] = {};
+        for (int row = 0; row < 2; row++) {
+            for (int col = 0; col < 4; col++) {
+                for (int k = 0; k < 2; k++) K[row][col] += S_inv[row][k] * BtPA[k][col];
+                d_feedback_gains[t * 8 + row * 4 + col] = K[row][col];
+            }
+        }
+
+        float AtPA[4][4] = {};
+        for (int row = 0; row < 4; row++) {
+            for (int col = 0; col < 4; col++) {
+                for (int k = 0; k < 4; k++) AtPA[row][col] += A[k][row] * PA[k][col];
+            }
+        }
+
+        float KtBtPA[4][4] = {};
+        for (int row = 0; row < 4; row++) {
+            for (int col = 0; col < 4; col++) {
+                for (int k = 0; k < 2; k++) KtBtPA[row][col] += K[k][row] * BtPA[k][col];
+            }
+        }
+
+        float P_next[4][4] = {};
+        for (int row = 0; row < 4; row++) {
+            for (int col = 0; col < 4; col++) {
+                P_next[row][col] = Q[row][col] + AtPA[row][col] - KtBtPA[row][col];
+            }
+        }
+
+        for (int row = 0; row < 4; row++) {
+            for (int col = 0; col < 4; col++) {
+                P[row][col] = 0.5f * (P_next[row][col] + P_next[col][row]);
+            }
+        }
+    }
+}
+
 __global__ void rollout_feedback_kernel(
     float sx, float sy, float stheta, float sv,
     const float* d_nominal,
     const float* d_nominal_states,
+    const float* d_feedback_gains,
     float* d_costs,
     float* d_perturbed,
     curandState* d_rng,
@@ -214,11 +357,7 @@ __global__ void rollout_feedback_kernel(
     int n_dyn_obs,
     int start_step,
     int K,
-    int T,
-    float k_longitudinal,
-    float k_lateral,
-    float k_heading,
-    float k_speed)
+    int T)
 {
     int k = blockIdx.x * blockDim.x + threadIdx.x;
     if (k >= K) return;
@@ -237,6 +376,10 @@ __global__ void rollout_feedback_kernel(
         float v_nom = d_nominal_states[t * 4 + 3];
         float dx = x_nom - x;
         float dy = y_nom - y;
+        float ex = x - x_nom;
+        float ey = y - y_nom;
+        float etheta = wrap_angle(theta - theta_nom);
+        float ev = v - v_nom;
         float ct = cosf(theta_nom);
         float st = sinf(theta_nom);
         float longitudinal_err = ct * dx + st * dy;
@@ -244,14 +387,22 @@ __global__ void rollout_feedback_kernel(
         float heading_err = wrap_angle(theta_nom - theta);
         float speed_err = v_nom - v;
 
+        const float* K_t = &d_feedback_gains[t * 8];
+        float accel_feedback =
+            K_t[0] * ex + K_t[1] * ey + K_t[2] * etheta + K_t[3] * ev;
+        float steer_feedback =
+            K_t[4] * ex + K_t[5] * ey + K_t[6] * etheta + K_t[7] * ev;
+
         float accel = d_nominal[t * 2 + 0]
-                    + curand_normal(&local_rng) * 1.5f
-                    + k_longitudinal * longitudinal_err
-                    + k_speed * speed_err;
+                    + curand_normal(&local_rng) * 0.9f
+                    - accel_feedback
+                    + 0.20f * longitudinal_err
+                    + 0.30f * speed_err;
         float steer = d_nominal[t * 2 + 1]
-                    + curand_normal(&local_rng) * 0.18f
-                    + k_lateral * lateral_err
-                    + k_heading * heading_err;
+                    + curand_normal(&local_rng) * 0.10f
+                    - steer_feedback
+                    + 0.28f * lateral_err
+                    + 0.42f * heading_err;
         accel = clampf(accel, -4.0f, 4.0f);
         steer = clampf(steer, -params.max_steer, params.max_steer);
 
@@ -528,6 +679,7 @@ public:
         CUDA_CHECK(cudaMalloc(&d_perturbed_, k_samples_ * t_horizon_ * 2 * sizeof(float)));
         CUDA_CHECK(cudaMalloc(&d_states_, h_states_.size() * sizeof(float)));
         CUDA_CHECK(cudaMalloc(&d_grad_, h_grad_.size() * sizeof(float)));
+        CUDA_CHECK(cudaMalloc(&d_feedback_gains_, t_horizon_ * 2 * 4 * sizeof(float)));
         CUDA_CHECK(cudaMalloc(&d_rng_, k_samples_ * sizeof(curandState)));
 
         reset_rng();
@@ -540,6 +692,7 @@ public:
         CUDA_CHECK(cudaFree(d_perturbed_));
         CUDA_CHECK(cudaFree(d_states_));
         CUDA_CHECK(cudaFree(d_grad_));
+        CUDA_CHECK(cudaFree(d_feedback_gains_));
         CUDA_CHECK(cudaFree(d_rng_));
     }
 
@@ -642,12 +795,14 @@ private:
 
             if (variant_.use_feedback) {
                 rollout_nominal_kernel<<<1, 1>>>(sx, sy, stheta, sv, d_nominal_, d_states_, scenario_.params, t_horizon_);
+                compute_feedback_gains_kernel<<<1, 1>>>(
+                    d_states_, d_nominal_, d_feedback_gains_, scenario_.params, scenario_.cost_params, t_horizon_,
+                    variant_.feedback_q_position, variant_.feedback_q_heading, variant_.feedback_q_speed,
+                    variant_.feedback_r_accel, variant_.feedback_r_steer, variant_.feedback_terminal_scale);
                 rollout_feedback_kernel<<<(k_samples_ + block - 1) / block, block>>>(
-                    sx, sy, stheta, sv, d_nominal_, d_states_, d_costs_, d_perturbed_, d_rng_,
+                    sx, sy, stheta, sv, d_nominal_, d_states_, d_feedback_gains_, d_costs_, d_perturbed_, d_rng_,
                     scenario_.params, scenario_.cost_params, scenario_.n_obs, scenario_.n_dyn_obs,
-                    start_step, k_samples_, t_horizon_,
-                    variant_.feedback_longitudinal, variant_.feedback_lateral,
-                    variant_.feedback_heading, variant_.feedback_speed);
+                    start_step, k_samples_, t_horizon_);
                 compute_weights_kernel<<<1, 1>>>(d_costs_, d_weights_, k_samples_, DEFAULT_LAMBDA);
                 update_controls_kernel<<<(t_horizon_ + block - 1) / block, block>>>(
                     d_nominal_, d_perturbed_, d_weights_, k_samples_, t_horizon_);
@@ -712,6 +867,7 @@ private:
     float* d_perturbed_ = nullptr;
     float* d_states_ = nullptr;
     float* d_grad_ = nullptr;
+    float* d_feedback_gains_ = nullptr;
     curandState* d_rng_ = nullptr;
 };
 
@@ -991,11 +1147,11 @@ int main(int argc, char** argv) {
     }
 
     vector<PlannerVariant> variants;
-    variants.push_back({"mppi", true, false, false, 0, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f});
-    variants.push_back({"feedback_mppi", true, true, false, 0, 0.0f, 0.30f, 0.35f, 0.55f, 0.70f});
-    variants.push_back({"grad_only_3", false, false, true, 3, 0.004f, 0.0f, 0.0f, 0.0f, 0.0f});
-    variants.push_back({"diff_mppi_1", true, false, true, 1, 0.010f, 0.0f, 0.0f, 0.0f, 0.0f});
-    variants.push_back({"diff_mppi_3", true, false, true, 3, 0.006f, 0.0f, 0.0f, 0.0f, 0.0f});
+    variants.push_back({"mppi", true, false, false, 0, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f});
+    variants.push_back({"feedback_mppi", true, true, false, 0, 0.0f, 1.8f, 1.2f, 1.0f, 1.4f, 1.1f, 4.0f});
+    variants.push_back({"grad_only_3", false, false, true, 3, 0.004f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f});
+    variants.push_back({"diff_mppi_1", true, false, true, 1, 0.010f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f});
+    variants.push_back({"diff_mppi_3", true, false, true, 3, 0.006f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f});
 
     if (k_values.empty()) k_values = quick ? vector<int>{1024, 4096} : vector<int>{1024, 2048, 4096};
     if (seed_count <= 0) seed_count = quick ? 2 : 4;

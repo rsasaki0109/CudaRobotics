@@ -5,7 +5,7 @@ Date: 2026-04-02
 This note records four follow-up experiments added after the initial `diff_mppi` results draft:
 - a dynamic-obstacle benchmark suite with two scenarios
 - an equal-time target comparison in addition to the earlier cap-based wall-clock analysis
-- a simplified feedback-oriented MPPI baseline
+- a strengthened feedback-oriented MPPI baseline
 - a gradient-only ablation to separate local-refinement effects from the hybrid controller
 
 Artifacts used:
@@ -48,13 +48,14 @@ This is not a substitute for a feedback-MPPI or rollout-differentiation baseline
 
 > Are the gains coming from the hybrid sampling-plus-gradient structure, or would a pure local gradient controller already explain them?
 
-### 4. Simplified feedback-oriented baseline
+### 4. Strengthened feedback-oriented baseline
 
-The benchmark now also includes `feedback_mppi`, a simplified in-repo feedback baseline.
+The benchmark now also includes `feedback_mppi`, a strengthened in-repo feedback baseline.
 
 This baseline is not a full reproduction of recent `Feedback-MPPI` literature. Concretely, it uses:
 - two open-loop MPPI update passes to seed a nominal control sequence
-- a nominal-trajectory tracking rollout pass with local longitudinal, lateral, heading, and speed feedback
+- a nominal-trajectory linearization and a short Riccati-style backward pass that produces time-varying feedback gains
+- a closed-loop rollout pass with those gains plus residual local longitudinal, lateral, heading, and speed tracking terms
 - the same weighted MPPI update machinery afterward
 
 So this closes part of the baseline gap, but not all of it.
@@ -73,13 +74,13 @@ For `dynamic_slalom` at the same budget:
 - `diff_mppi_1 K=1024`: success `1.00`, final distance `1.92`
 - `diff_mppi_3 K=1024`: success `1.00`, final distance `1.90`
 
-The new feedback baseline is informative because it splits the two dynamic tasks.
+The stronger feedback baseline is informative because it splits the two dynamic tasks.
 
 At `K=1024`:
 - `dynamic_crossing`, `feedback_mppi`: success `1.00`, final distance `1.88`
 - `dynamic_slalom`, `feedback_mppi`: success `0.00`, final distance `11.82`
 
-So a nontrivial closed-loop MPPI baseline does recover the easier crossing task, but it still does not solve the harder dynamic slalom task.
+So a stronger closed-loop MPPI baseline does recover the easier crossing task, but it still does not solve the harder dynamic slalom task.
 
 The same pattern survived wall-clock matching.
 
@@ -105,7 +106,7 @@ So the dynamic obstacle suite gives a stronger claim than the earlier static-sce
 
 The more precise current version is:
 
-> Across two distinct time-varying obstacle scenarios, a simplified feedback-oriented MPPI baseline closes part of the gap to the hybrid controller, but only the hybrid MPPI + autodiff refinement controller remains successful on both tasks under matched per-step compute budgets.
+> Across two distinct time-varying obstacle scenarios, a strengthened feedback-oriented MPPI baseline closes part of the gap to the hybrid controller, but only the hybrid MPPI + autodiff refinement controller remains successful on both tasks under matched per-step compute budgets.
 
 ## Hybrid vs Gradient-Only Ablation
 
@@ -148,7 +149,7 @@ Before this follow-up, the strongest evidence was:
 After this follow-up, the story is stronger because:
 - the dynamic suite introduces genuinely time-dependent planning challenges
 - the same win pattern now appears in both a crossing task and a dynamic slalom task
-- a simplified feedback-oriented baseline now exists inside the same harness
+- a strengthened feedback-oriented baseline now exists inside the same harness
 - that baseline helps on the easier dynamic crossing case, but still fails on dynamic slalom
 - the advantage remains visible under an equal-time target, not only a loose cap
 - the result is about success, not only smaller terminal distance
@@ -169,16 +170,16 @@ The stronger current version is:
 ## What Is Still Missing
 
 The two biggest gaps are now:
-- the current `feedback_mppi` comparison is simplified, not a full literature-faithful rollout-differentiation / feedback-MPPI baseline
+- the current `feedback_mppi` comparison is stronger than the earlier fixed-gain tracker, but still not a full literature-faithful rollout-differentiation / feedback-MPPI baseline
 - only two simple hand-designed 2D dynamic scenarios so far
 
-The gradient-only ablation and simplified feedback baseline remove weaker alternative explanations, but they still do not close the stronger literature-baseline gap.
+The gradient-only ablation and strengthened feedback baseline remove weaker alternative explanations, but they still do not close the stronger literature-baseline gap.
 
 ## Next Step
 
 If we want to keep pushing the novelty argument, the next experiment should be:
 
-1. Strengthen the current `feedback_mppi` comparison into a more literature-faithful baseline.
+1. Strengthen the current nominal-linearization `feedback_mppi` comparison into a more literature-faithful baseline.
 2. Add a harder dynamic scenario with interacting moving agents, not just one scripted obstacle.
 3. Report exact success and final-distance comparisons at one or two fixed equal-time targets only, instead of many configurations.
 
