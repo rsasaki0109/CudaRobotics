@@ -197,7 +197,7 @@ Current generated state:
 
 Current separation:
 - `core/`: only contracts that multiple variants already share
-- `experiments/`: discardable implementations and variant-specific logic
+- `experiments/`: discardable implementations, shared helper layers such as [`experiments/support.py`](../experiments/support.py), and variant-specific logic
 - `docs/`: externally visible experiment state
 
 Promotion rule:

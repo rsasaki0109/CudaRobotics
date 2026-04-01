@@ -2,6 +2,7 @@ from dataclasses import dataclass
 from typing import Sequence
 
 from core.planner_selector_interface import AggregateBenchmarkRow, PlannerSelector, Recommendation, SelectionRequest
+from experiments.support import normalize, rows_for_dataset_scenario
 
 
 @dataclass(frozen=True)
@@ -11,19 +12,6 @@ class FunctionalWeights:
     cumulative_cost: float = 1.0
     avg_control_ms: float = 0.75
     steps: float = 0.50
-
-
-def _candidates(rows: Sequence[AggregateBenchmarkRow], request: SelectionRequest) -> list[AggregateBenchmarkRow]:
-    return [row for row in rows if row.dataset == request.dataset and row.scenario == request.scenario]
-
-
-def _normalize(values: list[float]) -> list[float]:
-    low = min(values)
-    high = max(values)
-    if high - low < 1.0e-9:
-        return [0.0 for _ in values]
-    return [(value - low) / (high - low) for value in values]
-
 
 class FunctionalSelector(PlannerSelector):
     name = "functional_weighted"
@@ -37,14 +25,14 @@ class FunctionalSelector(PlannerSelector):
         rows: Sequence[AggregateBenchmarkRow],
         request: SelectionRequest,
     ) -> Recommendation:
-        candidates = _candidates(rows, request)
+        candidates = rows_for_dataset_scenario(rows, request.dataset, request.scenario)
         if not candidates:
             raise ValueError(f"No candidates for {request.dataset}/{request.scenario}")
 
-        final_norm = _normalize([row.final_distance for row in candidates])
-        cost_norm = _normalize([row.cumulative_cost for row in candidates])
-        time_norm = _normalize([row.avg_control_ms for row in candidates])
-        step_norm = _normalize([row.steps for row in candidates])
+        final_norm = normalize([row.final_distance for row in candidates])
+        cost_norm = normalize([row.cumulative_cost for row in candidates])
+        time_norm = normalize([row.avg_control_ms for row in candidates])
+        step_norm = normalize([row.steps for row in candidates])
 
         best_row = None
         best_score = float("-inf")

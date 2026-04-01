@@ -7,6 +7,7 @@ from core.time_budget_selector_interface import (
     TimeBudgetRequest,
     TimeBudgetSelector,
 )
+from experiments.support import fastest_row, feasible_rows, rows_for_dataset_scenario
 
 
 @dataclass(frozen=True)
@@ -28,16 +29,13 @@ class PipelineBudgetSelector(TimeBudgetSelector):
         rows: Sequence[AggregateBenchmarkRow],
         request: TimeBudgetRequest,
     ) -> TimeBudgetRecommendation:
-        candidates = [
-            row for row in rows
-            if row.dataset == request.dataset and row.scenario == request.scenario
-        ]
+        candidates = rows_for_dataset_scenario(rows, request.dataset, request.scenario)
         if not candidates:
             raise ValueError(f"No candidates for {request.dataset}/{request.scenario}")
 
-        feasible = [row for row in candidates if row.avg_control_ms <= request.time_budget_ms + 1.0e-9]
+        feasible = feasible_rows(candidates, request.time_budget_ms)
         if not feasible:
-            feasible = [min(candidates, key=lambda row: (row.avg_control_ms, row.final_distance, row.k_samples, row.planner))]
+            feasible = [fastest_row(candidates)]
 
         fastest = min(row.avg_control_ms for row in feasible)
         runtime_limit = fastest + self.config.runtime_slack_ms

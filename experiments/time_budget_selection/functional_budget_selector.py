@@ -7,6 +7,7 @@ from core.time_budget_selector_interface import (
     TimeBudgetRequest,
     TimeBudgetSelector,
 )
+from experiments.support import fastest_row, feasible_rows, normalize, rows_for_dataset_scenario
 
 
 @dataclass(frozen=True)
@@ -16,23 +17,6 @@ class FunctionalBudgetWeights:
     cumulative_cost: float = 1.0
     steps: float = 0.50
     headroom: float = 0.75
-
-
-def _normalize(values: list[float]) -> list[float]:
-    low = min(values)
-    high = max(values)
-    if high - low < 1.0e-9:
-        return [0.0 for _ in values]
-    return [(value - low) / (high - low) for value in values]
-
-
-def _candidates(rows: Sequence[AggregateBenchmarkRow], request: TimeBudgetRequest) -> list[AggregateBenchmarkRow]:
-    return [row for row in rows if row.dataset == request.dataset and row.scenario == request.scenario]
-
-
-def _feasible(candidates: Sequence[AggregateBenchmarkRow], time_budget_ms: float) -> list[AggregateBenchmarkRow]:
-    return [row for row in candidates if row.avg_control_ms <= time_budget_ms + 1.0e-9]
-
 
 class FunctionalBudgetSelector(TimeBudgetSelector):
     name = "functional_budgeted"
@@ -46,13 +30,13 @@ class FunctionalBudgetSelector(TimeBudgetSelector):
         rows: Sequence[AggregateBenchmarkRow],
         request: TimeBudgetRequest,
     ) -> TimeBudgetRecommendation:
-        candidates = _candidates(rows, request)
+        candidates = rows_for_dataset_scenario(rows, request.dataset, request.scenario)
         if not candidates:
             raise ValueError(f"No candidates for {request.dataset}/{request.scenario}")
 
-        feasible = _feasible(candidates, request.time_budget_ms)
+        feasible = feasible_rows(candidates, request.time_budget_ms)
         if not feasible:
-            fallback = min(candidates, key=lambda row: (row.avg_control_ms, row.final_distance, row.k_samples, row.planner))
+            fallback = fastest_row(candidates)
             return TimeBudgetRecommendation(
                 variant=self.name,
                 dataset=request.dataset,
@@ -64,10 +48,10 @@ class FunctionalBudgetSelector(TimeBudgetSelector):
                 rationale="fallback to the fastest candidate because no row fits the requested budget",
             )
 
-        distance_norm = _normalize([row.final_distance for row in feasible])
-        cost_norm = _normalize([row.cumulative_cost for row in feasible])
-        steps_norm = _normalize([row.steps for row in feasible])
-        headroom_norm = _normalize([request.time_budget_ms - row.avg_control_ms for row in feasible])
+        distance_norm = normalize([row.final_distance for row in feasible])
+        cost_norm = normalize([row.cumulative_cost for row in feasible])
+        steps_norm = normalize([row.steps for row in feasible])
+        headroom_norm = normalize([request.time_budget_ms - row.avg_control_ms for row in feasible])
 
         best_row = None
         best_score = float("-inf")

@@ -3,6 +3,7 @@ from functools import cmp_to_key
 from typing import Sequence
 
 from core.planner_selector_interface import AggregateBenchmarkRow, PlannerSelector, Recommendation, SelectionRequest
+from experiments.support import rows_for_dataset_scenario
 
 
 @dataclass(frozen=True)
@@ -57,10 +58,7 @@ class OOPSelector(PlannerSelector):
         rows: Sequence[AggregateBenchmarkRow],
         request: SelectionRequest,
     ) -> Recommendation:
-        candidates = [
-            row for row in rows
-            if row.dataset == request.dataset and row.scenario == request.scenario
-        ]
+        candidates = rows_for_dataset_scenario(rows, request.dataset, request.scenario)
         if not candidates:
             raise ValueError(f"No candidates for {request.dataset}/{request.scenario}")
 
