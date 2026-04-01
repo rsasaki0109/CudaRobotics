@@ -105,6 +105,30 @@ struct EpisodeMetrics {
     long long sample_budget = 0;
 };
 
+struct TraceRow {
+    string scenario;
+    string planner;
+    int seed = 0;
+    int k_samples = 0;
+    int grad_steps = 0;
+    float alpha = 0.0f;
+    int episode_step = 0;
+    int horizon_step = 0;
+    float goal_distance = 0.0f;
+    float min_obstacle_margin = 0.0f;
+    float control_ms = 0.0f;
+    float sampled_accel = 0.0f;
+    float sampled_steer = 0.0f;
+    float final_accel = 0.0f;
+    float final_steer = 0.0f;
+    float delta_accel = 0.0f;
+    float delta_steer = 0.0f;
+    float delta_norm = 0.0f;
+    float grad_accel = 0.0f;
+    float grad_steer = 0.0f;
+    float grad_norm = 0.0f;
+};
+
 struct SummaryStats {
     int episodes = 0;
     int successes = 0;
@@ -664,14 +688,19 @@ static float min_obstacle_margin(float x, float y, const Scenario& scenario, int
 
 class EpisodeRunner {
 public:
-    EpisodeRunner(const PlannerVariant& variant, const Scenario& scenario, int k_samples, int t_horizon, int seed)
-        : variant_(variant), scenario_(scenario), k_samples_(k_samples), t_horizon_(t_horizon), seed_(seed) {
+    EpisodeRunner(const PlannerVariant& variant, const Scenario& scenario, int k_samples, int t_horizon, int seed,
+                  vector<TraceRow>* trace_rows = nullptr, int trace_max_steps = 0)
+        : variant_(variant), scenario_(scenario), k_samples_(k_samples), t_horizon_(t_horizon), seed_(seed),
+          trace_rows_(trace_rows), trace_max_steps_(trace_max_steps) {
         reset_state();
 
         h_nominal_.assign(t_horizon_ * 2, 0.0f);
         h_costs_.assign(k_samples_, 0.0f);
         h_grad_.assign(t_horizon_ * 2, 0.0f);
         h_states_.assign((t_horizon_ + 1) * 4, 0.0f);
+        h_sample_nominal_.assign(t_horizon_ * 2, 0.0f);
+        h_final_nominal_.assign(t_horizon_ * 2, 0.0f);
+        h_grad_snapshot_.assign(t_horizon_ * 2, 0.0f);
 
         CUDA_CHECK(cudaMalloc(&d_nominal_, h_nominal_.size() * sizeof(float)));
         CUDA_CHECK(cudaMalloc(&d_costs_, h_costs_.size() * sizeof(float)));
@@ -710,6 +739,7 @@ public:
             float goal_dx = rx_ - scenario_.cost_params.goal_x;
             float goal_dy = ry_ - scenario_.cost_params.goal_y;
             float goal_dist = sqrtf(goal_dx * goal_dx + goal_dy * goal_dy);
+            float margin_before = min_obstacle_margin(rx_, ry_, scenario_, step);
             min_goal_distance_ = std::min(min_goal_distance_, goal_dist);
             if (goal_dist < scenario_.goal_tol) {
                 reached_goal_ = true;
@@ -725,6 +755,9 @@ public:
 
             CUDA_CHECK(cudaMemcpy(h_nominal_.data(), d_nominal_, h_nominal_.size() * sizeof(float), cudaMemcpyDeviceToHost));
             CUDA_CHECK(cudaMemcpy(h_costs_.data(), d_costs_, h_costs_.size() * sizeof(float), cudaMemcpyDeviceToHost));
+            if (trace_rows_ != nullptr && step < trace_max_steps_) {
+                append_trace_rows(step, goal_dist, margin_before, control_ms);
+            }
 
             float accel = h_nominal_[0];
             float steer = h_nominal_[1];
@@ -809,6 +842,11 @@ private:
             }
         }
 
+        if (trace_rows_ != nullptr) {
+            CUDA_CHECK(cudaMemcpy(h_sample_nominal_.data(), d_nominal_, h_sample_nominal_.size() * sizeof(float), cudaMemcpyDeviceToHost));
+            fill(h_grad_snapshot_.begin(), h_grad_snapshot_.end(), 0.0f);
+        }
+
         if (variant_.use_gradient) {
             for (int gs = 0; gs < variant_.grad_steps; gs++) {
                 rollout_nominal_kernel<<<1, 1>>>(sx, sy, stheta, sv, d_nominal_, d_states_, scenario_.params, t_horizon_);
@@ -819,6 +857,40 @@ private:
             }
         }
         CUDA_CHECK(cudaDeviceSynchronize());
+        if (trace_rows_ != nullptr) {
+            CUDA_CHECK(cudaMemcpy(h_final_nominal_.data(), d_nominal_, h_final_nominal_.size() * sizeof(float), cudaMemcpyDeviceToHost));
+            if (variant_.use_gradient) {
+                CUDA_CHECK(cudaMemcpy(h_grad_snapshot_.data(), d_grad_, h_grad_snapshot_.size() * sizeof(float), cudaMemcpyDeviceToHost));
+            }
+        }
+    }
+
+    void append_trace_rows(int episode_step, float goal_distance, float min_margin, float control_ms) {
+        for (int t = 0; t < t_horizon_; t++) {
+            TraceRow row;
+            row.scenario = scenario_.name;
+            row.planner = variant_.name;
+            row.seed = seed_;
+            row.k_samples = k_samples_;
+            row.grad_steps = variant_.grad_steps;
+            row.alpha = variant_.alpha;
+            row.episode_step = episode_step;
+            row.horizon_step = t;
+            row.goal_distance = goal_distance;
+            row.min_obstacle_margin = min_margin;
+            row.control_ms = control_ms;
+            row.sampled_accel = h_sample_nominal_[t * 2 + 0];
+            row.sampled_steer = h_sample_nominal_[t * 2 + 1];
+            row.final_accel = h_final_nominal_[t * 2 + 0];
+            row.final_steer = h_final_nominal_[t * 2 + 1];
+            row.delta_accel = row.final_accel - row.sampled_accel;
+            row.delta_steer = row.final_steer - row.sampled_steer;
+            row.delta_norm = sqrtf(row.delta_accel * row.delta_accel + row.delta_steer * row.delta_steer);
+            row.grad_accel = h_grad_snapshot_[t * 2 + 0];
+            row.grad_steer = h_grad_snapshot_[t * 2 + 1];
+            row.grad_norm = sqrtf(row.grad_accel * row.grad_accel + row.grad_steer * row.grad_steer);
+            trace_rows_->push_back(row);
+        }
     }
 
     void warmup_controller() {
@@ -860,6 +932,9 @@ private:
     vector<float> h_costs_;
     vector<float> h_grad_;
     vector<float> h_states_;
+    vector<float> h_sample_nominal_;
+    vector<float> h_final_nominal_;
+    vector<float> h_grad_snapshot_;
 
     float* d_nominal_ = nullptr;
     float* d_costs_ = nullptr;
@@ -869,6 +944,8 @@ private:
     float* d_grad_ = nullptr;
     float* d_feedback_gains_ = nullptr;
     curandState* d_rng_ = nullptr;
+    vector<TraceRow>* trace_rows_ = nullptr;
+    int trace_max_steps_ = 0;
 };
 
 static Scenario make_cluttered_scene() {
@@ -1068,6 +1145,35 @@ static void write_csv(const vector<EpisodeMetrics>& rows, const string& path) {
     }
 }
 
+static void write_trace_csv(const vector<TraceRow>& rows, const string& path) {
+    ofstream out(path);
+    out << "scenario,planner,seed,k_samples,grad_steps,alpha,episode_step,horizon_step,goal_distance,min_obstacle_margin,control_ms,"
+           "sampled_accel,sampled_steer,final_accel,final_steer,delta_accel,delta_steer,delta_norm,grad_accel,grad_steer,grad_norm\n";
+    for (const auto& r : rows) {
+        out << r.scenario << ','
+            << r.planner << ','
+            << r.seed << ','
+            << r.k_samples << ','
+            << r.grad_steps << ','
+            << r.alpha << ','
+            << r.episode_step << ','
+            << r.horizon_step << ','
+            << r.goal_distance << ','
+            << r.min_obstacle_margin << ','
+            << r.control_ms << ','
+            << r.sampled_accel << ','
+            << r.sampled_steer << ','
+            << r.final_accel << ','
+            << r.final_steer << ','
+            << r.delta_accel << ','
+            << r.delta_steer << ','
+            << r.delta_norm << ','
+            << r.grad_accel << ','
+            << r.grad_steer << ','
+            << r.grad_norm << '\n';
+    }
+}
+
 static void print_summary(const vector<EpisodeMetrics>& rows) {
     map<string, SummaryStats> stats;
     for (const auto& r : rows) {
@@ -1103,14 +1209,18 @@ static void print_summary(const vector<EpisodeMetrics>& rows) {
 int main(int argc, char** argv) {
     bool quick = false;
     string csv_path = "build/benchmark_diff_mppi.csv";
+    string trace_csv_path;
     vector<int> k_values;
     vector<string> scenario_names;
     vector<string> planner_names;
     int seed_count = -1;
+    int trace_max_steps = 0;
     for (int i = 1; i < argc; i++) {
         string arg = argv[i];
         if (arg == "--quick") quick = true;
         else if (arg == "--csv" && i + 1 < argc) csv_path = argv[++i];
+        else if (arg == "--trace-csv" && i + 1 < argc) trace_csv_path = argv[++i];
+        else if (arg == "--trace-max-steps" && i + 1 < argc) trace_max_steps = std::max(0, atoi(argv[++i]));
         else if (arg == "--k-values" && i + 1 < argc) k_values = parse_int_list(argv[++i]);
         else if (arg == "--seed-count" && i + 1 < argc) seed_count = std::max(1, atoi(argv[++i]));
         else if (arg == "--scenarios" && i + 1 < argc) scenario_names = parse_string_list(argv[++i]);
@@ -1174,6 +1284,9 @@ int main(int argc, char** argv) {
 
     vector<EpisodeMetrics> rows;
     rows.reserve(scenarios.size() * variants.size() * k_values.size() * seed_count);
+    vector<TraceRow> trace_rows;
+    bool trace_enabled = !trace_csv_path.empty();
+    if (trace_enabled && trace_max_steps <= 0) trace_max_steps = 64;
 
     for (size_t si = 0; si < scenarios.size(); si++) {
         const Scenario& scenario = scenarios[si];
@@ -1187,7 +1300,9 @@ int main(int argc, char** argv) {
                 const PlannerVariant& variant = variants[vi];
                 for (int seed = 0; seed < seed_count; seed++) {
                     int run_seed = static_cast<int>(1000 + si * 100 + vi * 20 + seed * 7 + k_samples);
-                    EpisodeRunner runner(variant, scenario, k_samples, DEFAULT_T_HORIZON, run_seed);
+                    EpisodeRunner runner(
+                        variant, scenario, k_samples, DEFAULT_T_HORIZON, run_seed,
+                        trace_enabled ? &trace_rows : nullptr, trace_max_steps);
                     EpisodeMetrics metrics = runner.run();
                     rows.push_back(metrics);
                     printf("[%s] %s K=%d seed=%d success=%d steps=%d final_dist=%.2f avg_ms=%.2f collisions=%d\n",
@@ -1200,7 +1315,9 @@ int main(int argc, char** argv) {
     }
 
     write_csv(rows, csv_path);
+    if (trace_enabled) write_trace_csv(trace_rows, trace_csv_path);
     print_summary(rows);
     cout << "CSV saved to " << csv_path << endl;
+    if (trace_enabled) cout << "Trace CSV saved to " << trace_csv_path << endl;
     return 0;
 }

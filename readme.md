@@ -99,6 +99,15 @@ python3 scripts/tune_diff_mppi_time_targets.py --scenarios dynamic_crossing,dyna
 
 This search tunes `K` per planner and scenario to hit shared controller-time targets directly, instead of selecting the nearest value from a fixed sweep. The script writes tuned episode rows to `build/benchmark_diff_mppi_exact_time.csv`, a search trace to `build/benchmark_diff_mppi_exact_time_search.csv`, and a summary to `build/benchmark_diff_mppi_exact_time_summary.md`.
 
+Mechanism analysis:
+
+```bash
+./bin/benchmark_diff_mppi --scenarios dynamic_slalom --planners mppi,feedback_mppi,diff_mppi_1,diff_mppi_3 --seed-count 1 --k-values 1024 --csv build/benchmark_diff_mppi_mechanism.csv --trace-csv build/benchmark_diff_mppi_mechanism_trace.csv --trace-max-steps 80
+python3 scripts/plot_diff_mppi_mechanism.py --trace-csv build/benchmark_diff_mppi_mechanism_trace.csv --benchmark-csv build/benchmark_diff_mppi_feedback_dynamic_pair.csv --scenario dynamic_slalom --out-dir build/plots_mechanism
+```
+
+This trace workflow records the sampled nominal controls, final refined controls, and local control gradients for each episode step and horizon step. In the current `dynamic_slalom` trace at `K=1024`, `diff_mppi_1` shows mean early-horizon correction `0.018` versus late-horizon correction `0.001`, and `diff_mppi_3` shows `0.025` versus `0.001`, with peak first-action corrections `0.032` and `0.047`. That front-loaded profile supports the intended interpretation: the autodiff stage mostly sharpens the near-term controls that are actually executed, rather than replacing the whole sampled plan.
+
 Dynamic-obstacle follow-up:
 
 ```bash
