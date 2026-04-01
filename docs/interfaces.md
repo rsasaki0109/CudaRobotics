@@ -7,6 +7,7 @@ The stable part is intentionally small and only expands after repeated reuse.
 
 Current stable interfaces:
 - [`core/planner_selector_interface.py`](../core/planner_selector_interface.py)
+- [`core/fixture_promotion_interface.py`](../core/fixture_promotion_interface.py)
 - [`core/time_budget_selector_interface.py`](../core/time_budget_selector_interface.py)
 
 Shared benchmark row:
@@ -21,6 +22,11 @@ Time-budget-selection contract:
 - `TimeBudgetRequest`
 - `TimeBudgetRecommendation`
 - `TimeBudgetSelector`
+
+Fixture-promotion contract:
+- `FixturePromotionRequest`
+- `FixturePromotionRecommendation`
+- `FixturePromotionSelector`
 
 The contracts are intentionally narrow:
 - every implementation reads the same aggregated benchmark rows
@@ -77,6 +83,27 @@ class TimeBudgetRecommendation:
     k_samples: int
     score: float
     rationale: str
+
+
+@dataclass(frozen=True)
+class FixturePromotionRequest:
+    request_id: str
+    max_fixtures: int
+    required_tags: tuple[str, ...]
+    scenario_weight: float
+    planner_weight: float
+    tag_weight: float
+    depth_weight: float
+    compactness_weight: float
+
+
+@dataclass(frozen=True)
+class FixturePromotionRecommendation:
+    variant: str
+    request_id: str
+    selected_datasets: tuple[str, ...]
+    score: float
+    rationale: str
 ```
 
 Only these contracts are stable today.
@@ -86,6 +113,7 @@ Scoring rules, ranking rules, budget heuristics, and request-generation logic ar
 
 Current experimental problems:
 - [`experiments/planner_selection`](../experiments/planner_selection)
+- [`experiments/fixture_promotion`](../experiments/fixture_promotion)
 - [`experiments/time_budget_selection`](../experiments/time_budget_selection)
 
 Each experiment module is now self-describing:
@@ -106,8 +134,14 @@ Time-budget-selection variants:
 - [`experiments/time_budget_selection/oop_budget_selector.py`](../experiments/time_budget_selection/oop_budget_selector.py)
 - [`experiments/time_budget_selection/pipeline_budget_selector.py`](../experiments/time_budget_selection/pipeline_budget_selector.py)
 
+Fixture-promotion variants:
+- [`experiments/fixture_promotion/functional_fixture_promoter.py`](../experiments/fixture_promotion/functional_fixture_promoter.py)
+- [`experiments/fixture_promotion/oop_fixture_promoter.py`](../experiments/fixture_promotion/oop_fixture_promoter.py)
+- [`experiments/fixture_promotion/pipeline_fixture_promoter.py`](../experiments/fixture_promotion/pipeline_fixture_promoter.py)
+
 The variants are intentionally heterogeneous:
 - planner selection keeps weighted utility, lexicographic ranking, and staged filtering alive
+- fixture promotion keeps weighted portfolio scoring, lexicographic objective policies, and staged subset filtering alive
 - time-budget selection keeps weighted feasible utility, lexicographic slack-aware ranking, and staged budget filtering alive
 
 They share interfaces, not design style.

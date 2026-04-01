@@ -47,6 +47,31 @@
           "max_regression": 0.0
         }
       }
+    },
+    "fixture_promotion": {
+      "require_same_request_count": true,
+      "metrics": {
+        "Avg Regret": {
+          "direction": "min",
+          "max_regression": 0.0
+        },
+        "Oracle Match": {
+          "direction": "max",
+          "max_regression": 0.0
+        },
+        "Requirement Hit": {
+          "direction": "max",
+          "max_regression": 0.0
+        },
+        "Readability": {
+          "direction": "max",
+          "max_regression": 0.0
+        },
+        "Extensibility": {
+          "direction": "max",
+          "max_regression": 0.0
+        }
+      }
     }
   }
 }

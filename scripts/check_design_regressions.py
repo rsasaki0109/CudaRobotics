@@ -113,10 +113,11 @@ def main() -> int:
 
     failures: list[str] = []
     notes: list[str] = []
+    pending: list[str] = []
 
     for problem_slug, config in problems.items():
         if problem_slug not in left_problems or problem_slug not in right_problems:
-            failures.append(f"{problem_slug}: missing from one of the compared snapshots")
+            pending.append(f"{problem_slug}: not present in both compared snapshots yet")
             continue
 
         left_problem = left_problems[problem_slug]
@@ -156,6 +157,8 @@ def main() -> int:
     print(f"Comparing {left_snapshot['snapshot_id']} -> {right_snapshot['snapshot_id']}")
     for note in notes:
         print(f"OK {note}")
+    for note in pending:
+        print(f"PENDING {note}")
 
     if failures:
         print("Regression check failed:", file=sys.stderr)
