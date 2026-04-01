@@ -118,6 +118,7 @@ Comparison entrypoint:
 - [`scripts/run_design_experiments.py`](../scripts/run_design_experiments.py)
 - [`scripts/refresh_design_fixtures.py`](../scripts/refresh_design_fixtures.py)
 - [`scripts/refresh_design_docs.py`](../scripts/refresh_design_docs.py)
+- [`scripts/snapshot_design_experiments.py`](../scripts/snapshot_design_experiments.py)
 - [`scripts/check_scaffold_design_problem.py`](../scripts/check_scaffold_design_problem.py)
 
 Common evaluation rules:
@@ -134,12 +135,15 @@ Discovery rule:
 - fixture drift can be checked locally against build outputs via `scripts/refresh_design_fixtures.py --check-sync`
 - the validator checks that every discovered module is represented in generated docs
 - the validator also checks that the checked-in `docs/experiments.md` matches the generated output, while normalizing the volatile runtime column
+- design-history snapshots are validated under `experiments/history/*.json`
 - the scaffold checker verifies that new problem stubs still match the current module contract
 
 Current generated state:
 - [`docs/experiments.md`](../docs/experiments.md)
+- [`docs/experiments_history.md`](../docs/experiments_history.md)
 - [`docs/decisions.md`](../docs/decisions.md)
 - [`docs/interfaces.md`](../docs/interfaces.md)
+- [`experiments/history`](../experiments/history)
 
 ## Core vs Experiments
 

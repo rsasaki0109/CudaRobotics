@@ -1,0 +1,1300 @@
+{
+  "schema_version": 1,
+  "snapshot_id": "20260402T165005+0900",
+  "created_at": "2026-04-02T16:50:05+09:00",
+  "label": "initial_history",
+  "inputs": [
+    "experiments/data/benchmark_diff_mppi.csv",
+    "experiments/data/benchmark_diff_mppi_dynamic_bicycle.csv",
+    "experiments/data/benchmark_diff_mppi_uncertain.csv"
+  ],
+  "benchmark_iterations": 200,
+  "problems": [
+    {
+      "slug": "planner_selection",
+      "title": "Planner Selection",
+      "description_lines": [
+        "choose one planner configuration per dataset/scenario pair",
+        "keep the input schema fixed while varying only the selector implementation style",
+        "score each selector on benchmark regret, runtime, readability, and extensibility proxies"
+      ],
+      "request_summary": "dataset/scenario pairs",
+      "metric_notes": [
+        "`Avg Regret`: utility gap from an external oracle scorer; lower is better",
+        "`Oracle Match`: fraction of requests where the selector picked the oracle row exactly",
+        "`Readability` and `Extensibility`: static-analysis proxies, not human review replacements"
+      ],
+      "request_count": 8,
+      "aggregate_table": {
+        "headers": [
+          "Variant",
+          "Paradigm",
+          "Avg Regret",
+          "Oracle Match",
+          "Runtime ms/request",
+          "Readability",
+          "Extensibility",
+          "Source"
+        ],
+        "rows": [
+          [
+            "functional_weighted",
+            "functional",
+            "0.000",
+            "1.00",
+            "0.0138",
+            "54.5",
+            "30.2",
+            "`experiments/planner_selection/functional_selector.py`"
+          ],
+          [
+            "oop_lexicographic",
+            "oop",
+            "0.219",
+            "0.25",
+            "0.0205",
+            "49.4",
+            "41.6",
+            "`experiments/planner_selection/oop_selector.py`"
+          ],
+          [
+            "pipeline_staged",
+            "pipeline",
+            "0.136",
+            "0.38",
+            "0.0080",
+            "58.3",
+            "19.4",
+            "`experiments/planner_selection/pipeline_selector.py`"
+          ]
+        ]
+      },
+      "case_tables": [
+        {
+          "title": "functional_weighted",
+          "table": {
+            "headers": [
+              "Dataset",
+              "Scenario",
+              "Pick",
+              "Oracle",
+              "Regret",
+              "Rationale"
+            ],
+            "rows": [
+              [
+                "benchmark_diff_mppi",
+                "cluttered",
+                "diff_mppi_1 @ K=1024",
+                "diff_mppi_1 @ K=1024",
+                "0.000",
+                "weighted utility over success/final_distance/cumulative_cost/avg_control_ms/steps"
+              ],
+              [
+                "benchmark_diff_mppi",
+                "corner_turn",
+                "diff_mppi_1 @ K=1024",
+                "diff_mppi_1 @ K=1024",
+                "0.000",
+                "weighted utility over success/final_distance/cumulative_cost/avg_control_ms/steps"
+              ],
+              [
+                "benchmark_diff_mppi",
+                "narrow_passage",
+                "diff_mppi_1 @ K=4096",
+                "diff_mppi_1 @ K=4096",
+                "0.000",
+                "weighted utility over success/final_distance/cumulative_cost/avg_control_ms/steps"
+              ],
+              [
+                "benchmark_diff_mppi",
+                "slalom",
+                "diff_mppi_1 @ K=1024",
+                "diff_mppi_1 @ K=1024",
+                "0.000",
+                "weighted utility over success/final_distance/cumulative_cost/avg_control_ms/steps"
+              ],
+              [
+                "benchmark_diff_mppi_dynamic_bicycle",
+                "dynbike_crossing",
+                "diff_mppi_1 @ K=32",
+                "diff_mppi_1 @ K=32",
+                "0.000",
+                "weighted utility over success/final_distance/cumulative_cost/avg_control_ms/steps"
+              ],
+              [
+                "benchmark_diff_mppi_dynamic_bicycle",
+                "dynbike_slalom",
+                "mppi @ K=256",
+                "mppi @ K=256",
+                "0.000",
+                "weighted utility over success/final_distance/cumulative_cost/avg_control_ms/steps"
+              ],
+              [
+                "benchmark_diff_mppi_uncertain",
+                "uncertain_crossing",
+                "feedback_mppi @ K=1024",
+                "feedback_mppi @ K=1024",
+                "0.000",
+                "weighted utility over success/final_distance/cumulative_cost/avg_control_ms/steps"
+              ],
+              [
+                "benchmark_diff_mppi_uncertain",
+                "uncertain_slalom",
+                "diff_mppi_3 @ K=512",
+                "diff_mppi_3 @ K=512",
+                "0.000",
+                "weighted utility over success/final_distance/cumulative_cost/avg_control_ms/steps"
+              ]
+            ]
+          }
+        },
+        {
+          "title": "oop_lexicographic",
+          "table": {
+            "headers": [
+              "Dataset",
+              "Scenario",
+              "Pick",
+              "Oracle",
+              "Regret",
+              "Rationale"
+            ],
+            "rows": [
+              [
+                "benchmark_diff_mppi",
+                "cluttered",
+                "diff_mppi_3 @ K=4096",
+                "diff_mppi_1 @ K=1024",
+                "0.366",
+                "lexicographic ordering: success > final_distance > cumulative_cost > avg_control_ms > steps"
+              ],
+              [
+                "benchmark_diff_mppi",
+                "corner_turn",
+                "diff_mppi_3 @ K=1024",
+                "diff_mppi_1 @ K=1024",
+                "0.156",
+                "lexicographic ordering: success > final_distance > cumulative_cost > avg_control_ms > steps"
+              ],
+              [
+                "benchmark_diff_mppi",
+                "narrow_passage",
+                "diff_mppi_1 @ K=4096",
+                "diff_mppi_1 @ K=4096",
+                "0.000",
+                "lexicographic ordering: success > final_distance > cumulative_cost > avg_control_ms > steps"
+              ],
+              [
+                "benchmark_diff_mppi",
+                "slalom",
+                "diff_mppi_3 @ K=4096",
+                "diff_mppi_1 @ K=1024",
+                "0.394",
+                "lexicographic ordering: success > final_distance > cumulative_cost > avg_control_ms > steps"
+              ],
+              [
+                "benchmark_diff_mppi_dynamic_bicycle",
+                "dynbike_crossing",
+                "diff_mppi_1 @ K=32",
+                "diff_mppi_1 @ K=32",
+                "0.000",
+                "lexicographic ordering: success > final_distance > cumulative_cost > avg_control_ms > steps"
+              ],
+              [
+                "benchmark_diff_mppi_dynamic_bicycle",
+                "dynbike_slalom",
+                "diff_mppi_1 @ K=64",
+                "mppi @ K=256",
+                "0.277",
+                "lexicographic ordering: success > final_distance > cumulative_cost > avg_control_ms > steps"
+              ],
+              [
+                "benchmark_diff_mppi_uncertain",
+                "uncertain_crossing",
+                "feedback_mppi @ K=6144",
+                "feedback_mppi @ K=1024",
+                "0.424",
+                "lexicographic ordering: success > final_distance > cumulative_cost > avg_control_ms > steps"
+              ],
+              [
+                "benchmark_diff_mppi_uncertain",
+                "uncertain_slalom",
+                "diff_mppi_1 @ K=256",
+                "diff_mppi_3 @ K=512",
+                "0.137",
+                "lexicographic ordering: success > final_distance > cumulative_cost > avg_control_ms > steps"
+              ]
+            ]
+          }
+        },
+        {
+          "title": "pipeline_staged",
+          "table": {
+            "headers": [
+              "Dataset",
+              "Scenario",
+              "Pick",
+              "Oracle",
+              "Regret",
+              "Rationale"
+            ],
+            "rows": [
+              [
+                "benchmark_diff_mppi",
+                "cluttered",
+                "diff_mppi_1 @ K=1024",
+                "diff_mppi_1 @ K=1024",
+                "0.000",
+                "staged filters: max success -> near-best final_distance -> near-fastest runtime -> near-best steps -> lowest cumulative_cost"
+              ],
+              [
+                "benchmark_diff_mppi",
+                "corner_turn",
+                "diff_mppi_3 @ K=1024",
+                "diff_mppi_1 @ K=1024",
+                "0.156",
+                "staged filters: max success -> near-best final_distance -> near-fastest runtime -> near-best steps -> lowest cumulative_cost"
+              ],
+              [
+                "benchmark_diff_mppi",
+                "narrow_passage",
+                "diff_mppi_1 @ K=1024",
+                "diff_mppi_1 @ K=4096",
+                "0.103",
+                "staged filters: max success -> near-best final_distance -> near-fastest runtime -> near-best steps -> lowest cumulative_cost"
+              ],
+              [
+                "benchmark_diff_mppi",
+                "slalom",
+                "diff_mppi_3 @ K=4096",
+                "diff_mppi_1 @ K=1024",
+                "0.394",
+                "staged filters: max success -> near-best final_distance -> near-fastest runtime -> near-best steps -> lowest cumulative_cost"
+              ],
+              [
+                "benchmark_diff_mppi_dynamic_bicycle",
+                "dynbike_crossing",
+                "mppi @ K=256",
+                "diff_mppi_1 @ K=32",
+                "0.294",
+                "staged filters: max success -> near-best final_distance -> near-fastest runtime -> near-best steps -> lowest cumulative_cost"
+              ],
+              [
+                "benchmark_diff_mppi_dynamic_bicycle",
+                "dynbike_slalom",
+                "mppi @ K=256",
+                "mppi @ K=256",
+                "0.000",
+                "staged filters: max success -> near-best final_distance -> near-fastest runtime -> near-best steps -> lowest cumulative_cost"
+              ],
+              [
+                "benchmark_diff_mppi_uncertain",
+                "uncertain_crossing",
+                "feedback_mppi @ K=1024",
+                "feedback_mppi @ K=1024",
+                "0.000",
+                "staged filters: max success -> near-best final_distance -> near-fastest runtime -> near-best steps -> lowest cumulative_cost"
+              ],
+              [
+                "benchmark_diff_mppi_uncertain",
+                "uncertain_slalom",
+                "diff_mppi_1 @ K=256",
+                "diff_mppi_3 @ K=512",
+                "0.137",
+                "staged filters: max success -> near-best final_distance -> near-fastest runtime -> near-best steps -> lowest cumulative_cost"
+              ]
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "slug": "time_budget_selection",
+      "title": "Time-Budget Selection",
+      "description_lines": [
+        "choose one planner configuration per dataset/scenario/time-budget request",
+        "force all variants to consume the same aggregated benchmark rows and the same wall-clock envelopes",
+        "score each selector on constrained regret, budget-hit rate, runtime, readability, and extensibility proxies"
+      ],
+      "request_summary": "dataset/scenario/time-budget triples",
+      "metric_notes": [
+        "`Avg Regret`: utility gap from the best feasible row under the requested time budget; lower is better",
+        "`Oracle Match`: fraction of requests where the selector matched the best feasible row exactly",
+        "`Budget Hit`: fraction of requests where the selected row stayed inside the requested `avg_control_ms` envelope"
+      ],
+      "request_count": 24,
+      "aggregate_table": {
+        "headers": [
+          "Variant",
+          "Paradigm",
+          "Avg Regret",
+          "Oracle Match",
+          "Budget Hit",
+          "Runtime ms/request",
+          "Readability",
+          "Extensibility",
+          "Source"
+        ],
+        "rows": [
+          [
+            "functional_budgeted",
+            "functional",
+            "0.000",
+            "1.00",
+            "1.00",
+            "0.0103",
+            "50.4",
+            "28.8",
+            "`experiments/time_budget_selection/functional_budget_selector.py`"
+          ],
+          [
+            "oop_budget_lexicographic",
+            "oop",
+            "0.099",
+            "0.62",
+            "1.00",
+            "0.0173",
+            "41.0",
+            "54.8",
+            "`experiments/time_budget_selection/oop_budget_selector.py`"
+          ],
+          [
+            "pipeline_budget_staged",
+            "pipeline",
+            "2.099",
+            "0.42",
+            "1.00",
+            "0.0070",
+            "55.0",
+            "19.0",
+            "`experiments/time_budget_selection/pipeline_budget_selector.py`"
+          ]
+        ]
+      },
+      "case_tables": [
+        {
+          "title": "functional_budgeted",
+          "table": {
+            "headers": [
+              "Dataset",
+              "Scenario",
+              "Budget ms",
+              "Pick",
+              "Pick ms",
+              "Oracle",
+              "Oracle ms",
+              "Budget Hit",
+              "Regret",
+              "Rationale"
+            ],
+            "rows": [
+              [
+                "benchmark_diff_mppi",
+                "cluttered",
+                "0.1796",
+                "mppi @ K=1024",
+                "0.1796",
+                "mppi @ K=1024",
+                "0.1796",
+                "yes",
+                "0.000",
+                "weighted utility inside the time budget with a mild preference for spare headroom"
+              ],
+              [
+                "benchmark_diff_mppi",
+                "cluttered",
+                "0.6092",
+                "diff_mppi_1 @ K=1024",
+                "0.4933",
+                "diff_mppi_1 @ K=1024",
+                "0.4933",
+                "yes",
+                "0.000",
+                "weighted utility inside the time budget with a mild preference for spare headroom"
+              ],
+              [
+                "benchmark_diff_mppi",
+                "cluttered",
+                "1.1294",
+                "diff_mppi_1 @ K=1024",
+                "0.4933",
+                "diff_mppi_1 @ K=1024",
+                "0.4933",
+                "yes",
+                "0.000",
+                "weighted utility inside the time budget with a mild preference for spare headroom"
+              ],
+              [
+                "benchmark_diff_mppi",
+                "corner_turn",
+                "0.1642",
+                "mppi @ K=1024",
+                "0.1642",
+                "mppi @ K=1024",
+                "0.1642",
+                "yes",
+                "0.000",
+                "weighted utility inside the time budget with a mild preference for spare headroom"
+              ],
+              [
+                "benchmark_diff_mppi",
+                "corner_turn",
+                "0.5568",
+                "diff_mppi_1 @ K=1024",
+                "0.4388",
+                "diff_mppi_1 @ K=1024",
+                "0.4388",
+                "yes",
+                "0.000",
+                "weighted utility inside the time budget with a mild preference for spare headroom"
+              ],
+              [
+                "benchmark_diff_mppi",
+                "corner_turn",
+                "0.9828",
+                "diff_mppi_1 @ K=1024",
+                "0.4388",
+                "diff_mppi_1 @ K=1024",
+                "0.4388",
+                "yes",
+                "0.000",
+                "weighted utility inside the time budget with a mild preference for spare headroom"
+              ],
+              [
+                "benchmark_diff_mppi",
+                "narrow_passage",
+                "0.1667",
+                "mppi @ K=1024",
+                "0.1667",
+                "mppi @ K=1024",
+                "0.1667",
+                "yes",
+                "0.000",
+                "weighted utility inside the time budget with a mild preference for spare headroom"
+              ],
+              [
+                "benchmark_diff_mppi",
+                "narrow_passage",
+                "0.5568",
+                "diff_mppi_1 @ K=1024",
+                "0.4377",
+                "diff_mppi_1 @ K=1024",
+                "0.4377",
+                "yes",
+                "0.000",
+                "weighted utility inside the time budget with a mild preference for spare headroom"
+              ],
+              [
+                "benchmark_diff_mppi",
+                "narrow_passage",
+                "0.9761",
+                "diff_mppi_1 @ K=4096",
+                "0.7914",
+                "diff_mppi_1 @ K=4096",
+                "0.7914",
+                "yes",
+                "0.000",
+                "weighted utility inside the time budget with a mild preference for spare headroom"
+              ],
+              [
+                "benchmark_diff_mppi",
+                "slalom",
+                "0.1593",
+                "mppi @ K=1024",
+                "0.1593",
+                "mppi @ K=1024",
+                "0.1593",
+                "yes",
+                "0.000",
+                "weighted utility inside the time budget with a mild preference for spare headroom"
+              ],
+              [
+                "benchmark_diff_mppi",
+                "slalom",
+                "0.5187",
+                "diff_mppi_1 @ K=1024",
+                "0.3973",
+                "diff_mppi_1 @ K=1024",
+                "0.3973",
+                "yes",
+                "0.000",
+                "weighted utility inside the time budget with a mild preference for spare headroom"
+              ],
+              [
+                "benchmark_diff_mppi",
+                "slalom",
+                "0.8681",
+                "diff_mppi_1 @ K=1024",
+                "0.3973",
+                "diff_mppi_1 @ K=1024",
+                "0.3973",
+                "yes",
+                "0.000",
+                "weighted utility inside the time budget with a mild preference for spare headroom"
+              ],
+              [
+                "benchmark_diff_mppi_dynamic_bicycle",
+                "dynbike_crossing",
+                "0.0594",
+                "mppi @ K=32",
+                "0.0594",
+                "mppi @ K=32",
+                "0.0594",
+                "yes",
+                "0.000",
+                "weighted utility inside the time budget with a mild preference for spare headroom"
+              ],
+              [
+                "benchmark_diff_mppi_dynamic_bicycle",
+                "dynbike_crossing",
+                "0.8240",
+                "diff_mppi_1 @ K=32",
+                "0.5591",
+                "diff_mppi_1 @ K=32",
+                "0.5591",
+                "yes",
+                "0.000",
+                "weighted utility inside the time budget with a mild preference for spare headroom"
+              ],
+              [
+                "benchmark_diff_mppi_dynamic_bicycle",
+                "dynbike_crossing",
+                "1.5419",
+                "diff_mppi_1 @ K=32",
+                "0.5591",
+                "diff_mppi_1 @ K=32",
+                "0.5591",
+                "yes",
+                "0.000",
+                "weighted utility inside the time budget with a mild preference for spare headroom"
+              ],
+              [
+                "benchmark_diff_mppi_dynamic_bicycle",
+                "dynbike_slalom",
+                "0.0642",
+                "mppi @ K=32",
+                "0.0642",
+                "mppi @ K=32",
+                "0.0642",
+                "yes",
+                "0.000",
+                "weighted utility inside the time budget with a mild preference for spare headroom"
+              ],
+              [
+                "benchmark_diff_mppi_dynamic_bicycle",
+                "dynbike_slalom",
+                "0.8973",
+                "mppi @ K=256",
+                "0.1065",
+                "mppi @ K=256",
+                "0.1065",
+                "yes",
+                "0.000",
+                "weighted utility inside the time budget with a mild preference for spare headroom"
+              ],
+              [
+                "benchmark_diff_mppi_dynamic_bicycle",
+                "dynbike_slalom",
+                "1.7477",
+                "mppi @ K=256",
+                "0.1065",
+                "mppi @ K=256",
+                "0.1065",
+                "yes",
+                "0.000",
+                "weighted utility inside the time budget with a mild preference for spare headroom"
+              ],
+              [
+                "benchmark_diff_mppi_uncertain",
+                "uncertain_crossing",
+                "0.0800",
+                "mppi @ K=256",
+                "0.0800",
+                "mppi @ K=256",
+                "0.0800",
+                "yes",
+                "0.000",
+                "weighted utility inside the time budget with a mild preference for spare headroom"
+              ],
+              [
+                "benchmark_diff_mppi_uncertain",
+                "uncertain_crossing",
+                "0.8527",
+                "feedback_mppi @ K=256",
+                "0.3171",
+                "feedback_mppi @ K=256",
+                "0.3171",
+                "yes",
+                "0.000",
+                "weighted utility inside the time budget with a mild preference for spare headroom"
+              ],
+              [
+                "benchmark_diff_mppi_uncertain",
+                "uncertain_crossing",
+                "1.3285",
+                "feedback_mppi @ K=256",
+                "0.3171",
+                "feedback_mppi @ K=256",
+                "0.3171",
+                "yes",
+                "0.000",
+                "weighted utility inside the time budget with a mild preference for spare headroom"
+              ],
+              [
+                "benchmark_diff_mppi_uncertain",
+                "uncertain_slalom",
+                "0.0832",
+                "mppi @ K=256",
+                "0.0832",
+                "mppi @ K=256",
+                "0.0832",
+                "yes",
+                "0.000",
+                "weighted utility inside the time budget with a mild preference for spare headroom"
+              ],
+              [
+                "benchmark_diff_mppi_uncertain",
+                "uncertain_slalom",
+                "0.9755",
+                "diff_mppi_1 @ K=256",
+                "0.3859",
+                "diff_mppi_1 @ K=256",
+                "0.3859",
+                "yes",
+                "0.000",
+                "weighted utility inside the time budget with a mild preference for spare headroom"
+              ],
+              [
+                "benchmark_diff_mppi_uncertain",
+                "uncertain_slalom",
+                "1.4591",
+                "diff_mppi_1 @ K=256",
+                "0.3859",
+                "diff_mppi_1 @ K=256",
+                "0.3859",
+                "yes",
+                "0.000",
+                "weighted utility inside the time budget with a mild preference for spare headroom"
+              ]
+            ]
+          }
+        },
+        {
+          "title": "oop_budget_lexicographic",
+          "table": {
+            "headers": [
+              "Dataset",
+              "Scenario",
+              "Budget ms",
+              "Pick",
+              "Pick ms",
+              "Oracle",
+              "Oracle ms",
+              "Budget Hit",
+              "Regret",
+              "Rationale"
+            ],
+            "rows": [
+              [
+                "benchmark_diff_mppi",
+                "cluttered",
+                "0.1796",
+                "mppi @ K=1024",
+                "0.1796",
+                "mppi @ K=1024",
+                "0.1796",
+                "yes",
+                "0.000",
+                "lexicographic ordering: success > final_distance > cumulative_cost > budget_slack > steps"
+              ],
+              [
+                "benchmark_diff_mppi",
+                "cluttered",
+                "0.6092",
+                "diff_mppi_1 @ K=1024",
+                "0.4933",
+                "diff_mppi_1 @ K=1024",
+                "0.4933",
+                "yes",
+                "0.000",
+                "lexicographic ordering: success > final_distance > cumulative_cost > budget_slack > steps"
+              ],
+              [
+                "benchmark_diff_mppi",
+                "cluttered",
+                "1.1294",
+                "diff_mppi_3 @ K=1024",
+                "1.1294",
+                "diff_mppi_1 @ K=1024",
+                "0.4933",
+                "yes",
+                "0.299",
+                "lexicographic ordering: success > final_distance > cumulative_cost > budget_slack > steps"
+              ],
+              [
+                "benchmark_diff_mppi",
+                "corner_turn",
+                "0.1642",
+                "mppi @ K=1024",
+                "0.1642",
+                "mppi @ K=1024",
+                "0.1642",
+                "yes",
+                "0.000",
+                "lexicographic ordering: success > final_distance > cumulative_cost > budget_slack > steps"
+              ],
+              [
+                "benchmark_diff_mppi",
+                "corner_turn",
+                "0.5568",
+                "diff_mppi_1 @ K=2048",
+                "0.5568",
+                "diff_mppi_1 @ K=1024",
+                "0.4388",
+                "yes",
+                "0.222",
+                "lexicographic ordering: success > final_distance > cumulative_cost > budget_slack > steps"
+              ],
+              [
+                "benchmark_diff_mppi",
+                "corner_turn",
+                "0.9828",
+                "diff_mppi_3 @ K=1024",
+                "0.9828",
+                "diff_mppi_1 @ K=1024",
+                "0.4388",
+                "yes",
+                "0.306",
+                "lexicographic ordering: success > final_distance > cumulative_cost > budget_slack > steps"
+              ],
+              [
+                "benchmark_diff_mppi",
+                "narrow_passage",
+                "0.1667",
+                "mppi @ K=1024",
+                "0.1667",
+                "mppi @ K=1024",
+                "0.1667",
+                "yes",
+                "0.000",
+                "lexicographic ordering: success > final_distance > cumulative_cost > budget_slack > steps"
+              ],
+              [
+                "benchmark_diff_mppi",
+                "narrow_passage",
+                "0.5568",
+                "diff_mppi_1 @ K=1024",
+                "0.4377",
+                "diff_mppi_1 @ K=1024",
+                "0.4377",
+                "yes",
+                "0.000",
+                "lexicographic ordering: success > final_distance > cumulative_cost > budget_slack > steps"
+              ],
+              [
+                "benchmark_diff_mppi",
+                "narrow_passage",
+                "0.9761",
+                "diff_mppi_1 @ K=4096",
+                "0.7914",
+                "diff_mppi_1 @ K=4096",
+                "0.7914",
+                "yes",
+                "0.000",
+                "lexicographic ordering: success > final_distance > cumulative_cost > budget_slack > steps"
+              ],
+              [
+                "benchmark_diff_mppi",
+                "slalom",
+                "0.1593",
+                "mppi @ K=1024",
+                "0.1593",
+                "mppi @ K=1024",
+                "0.1593",
+                "yes",
+                "0.000",
+                "lexicographic ordering: success > final_distance > cumulative_cost > budget_slack > steps"
+              ],
+              [
+                "benchmark_diff_mppi",
+                "slalom",
+                "0.5187",
+                "diff_mppi_1 @ K=2048",
+                "0.5153",
+                "diff_mppi_1 @ K=1024",
+                "0.3973",
+                "yes",
+                "0.234",
+                "lexicographic ordering: success > final_distance > cumulative_cost > budget_slack > steps"
+              ],
+              [
+                "benchmark_diff_mppi",
+                "slalom",
+                "0.8681",
+                "diff_mppi_3 @ K=1024",
+                "0.8681",
+                "diff_mppi_1 @ K=1024",
+                "0.3973",
+                "yes",
+                "0.314",
+                "lexicographic ordering: success > final_distance > cumulative_cost > budget_slack > steps"
+              ],
+              [
+                "benchmark_diff_mppi_dynamic_bicycle",
+                "dynbike_crossing",
+                "0.0594",
+                "mppi @ K=32",
+                "0.0594",
+                "mppi @ K=32",
+                "0.0594",
+                "yes",
+                "0.000",
+                "lexicographic ordering: success > final_distance > cumulative_cost > budget_slack > steps"
+              ],
+              [
+                "benchmark_diff_mppi_dynamic_bicycle",
+                "dynbike_crossing",
+                "0.8240",
+                "diff_mppi_1 @ K=32",
+                "0.5591",
+                "diff_mppi_1 @ K=32",
+                "0.5591",
+                "yes",
+                "0.000",
+                "lexicographic ordering: success > final_distance > cumulative_cost > budget_slack > steps"
+              ],
+              [
+                "benchmark_diff_mppi_dynamic_bicycle",
+                "dynbike_crossing",
+                "1.5419",
+                "diff_mppi_1 @ K=32",
+                "0.5591",
+                "diff_mppi_1 @ K=32",
+                "0.5591",
+                "yes",
+                "0.000",
+                "lexicographic ordering: success > final_distance > cumulative_cost > budget_slack > steps"
+              ],
+              [
+                "benchmark_diff_mppi_dynamic_bicycle",
+                "dynbike_slalom",
+                "0.0642",
+                "mppi @ K=32",
+                "0.0642",
+                "mppi @ K=32",
+                "0.0642",
+                "yes",
+                "0.000",
+                "lexicographic ordering: success > final_distance > cumulative_cost > budget_slack > steps"
+              ],
+              [
+                "benchmark_diff_mppi_dynamic_bicycle",
+                "dynbike_slalom",
+                "0.8973",
+                "diff_mppi_1 @ K=64",
+                "0.6311",
+                "mppi @ K=256",
+                "0.1065",
+                "yes",
+                "0.556",
+                "lexicographic ordering: success > final_distance > cumulative_cost > budget_slack > steps"
+              ],
+              [
+                "benchmark_diff_mppi_dynamic_bicycle",
+                "dynbike_slalom",
+                "1.7477",
+                "diff_mppi_1 @ K=64",
+                "0.6311",
+                "mppi @ K=256",
+                "0.1065",
+                "yes",
+                "0.294",
+                "lexicographic ordering: success > final_distance > cumulative_cost > budget_slack > steps"
+              ],
+              [
+                "benchmark_diff_mppi_uncertain",
+                "uncertain_crossing",
+                "0.0800",
+                "mppi @ K=256",
+                "0.0800",
+                "mppi @ K=256",
+                "0.0800",
+                "yes",
+                "0.000",
+                "lexicographic ordering: success > final_distance > cumulative_cost > budget_slack > steps"
+              ],
+              [
+                "benchmark_diff_mppi_uncertain",
+                "uncertain_crossing",
+                "0.8527",
+                "feedback_mppi @ K=1024",
+                "0.5958",
+                "feedback_mppi @ K=256",
+                "0.3171",
+                "yes",
+                "0.133",
+                "lexicographic ordering: success > final_distance > cumulative_cost > budget_slack > steps"
+              ],
+              [
+                "benchmark_diff_mppi_uncertain",
+                "uncertain_crossing",
+                "1.3285",
+                "feedback_mppi @ K=1024",
+                "0.5958",
+                "feedback_mppi @ K=256",
+                "0.3171",
+                "yes",
+                "0.027",
+                "lexicographic ordering: success > final_distance > cumulative_cost > budget_slack > steps"
+              ],
+              [
+                "benchmark_diff_mppi_uncertain",
+                "uncertain_slalom",
+                "0.0832",
+                "mppi @ K=256",
+                "0.0832",
+                "mppi @ K=256",
+                "0.0832",
+                "yes",
+                "0.000",
+                "lexicographic ordering: success > final_distance > cumulative_cost > budget_slack > steps"
+              ],
+              [
+                "benchmark_diff_mppi_uncertain",
+                "uncertain_slalom",
+                "0.9755",
+                "diff_mppi_1 @ K=256",
+                "0.3859",
+                "diff_mppi_1 @ K=256",
+                "0.3859",
+                "yes",
+                "0.000",
+                "lexicographic ordering: success > final_distance > cumulative_cost > budget_slack > steps"
+              ],
+              [
+                "benchmark_diff_mppi_uncertain",
+                "uncertain_slalom",
+                "1.4591",
+                "diff_mppi_1 @ K=256",
+                "0.3859",
+                "diff_mppi_1 @ K=256",
+                "0.3859",
+                "yes",
+                "0.000",
+                "lexicographic ordering: success > final_distance > cumulative_cost > budget_slack > steps"
+              ]
+            ]
+          }
+        },
+        {
+          "title": "pipeline_budget_staged",
+          "table": {
+            "headers": [
+              "Dataset",
+              "Scenario",
+              "Budget ms",
+              "Pick",
+              "Pick ms",
+              "Oracle",
+              "Oracle ms",
+              "Budget Hit",
+              "Regret",
+              "Rationale"
+            ],
+            "rows": [
+              [
+                "benchmark_diff_mppi",
+                "cluttered",
+                "0.1796",
+                "mppi @ K=1024",
+                "0.1796",
+                "mppi @ K=1024",
+                "0.1796",
+                "yes",
+                "0.000",
+                "staged filters: near-fastest feasible -> near-best success -> near-best final_distance -> lowest cost"
+              ],
+              [
+                "benchmark_diff_mppi",
+                "cluttered",
+                "0.6092",
+                "mppi @ K=1024",
+                "0.1796",
+                "diff_mppi_1 @ K=1024",
+                "0.4933",
+                "yes",
+                "2.449",
+                "staged filters: near-fastest feasible -> near-best success -> near-best final_distance -> lowest cost"
+              ],
+              [
+                "benchmark_diff_mppi",
+                "cluttered",
+                "1.1294",
+                "mppi @ K=1024",
+                "0.1796",
+                "diff_mppi_1 @ K=1024",
+                "0.4933",
+                "yes",
+                "2.547",
+                "staged filters: near-fastest feasible -> near-best success -> near-best final_distance -> lowest cost"
+              ],
+              [
+                "benchmark_diff_mppi",
+                "corner_turn",
+                "0.1642",
+                "mppi @ K=1024",
+                "0.1642",
+                "mppi @ K=1024",
+                "0.1642",
+                "yes",
+                "0.000",
+                "staged filters: near-fastest feasible -> near-best success -> near-best final_distance -> lowest cost"
+              ],
+              [
+                "benchmark_diff_mppi",
+                "corner_turn",
+                "0.5568",
+                "mppi @ K=1024",
+                "0.1642",
+                "diff_mppi_1 @ K=1024",
+                "0.4388",
+                "yes",
+                "2.472",
+                "staged filters: near-fastest feasible -> near-best success -> near-best final_distance -> lowest cost"
+              ],
+              [
+                "benchmark_diff_mppi",
+                "corner_turn",
+                "0.9828",
+                "mppi @ K=1024",
+                "0.1642",
+                "diff_mppi_1 @ K=1024",
+                "0.4388",
+                "yes",
+                "2.556",
+                "staged filters: near-fastest feasible -> near-best success -> near-best final_distance -> lowest cost"
+              ],
+              [
+                "benchmark_diff_mppi",
+                "narrow_passage",
+                "0.1667",
+                "mppi @ K=1024",
+                "0.1667",
+                "mppi @ K=1024",
+                "0.1667",
+                "yes",
+                "0.000",
+                "staged filters: near-fastest feasible -> near-best success -> near-best final_distance -> lowest cost"
+              ],
+              [
+                "benchmark_diff_mppi",
+                "narrow_passage",
+                "0.5568",
+                "mppi @ K=1024",
+                "0.1667",
+                "diff_mppi_1 @ K=1024",
+                "0.4377",
+                "yes",
+                "1.458",
+                "staged filters: near-fastest feasible -> near-best success -> near-best final_distance -> lowest cost"
+              ],
+              [
+                "benchmark_diff_mppi",
+                "narrow_passage",
+                "0.9761",
+                "mppi @ K=1024",
+                "0.1667",
+                "diff_mppi_1 @ K=4096",
+                "0.7914",
+                "yes",
+                "1.383",
+                "staged filters: near-fastest feasible -> near-best success -> near-best final_distance -> lowest cost"
+              ],
+              [
+                "benchmark_diff_mppi",
+                "slalom",
+                "0.1593",
+                "mppi @ K=1024",
+                "0.1593",
+                "mppi @ K=1024",
+                "0.1593",
+                "yes",
+                "0.000",
+                "staged filters: near-fastest feasible -> near-best success -> near-best final_distance -> lowest cost"
+              ],
+              [
+                "benchmark_diff_mppi",
+                "slalom",
+                "0.5187",
+                "mppi @ K=1024",
+                "0.1593",
+                "diff_mppi_1 @ K=1024",
+                "0.3973",
+                "yes",
+                "2.491",
+                "staged filters: near-fastest feasible -> near-best success -> near-best final_distance -> lowest cost"
+              ],
+              [
+                "benchmark_diff_mppi",
+                "slalom",
+                "0.8681",
+                "mppi @ K=1024",
+                "0.1593",
+                "diff_mppi_1 @ K=1024",
+                "0.3973",
+                "yes",
+                "2.564",
+                "staged filters: near-fastest feasible -> near-best success -> near-best final_distance -> lowest cost"
+              ],
+              [
+                "benchmark_diff_mppi_dynamic_bicycle",
+                "dynbike_crossing",
+                "0.0594",
+                "mppi @ K=32",
+                "0.0594",
+                "mppi @ K=32",
+                "0.0594",
+                "yes",
+                "0.000",
+                "staged filters: near-fastest feasible -> near-best success -> near-best final_distance -> lowest cost"
+              ],
+              [
+                "benchmark_diff_mppi_dynamic_bicycle",
+                "dynbike_crossing",
+                "0.8240",
+                "mppi @ K=256",
+                "0.1014",
+                "diff_mppi_1 @ K=32",
+                "0.5591",
+                "yes",
+                "0.205",
+                "staged filters: near-fastest feasible -> near-best success -> near-best final_distance -> lowest cost"
+              ],
+              [
+                "benchmark_diff_mppi_dynamic_bicycle",
+                "dynbike_crossing",
+                "1.5419",
+                "mppi @ K=256",
+                "0.1014",
+                "diff_mppi_1 @ K=32",
+                "0.5591",
+                "yes",
+                "0.258",
+                "staged filters: near-fastest feasible -> near-best success -> near-best final_distance -> lowest cost"
+              ],
+              [
+                "benchmark_diff_mppi_dynamic_bicycle",
+                "dynbike_slalom",
+                "0.0642",
+                "mppi @ K=32",
+                "0.0642",
+                "mppi @ K=32",
+                "0.0642",
+                "yes",
+                "0.000",
+                "staged filters: near-fastest feasible -> near-best success -> near-best final_distance -> lowest cost"
+              ],
+              [
+                "benchmark_diff_mppi_dynamic_bicycle",
+                "dynbike_slalom",
+                "0.8973",
+                "mppi @ K=256",
+                "0.1065",
+                "mppi @ K=256",
+                "0.1065",
+                "yes",
+                "0.000",
+                "staged filters: near-fastest feasible -> near-best success -> near-best final_distance -> lowest cost"
+              ],
+              [
+                "benchmark_diff_mppi_dynamic_bicycle",
+                "dynbike_slalom",
+                "1.7477",
+                "mppi @ K=256",
+                "0.1065",
+                "mppi @ K=256",
+                "0.1065",
+                "yes",
+                "0.000",
+                "staged filters: near-fastest feasible -> near-best success -> near-best final_distance -> lowest cost"
+              ],
+              [
+                "benchmark_diff_mppi_uncertain",
+                "uncertain_crossing",
+                "0.0800",
+                "mppi @ K=256",
+                "0.0800",
+                "mppi @ K=256",
+                "0.0800",
+                "yes",
+                "0.000",
+                "staged filters: near-fastest feasible -> near-best success -> near-best final_distance -> lowest cost"
+              ],
+              [
+                "benchmark_diff_mppi_uncertain",
+                "uncertain_crossing",
+                "0.8527",
+                "mppi @ K=512",
+                "0.1123",
+                "feedback_mppi @ K=256",
+                "0.3171",
+                "yes",
+                "7.844",
+                "staged filters: near-fastest feasible -> near-best success -> near-best final_distance -> lowest cost"
+              ],
+              [
+                "benchmark_diff_mppi_uncertain",
+                "uncertain_crossing",
+                "1.3285",
+                "mppi @ K=512",
+                "0.1123",
+                "feedback_mppi @ K=256",
+                "0.3171",
+                "yes",
+                "7.874",
+                "staged filters: near-fastest feasible -> near-best success -> near-best final_distance -> lowest cost"
+              ],
+              [
+                "benchmark_diff_mppi_uncertain",
+                "uncertain_slalom",
+                "0.0832",
+                "mppi @ K=256",
+                "0.0832",
+                "mppi @ K=256",
+                "0.0832",
+                "yes",
+                "0.000",
+                "staged filters: near-fastest feasible -> near-best success -> near-best final_distance -> lowest cost"
+              ],
+              [
+                "benchmark_diff_mppi_uncertain",
+                "uncertain_slalom",
+                "0.9755",
+                "mppi @ K=512",
+                "0.1150",
+                "diff_mppi_1 @ K=256",
+                "0.3859",
+                "yes",
+                "8.265",
+                "staged filters: near-fastest feasible -> near-best success -> near-best final_distance -> lowest cost"
+              ],
+              [
+                "benchmark_diff_mppi_uncertain",
+                "uncertain_slalom",
+                "1.4591",
+                "mppi @ K=512",
+                "0.1150",
+                "diff_mppi_1 @ K=256",
+                "0.3859",
+                "yes",
+                "8.015",
+                "staged filters: near-fastest feasible -> near-best success -> near-best final_distance -> lowest cost"
+              ]
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}
