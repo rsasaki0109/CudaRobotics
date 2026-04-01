@@ -150,6 +150,24 @@ target_link_libraries(diff_mppi ${OpenCV_LIBS})
 add_executable(comparison_diff_mppi src/comparison_diff_mppi.cu)
 target_link_libraries(comparison_diff_mppi ${OpenCV_LIBS})
 
+add_executable(neural_sdf src/neural_sdf.cu)
+target_link_libraries(neural_sdf ${OpenCV_LIBS})
+
+add_executable(sdf_potential_field src/sdf_potential_field.cu)
+target_link_libraries(sdf_potential_field ${OpenCV_LIBS})
+
+add_executable(sdf_mppi src/sdf_mppi.cu)
+target_link_libraries(sdf_mppi ${OpenCV_LIBS})
+
+add_executable(comparison_sdf_nav src/comparison_sdf_nav.cu)
+target_link_libraries(comparison_sdf_nav ${OpenCV_LIBS})
+
+add_executable(mini_isaac src/mini_isaac.cu)
+target_link_libraries(mini_isaac ${OpenCV_LIBS})
+
+add_executable(mini_isaac_rl src/mini_isaac_rl.cu)
+target_link_libraries(mini_isaac_rl ${OpenCV_LIBS})
+
 ##############################
 #Neuroevolution
 ##############################

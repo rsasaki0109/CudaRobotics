@@ -47,7 +47,9 @@ Recent additions push the repository beyond direct CUDA ports of classic robotic
 |---|---|---|
 | Autodiff + GPU MLP foundation | `test_autodiff`, `test_gpu_mlp` | Dual-number forward-mode autodiff and a compact GPU MLP training/inference engine used as the base for later research-style experiments. |
 | Differentiable MPPI | `diff_mppi`, `comparison_diff_mppi` | Extends MPPI with a dual-number backward pass that refines the nominal control sequence with control gradients after the sampling update. |
+| Neural SDF Navigation | `neural_sdf`, `sdf_potential_field`, `sdf_mppi`, `comparison_sdf_nav` | Learns 2D signed distance fields with a GPU MLP, then uses them for potential-field planning and MPPI on non-circular obstacle layouts. |
 | Neuroevolution for Cart-Pole | `neuroevo`, `comparison_neuroevo` | Evolves 4096 neural policies in parallel on GPU and compares them against a CPU baseline with side-by-side learning curves. |
+| MiniIsaacGym | `mini_isaac`, `mini_isaac_rl` | Runs thousands of CartPole environments in parallel on GPU and trains a compact policy with GPU-side REINFORCE updates. |
 | CudaPointCloud | `voxel_grid_filter`, `statistical_filter`, `normal_estimation`, `gicp`, `ransac_plane`, `benchmark_pointcloud` | GPU voxel filtering, outlier removal, PCA normals, plane extraction, and GICP registration for synthetic indoor point clouds. |
 | Swarm Optimization | `pso_cuda`, `differential_evolution`, `cma_es`, `aco_tsp`, `comparison_swarm` | Large-scale PSO, DE, CMA-ES, and ACO implementations with animated convergence comparisons. |
 
@@ -55,10 +57,16 @@ Recent additions push the repository beyond direct CUDA ports of classic robotic
 |---|---|
 | **MPPI vs Differentiable MPPI** | **Differentiable MPPI trajectory rollouts** |
 | <img src="https://rsasaki0109.github.io/CudaRobotics/comparison_diff_mppi.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/diff_mppi.gif" width="400"/> |
+| **Neural SDF vs true field** | **Neural SDF MPPI vs circle approximation** |
+| <img src="https://rsasaki0109.github.io/CudaRobotics/neural_sdf.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/comparison_sdf_nav.gif" width="400"/> |
+| **Neural SDF potential-field navigation** | **Neural SDF MPPI rollout** |
+| <img src="https://rsasaki0109.github.io/CudaRobotics/sdf_potential_field.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/sdf_mppi.gif" width="400"/> |
 | **Neuroevolution: CPU 100 vs CUDA 4096 individuals** | **Swarm Optimization: PSO vs DE vs CMA-ES** |
 | <img src="https://rsasaki0109.github.io/CudaRobotics/comparison_neuroevo.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/comparison_swarm.gif" width="400"/> |
 | **GPU Neuroevolution Cart-Pole replay** | **Particle Swarm Optimization** |
 | <img src="https://rsasaki0109.github.io/CudaRobotics/neuroevo.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/pso.gif" width="400"/> |
+| **4096-way CartPole simulation** | **MiniIsaacGym REINFORCE training** |
+| <img src="https://rsasaki0109.github.io/CudaRobotics/mini_isaac.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/mini_isaac_rl.gif" width="400"/> |
 | **Ant Colony Optimization for TSP** | |
 | <img src="https://rsasaki0109.github.io/CudaRobotics/aco_tsp.gif" width="400"/> | |
 
@@ -141,6 +149,7 @@ Combines particle filter (for robot pose) with per-particle EKF (for landmark po
 | **3D Potential Field** | `potential_field_3d` | **3D grid-parallel potential (216K+ cells, drone/UAV)** |
 | MPPI | `mppi` | 4096-sample path-integral control on GPU |
 | Differentiable MPPI | `diff_mppi` | MPPI sampling update + autodiff control-gradient refinement |
+| Neural SDF Navigation | `neural_sdf`, `sdf_potential_field`, `sdf_mppi`, `comparison_sdf_nav` | Learned implicit obstacle fields for heatmap visualization, potential fields, and MPPI |
 | PRM | `prm_cuda` | Parallel collision check + k-NN + edge collision |
 | Voronoi Road Map | `voronoi_road_map` | Jump Flooding Algorithm for parallel Voronoi diagram |
 
@@ -219,6 +228,13 @@ Generalized ICP uses GPU nearest-neighbor search and point-to-plane system accum
 | CMA-ES | `cma_es` | GPU candidate evaluation and covariance-guided search |
 | ACO for TSP | `aco_tsp` | Thousands of ants concurrently construct tours |
 | Swarm Comparison | `comparison_swarm` | Side-by-side convergence visualization for PSO, DE, and CMA-ES |
+
+### Simulation / RL
+
+| Algorithm | Binary | CUDA Parallelization |
+|---|---|---|
+| MiniIsaacGym CartPole | `mini_isaac` | 4096 environments stepped in parallel with GPU-side action generation |
+| MiniIsaacGym REINFORCE | `mini_isaac_rl` | GPU rollout buffer, return computation, policy-gradient construction, and MLP updates |
 
 ### Mapping
 
