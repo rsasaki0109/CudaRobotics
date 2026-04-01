@@ -97,10 +97,20 @@ struct Scenario {
 
 struct PlannerVariant {
     string name;
+    bool use_feedback = false;
     int grad_steps = 0;
     float alpha = 0.0f;
     float accel_sigma = 0.0f;
     float steer_sigma = 0.0f;
+    float feedback_gain_scale = 0.0f;
+    float feedback_noise_accel = 0.0f;
+    float feedback_noise_steer = 0.0f;
+    float feedback_longitudinal_gain = 0.0f;
+    float feedback_speed_gain = 0.0f;
+    float feedback_lateral_gain = 0.0f;
+    float feedback_heading_gain = 0.0f;
+    float feedback_steer_state_gain = 0.0f;
+    float feedback_setpoint_blend = 0.0f;
 };
 
 struct EpisodeMetrics {
@@ -327,7 +337,7 @@ __global__ void init_curand_kernel(curandState* states, int n, unsigned long lon
 
 __global__ void rollout_kernel(
     float sx, float sy, float syaw, float sv, float ssteer,
-    const float* d_nominal, float* d_costs, float* d_perturbed, curandState* d_rng,
+    const float* d_nominal, float* d_costs, float* d_perturbed, float* d_rollout_states, curandState* d_rng,
     BikeParams params, BikeCostParams cost_params, int n_obs, int n_dyn_obs, int start_step,
     float accel_sigma, float steer_sigma, int K, int T)
 {
@@ -341,6 +351,15 @@ __global__ void rollout_kernel(
     float v = sv;
     float steer = ssteer;
     float total_cost = 0.0f;
+    int state_base = k * (T + 1) * 5;
+
+    if (d_rollout_states != nullptr) {
+        d_rollout_states[state_base + 0] = x;
+        d_rollout_states[state_base + 1] = y;
+        d_rollout_states[state_base + 2] = yaw;
+        d_rollout_states[state_base + 3] = v;
+        d_rollout_states[state_base + 4] = steer;
+    }
 
     for (int t = 0; t < T; t++) {
         float accel_cmd = d_nominal[t * 2 + 0] + curand_normal(&local_rng) * accel_sigma;
@@ -352,6 +371,14 @@ __global__ void rollout_kernel(
         d_perturbed[k * T * 2 + t * 2 + 1] = steer_cmd;
 
         dynamic_bicycle_step(x, y, yaw, v, steer, accel_cmd, steer_cmd, params);
+        if (d_rollout_states != nullptr) {
+            int offset = state_base + (t + 1) * 5;
+            d_rollout_states[offset + 0] = x;
+            d_rollout_states[offset + 1] = y;
+            d_rollout_states[offset + 2] = yaw;
+            d_rollout_states[offset + 3] = v;
+            d_rollout_states[offset + 4] = steer;
+        }
         total_cost += stage_cost(x, y, yaw, v, steer, accel_cmd, steer_cmd, cost_params, params.dt);
 
         for (int i = 0; i < n_obs; i++) {
@@ -373,6 +400,210 @@ __global__ void rollout_kernel(
             total_cost += 500.0f;
             break;
         }
+    }
+
+    total_cost += terminal_cost(x, y, yaw, v, steer, cost_params);
+    d_costs[k] = total_cost;
+    d_rng[k] = local_rng;
+}
+
+__global__ void compute_rollout_initial_gradients_kernel(
+    const float* d_rollout_states,
+    const float* d_perturbed,
+    float* d_rollout_init_grads,
+    BikeParams params,
+    BikeCostParams cost_params,
+    int n_obs,
+    int n_dyn_obs,
+    int start_step,
+    int K,
+    int T)
+{
+    int k = blockIdx.x * blockDim.x + threadIdx.x;
+    if (k >= K) return;
+
+    const float* rollout_states = &d_rollout_states[k * (T + 1) * 5];
+    const float* rollout_actions = &d_perturbed[k * T * 2];
+
+    float adj[5];
+    terminal_grad(rollout_states[T * 5 + 0], rollout_states[T * 5 + 1], rollout_states[T * 5 + 2],
+                  rollout_states[T * 5 + 3], rollout_states[T * 5 + 4], cost_params, adj);
+
+    for (int t = T - 1; t >= 0; t--) {
+        float x = rollout_states[t * 5 + 0];
+        float y = rollout_states[t * 5 + 1];
+        float yaw = rollout_states[t * 5 + 2];
+        float v = rollout_states[t * 5 + 3];
+        float steer = rollout_states[t * 5 + 4];
+        float accel_cmd = rollout_actions[t * 2 + 0];
+        float steer_cmd = rollout_actions[t * 2 + 1];
+
+        float J[5][7];
+        float stage_grad_vec[7];
+        float next_adj[5];
+        float tau = (start_step + t) * params.dt;
+
+        dynamic_bicycle_jacobian(x, y, yaw, v, steer, accel_cmd, steer_cmd, params, J);
+        stage_cost_grad(x, y, yaw, v, steer, accel_cmd, steer_cmd, cost_params, n_obs, n_dyn_obs, tau, params.dt, stage_grad_vec);
+
+        for (int col = 0; col < 5; col++) {
+            next_adj[col] = stage_grad_vec[col];
+            for (int row = 0; row < 5; row++) next_adj[col] += J[row][col] * adj[row];
+        }
+        for (int i = 0; i < 5; i++) adj[i] = next_adj[i];
+    }
+
+    for (int i = 0; i < 5; i++) d_rollout_init_grads[k * 5 + i] = adj[i];
+}
+
+__global__ void compute_sensitivity_feedback_gains_kernel(
+    const float* d_nominal,
+    const float* d_perturbed,
+    const float* d_weights,
+    const float* d_rollout_init_grads,
+    float* d_feedback_gains,
+    float lambda,
+    int K,
+    int T)
+{
+    if (blockIdx.x != 0 || threadIdx.x != 0) return;
+
+    float weighted_grad[5] = {};
+    for (int k = 0; k < K; k++) {
+        float w = d_weights[k];
+        for (int j = 0; j < 5; j++) weighted_grad[j] += w * d_rollout_init_grads[k * 5 + j];
+    }
+
+    for (int t = 0; t < T; t++) {
+        float accel_mean = d_nominal[t * 2 + 0];
+        float steer_mean = d_nominal[t * 2 + 1];
+        for (int j = 0; j < 5; j++) {
+            float accel_cov = 0.0f;
+            float steer_cov = 0.0f;
+            for (int k = 0; k < K; k++) {
+                float w = d_weights[k];
+                float g = d_rollout_init_grads[k * 5 + j];
+                accel_cov += w * d_perturbed[k * T * 2 + t * 2 + 0] * g;
+                steer_cov += w * d_perturbed[k * T * 2 + t * 2 + 1] * g;
+            }
+            d_feedback_gains[t * 10 + 0 * 5 + j] = -(accel_cov - accel_mean * weighted_grad[j]) / lambda;
+            d_feedback_gains[t * 10 + 1 * 5 + j] = -(steer_cov - steer_mean * weighted_grad[j]) / lambda;
+        }
+    }
+}
+
+__global__ void rollout_feedback_kernel(
+    float sx, float sy, float syaw, float sv, float ssteer,
+    const float* d_nominal,
+    const float* d_nominal_states,
+    const float* d_feedback_gains,
+    float* d_costs,
+    float* d_perturbed,
+    curandState* d_rng,
+    BikeParams params,
+    BikeCostParams cost_params,
+    int n_obs,
+    int n_dyn_obs,
+    int start_step,
+    int K,
+    int T,
+    float gain_scale,
+    float noise_accel_sigma,
+    float noise_steer_sigma,
+    float longitudinal_gain,
+    float speed_gain,
+    float lateral_gain,
+    float heading_gain,
+    float steer_state_gain,
+    float setpoint_blend)
+{
+    int k = blockIdx.x * blockDim.x + threadIdx.x;
+    if (k >= K) return;
+
+    curandState local_rng = d_rng[k];
+    float x = sx;
+    float y = sy;
+    float yaw = syaw;
+    float v = sv;
+    float steer = ssteer;
+    float total_cost = 0.0f;
+
+    for (int t = 0; t < T; t++) {
+        int t_next = min(t + 1, T);
+        float x_nom0 = d_nominal_states[t * 5 + 0];
+        float y_nom0 = d_nominal_states[t * 5 + 1];
+        float yaw_nom0 = d_nominal_states[t * 5 + 2];
+        float v_nom0 = d_nominal_states[t * 5 + 3];
+        float steer_nom0 = d_nominal_states[t * 5 + 4];
+        float x_nom1 = d_nominal_states[t_next * 5 + 0];
+        float y_nom1 = d_nominal_states[t_next * 5 + 1];
+        float yaw_nom1 = d_nominal_states[t_next * 5 + 2];
+        float v_nom1 = d_nominal_states[t_next * 5 + 3];
+        float steer_nom1 = d_nominal_states[t_next * 5 + 4];
+
+        float x_nom = (1.0f - setpoint_blend) * x_nom0 + setpoint_blend * x_nom1;
+        float y_nom = (1.0f - setpoint_blend) * y_nom0 + setpoint_blend * y_nom1;
+        float yaw_nom = wrap_anglef((1.0f - setpoint_blend) * yaw_nom0 + setpoint_blend * yaw_nom1);
+        float v_nom = (1.0f - setpoint_blend) * v_nom0 + setpoint_blend * v_nom1;
+        float steer_nom = (1.0f - setpoint_blend) * steer_nom0 + setpoint_blend * steer_nom1;
+
+        float dx = x_nom - x;
+        float dy = y_nom - y;
+        float ex = x - x_nom;
+        float ey = y - y_nom;
+        float eyaw = wrap_anglef(yaw - yaw_nom);
+        float ev = v - v_nom;
+        float esteer = steer - steer_nom;
+        float ct = cosf(yaw_nom);
+        float st = sinf(yaw_nom);
+        float longitudinal_err = ct * dx + st * dy;
+        float lateral_err = -st * dx + ct * dy;
+        float heading_err = wrap_anglef(yaw_nom - yaw);
+        float speed_err = v_nom - v;
+        float steer_state_err = steer_nom - steer;
+
+        const float* K_t = &d_feedback_gains[t * 10];
+        float accel_feedback =
+            K_t[0] * ex + K_t[1] * ey + K_t[2] * eyaw + K_t[3] * ev + K_t[4] * esteer;
+        float steer_feedback =
+            K_t[5] * ex + K_t[6] * ey + K_t[7] * eyaw + K_t[8] * ev + K_t[9] * esteer;
+
+        float accel_cmd = d_nominal[t * 2 + 0]
+                        + curand_normal(&local_rng) * noise_accel_sigma
+                        - gain_scale * accel_feedback
+                        + longitudinal_gain * longitudinal_err
+                        + speed_gain * speed_err;
+        float steer_cmd = d_nominal[t * 2 + 1]
+                        + curand_normal(&local_rng) * noise_steer_sigma
+                        - gain_scale * steer_feedback
+                        + lateral_gain * lateral_err
+                        + heading_gain * heading_err
+                        + steer_state_gain * steer_state_err;
+        accel_cmd = clampf_local(accel_cmd, -params.max_accel, params.max_accel);
+        steer_cmd = clampf_local(steer_cmd, -params.max_steer, params.max_steer);
+
+        d_perturbed[k * T * 2 + t * 2 + 0] = accel_cmd;
+        d_perturbed[k * T * 2 + t * 2 + 1] = steer_cmd;
+
+        dynamic_bicycle_step(x, y, yaw, v, steer, accel_cmd, steer_cmd, params);
+        total_cost += stage_cost(x, y, yaw, v, steer, accel_cmd, steer_cmd, cost_params, params.dt);
+
+        for (int i = 0; i < n_obs; i++) {
+            float odx = x - d_obstacles_dynbike[i].x;
+            float ody = y - d_obstacles_dynbike[i].y;
+            float margin = sqrtf(odx * odx + ody * ody + 1e-6f) - d_obstacles_dynbike[i].r;
+            if (margin <= 0.1f) total_cost += cost_params.obs_weight * 100.0f;
+            else if (margin < cost_params.obs_influence) total_cost += cost_params.obs_weight / (margin * margin);
+        }
+
+        float tau = (start_step + t + 1) * params.dt;
+        for (int i = 0; i < n_dyn_obs; i++) {
+            float margin = dynamic_obstacle_margin(x, y, d_dynamic_obstacles_dynbike[i], tau);
+            if (margin <= 0.1f) total_cost += cost_params.obs_weight * 100.0f;
+            else if (margin < cost_params.obs_influence) total_cost += cost_params.obs_weight / (margin * margin);
+        }
+
+        if (x < 0.0f || x > WORKSPACE || y < 0.0f || y > WORKSPACE) total_cost += 500.0f;
     }
 
     total_cost += terminal_cost(x, y, yaw, v, steer, cost_params);
@@ -640,8 +871,11 @@ public:
         CUDA_CHECK(cudaMalloc(&d_costs_, h_costs_.size() * sizeof(float)));
         CUDA_CHECK(cudaMalloc(&d_weights_, k_samples_ * sizeof(float)));
         CUDA_CHECK(cudaMalloc(&d_perturbed_, k_samples_ * t_horizon_ * 2 * sizeof(float)));
+        CUDA_CHECK(cudaMalloc(&d_rollout_states_, k_samples_ * (t_horizon_ + 1) * 5 * sizeof(float)));
+        CUDA_CHECK(cudaMalloc(&d_rollout_init_grads_, k_samples_ * 5 * sizeof(float)));
         CUDA_CHECK(cudaMalloc(&d_states_, h_states_.size() * sizeof(float)));
         CUDA_CHECK(cudaMalloc(&d_grad_, h_grad_.size() * sizeof(float)));
+        CUDA_CHECK(cudaMalloc(&d_feedback_gains_, t_horizon_ * 2 * 5 * sizeof(float)));
         CUDA_CHECK(cudaMalloc(&d_rng_, k_samples_ * sizeof(curandState)));
 
         reset_rng();
@@ -653,8 +887,11 @@ public:
         cudaFree(d_costs_);
         cudaFree(d_weights_);
         cudaFree(d_perturbed_);
+        cudaFree(d_rollout_states_);
+        cudaFree(d_rollout_init_grads_);
         cudaFree(d_states_);
         cudaFree(d_grad_);
+        cudaFree(d_feedback_gains_);
         cudaFree(d_rng_);
     }
 
@@ -756,10 +993,34 @@ private:
         CUDA_CHECK(cudaMemcpy(d_nominal_, h_nominal_.data(), h_nominal_.size() * sizeof(float), cudaMemcpyHostToDevice));
         int block = 256;
         rollout_kernel<<<(k_samples_ + block - 1) / block, block>>>(
-            x_, y_, yaw_, v_, steer_, d_nominal_, d_costs_, d_perturbed_, d_rng_, scenario_.params, scenario_.cost_params,
+            x_, y_, yaw_, v_, steer_, d_nominal_, d_costs_, d_perturbed_, d_rollout_states_, d_rng_, scenario_.params, scenario_.cost_params,
             scenario_.n_obs, scenario_.n_dyn_obs, start_step, variant_.accel_sigma, variant_.steer_sigma, k_samples_, t_horizon_);
         compute_weights_kernel<<<1, 1>>>(d_costs_, d_weights_, k_samples_, DEFAULT_LAMBDA);
         update_controls_kernel<<<(t_horizon_ + block - 1) / block, block>>>(d_nominal_, d_perturbed_, d_weights_, k_samples_, t_horizon_);
+
+        if (variant_.use_feedback) {
+            rollout_nominal_kernel<<<1, 1>>>(x_, y_, yaw_, v_, steer_, d_nominal_, d_states_, scenario_.params, t_horizon_);
+            compute_rollout_initial_gradients_kernel<<<(k_samples_ + block - 1) / block, block>>>(
+                d_rollout_states_, d_perturbed_, d_rollout_init_grads_, scenario_.params, scenario_.cost_params,
+                scenario_.n_obs, scenario_.n_dyn_obs, start_step, k_samples_, t_horizon_);
+            compute_sensitivity_feedback_gains_kernel<<<1, 1>>>(
+                d_nominal_, d_perturbed_, d_weights_, d_rollout_init_grads_, d_feedback_gains_,
+                DEFAULT_LAMBDA, k_samples_, t_horizon_);
+            rollout_feedback_kernel<<<(k_samples_ + block - 1) / block, block>>>(
+                x_, y_, yaw_, v_, steer_, d_nominal_, d_states_, d_feedback_gains_, d_costs_, d_perturbed_, d_rng_,
+                scenario_.params, scenario_.cost_params, scenario_.n_obs, scenario_.n_dyn_obs, start_step, k_samples_, t_horizon_,
+                variant_.feedback_gain_scale,
+                variant_.feedback_noise_accel,
+                variant_.feedback_noise_steer,
+                variant_.feedback_longitudinal_gain,
+                variant_.feedback_speed_gain,
+                variant_.feedback_lateral_gain,
+                variant_.feedback_heading_gain,
+                variant_.feedback_steer_state_gain,
+                variant_.feedback_setpoint_blend);
+            compute_weights_kernel<<<1, 1>>>(d_costs_, d_weights_, k_samples_, DEFAULT_LAMBDA);
+            update_controls_kernel<<<(t_horizon_ + block - 1) / block, block>>>(d_nominal_, d_perturbed_, d_weights_, k_samples_, t_horizon_);
+        }
 
         if (variant_.grad_steps > 0) {
             for (int gs = 0; gs < variant_.grad_steps; gs++) {
@@ -800,8 +1061,11 @@ private:
     float* d_costs_ = nullptr;
     float* d_weights_ = nullptr;
     float* d_perturbed_ = nullptr;
+    float* d_rollout_states_ = nullptr;
+    float* d_rollout_init_grads_ = nullptr;
     float* d_states_ = nullptr;
     float* d_grad_ = nullptr;
+    float* d_feedback_gains_ = nullptr;
     curandState* d_rng_ = nullptr;
 };
 
@@ -898,11 +1162,49 @@ int main(int argc, char** argv) {
         return 1;
     }
 
-    vector<PlannerVariant> variants = {
-        {"mppi", 0, 0.0f, 1.0f, 0.12f},
-        {"diff_mppi_1", 1, 0.006f, 1.0f, 0.12f},
-        {"diff_mppi_3", 3, 0.0015f, 1.0f, 0.12f},
-    };
+    vector<PlannerVariant> variants;
+    {
+        PlannerVariant v;
+        v.name = "mppi";
+        v.accel_sigma = 1.0f;
+        v.steer_sigma = 0.12f;
+        variants.push_back(v);
+    }
+    {
+        PlannerVariant v;
+        v.name = "feedback_mppi_sens";
+        v.use_feedback = true;
+        v.accel_sigma = 1.0f;
+        v.steer_sigma = 0.12f;
+        v.feedback_gain_scale = 0.55f;
+        v.feedback_noise_accel = 0.85f;
+        v.feedback_noise_steer = 0.09f;
+        v.feedback_longitudinal_gain = 0.10f;
+        v.feedback_speed_gain = 0.16f;
+        v.feedback_lateral_gain = 0.15f;
+        v.feedback_heading_gain = 0.22f;
+        v.feedback_steer_state_gain = 0.10f;
+        v.feedback_setpoint_blend = 0.35f;
+        variants.push_back(v);
+    }
+    {
+        PlannerVariant v;
+        v.name = "diff_mppi_1";
+        v.grad_steps = 1;
+        v.alpha = 0.006f;
+        v.accel_sigma = 1.0f;
+        v.steer_sigma = 0.12f;
+        variants.push_back(v);
+    }
+    {
+        PlannerVariant v;
+        v.name = "diff_mppi_3";
+        v.grad_steps = 3;
+        v.alpha = 0.0015f;
+        v.accel_sigma = 1.0f;
+        v.steer_sigma = 0.12f;
+        variants.push_back(v);
+    }
     if (!planner_names.empty()) {
         vector<PlannerVariant> filtered;
         for (const auto& variant : variants) {

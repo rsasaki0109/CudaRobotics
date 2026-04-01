@@ -44,6 +44,7 @@ Two scenarios are included:
 
 Compared planners:
 - `mppi`
+- `feedback_mppi_sens`
 - `diff_mppi_1`
 - `diff_mppi_3`
 
@@ -55,36 +56,52 @@ This is deliberate. In this domain, low-budget behavior is more informative than
 
 ## What The Benchmark Shows
 
-### 1. The hybrid controller transfers to higher-order mobile dynamics
+### 1. The closer feedback baseline is meaningful on the easier mobile-dynamics task
 
-The cleanest positive result is `dynbike_crossing`.
+The cleanest baseline result is `dynbike_crossing`.
 
 Representative fixed-budget rows:
-- `K=32`: `mppi` final distance `2.14`, cumulative cost `2295.9`, steps `196.0`; `diff_mppi_3` final distance `2.09`, cumulative cost `2234.7`, steps `191.0`
-- `K=64`: `mppi` final distance `2.15`; `diff_mppi_3` final distance `2.12`
+- `K=32`: `mppi` final distance `2.14`, cumulative cost `2295.9`, steps `196.0`; `feedback_mppi_sens` final distance `2.15`, cumulative cost `2099.2`, steps `186.2`
+- `K=128`: `mppi` final distance `2.12`, cumulative cost `2172.8`, steps `186.5`; `feedback_mppi_sens` final distance `2.16`, cumulative cost `2059.0`, steps `182.5`
 
-These are modest gains, but they are consistent with the intended claim:
-- the refinement stage still helps a higher-order mobile model
-- the gain appears most clearly when the rollout budget is small
+This matters because the feedback baseline is no longer a straw man.
+In the higher-order bicycle model, rollout-sensitivity feedback is a real efficiency baseline:
+- it consistently reduces step count and cumulative cost on `dynbike_crossing`
+- it does so with essentially unchanged terminal distance
 
-### 2. The slalom task shows a stronger low-budget win, but also exposes tuning sensitivity
+So the mobile-dynamics follow-up is now more informative than a pure `mppi` versus `Diff-MPPI` comparison.
 
-At `K=32`, `dynbike_slalom` is the strongest row in the follow-up:
+### 2. The clearest low-budget rescue is still one-step hybrid refinement
+
+The strongest low-budget result is now `dynbike_slalom @ K=32`:
 - `mppi`: success `0.75`, final distance `12.60`, cumulative cost `4034.9`
-- `diff_mppi_3`: success `1.00`, final distance `2.24`, cumulative cost `3579.2`
+- `feedback_mppi_sens`: success `0.75`, final distance `12.67`, cumulative cost `3773.8`
+- `diff_mppi_1`: success `1.00`, final distance `2.24`, cumulative cost `3656.9`
 
-That is a real qualitative difference.
-Vanilla MPPI still misses the goal on one seed, while the 3-step hybrid variant reaches all four.
+That is still a real qualitative difference.
+Vanilla MPPI and the closer feedback baseline each miss one seed, while the 1-step hybrid controller reaches all four.
 
-However, the same task also shows that higher-order dynamics make the deeper refinement more delicate:
-- at `K=64`, both `mppi` and `diff_mppi_3` succeed, with near-identical terminal distance
-- at `K=128`, `diff_mppi_3` drops back to `0.75` success while `diff_mppi_1` remains stable
-- at `K=256`, both hybrid variants recover and all planners succeed
+At `K=64`, the same ordering persists:
+- `mppi`: success `1.00`, final distance `2.25`
+- `feedback_mppi_sens`: success `0.75`, final distance `10.85`
+- `diff_mppi_1`: success `1.00`, final distance `2.23`
 
-So the follow-up is useful partly because it is not uniformly flattering.
-It shows transfer, but it also shows that refinement depth needs tuning once the dynamics get less forgiving.
+At moderate budget, the picture changes again.
+On `dynbike_slalom`, `feedback_mppi_sens` becomes a strong efficiency baseline at `K=128` and `K=256`:
+- `K=128`: `mppi` steps `255.2`, cumulative cost `3240.0`; `feedback_mppi_sens` steps `230.8`, cumulative cost `2870.8`
+- `K=256`: `mppi` steps `253.2`, cumulative cost `3224.7`; `feedback_mppi_sens` steps `236.8`, cumulative cost `2955.5`
 
-### 3. Exact matched-time tuning partially closes the compute-matching criticism
+The deeper refinement remains the most fragile setting:
+- `diff_mppi_3` drops to `0.25` success at `K=32`
+- it recovers at `K=128` and `K=256`, but the transfer is clearly tuning-sensitive
+
+So this follow-up is useful partly because it is not uniformly flattering.
+It shows three things at once:
+- the 1-step hybrid is the clearest low-budget rescue
+- the closer feedback baseline is a credible efficiency competitor once `K` is moderate
+- the deeper 3-step refinement does not transfer automatically without retuning
+
+### 3. Exact matched-time tuning now gives a conservative compute-matched spot check
 
 The earlier generic cap/equal-time tables were weak for this benchmark because the planner-time bands were far apart:
 - `mppi` around `0.06-0.09 ms`
@@ -94,32 +111,32 @@ The earlier generic cap/equal-time tables were weak for this benchmark because t
 That gap is now addressed with the same exact-time search workflow used in the main dynamic-obstacle suite:
 
 ```bash
-python3 scripts/tune_diff_mppi_time_targets.py --preset dynamic_bicycle
+python3 scripts/tune_diff_mppi_time_targets.py --preset dynamic_bicycle --time-targets 1.8
 ```
 
-The current tuned targets are `1.80 ms` and `2.00 ms`.
-At those targets, all planners can be matched directly by choosing different rollout counts:
-- `dynbike_crossing @ 1.80 ms`: `mppi K=14005 @ 1.782 ms`, `diff_mppi_3 K=2155 @ 1.764 ms`
-- `dynbike_slalom @ 1.80 ms`: `mppi K=13982 @ 1.781 ms`, `diff_mppi_3 K=589 @ 1.784 ms`
-- `dynbike_slalom @ 2.00 ms`: `mppi K=15353 @ 1.997 ms`, `diff_mppi_1 K=11408 @ 1.985 ms`
+The current reviewer-facing spot check uses a shared `1.80 ms` controller-time target.
+At that target, the three stable planners can all be matched directly by choosing very different rollout counts:
+- `dynbike_crossing`: `mppi K=12953 @ 1.779 ms`, `feedback_mppi_sens K=273 @ 1.723 ms`, `diff_mppi_1 K=9343 @ 1.804 ms`
+- `dynbike_slalom`: `mppi K=12855 @ 1.791 ms`, `feedback_mppi_sens K=248 @ 1.711 ms`, `diff_mppi_1 K=8905 @ 1.810 ms`
 
-The matched-time result is more modest than the low-budget fixed-`K` story, which is exactly the right thing to report.
+This tuned view is intentionally more conservative than the low-budget fixed-`K` story.
 
 Representative rows:
-- `dynbike_slalom @ 1.80 ms`: `mppi` final distance `2.25`, `diff_mppi_3` final distance `2.22`
-- `dynbike_crossing @ 2.00 ms`: `mppi` final distance `2.14`, `diff_mppi_1` final distance `2.13`
+- `dynbike_crossing @ 1.80 ms`: `mppi` final distance `2.14`, `feedback_mppi_sens` final distance `2.16`, `diff_mppi_3` final distance `2.15`
+- `dynbike_slalom @ 1.80 ms`: `mppi` final distance `2.21`, `feedback_mppi_sens` final distance `2.25`, `diff_mppi_1` final distance `2.23`
 
-So the exact-time view does not reveal a dramatic outside-domain win.
+So the exact-time view does not show an outside-domain hybrid win.
 What it does show is still useful:
-- the hybrid controllers remain competitive after controller time is matched directly
-- they often achieve essentially the same terminal quality with far smaller tuned rollout counts
-- the low-budget fixed-`K` gains are not just an artifact of refusing to retune compute
+- after time matching, `mppi`, `feedback_mppi_sens`, and `diff_mppi_1` remain competitive on terminal distance
+- the closer feedback baseline reaches that regime with about `K=248-273`, rather than `K≈1.29e4`
+- on `dynbike_slalom`, `feedback_mppi_sens` also uses `17` fewer steps than tuned `mppi`
+- the low-budget rescue story and the compute-matched story are different, and the paper should say so explicitly
 
 ## Updated Interpretation
 
 The current reviewer-safe interpretation is:
 
-> We now have a second outside-domain pilot beyond CartPole: a dynamic-bicycle mobile-navigation benchmark with steering lag and drag. In that higher-order mobile setting, Diff-MPPI still produces useful low-budget improvements, including a clear `dynbike_slalom @ K=32` success gain, but the deeper refinement is tuning-sensitive and the benchmark does not yet replace a true high-fidelity robotics evaluation.
+> We now have a second outside-domain pilot beyond CartPole: a dynamic-bicycle mobile-navigation benchmark with steering lag and drag, plus a closer rollout-sensitivity baseline and a `1.80 ms` exact-time spot check. In that higher-order mobile setting, the clearest low-budget rescue is still one-step Diff-MPPI on `dynbike_slalom`, while the closer feedback baseline is a meaningful efficiency competitor once the rollout budget is moderate. This is useful reviewer evidence, but it still does not replace a true high-fidelity robotics evaluation.
 
 This is stronger than the CartPole-only story because:
 - it returns to obstacle-avoidance planning rather than only stabilization

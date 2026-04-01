@@ -126,6 +126,7 @@ There are now two partial exceptions:
 
 That helps because the project is no longer purely a 2D kinematic story.
 The dynamic-bicycle result is the more useful of the two for reviewer defense, because it stays in obstacle-avoidance planning while adding richer vehicle dynamics.
+That pilot is now better than the earlier version because it also includes the closer `feedback_mppi_sens` baseline and a `1.80 ms` exact-time spot check, so the outside-domain story is no longer just `mppi` versus `Diff-MPPI`.
 But neither pilot yet counts as the kind of stronger robotics-domain evaluation that fully closes this gap.
 
 ### 4. The matched-time story is much better, and now has direct tuning, but is still not complete
@@ -142,6 +143,10 @@ But a skeptical reviewer can still say:
 - the exact-time tuning currently searches `K` only, not the full controller design space
 - the exact-time result is currently concentrated on the dynamic two-task suite, not the full benchmark portfolio
 - outside the base suite, the time-matched claim currently reaches only a custom medium-fidelity dynamic-bicycle pilot
+
+The dynamic-bicycle exact-time result is still useful, but it currently reads as a conservative compute-matched spot check:
+- `mppi`, `feedback_mppi_sens`, and `diff_mppi_1` are all competitive on terminal distance at `1.80 ms`
+- the stronger signal there is rollout-efficiency, not a decisive matched-time terminal-distance win
 
 That is fixable, but right now it remains a vulnerability.
 
