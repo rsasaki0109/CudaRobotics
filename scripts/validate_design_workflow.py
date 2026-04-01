@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib
+import json
 import re
 import subprocess
 import sys
@@ -19,6 +20,8 @@ REQUIRED_DOCS = [
     ROOT / "docs" / "decisions.md",
     ROOT / "docs" / "interfaces.md",
 ]
+FIXTURE_DIR = ROOT / "experiments" / "data"
+FIXTURE_MANIFEST = FIXTURE_DIR / "manifest.json"
 
 REQUIRED_MODULE_ATTRIBUTES = [
     "PROBLEM_KIND",
@@ -88,6 +91,42 @@ def validate_docs() -> None:
             raise RuntimeError(f"Missing required doc: {path.relative_to(ROOT)}")
 
 
+def validate_fixture_manifest() -> None:
+    if not FIXTURE_MANIFEST.exists():
+        raise RuntimeError(f"Missing fixture manifest: {FIXTURE_MANIFEST.relative_to(ROOT)}")
+
+    data = json.loads(FIXTURE_MANIFEST.read_text())
+    fixtures = data.get("fixtures")
+    if not isinstance(fixtures, list) or not fixtures:
+        raise RuntimeError("experiments/data/manifest.json must contain a non-empty fixtures list")
+
+    manifest_filenames: list[str] = []
+    seen: set[str] = set()
+    for entry in fixtures:
+        if not isinstance(entry, dict):
+            raise RuntimeError("Fixture manifest entries must be objects")
+        filename = entry.get("filename")
+        source = entry.get("source")
+        if not isinstance(filename, str) or not filename.endswith(".csv"):
+            raise RuntimeError(f"Invalid fixture filename in manifest: {filename!r}")
+        if filename in seen:
+            raise RuntimeError(f"Duplicate fixture filename in manifest: {filename}")
+        seen.add(filename)
+        manifest_filenames.append(filename)
+        if not isinstance(source, str) or not source.endswith(".csv"):
+            raise RuntimeError(f"Invalid fixture source in manifest for {filename}: {source!r}")
+        path = FIXTURE_DIR / filename
+        if not path.exists():
+            raise RuntimeError(f"Missing fixture listed in manifest: {path.relative_to(ROOT)}")
+
+    discovered = sorted(path.name for path in FIXTURE_DIR.glob("*.csv"))
+    if sorted(manifest_filenames) != discovered:
+        raise RuntimeError(
+            "Fixture manifest and experiments/data/*.csv are out of sync. "
+            "Refresh the manifest or fixture files so both lists match."
+        )
+
+
 def normalize_generated_doc(text: str) -> str:
     lines = text.splitlines()
     normalized: list[str] = []
@@ -147,6 +186,7 @@ def validate_generated_experiments(modules: list[str]) -> None:
 
 def main() -> int:
     validate_docs()
+    validate_fixture_manifest()
     modules = experiment_modules()
     if not modules:
         raise RuntimeError("No experiment modules found under experiments/")
