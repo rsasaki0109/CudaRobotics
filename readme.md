@@ -219,12 +219,16 @@ Validate that the experiment-first guardrails still hold:
 python3 scripts/validate_design_workflow.py
 ```
 
-The current comparison problem is intentionally concrete: selecting one planner configuration per benchmark scenario from the existing Diff-MPPI CSV outputs. It is implemented three different ways:
-- functional weighted scoring
-- OOP lexicographic objectives
+Current concrete problems:
+- `planner_selection`: choose one planner configuration per dataset/scenario pair
+- `time_budget_selection`: choose one planner configuration per dataset/scenario/time-budget request
+
+Each problem is implemented three different ways:
+- functional scoring
+- OOP / lexicographic policy objects
 - staged pipeline filters
 
-All three consume the same aggregated input rows, answer the same request type, and are scored under the same benchmark, readability, and extensibility proxies. The process uses version-controlled fixture CSVs in `experiments/data/`, so design comparisons are reproducible without regenerating the heavy benchmark suite. Nothing in `experiments/` is assumed to be permanent.
+All variants consume the same aggregated input rows, answer the same request type for their problem, and are scored under the same benchmark, readability, and extensibility proxies. The process uses version-controlled fixture CSVs in `experiments/data/`, so design comparisons are reproducible without regenerating the heavy benchmark suite. `scripts/validate_design_workflow.py` now also checks that every experiment module appears in generated docs, which keeps the process state externalized instead of hiding it in code only. Nothing in `experiments/` is assumed to be permanent.
 
 ### Docker
 ```bash

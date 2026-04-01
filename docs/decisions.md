@@ -7,26 +7,31 @@ This file records development-process decisions, not only code choices.
 Status: accepted
 
 Decision:
-- keep only the minimal planner-selection contract in `core/`
+- keep only the minimal shared contracts in `core/`
 - keep all concrete selector implementations in `experiments/`
 
 Why:
-- the shared contract is already real
+- the shared contracts are already real
 - the selection logic is still being explored
-- freezing the selection logic now would turn an experiment into architecture too early
+- freezing the selectors now would turn experiments into architecture too early
 
 ## D-002: Three Implementations Are the Starting Point, Not the End State
 
 Status: accepted
 
 Decision:
-- maintain at least three live implementations for the current concrete problem
+- maintain at least three live implementations for each concrete problem
 - compare them under one harness before extracting any new abstraction
 
 Current variants:
-- `functional_weighted`
-- `oop_lexicographic`
-- `pipeline_staged`
+- planner selection:
+  - `functional_weighted`
+  - `oop_lexicographic`
+  - `pipeline_staged`
+- time-budget selection:
+  - `functional_budgeted`
+  - `oop_budget_lexicographic`
+  - `pipeline_budget_staged`
 
 Why:
 - it forces design diversity
@@ -50,13 +55,16 @@ Why:
 Status: accepted
 
 Decision:
-- do not move any of the three selector implementations into `core/`
-- keep all three as experimental variants
+- do not move any selector implementations into `core/`
+- keep all selector families as experimental variants
 
 Current evidence from `docs/experiments.md`:
 - `functional_weighted` is the best benchmark fit on the current CSVs
 - `oop_lexicographic` has the strongest extensibility proxy
 - `pipeline_staged` is the fastest and reasonably readable
+- `functional_budgeted` is currently the best constrained-fit baseline on the shared budgeted requests
+- `oop_budget_lexicographic` has the strongest extensibility proxy for the second concrete problem
+- `pipeline_budget_staged` is the runtime-oriented budgeted baseline, even though its regret is currently worse
 
 Why:
 - the variants optimize different axes
@@ -64,7 +72,8 @@ Why:
 
 Operational note:
 - if a single answer is needed for automation right now, use `functional_weighted`
-- that is a temporary operating choice, not a core architecture decision
+- if a single answer is needed for budget-constrained automation right now, use `functional_budgeted`
+- these are temporary operating choices, not core architecture decisions
 
 ## D-005: Promotion Requires Repeated Survival
 
@@ -109,3 +118,17 @@ Why:
 Implication:
 - fixture data can lag the newest benchmark outputs briefly
 - when the benchmark meaningfully changes, refresh the fixtures intentionally instead of coupling every code edit to every heavy benchmark rerun
+
+## D-008: The Workflow Must Survive More Than One Concrete Problem
+
+Status: accepted
+
+Decision:
+- keep at least two active concrete problems in the experiment-first workflow
+- require `scripts/run_design_experiments.py` to surface each active problem in generated docs
+- require `scripts/validate_design_workflow.py` to fail if a module exists under `experiments/` but is not represented in generated docs
+
+Why:
+- one problem can still be a one-off demo
+- two live problems force the workflow itself to be reusable
+- if a new problem is not visible in generated docs, the externalized process state is already stale
