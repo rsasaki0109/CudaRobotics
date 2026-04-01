@@ -34,6 +34,7 @@ SCENARIO_TITLES = {
     "cluttered": "Cluttered Field",
     "corner_turn": "Corner Turn",
     "dynamic_crossing": "Dynamic Crossing",
+    "dynamic_slalom": "Dynamic Slalom",
     "narrow_passage": "Narrow Passage",
     "slalom": "Slalom",
 }

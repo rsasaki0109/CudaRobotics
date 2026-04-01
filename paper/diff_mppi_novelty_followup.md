@@ -3,32 +3,33 @@
 Date: 2026-04-02
 
 This note records three follow-up experiments added after the initial `diff_mppi` results draft:
-- a dynamic-obstacle benchmark scenario
+- a dynamic-obstacle benchmark suite with two scenarios
 - an equal-time target comparison in addition to the earlier cap-based wall-clock analysis
 - a gradient-only ablation to separate local-refinement effects from the hybrid controller
 
 Artifacts used:
-- `build/benchmark_diff_mppi_dynamic.csv`
-- `build/benchmark_diff_mppi_dynamic_summary.md`
-- `build/benchmark_diff_mppi_dynamic_summary.tex`
+- `build/benchmark_diff_mppi_dynamic_pair.csv`
+- `build/benchmark_diff_mppi_dynamic_pair_summary.md`
+- `build/benchmark_diff_mppi_dynamic_pair_summary.tex`
 - `build/benchmark_diff_mppi_ablation.csv`
 - `build/benchmark_diff_mppi_ablation_summary.md`
 - `build/benchmark_diff_mppi_ablation_summary.tex`
-- `build/plots_dynamic/diff_mppi_final_distance_vs_time_cap.png`
-- `build/plots_dynamic/diff_mppi_final_distance_vs_equal_time.png`
+- `build/plots_dynamic_pair/diff_mppi_final_distance_vs_time_cap.png`
+- `build/plots_dynamic_pair/diff_mppi_final_distance_vs_equal_time.png`
+- `build/plots_dynamic_pair/diff_mppi_final_distance_vs_budget.png`
 - `build/plots_ablation/diff_mppi_final_distance_vs_budget.png`
 - `build/plots_ablation/diff_mppi_final_distance_vs_equal_time.png`
 
 ## What Changed
 
-### 1. Dynamic obstacle scenario
+### 1. Dynamic obstacle suite
 
-The benchmark now includes a `dynamic_crossing` scenario with:
-- a corridor-like layout defined by four static obstacles
-- a moving obstacle that sweeps across the robot's path
+The benchmark now includes two dynamic scenarios:
+- `dynamic_crossing`: a corridor-like layout defined by four static obstacles, plus one obstacle that sweeps across the robot's path
+- `dynamic_slalom`: a static slalom layout plus one descending obstacle that intersects the nominal weaving path
 - time-aware collision costs inside both rollout evaluation and gradient refinement
 
-This is still a 2D kinematic study, but it is materially closer to the kind of setting where local sensitivity information should matter.
+These are still 2D kinematic studies, but together they cover two different interaction patterns: timed crossing and dynamic perturbation of a nontrivial geometric route.
 
 ### 2. Equal-time selection
 
@@ -48,26 +49,35 @@ This is not a substitute for a feedback-MPPI or rollout-differentiation baseline
 
 ## Main Result
 
-The dynamic-obstacle follow-up is the strongest novelty-supporting result in the repository so far.
+The dynamic-obstacle suite is now the strongest novelty-supporting result in the repository so far.
 
-At fixed sample budgets, vanilla MPPI failed the `dynamic_crossing` scenario for every tested `K`, while both gradient-refined variants solved it consistently:
+At fixed sample budgets, vanilla MPPI failed both dynamic scenarios for every tested `K`, while Diff-MPPI solved them consistently:
 - `mppi K=1024`: success `0.00`, final distance `3.13`
 - `diff_mppi_1 K=1024`: success `1.00`, final distance `1.95`
 - `diff_mppi_3 K=1024`: success `1.00`, final distance `1.91`
 
+For `dynamic_slalom` at the same budget:
+- `mppi K=1024`: success `0.00`, final distance `14.19`
+- `diff_mppi_1 K=1024`: success `1.00`, final distance `1.92`
+- `diff_mppi_3 K=1024`: success `1.00`, final distance `1.90`
+
 The same pattern survived wall-clock matching.
 
 Under a `1.00 ms` cap:
-- best feasible MPPI: `K=4096`, success `0.00`, final distance `2.94`
-- best feasible Diff-MPPI: `diff_mppi_1 K=512`, success `1.00`, final distance `1.85`
+- `dynamic_crossing` best feasible MPPI: `K=4096`, success `0.00`, final distance `2.94`
+- `dynamic_crossing` best feasible Diff-MPPI: `diff_mppi_1 K=6144`, success `1.00`, final distance `1.86`
+- `dynamic_slalom` best feasible MPPI: `K=4096`, success `0.00`, final distance `14.05`
+- `dynamic_slalom` best feasible Diff-MPPI: `diff_mppi_3 K=256`, success `1.00`, final distance `1.84`
 
 Under an equal-time target of `1.00 ms`:
-- MPPI matched closest at `K=8192`, `0.98 ms`, success `0.00`, final distance `2.99`
-- Diff-MPPI matched closest at `diff_mppi_3 K=2048`, `1.01 ms`, success `1.00`, final distance `1.90`
+- `dynamic_crossing` MPPI matched closest at `K=8192`, `1.00 ms`, success `0.00`, final distance `2.99`
+- `dynamic_crossing` Diff-MPPI matched closest at `diff_mppi_1 K=6144`, `1.00 ms`, success `1.00`, final distance `1.86`
+- `dynamic_slalom` MPPI matched closest at `K=8192`, `1.03 ms`, success `0.00`, final distance `14.14`
+- `dynamic_slalom` Diff-MPPI matched closest at `diff_mppi_3 K=512`, `0.99 ms`, success `1.00`, final distance `1.91`
 
-So the dynamic obstacle follow-up gives a stronger claim than the earlier static-scene benchmark:
+So the dynamic obstacle suite gives a stronger claim than the earlier static-scene benchmark:
 
-> In a time-varying obstacle scenario, the lightweight MPPI + autodiff refinement controller reaches successful trajectories where vanilla MPPI remains unsuccessful, even under matched per-step compute budgets.
+> Across two distinct time-varying obstacle scenarios, the lightweight MPPI + autodiff refinement controller reaches successful trajectories where vanilla MPPI remains unsuccessful, even under matched per-step compute budgets.
 
 ## Hybrid vs Gradient-Only Ablation
 
@@ -108,7 +118,8 @@ Before this follow-up, the strongest evidence was:
 - a 3-of-4 win pattern under cap-based wall-clock selection
 
 After this follow-up, the story is stronger because:
-- the dynamic obstacle introduces a genuinely time-dependent planning challenge
+- the dynamic suite introduces genuinely time-dependent planning challenges
+- the same win pattern now appears in both a crossing task and a dynamic slalom task
 - the advantage remains visible under an equal-time target, not only a loose cap
 - the result is about success, not only smaller terminal distance
 - the gradient-only ablation shows that hybridization, not just local gradient descent, is carrying the effect
@@ -121,11 +132,15 @@ The most defensible paper-style claim now looks like this:
 
 > We study a minimal CUDA hybrid controller that augments vanilla MPPI with a short autodiff-based control refinement stage. Across static navigation tasks it improves the quality-vs-compute tradeoff, and in a dynamic-obstacle crossing task it achieves successful trajectories under matched per-step compute budgets where vanilla MPPI does not.
 
+The stronger current version is:
+
+> We study a minimal CUDA hybrid controller that augments vanilla MPPI with a short autodiff-based control refinement stage. Across static navigation tasks it improves the quality-vs-compute tradeoff, and across two dynamic-obstacle tasks it achieves successful trajectories under matched per-step compute budgets where vanilla MPPI remains unsuccessful.
+
 ## What Is Still Missing
 
 The two biggest gaps are now:
 - no direct comparison to a rollout-differentiation / feedback-MPPI style baseline
-- only a single dynamic-obstacle scenario so far
+- only two simple hand-designed 2D dynamic scenarios so far
 
 The gradient-only ablation removes one weaker alternative explanation, but it does not close the stronger baseline gap.
 
@@ -133,6 +148,6 @@ The gradient-only ablation removes one weaker alternative explanation, but it do
 
 If we want to keep pushing the novelty argument, the next experiment should be:
 
-1. Add a second dynamic-obstacle scenario with a different interaction pattern.
-2. Add a feedback-oriented baseline beyond vanilla MPPI.
+1. Add a feedback-oriented baseline beyond vanilla MPPI.
+2. Add a harder dynamic scenario with interacting moving agents, not just one scripted obstacle.
 3. Report exact success and final-distance comparisons at one or two fixed equal-time targets only, instead of many configurations.
