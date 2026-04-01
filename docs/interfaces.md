@@ -143,6 +143,7 @@ Discovery rule:
 - the validator also checks that the checked-in `docs/experiments.md` matches the generated output, while normalizing the volatile runtime column
 - design-history snapshots are validated under `experiments/history/*.json`
 - regression policy lives in [`experiments/history/policy.json`](../experiments/history/policy.json)
+- action policy lives in [`experiments/history/actions_policy.json`](../experiments/history/actions_policy.json)
 - `scripts/check_design_regressions.py` compares the latest two snapshots against that policy
 - `scripts/compare_design_snapshots.py` renders a targeted delta between two snapshots without touching checked-in docs
 - `scripts/render_design_convergence.py` turns repeated snapshot outcomes into soft convergence signals

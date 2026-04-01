@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 from pathlib import Path
 
@@ -23,6 +24,7 @@ from scripts.snapshot_design_experiments import load_snapshots, problem_map
 
 
 DEFAULT_ACTIONS_DOC = ROOT / "docs" / "next_actions.md"
+DEFAULT_ACTIONS_POLICY = ROOT / "experiments" / "history" / "actions_policy.json"
 
 
 def parse_args() -> argparse.Namespace:
@@ -37,7 +39,23 @@ def parse_args() -> argparse.Namespace:
         default=str(DEFAULT_ACTIONS_DOC),
         help="Output markdown path.",
     )
+    parser.add_argument(
+        "--policy",
+        default=str(DEFAULT_ACTIONS_POLICY),
+        help="Action policy JSON file.",
+    )
     return parser.parse_args()
+
+
+def load_policy(path: Path) -> dict[str, object]:
+    data = json.loads(path.read_text())
+    if data.get("schema_version") != 1:
+        raise RuntimeError(f"{path.relative_to(ROOT)} must declare schema_version 1")
+    if not isinstance(data.get("defaults"), dict):
+        raise RuntimeError(f"{path.relative_to(ROOT)} must contain a defaults object")
+    if not isinstance(data.get("actions"), dict):
+        raise RuntimeError(f"{path.relative_to(ROOT)} must contain an actions object")
+    return data
 
 
 def quality_state(problem_slug: str, snapshots: list[dict[str, object]]) -> tuple[list[str], int]:
@@ -58,11 +76,25 @@ def structural_state(problem_slug: str, snapshots: list[dict[str, object]]) -> t
     return leaders, streak
 
 
-def classify_action(problem_slug: str, snapshots: list[dict[str, object]]) -> tuple[str, str, list[str]]:
+def action_suggestions(policy: dict[str, object], action_key: str, quality_winner: str = "") -> list[str]:
+    action = policy["actions"].get(action_key, {})
+    suggestions = list(action.get("suggestions", []))
+    if quality_winner:
+        suggestions = [suggestion.replace("the quality-leading variant", f"`{quality_winner}`") for suggestion in suggestions]
+    return suggestions
+
+
+def classify_action(problem_slug: str, snapshots: list[dict[str, object]], policy: dict[str, object]) -> tuple[str, str, list[str]]:
     latest_problem = problem_map(snapshots[-1])[problem_slug]
     snapshot_count = len(snapshots)
     quality_leaders, quality_streak = quality_state(problem_slug, snapshots)
     structural_leaders, structural_streak = structural_state(problem_slug, snapshots)
+    defaults = policy["defaults"]
+    quality_policy = defaults.get("quality_stability", {})
+    structural_policy = defaults.get("structural_stability", {})
+    min_quality_snapshots = int(quality_policy.get("min_snapshots", 3))
+    min_quality_streak = int(quality_policy.get("min_streak", 3))
+    min_structural_streak = int(structural_policy.get("min_streak", 3))
 
     unique_quality = sorted(set(quality_leaders))
     unique_structural = sorted(set(structural_leaders))
@@ -71,42 +103,30 @@ def classify_action(problem_slug: str, snapshots: list[dict[str, object]]) -> tu
         return (
             "needs_metrics",
             "Add missing quality metrics before making design calls.",
-            [
-                "Expose at least one quality metric in the generated aggregate table.",
-                "Keep all current variants alive until the missing metrics exist.",
-            ],
+            action_suggestions(policy, "needs_metrics"),
         )
 
     if len(unique_quality) > 1:
         return (
             "diversify",
             "Quality leadership is still split across variants.",
-            [
-                "Keep all current variants alive.",
-                "Add one more discriminating request set or fixture so the split is not hidden behind the current inputs.",
-            ],
+            action_suggestions(policy, "diversify"),
         )
 
     quality_winner = unique_quality[0]
 
-    if snapshot_count < 3 or quality_streak < 3:
+    if snapshot_count < min_quality_snapshots or quality_streak < min_quality_streak:
         return (
             "hold",
             f"`{quality_winner}` is leading on quality, but the streak is still short.",
-            [
-                "Keep convergence at the interface level.",
-                "Take another snapshot after the next meaningful fixture or implementation change.",
-            ],
+            action_suggestions(policy, "hold_short_quality_streak"),
         )
 
     if len(unique_structural) > 1:
         return (
             "promotion_watch",
             f"`{quality_winner}` has a stable quality lead, but structural metrics still favor different variants.",
-            [
-                "Do not promote one implementation into `core/`.",
-                f"Inspect `{quality_winner}` for helpers that are now shared implicitly and extract only those if at least two variants can use them.",
-            ],
+            action_suggestions(policy, "promotion_watch", quality_winner),
         )
 
     structural_winner = unique_structural[0]
@@ -114,44 +134,35 @@ def classify_action(problem_slug: str, snapshots: list[dict[str, object]]) -> tu
         return (
             "hold",
             f"Quality favors `{quality_winner}`, while structure favors `{structural_winner}`.",
-            [
-                "Keep both variants alive.",
-                "Prefer extracting narrow helpers over converging on a single implementation.",
-            ],
+            action_suggestions(policy, "hold_split_structure"),
         )
 
-    if structural_streak >= 3:
+    if structural_streak >= min_structural_streak:
         return (
             "promote_shared_helpers",
             f"`{quality_winner}` is stable on both quality and structure.",
-            [
-                "Consider promoting only the helper layer that other live variants can adopt without increasing the interface surface.",
-                "Keep at least one alternative implementation alive after the extraction.",
-            ],
+            action_suggestions(policy, "promote_shared_helpers"),
         )
 
     return (
         "hold",
         f"`{quality_winner}` leads quality and structure now, but the structural streak is still short.",
-        [
-            "Delay implementation promotion.",
-            "Wait for one more stable snapshot before extracting anything into `core/`.",
-        ],
+        action_suggestions(policy, "hold_short_structural_streak"),
     )
 
 
-def action_rows(snapshots: list[dict[str, object]]) -> list[str]:
+def action_rows(snapshots: list[dict[str, object]], policy: dict[str, object]) -> list[str]:
     latest_problems = problem_map(snapshots[-1])
     lines: list[str] = []
     lines.append("| Problem | Action | Reason |")
     lines.append("|---|---|---|")
     for problem_slug, problem in latest_problems.items():
-        action, reason, _ = classify_action(problem_slug, snapshots)
+        action, reason, _ = classify_action(problem_slug, snapshots, policy)
         lines.append(f"| {problem['title']} | `{action}` | {reason} |")
     return lines
 
 
-def generate_actions_markdown(snapshots: list[dict[str, object]]) -> str:
+def generate_actions_markdown(snapshots: list[dict[str, object]], policy: dict[str, object]) -> str:
     lines: list[str] = []
     lines.append("# Next Actions")
     lines.append("")
@@ -167,12 +178,12 @@ def generate_actions_markdown(snapshots: list[dict[str, object]]) -> str:
 
     lines.append("## Summary")
     lines.append("")
-    lines.extend(action_rows(snapshots))
+    lines.extend(action_rows(snapshots, policy))
     lines.append("")
 
     latest_problems = problem_map(snapshots[-1])
     for problem_slug, problem in latest_problems.items():
-        action, reason, suggestions = classify_action(problem_slug, snapshots)
+        action, reason, suggestions = classify_action(problem_slug, snapshots, policy)
         lines.append(f"## {problem['title']}")
         lines.append("")
         lines.append(f"Recommended action: `{action}`")
@@ -192,9 +203,11 @@ def main() -> int:
     args = parse_args()
     history_dir = Path(args.history_dir).resolve()
     output_path = Path(args.output).resolve()
+    policy_path = Path(args.policy).resolve()
     output_path.parent.mkdir(parents=True, exist_ok=True)
     snapshots = load_snapshots(history_dir)
-    output_path.write_text(generate_actions_markdown(snapshots))
+    policy = load_policy(policy_path)
+    output_path.write_text(generate_actions_markdown(snapshots, policy))
     print(f"Generated {output_path.relative_to(ROOT)}")
     return 0
 

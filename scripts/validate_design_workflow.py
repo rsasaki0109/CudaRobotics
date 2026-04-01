@@ -27,6 +27,7 @@ FIXTURE_DIR = ROOT / "experiments" / "data"
 FIXTURE_MANIFEST = FIXTURE_DIR / "manifest.json"
 HISTORY_DIR = ROOT / "experiments" / "history"
 HISTORY_POLICY = HISTORY_DIR / "policy.json"
+ACTIONS_POLICY = HISTORY_DIR / "actions_policy.json"
 
 REQUIRED_MODULE_ATTRIBUTES = [
     "PROBLEM_KIND",
@@ -136,7 +137,8 @@ def validate_history_snapshots() -> None:
     if not HISTORY_DIR.exists():
         raise RuntimeError(f"Missing design history directory: {HISTORY_DIR.relative_to(ROOT)}")
 
-    snapshots = sorted(path for path in HISTORY_DIR.glob("*.json") if path.name != HISTORY_POLICY.name)
+    excluded = {HISTORY_POLICY.name, ACTIONS_POLICY.name}
+    snapshots = sorted(path for path in HISTORY_DIR.glob("*.json") if path.name not in excluded)
     if not snapshots:
         raise RuntimeError("No design history snapshots found under experiments/history/")
 
@@ -193,6 +195,18 @@ def validate_history_policy() -> None:
     problems = data.get("problems")
     if not isinstance(problems, dict) or not problems:
         raise RuntimeError("experiments/history/policy.json must contain a non-empty problems object")
+
+
+def validate_actions_policy() -> None:
+    if not ACTIONS_POLICY.exists():
+        raise RuntimeError(f"Missing design actions policy: {ACTIONS_POLICY.relative_to(ROOT)}")
+    data = json.loads(ACTIONS_POLICY.read_text())
+    if data.get("schema_version") != 1:
+        raise RuntimeError("experiments/history/actions_policy.json must declare schema_version 1")
+    if not isinstance(data.get("defaults"), dict):
+        raise RuntimeError("experiments/history/actions_policy.json must contain a defaults object")
+    if not isinstance(data.get("actions"), dict) or not data["actions"]:
+        raise RuntimeError("experiments/history/actions_policy.json must contain a non-empty actions object")
 
 
 def normalize_generated_doc(text: str) -> str:
@@ -328,7 +342,8 @@ def validate_generated_next_actions() -> None:
 
 
 def validate_snapshot_compare() -> None:
-    snapshots = sorted(path for path in HISTORY_DIR.glob("*.json") if path.name != HISTORY_POLICY.name)
+    excluded = {HISTORY_POLICY.name, ACTIONS_POLICY.name}
+    snapshots = sorted(path for path in HISTORY_DIR.glob("*.json") if path.name not in excluded)
     if len(snapshots) < 2:
         return
 
@@ -356,6 +371,7 @@ def main() -> int:
     validate_fixture_manifest()
     validate_history_snapshots()
     validate_history_policy()
+    validate_actions_policy()
     modules = experiment_modules()
     if not modules:
         raise RuntimeError("No experiment modules found under experiments/")

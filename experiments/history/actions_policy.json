@@ -1,0 +1,56 @@
+{
+  "schema_version": 1,
+  "defaults": {
+    "quality_stability": {
+      "min_snapshots": 3,
+      "min_streak": 3
+    },
+    "structural_stability": {
+      "min_streak": 3
+    }
+  },
+  "actions": {
+    "needs_metrics": {
+      "suggestions": [
+        "Expose at least one quality metric in the generated aggregate table.",
+        "Keep all current variants alive until the missing metrics exist."
+      ]
+    },
+    "diversify": {
+      "suggestions": [
+        "Keep all current variants alive.",
+        "Add one more discriminating request set or fixture so the split is not hidden behind the current inputs."
+      ]
+    },
+    "hold_short_quality_streak": {
+      "suggestions": [
+        "Keep convergence at the interface level.",
+        "Take another snapshot after the next meaningful fixture or implementation change."
+      ]
+    },
+    "promotion_watch": {
+      "suggestions": [
+        "Do not promote one implementation into `core/`.",
+        "Inspect the quality-leading variant for helpers that are now shared implicitly and extract only those if at least two variants can use them."
+      ]
+    },
+    "hold_split_structure": {
+      "suggestions": [
+        "Keep both variants alive.",
+        "Prefer extracting narrow helpers over converging on a single implementation."
+      ]
+    },
+    "promote_shared_helpers": {
+      "suggestions": [
+        "Consider promoting only the helper layer that other live variants can adopt without increasing the interface surface.",
+        "Keep at least one alternative implementation alive after the extraction."
+      ]
+    },
+    "hold_short_structural_streak": {
+      "suggestions": [
+        "Delay implementation promotion.",
+        "Wait for one more stable snapshot before extracting anything into `core/`."
+      ]
+    }
+  }
+}

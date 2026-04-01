@@ -21,6 +21,7 @@ from scripts.run_design_experiments import build_problem_reports, discover_csvs,
 DEFAULT_HISTORY_DIR = ROOT / "experiments" / "history"
 DEFAULT_HISTORY_DOC = ROOT / "docs" / "experiments_history.md"
 HISTORY_POLICY_FILENAME = "policy.json"
+HISTORY_CONFIG_FILENAMES = {HISTORY_POLICY_FILENAME, "actions_policy.json"}
 LEADER_METRICS = [
     ("Avg Regret", "min"),
     ("Oracle Match", "max"),
@@ -99,7 +100,7 @@ def snapshot_filename(snapshot: dict[str, object]) -> str:
 def load_snapshots(history_dir: Path) -> list[dict[str, object]]:
     snapshots: list[dict[str, object]] = []
     for path in sorted(history_dir.glob("*.json")):
-        if path.name == HISTORY_POLICY_FILENAME:
+        if path.name in HISTORY_CONFIG_FILENAMES:
             continue
         snapshots.append(json.loads(path.read_text()))
     return snapshots
