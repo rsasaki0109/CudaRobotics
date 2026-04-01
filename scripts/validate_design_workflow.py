@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -90,6 +91,38 @@ def validate_docs() -> None:
             raise RuntimeError(f"Missing required doc: {path.relative_to(ROOT)}")
 
 
+def normalize_generated_doc(text: str) -> str:
+    lines = text.splitlines()
+    normalized: list[str] = []
+    runtime_column: int | None = None
+    in_runtime_table = False
+
+    for line in lines:
+        if line.startswith("|") and "Runtime ms/request" in line:
+            headers = [cell.strip() for cell in line.strip("|").split("|")]
+            runtime_column = headers.index("Runtime ms/request")
+            in_runtime_table = True
+            normalized.append(line)
+            continue
+
+        if in_runtime_table and line.startswith("|"):
+            cells = [cell.strip() for cell in line.strip("|").split("|")]
+            is_separator = all(re.fullmatch(r":?-+:?", cell) for cell in cells)
+            if not is_separator and runtime_column is not None and runtime_column < len(cells):
+                cells[runtime_column] = "<runtime>"
+                line = "| " + " | ".join(cells) + " |"
+            normalized.append(line)
+            continue
+
+        if in_runtime_table and not line.startswith("|"):
+            in_runtime_table = False
+            runtime_column = None
+
+        normalized.append(line)
+
+    return "\n".join(normalized)
+
+
 def validate_generated_experiments(modules: list[str]) -> None:
     out_dir = ROOT / "build" / "design_docs_validation"
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -105,6 +138,14 @@ def validate_generated_experiments(modules: list[str]) -> None:
     for module_name in modules:
         if module_name not in generated_text:
             raise RuntimeError(f"Generated experiments.md is missing the {module_name} section")
+
+    checked_in = ROOT / "docs" / "experiments.md"
+    if not checked_in.exists():
+        raise RuntimeError("docs/experiments.md is missing")
+    if normalize_generated_doc(checked_in.read_text()) != normalize_generated_doc(generated_text):
+        raise RuntimeError(
+            "docs/experiments.md is stale. Run `python3 scripts/run_design_experiments.py` and commit the refreshed doc."
+        )
 
 
 def main() -> int:

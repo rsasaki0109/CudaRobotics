@@ -118,6 +118,7 @@ Why:
 Implication:
 - fixture data can lag the newest benchmark outputs briefly
 - when the benchmark meaningfully changes, refresh the fixtures intentionally instead of coupling every code edit to every heavy benchmark rerun
+- fixture discovery should be automatic inside `experiments/data/` so adding a new fixture does not require editing the central runner
 
 ## D-008: The Workflow Must Survive More Than One Concrete Problem
 
@@ -148,3 +149,18 @@ Why:
 - request generation is part of the problem definition, so it belongs with the problem
 - report assembly is also part of the problem definition, so it should not live in a central `if/else` ladder
 - this keeps the workflow tidy without promoting problem-specific logic into `core/`
+
+## D-010: Generated Docs Must Match The Checked-In State
+
+Status: accepted
+
+Decision:
+- `scripts/validate_design_workflow.py` must compare generated `experiments.md` against the checked-in `docs/experiments.md`
+- refreshing the generated doc should have a dedicated command entrypoint
+
+Why:
+- externalized state is only useful if the committed doc matches the current code
+- CI should fail on stale process docs, not just on missing docs
+
+Operational note:
+- the stale-doc comparison normalizes the `Runtime ms/request` column because that metric is environment-sensitive
