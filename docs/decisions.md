@@ -197,3 +197,15 @@ Decision:
 Why:
 - the repo should show how design decisions changed over time, not just the current winner
 - snapshots make process evolution inspectable without relying on chat logs or local shells
+
+## D-013: The Workflow Needs One Local Repair Command
+
+Status: accepted
+
+Decision:
+- promote `scripts/design_doctor.py` as the local one-command entrypoint
+- let it compose fixture refresh or fixture-sync checks, doc refresh, history refresh or snapshotting, workflow validation, and scaffold validation
+
+Why:
+- the workflow is only useful if it is cheap enough to run before commits
+- the lower-level scripts should stay individually callable, but local maintenance should not require remembering the full sequence

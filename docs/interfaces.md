@@ -116,6 +116,7 @@ They share interfaces, not design style.
 
 Comparison entrypoint:
 - [`scripts/run_design_experiments.py`](../scripts/run_design_experiments.py)
+- [`scripts/design_doctor.py`](../scripts/design_doctor.py)
 - [`scripts/refresh_design_fixtures.py`](../scripts/refresh_design_fixtures.py)
 - [`scripts/refresh_design_docs.py`](../scripts/refresh_design_docs.py)
 - [`scripts/snapshot_design_experiments.py`](../scripts/snapshot_design_experiments.py)
@@ -132,6 +133,7 @@ Discovery rule:
 - the runner discovers `experiments/*/__init__.py` packages automatically
 - the runner discovers fixture CSVs automatically from `experiments/data/*.csv`
 - fixture membership is declared in [`experiments/data/manifest.json`](../experiments/data/manifest.json)
+- `scripts/design_doctor.py` is the promoted local entrypoint for refresh-and-validate cycles
 - fixture drift can be checked locally against build outputs via `scripts/refresh_design_fixtures.py --check-sync`
 - the validator checks that every discovered module is represented in generated docs
 - the validator also checks that the checked-in `docs/experiments.md` matches the generated output, while normalizing the volatile runtime column
