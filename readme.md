@@ -46,7 +46,7 @@ Recent additions push the repository beyond direct CUDA ports of classic robotic
 | Project | Binaries | Highlights |
 |---|---|---|
 | Autodiff + GPU MLP foundation | `test_autodiff`, `test_gpu_mlp` | Dual-number forward-mode autodiff and a compact GPU MLP training/inference engine used as the base for later research-style experiments. |
-| Differentiable MPPI | `diff_mppi`, `comparison_diff_mppi`, `benchmark_diff_mppi` | Extends MPPI with a dual-number backward pass, side-by-side comparisons, and a CSV benchmark suite for fixed-budget quality-vs-compute experiments. |
+| Differentiable MPPI | `diff_mppi`, `comparison_diff_mppi`, `benchmark_diff_mppi` | Extends MPPI with a dual-number backward pass, side-by-side comparisons, and a CSV benchmark suite for both fixed-budget and cap-based wall-clock quality-vs-compute experiments. |
 | Neural SDF Navigation | `neural_sdf`, `sdf_potential_field`, `sdf_mppi`, `comparison_sdf_nav` | Learns 2D signed distance fields with a GPU MLP, then uses them for potential-field planning and MPPI on non-circular obstacle layouts. |
 | Neuroevolution for Cart-Pole | `neuroevo`, `comparison_neuroevo` | Evolves 4096 neural policies in parallel on GPU and compares them against a CPU baseline with side-by-side learning curves. |
 | MiniIsaacGym | `mini_isaac`, `mini_isaac_rl` | Runs thousands of CartPole environments in parallel on GPU and trains a compact policy with GPU-side REINFORCE updates. |
@@ -72,13 +72,23 @@ Recent additions push the repository beyond direct CUDA ports of classic robotic
 
 ### Diff-MPPI experiment workflow
 
+Fixed rollout budget:
+
 ```bash
 ./bin/benchmark_diff_mppi --quick
 python3 scripts/summarize_diff_mppi.py --csv build/benchmark_diff_mppi.csv
 python3 scripts/plot_diff_mppi.py --csv build/benchmark_diff_mppi.csv --out-dir build/plots
 ```
 
-The benchmark writes per-episode CSV metrics, the summarizer emits Markdown and LaTeX tables for fixed-budget comparisons, and the plotter generates paper-friendly PNG/PDF figures in `build/plots/`.
+Cap-based wall-clock sweep:
+
+```bash
+./bin/benchmark_diff_mppi --k-values 256,512,1024,2048,4096,6144,8192 --csv build/benchmark_diff_mppi_wall_clock.csv
+python3 scripts/summarize_diff_mppi.py --csv build/benchmark_diff_mppi_wall_clock.csv --time-caps 1.1,1.5,2.0
+python3 scripts/plot_diff_mppi.py --csv build/benchmark_diff_mppi_wall_clock.csv --out-dir build/plots --time-caps 1.1,1.5,2.0
+```
+
+The benchmark writes per-episode CSV metrics, the summarizer emits Markdown and LaTeX tables for fixed-budget and cap-based wall-clock comparisons, and the plotter generates paper-friendly PNG/PDF figures in `build/plots/`, including `diff_mppi_final_distance_vs_time_cap.*`.
 A paper-style interpretation of the current benchmark is collected in `paper/diff_mppi_results.md`.
 
 ### Point-cloud benchmark snapshot
@@ -159,7 +169,7 @@ Combines particle filter (for robot pose) with per-particle EKF (for landmark po
 | Potential Field | `potential_field` | Grid-parallel potential computation (attractive + repulsive) |
 | **3D Potential Field** | `potential_field_3d` | **3D grid-parallel potential (216K+ cells, drone/UAV)** |
 | MPPI | `mppi` | 4096-sample path-integral control on GPU |
-| Differentiable MPPI | `diff_mppi`, `comparison_diff_mppi`, `benchmark_diff_mppi` | MPPI sampling update + autodiff control-gradient refinement + multi-scenario CSV benchmarking |
+| Differentiable MPPI | `diff_mppi`, `comparison_diff_mppi`, `benchmark_diff_mppi` | MPPI sampling update + autodiff control-gradient refinement + multi-scenario CSV benchmarking under fixed sample and wall-clock caps |
 | Neural SDF Navigation | `neural_sdf`, `sdf_potential_field`, `sdf_mppi`, `comparison_sdf_nav` | Learned implicit obstacle fields for heatmap visualization, potential fields, and MPPI |
 | PRM | `prm_cuda` | Parallel collision check + k-NN + edge collision |
 | Voronoi Road Map | `voronoi_road_map` | Jump Flooding Algorithm for parallel Voronoi diagram |

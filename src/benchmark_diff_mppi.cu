@@ -1,7 +1,8 @@
 /*************************************************************************
     Benchmark: MPPI vs Diff-MPPI
-    - Runs multiple navigation scenarios with fixed sample budgets
+    - Runs multiple navigation scenarios across configurable sample sweeps
     - Compares sampling-only MPPI against gradient-refined variants
+    - Supports both fixed-budget and cap-based wall-clock analyses downstream
     - Writes per-episode CSV to build/benchmark_diff_mppi.csv by default
  ************************************************************************/
 
@@ -14,6 +15,7 @@
 #include <fstream>
 #include <iostream>
 #include <map>
+#include <sstream>
 #include <string>
 #include <sys/stat.h>
 #include <sys/types.h>
@@ -34,6 +36,7 @@ static const float WORKSPACE = 50.0f;
 static const int MAX_OBSTACLES = 16;
 static const float DEFAULT_LAMBDA = 8.0f;
 static const int DEFAULT_T_HORIZON = 30;
+static const int BENCH_WARMUP_ITERS = 4;
 
 __constant__ Obstacle d_obstacles_bench[MAX_OBSTACLES];
 
@@ -349,9 +352,7 @@ public:
         CUDA_CHECK(cudaMalloc(&d_grad_, h_grad_.size() * sizeof(float)));
         CUDA_CHECK(cudaMalloc(&d_rng_, k_samples_ * sizeof(curandState)));
 
-        int block = 256;
-        init_curand_kernel<<<(k_samples_ + block - 1) / block, block>>>(d_rng_, k_samples_, static_cast<unsigned long long>(seed_));
-        CUDA_CHECK(cudaDeviceSynchronize());
+        reset_rng();
     }
 
     ~EpisodeRunner() {
@@ -365,6 +366,12 @@ public:
     }
 
     EpisodeMetrics run() {
+        reset_state();
+        fill(h_nominal_.begin(), h_nominal_.end(), 0.0f);
+        warmup_controller();
+        fill(h_nominal_.begin(), h_nominal_.end(), 0.0f);
+        reset_rng();
+
         auto episode_begin = chrono::steady_clock::now();
         float total_control_ms = 0.0f;
 
@@ -380,24 +387,7 @@ public:
             }
 
             auto t0 = chrono::steady_clock::now();
-            CUDA_CHECK(cudaMemcpy(d_nominal_, h_nominal_.data(), h_nominal_.size() * sizeof(float), cudaMemcpyHostToDevice));
-            int block = 256;
-            rollout_kernel<<<(k_samples_ + block - 1) / block, block>>>(
-                rx_, ry_, rtheta_, rv_, d_nominal_, d_costs_, d_perturbed_, d_rng_,
-                scenario_.params, scenario_.cost_params, scenario_.n_obs, k_samples_, t_horizon_);
-            compute_weights_kernel<<<1, 1>>>(d_costs_, d_weights_, k_samples_, DEFAULT_LAMBDA);
-            update_controls_kernel<<<(t_horizon_ + block - 1) / block, block>>>(
-                d_nominal_, d_perturbed_, d_weights_, k_samples_, t_horizon_);
-
-            if (variant_.use_gradient) {
-                for (int gs = 0; gs < variant_.grad_steps; gs++) {
-                    rollout_nominal_kernel<<<1, 1>>>(rx_, ry_, rtheta_, rv_, d_nominal_, d_states_, scenario_.params, t_horizon_);
-                    compute_gradient_kernel<<<1, 1>>>(d_states_, d_nominal_, d_grad_, scenario_.params, scenario_.cost_params, scenario_.n_obs, t_horizon_);
-                    gradient_step_kernel<<<(t_horizon_ + block - 1) / block, block>>>(
-                        d_nominal_, d_grad_, t_horizon_, variant_.alpha, scenario_.params.max_steer);
-                }
-            }
-            CUDA_CHECK(cudaDeviceSynchronize());
+            controller_update(rx_, ry_, rtheta_, rv_);
             auto t1 = chrono::steady_clock::now();
             float control_ms = chrono::duration<float, milli>(t1 - t0).count();
             total_control_ms += control_ms;
@@ -452,6 +442,39 @@ public:
     }
 
 private:
+    void reset_rng() {
+        int block = 256;
+        init_curand_kernel<<<(k_samples_ + block - 1) / block, block>>>(d_rng_, k_samples_, static_cast<unsigned long long>(seed_));
+        CUDA_CHECK(cudaDeviceSynchronize());
+    }
+
+    void controller_update(float sx, float sy, float stheta, float sv) {
+        CUDA_CHECK(cudaMemcpy(d_nominal_, h_nominal_.data(), h_nominal_.size() * sizeof(float), cudaMemcpyHostToDevice));
+        int block = 256;
+        rollout_kernel<<<(k_samples_ + block - 1) / block, block>>>(
+            sx, sy, stheta, sv, d_nominal_, d_costs_, d_perturbed_, d_rng_,
+            scenario_.params, scenario_.cost_params, scenario_.n_obs, k_samples_, t_horizon_);
+        compute_weights_kernel<<<1, 1>>>(d_costs_, d_weights_, k_samples_, DEFAULT_LAMBDA);
+        update_controls_kernel<<<(t_horizon_ + block - 1) / block, block>>>(
+            d_nominal_, d_perturbed_, d_weights_, k_samples_, t_horizon_);
+
+        if (variant_.use_gradient) {
+            for (int gs = 0; gs < variant_.grad_steps; gs++) {
+                rollout_nominal_kernel<<<1, 1>>>(sx, sy, stheta, sv, d_nominal_, d_states_, scenario_.params, t_horizon_);
+                compute_gradient_kernel<<<1, 1>>>(d_states_, d_nominal_, d_grad_, scenario_.params, scenario_.cost_params, scenario_.n_obs, t_horizon_);
+                gradient_step_kernel<<<(t_horizon_ + block - 1) / block, block>>>(
+                    d_nominal_, d_grad_, t_horizon_, variant_.alpha, scenario_.params.max_steer);
+            }
+        }
+        CUDA_CHECK(cudaDeviceSynchronize());
+    }
+
+    void warmup_controller() {
+        for (int iter = 0; iter < BENCH_WARMUP_ITERS; iter++) {
+            controller_update(scenario_.start_x, scenario_.start_y, scenario_.start_theta, scenario_.start_v);
+        }
+    }
+
     void reset_state() {
         rx_ = scenario_.start_x;
         ry_ = scenario_.start_y;
@@ -585,6 +608,19 @@ static void ensure_build_dir() {
     mkdir("build", 0755);
 }
 
+static vector<int> parse_int_list(const string& text) {
+    vector<int> values;
+    string token;
+    stringstream ss(text);
+    while (getline(ss, token, ',')) {
+        if (token.empty()) continue;
+        values.push_back(std::max(1, atoi(token.c_str())));
+    }
+    sort(values.begin(), values.end());
+    values.erase(unique(values.begin(), values.end()), values.end());
+    return values;
+}
+
 static void write_csv(const vector<EpisodeMetrics>& rows, const string& path) {
     ofstream out(path);
     out << "scenario,planner,seed,k_samples,t_horizon,grad_steps,alpha,reached_goal,collision_free,success,steps,final_distance,min_goal_distance,cumulative_cost,collisions,avg_control_ms,total_control_ms,episode_ms,sample_budget\n";
@@ -646,10 +682,14 @@ static void print_summary(const vector<EpisodeMetrics>& rows) {
 int main(int argc, char** argv) {
     bool quick = false;
     string csv_path = "build/benchmark_diff_mppi.csv";
+    vector<int> k_values;
+    int seed_count = -1;
     for (int i = 1; i < argc; i++) {
         string arg = argv[i];
         if (arg == "--quick") quick = true;
         else if (arg == "--csv" && i + 1 < argc) csv_path = argv[++i];
+        else if (arg == "--k-values" && i + 1 < argc) k_values = parse_int_list(argv[++i]);
+        else if (arg == "--seed-count" && i + 1 < argc) seed_count = std::max(1, atoi(argv[++i]));
     }
 
     ensure_build_dir();
@@ -667,8 +707,8 @@ int main(int argc, char** argv) {
     variants.push_back({"diff_mppi_1", true, 1, 0.010f});
     variants.push_back({"diff_mppi_3", true, 3, 0.006f});
 
-    vector<int> k_values = quick ? vector<int>{1024, 4096} : vector<int>{1024, 2048, 4096};
-    int seed_count = quick ? 2 : 4;
+    if (k_values.empty()) k_values = quick ? vector<int>{1024, 4096} : vector<int>{1024, 2048, 4096};
+    if (seed_count <= 0) seed_count = quick ? 2 : 4;
 
     vector<EpisodeMetrics> rows;
     rows.reserve(scenarios.size() * variants.size() * k_values.size() * seed_count);

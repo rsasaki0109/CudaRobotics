@@ -9,18 +9,22 @@ Artifacts used:
 - `build/benchmark_diff_mppi.csv`
 - `build/benchmark_diff_mppi_summary.md`
 - `build/benchmark_diff_mppi_summary.tex`
+- `build/benchmark_diff_mppi_wall_clock.csv`
+- `build/benchmark_diff_mppi_wall_clock_summary.md`
+- `build/benchmark_diff_mppi_wall_clock_summary.tex`
 - `build/plots/diff_mppi_final_distance_vs_time.png`
 - `build/plots/diff_mppi_cost_vs_time.png`
 - `build/plots/diff_mppi_final_distance_vs_budget.png`
+- `build/plots/diff_mppi_final_distance_vs_time_cap.png`
 
 ## Narrow Claim
 
 The current evidence supports this claim:
 
-> A minimal MPPI controller augmented with a short autodiff-based control refinement stage improves fixed-budget trajectory quality on several 2D navigation tasks, at a measurable but explicit wall-clock cost.
+> A minimal MPPI controller augmented with a short autodiff-based control refinement stage improves fixed-budget trajectory quality and remains stronger on three of four tasks under a shared per-step wall-clock cap.
 
 The current evidence does not yet support these stronger claims:
-- superiority at matched wall-clock budget
+- universal superiority at matched wall-clock budget
 - broad novelty over all prior differentiable MPPI / rollout-differentiation methods
 - robust goal-reaching on all hard scenarios
 
@@ -38,7 +42,9 @@ Task suite:
 - `slalom`
 
 Common settings:
-- sample counts `K in {1024, 2048, 4096}`
+- fixed-budget sweep with `K in {1024, 2048, 4096}`
+- cap-based wall-clock sweep with `K in {256, 512, 1024, 2048, 4096, 6144, 8192}`
+- wall-clock caps `{1.10, 1.50, 2.00} ms` for the matched-time analysis
 - 4 random seeds per configuration
 - fixed horizon `T = 30`
 - same direct-steering dynamics, cost terms, and obstacle layouts across planners
@@ -96,6 +102,26 @@ The same ordering persists at `K = 2048` and `K = 4096`:
 
 This matters because it suggests the benefit is not only a low-sample artifact. The refinement stage keeps helping even after the nominal MPPI baseline gets more rollouts.
 
+### 5. A cap-based wall-clock comparison keeps the same three-of-four task pattern
+
+Under a matched per-step wall-clock cap of `1.10 ms`, the best configuration for each planner still favored the gradient-refined controller on `cluttered`, `corner_turn`, and `slalom`:
+- `cluttered`: `38.55 -> 36.27` (`mppi K=256` vs `diff_mppi_3 K=256`)
+- `corner_turn`: `17.94 -> 2.46` (`mppi K=6144` vs `diff_mppi_3 K=1024`)
+- `slalom`: `18.90 -> 4.30` (`mppi K=4096` vs `diff_mppi_3 K=1024`)
+
+The narrow-passage task remains the exception. At the same `1.10 ms` cap, vanilla MPPI reached slightly smaller terminal distance (`1.83` vs `1.86`), but the refined controller still used about `13` fewer steps on average.
+
+The aggregate cap-based result at `1.10 ms` follows the same pattern:
+- `mppi`: final distance `19.30`, cumulative cost `47029.1`
+- `diff_mppi_1`: final distance `11.62`, cumulative cost `41098.2`
+- `diff_mppi_3`: final distance `11.23`, cumulative cost `40440.4`
+
+Relative to the best MPPI configuration under the same cap, `diff_mppi_3` reduced:
+- aggregate final distance by `41.8%`
+- aggregate cumulative cost by `14.0%`
+
+This is not universal domination, but it is stronger evidence than the earlier fixed-budget-only result. The same qualitative advantage survives after giving vanilla MPPI the freedom to spend the full time budget on larger rollout counts.
+
 ## Ready-To-Paste Results Section
 
 ### Results
@@ -106,9 +132,9 @@ The task-wise breakdown shows that the improvement is not uniform. In `corner_tu
 
 The `narrow_passage` task highlights a different regime. All controllers solved this environment, so terminal distance alone is less informative. Here the main gain from refinement was efficiency: at `K = 1024`, vanilla MPPI required `251.0` steps on average, while `diff_mppi_1` and `diff_mppi_3` required `238.2` and `235.5` steps, respectively. This indicates that the refinement stage can shorten successful trajectories even when it does not materially improve the final goal distance.
 
-Figure 1 and Figure 2 make the quality-vs-compute tradeoff explicit. The gradient-refined controllers occupy a better region of final distance and cumulative cost, but only by paying additional controller latency. Figure 3 shows that the same ranking mostly persists as the rollout budget increases from `1024` to `4096`, which suggests that the refinement stage is complementary to larger sample counts rather than merely compensating for an undersampled MPPI baseline.
+Table 3 and Figure 4 extend the comparison to a cap-based wall-clock setting. Under a `1.10 ms` per-step budget, the best gradient-refined configuration still outperformed the best vanilla MPPI configuration on three of the four tasks. The largest matched-time gains again appeared in `corner_turn` and `slalom`: even after vanilla MPPI increased its rollout count to `K=6144` and `K=4096`, respectively, the refined controller achieved much smaller terminal distances (`17.94 -> 2.46` and `18.90 -> 4.30`). The only exception remained `narrow_passage`, where vanilla MPPI retained a slightly smaller final distance (`1.83` vs `1.86`), but the refined controller still required fewer steps.
 
-Overall, the current evidence supports a narrow systems claim: a minimal CUDA implementation of MPPI plus local autodiff refinement can improve fixed-budget control quality on several navigation tasks. It does not yet establish dominance at matched wall-clock budget, and several hard tasks still fail to reach the goal within the episode horizon, so the present result should be interpreted as a compute-quality tradeoff study rather than a complete replacement for vanilla MPPI.
+Overall, the current evidence supports a narrow systems claim: a minimal CUDA implementation of MPPI plus local autodiff refinement can improve control quality both at fixed rollout budget and under a shared wall-clock cap. The matched-time result is not universal, because `narrow_passage` remains a counterexample on terminal distance and several hard tasks still fail to reach the goal within the episode horizon. The present result should therefore be interpreted as a compute-quality tradeoff study with a meaningful cap-based wall-clock win on three of four tasks, not as a complete replacement for vanilla MPPI.
 
 ## Figure / Table Captions
 
@@ -120,6 +146,9 @@ Suggested captions:
 - Table 2:
   Best gradient-refined variant at fixed rollout budget. The refinement stage yields the strongest gains in `corner_turn` and `slalom`, while `narrow_passage` primarily benefits through fewer steps.
 
+- Table 3:
+  Best planner configuration under a fixed per-step wall-clock cap. The gradient-refined controller remains stronger on three of four tasks even after vanilla MPPI is allowed to increase its rollout count.
+
 - Figure 1:
   Final distance versus average control time. Each point denotes one planner and rollout budget. Gradient refinement shifts the controller toward lower terminal error at the cost of additional latency.
 
@@ -129,11 +158,14 @@ Suggested captions:
 - Figure 3:
   Final distance versus sample budget. Increasing the rollout count improves all methods, but the ranking between vanilla MPPI and gradient-refined variants remains largely unchanged.
 
+- Figure 4:
+  Best final distance achievable under a fixed wall-clock cap. The gradient-refined controller maintains its advantage on `cluttered`, `corner_turn`, and `slalom`, while `narrow_passage` remains a step-count rather than terminal-distance win.
+
 ## Limits To State Explicitly
 
 These points should remain in the paper draft unless new experiments remove them:
 - The evaluation is still 2D and kinematic.
-- The benchmark is fixed-budget, not wall-clock matched.
+- The wall-clock comparison is cap-based rather than exact equal-time optimization.
 - `cluttered`, `corner_turn`, and `slalom` still end without full success in the current setup.
 - No dynamic-obstacle experiment is included yet.
 - No direct comparison to a feedback-MPPI style method is included yet.
@@ -142,7 +174,7 @@ These points should remain in the paper draft unless new experiments remove them
 
 If we want this section to become a stronger paper result, the next experiment should be:
 
-1. Add a wall-clock matched benchmark.
-2. Sweep `K` and gradient steps under a fixed time cap.
-3. Report the best terminal distance / success achievable under that cap.
-4. Keep the current fixed-budget result as the complementary view, not the only one.
+1. Add a direct feedback / rollout-differentiation baseline beyond vanilla MPPI.
+2. Tighten the wall-clock comparison from cap-based selection to stricter equal-time tuning.
+3. Add a dynamic-obstacle benchmark where local sensitivity should matter more.
+4. Keep both fixed-budget and cap-based results, rather than collapsing to only one view.
