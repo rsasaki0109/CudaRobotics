@@ -46,7 +46,7 @@ Recent additions push the repository beyond direct CUDA ports of classic robotic
 | Project | Binaries | Highlights |
 |---|---|---|
 | Autodiff + GPU MLP foundation | `test_autodiff`, `test_gpu_mlp` | Dual-number forward-mode autodiff and a compact GPU MLP training/inference engine used as the base for later research-style experiments. |
-| Differentiable MPPI | `diff_mppi`, `comparison_diff_mppi`, `benchmark_diff_mppi` | Extends MPPI with a dual-number backward pass, side-by-side comparisons, a `grad_only_3` ablation, and a CSV benchmark suite for fixed-budget, cap-based wall-clock, and equal-time quality-vs-compute experiments. |
+| Differentiable MPPI | `diff_mppi`, `comparison_diff_mppi`, `benchmark_diff_mppi` | Extends MPPI with a dual-number backward pass, side-by-side comparisons, dynamic-obstacle suites, a `grad_only_3` ablation, and a CSV benchmark suite for fixed-budget, cap-based wall-clock, and equal-time quality-vs-compute experiments. |
 | Neural SDF Navigation | `neural_sdf`, `sdf_potential_field`, `sdf_mppi`, `comparison_sdf_nav` | Learns 2D signed distance fields with a GPU MLP, then uses them for potential-field planning and MPPI on non-circular obstacle layouts. |
 | Neuroevolution for Cart-Pole | `neuroevo`, `comparison_neuroevo` | Evolves 4096 neural policies in parallel on GPU and compares them against a CPU baseline with side-by-side learning curves. |
 | MiniIsaacGym | `mini_isaac`, `mini_isaac_rl` | Runs thousands of CartPole environments in parallel on GPU and trains a compact policy with GPU-side REINFORCE updates. |
@@ -94,12 +94,12 @@ A paper-style interpretation of the current benchmark is collected in `paper/dif
 Dynamic-obstacle follow-up:
 
 ```bash
-./bin/benchmark_diff_mppi --scenarios dynamic_crossing --k-values 256,512,1024,2048,4096,6144,8192 --csv build/benchmark_diff_mppi_dynamic.csv
-python3 scripts/summarize_diff_mppi.py --csv build/benchmark_diff_mppi_dynamic.csv --time-caps 1.0,1.5 --time-targets 1.0,1.5
-python3 scripts/plot_diff_mppi.py --csv build/benchmark_diff_mppi_dynamic.csv --out-dir build/plots_dynamic --time-caps 1.0,1.5 --time-targets 1.0,1.5
+./bin/benchmark_diff_mppi --scenarios dynamic_crossing,dynamic_slalom --k-values 256,512,1024,2048,4096,6144,8192 --csv build/benchmark_diff_mppi_dynamic_pair.csv
+python3 scripts/summarize_diff_mppi.py --csv build/benchmark_diff_mppi_dynamic_pair.csv --time-caps 1.0,1.5 --time-targets 1.0,1.5
+python3 scripts/plot_diff_mppi.py --csv build/benchmark_diff_mppi_dynamic_pair.csv --out-dir build/plots_dynamic_pair --time-caps 1.0,1.5 --time-targets 1.0,1.5
 ```
 
-This follow-up adds a moving-obstacle benchmark and an equal-time target analysis. The current write-up is in `paper/diff_mppi_novelty_followup.md`.
+This follow-up now includes two moving-obstacle tasks: `dynamic_crossing`, where one obstacle sweeps across the path, and `dynamic_slalom`, where a descending obstacle intersects a static slalom course. In the current benchmark, vanilla MPPI fails both tasks across the tested `K` sweep, while Diff-MPPI remains successful under both fixed-budget and matched-time comparisons. The current write-up is in `paper/diff_mppi_novelty_followup.md`.
 
 Hybrid-versus-gradient-only ablation:
 
