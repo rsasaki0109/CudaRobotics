@@ -17,6 +17,7 @@ PLANNER_STYLES = {
     "mppi": {"label": "MPPI", "color": "#1a1a1a", "marker": "o"},
     "feedback_mppi": {"label": "Feedback MPPI", "color": "#7b8c5a", "marker": "P"},
     "feedback_mppi_hf": {"label": "Feedback MPPI (HF)", "color": "#3f7f6b", "marker": "*"},
+    "feedback_mppi_ref": {"label": "Feedback MPPI (ref)", "color": "#2f8f83", "marker": "h"},
     "feedback_mppi_sens": {"label": "Feedback MPPI (sens)", "color": "#5a7db8", "marker": "X"},
     "feedback_mppi_cov": {"label": "Feedback MPPI (cov)", "color": "#8b5fbf", "marker": "v"},
     "feedback_mppi_fused": {"label": "Feedback MPPI (fused)", "color": "#b05f3c", "marker": ">"},
@@ -24,7 +25,7 @@ PLANNER_STYLES = {
     "diff_mppi_3": {"label": "Diff-MPPI (3 grad)", "color": "#2a6f97", "marker": "^"},
 }
 
-PLOT_ORDER = ["mppi", "feedback_mppi", "feedback_mppi_hf", "feedback_mppi_sens", "feedback_mppi_cov", "feedback_mppi_fused", "diff_mppi_1", "diff_mppi_3"]
+PLOT_ORDER = ["mppi", "feedback_mppi", "feedback_mppi_hf", "feedback_mppi_ref", "feedback_mppi_sens", "feedback_mppi_cov", "feedback_mppi_fused", "diff_mppi_1", "diff_mppi_3"]
 
 
 TRACE_FLOAT_FIELDS = {
