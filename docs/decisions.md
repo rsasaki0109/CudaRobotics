@@ -132,3 +132,17 @@ Why:
 - one problem can still be a one-off demo
 - two live problems force the workflow itself to be reusable
 - if a new problem is not visible in generated docs, the externalized process state is already stale
+
+## D-009: Experiment Modules Must Describe Themselves
+
+Status: accepted
+
+Decision:
+- each module under `experiments/` must expose its own `PROBLEM_KIND`, `INTERFACE_FILE`, and presentation metadata
+- each module must own its own `build_requests(rows)` function
+- `scripts/run_design_experiments.py` should discover experiment modules instead of importing a hard-coded list
+
+Why:
+- adding a new concrete problem should mostly change that problem's package, not the central runner
+- request generation is part of the problem definition, so it belongs with the problem
+- this keeps the workflow tidy without promoting problem-specific logic into `core/`

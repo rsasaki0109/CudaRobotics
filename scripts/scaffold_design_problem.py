@@ -51,6 +51,24 @@ INIT_TEMPLATE = """from .functional_variant import FunctionalVariant
 from .oop_variant import OOPVariant
 from .pipeline_variant import PipelineVariant
 
+PROBLEM_KIND = "planner_selection"
+INTERFACE_FILE = "{interface_file}"
+TITLE = "{problem_title}"
+DESCRIPTION_LINES = [
+    "replace with a concrete problem statement",
+    "replace with a second line describing what changes between variants",
+    "replace with a third line describing the evaluation focus",
+]
+REQUEST_SUMMARY = "replace with the request summary for this problem"
+METRIC_NOTES = [
+    "replace with the primary regret or utility metric",
+    "replace with the primary exact-match or constraint metric",
+]
+
+
+def build_requests(rows):
+    raise NotImplementedError("Define build_requests(rows) before enabling this problem in the experiment harness")
+
 
 def build_variants():
     return [
@@ -174,7 +192,10 @@ def main() -> int:
 
     files = {
         ROOT / "core" / f"{slug}_interface.py": INTERFACE_TEMPLATE.format(problem_class=problem_class),
-        ROOT / "experiments" / slug / "__init__.py": INIT_TEMPLATE,
+        ROOT / "experiments" / slug / "__init__.py": INIT_TEMPLATE.format(
+            interface_file=f"{slug}_interface.py",
+            problem_title=problem_class.replace("_", " "),
+        ),
         ROOT / "experiments" / slug / "functional_variant.py": FUNCTIONAL_TEMPLATE.format(
             interface_import=interface_import, problem_class=problem_class
         ),

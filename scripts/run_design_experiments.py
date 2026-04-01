@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import ast
 import csv
+import importlib
 import inspect
 import sys
 import time
@@ -18,10 +19,8 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from core.planner_selector_interface import AggregateBenchmarkRow, Recommendation, SelectionRequest
-from core.time_budget_selector_interface import TimeBudgetRecommendation, TimeBudgetRequest
-from experiments.planner_selection import build_variants as build_planner_variants
-from experiments.time_budget_selection import build_variants as build_time_budget_variants
+from core.planner_selector_interface import AggregateBenchmarkRow, Recommendation
+from core.time_budget_selector_interface import TimeBudgetRecommendation
 
 
 DEFAULT_DATASETS = [
@@ -56,6 +55,7 @@ class VariantEvaluation:
 @dataclass(frozen=True)
 class ProblemReport:
     slug: str
+    kind: str
     title: str
     description_lines: list[str]
     request_summary: str
@@ -91,6 +91,18 @@ def discover_csvs(explicit_paths: list[str] | None) -> list[Path]:
     else:
         paths = [ROOT / path for path in DEFAULT_DATASETS]
     return [path for path in paths if path.exists()]
+
+
+def experiment_modules() -> list[object]:
+    modules: list[object] = []
+    for path in sorted((ROOT / "experiments").iterdir()):
+        if not path.is_dir():
+            continue
+        if path.name.startswith("__") or path.name == "data":
+            continue
+        if (path / "__init__.py").exists():
+            modules.append(importlib.import_module(f"experiments.{path.name}"))
+    return modules
 
 
 def load_rows(csv_paths: list[Path]) -> list[AggregateBenchmarkRow]:
@@ -133,51 +145,6 @@ def load_rows(csv_paths: list[Path]) -> list[AggregateBenchmarkRow]:
             )
         )
     return aggregated
-
-
-def build_selection_requests(rows: Sequence[AggregateBenchmarkRow]) -> list[SelectionRequest]:
-    keys = {(row.dataset, row.scenario) for row in rows}
-    return [SelectionRequest(dataset=dataset, scenario=scenario) for dataset, scenario in sorted(keys)]
-
-
-def select_budget_levels(runtimes: Sequence[float]) -> list[float]:
-    unique = sorted(set(runtimes))
-    if not unique:
-        return []
-
-    levels: list[float] = []
-    for fraction in (0.0, 0.50, 0.80):
-        index = round(fraction * (len(unique) - 1))
-        candidate = unique[index]
-        if not any(abs(candidate - value) < 1.0e-9 for value in levels):
-            levels.append(candidate)
-
-    for candidate in unique:
-        if len(levels) >= min(3, len(unique)):
-            break
-        if not any(abs(candidate - value) < 1.0e-9 for value in levels):
-            levels.append(candidate)
-
-    return sorted(levels)
-
-
-def build_time_budget_requests(rows: Sequence[AggregateBenchmarkRow]) -> list[TimeBudgetRequest]:
-    grouped: dict[tuple[str, str], list[AggregateBenchmarkRow]] = defaultdict(list)
-    for row in rows:
-        grouped[(row.dataset, row.scenario)].append(row)
-
-    requests: list[TimeBudgetRequest] = []
-    for dataset, scenario in sorted(grouped):
-        budgets = select_budget_levels([row.avg_control_ms for row in grouped[(dataset, scenario)]])
-        for budget in budgets:
-            requests.append(
-                TimeBudgetRequest(
-                    dataset=dataset,
-                    scenario=scenario,
-                    time_budget_ms=budget,
-                )
-            )
-    return requests
 
 
 def normalize(values: Sequence[float]) -> list[float]:
@@ -325,12 +292,7 @@ def variant_metric_block(variant, runtime_ms: float) -> dict[str, object]:
     }
 
 
-def evaluate_planner_variant(
-    variant,
-    rows: Sequence[AggregateBenchmarkRow],
-    requests: Sequence[SelectionRequest],
-    iterations: int,
-) -> VariantEvaluation:
+def evaluate_planner_variant(variant, rows: Sequence[AggregateBenchmarkRow], requests: Sequence[object], iterations: int) -> VariantEvaluation:
     cases: list[dict[str, object]] = []
     total_regret = 0.0
     match_count = 0
@@ -372,12 +334,7 @@ def evaluate_planner_variant(
     return VariantEvaluation(name=variant.name, paradigm=variant.paradigm, metrics=metrics, cases=cases)
 
 
-def evaluate_time_budget_variant(
-    variant,
-    rows: Sequence[AggregateBenchmarkRow],
-    requests: Sequence[TimeBudgetRequest],
-    iterations: int,
-) -> VariantEvaluation:
+def evaluate_time_budget_variant(variant, rows: Sequence[AggregateBenchmarkRow], requests: Sequence[object], iterations: int) -> VariantEvaluation:
     cases: list[dict[str, object]] = []
     total_regret = 0.0
     match_count = 0
@@ -439,55 +396,38 @@ def evaluate_time_budget_variant(
     return VariantEvaluation(name=variant.name, paradigm=variant.paradigm, metrics=metrics, cases=cases)
 
 
+PROBLEM_EVALUATORS = {
+    "planner_selection": evaluate_planner_variant,
+    "time_budget_selection": evaluate_time_budget_variant,
+}
+
+
 def build_problem_reports(rows: Sequence[AggregateBenchmarkRow], iterations: int) -> list[ProblemReport]:
-    planner_requests = build_selection_requests(rows)
-    planner_results = [
-        evaluate_planner_variant(variant, rows, planner_requests, iterations)
-        for variant in build_planner_variants()
-    ]
+    reports: list[ProblemReport] = []
+    for module in experiment_modules():
+        if not hasattr(module, "PROBLEM_KIND"):
+            raise RuntimeError(f"experiments.{module.__name__.split('.')[-1]} is missing PROBLEM_KIND")
+        if module.PROBLEM_KIND not in PROBLEM_EVALUATORS:
+            raise RuntimeError(f"Unsupported problem kind {module.PROBLEM_KIND} in experiments.{module.__name__.split('.')[-1]}")
 
-    time_budget_requests = build_time_budget_requests(rows)
-    time_budget_results = [
-        evaluate_time_budget_variant(variant, rows, time_budget_requests, iterations)
-        for variant in build_time_budget_variants()
-    ]
-
-    return [
-        ProblemReport(
-            slug="planner_selection",
-            title="Planner Selection",
-            description_lines=[
-                "choose one planner configuration per dataset/scenario pair",
-                "keep the input schema fixed while varying only the selector implementation style",
-                "score each selector on benchmark regret, runtime, readability, and extensibility proxies",
-            ],
-            request_summary="dataset/scenario pairs",
-            metric_notes=[
-                "`Avg Regret`: utility gap from an external oracle scorer; lower is better",
-                "`Oracle Match`: fraction of requests where the selector picked the oracle row exactly",
-                "`Readability` and `Extensibility`: static-analysis proxies, not human review replacements",
-            ],
-            request_count=len(planner_requests),
-            variant_results=planner_results,
-        ),
-        ProblemReport(
-            slug="time_budget_selection",
-            title="Time-Budget Selection",
-            description_lines=[
-                "choose one planner configuration per dataset/scenario/time-budget request",
-                "force all variants to consume the same aggregated benchmark rows and the same wall-clock envelopes",
-                "score each selector on constrained regret, budget-hit rate, runtime, readability, and extensibility proxies",
-            ],
-            request_summary="dataset/scenario/time-budget triples",
-            metric_notes=[
-                "`Avg Regret`: utility gap from the best feasible row under the requested time budget; lower is better",
-                "`Oracle Match`: fraction of requests where the selector matched the best feasible row exactly",
-                "`Budget Hit`: fraction of requests where the selected row stayed inside the requested `avg_control_ms` envelope",
-            ],
-            request_count=len(time_budget_requests),
-            variant_results=time_budget_results,
-        ),
-    ]
+        requests = module.build_requests(rows)
+        variant_results = [
+            PROBLEM_EVALUATORS[module.PROBLEM_KIND](variant, rows, requests, iterations)
+            for variant in module.build_variants()
+        ]
+        reports.append(
+            ProblemReport(
+                slug=module.__name__.split(".")[-1],
+                kind=module.PROBLEM_KIND,
+                title=module.TITLE,
+                description_lines=list(module.DESCRIPTION_LINES),
+                request_summary=module.REQUEST_SUMMARY,
+                metric_notes=list(module.METRIC_NOTES),
+                request_count=len(requests),
+                variant_results=variant_results,
+            )
+        )
+    return reports
 
 
 def generate_experiments_markdown(csv_paths: Sequence[Path], reports: Sequence[ProblemReport]) -> str:
@@ -521,7 +461,7 @@ def generate_experiments_markdown(csv_paths: Sequence[Path], reports: Sequence[P
         lines.append("### Aggregate Scores")
         lines.append("")
 
-        if report.slug == "planner_selection":
+        if report.kind == "planner_selection":
             lines.append("| Variant | Paradigm | Avg Regret | Oracle Match | Runtime ms/request | Readability | Extensibility | Source |")
             lines.append("|---|---:|---:|---:|---:|---:|---:|---|")
             for item in report.variant_results:
@@ -532,7 +472,7 @@ def generate_experiments_markdown(csv_paths: Sequence[Path], reports: Sequence[P
                     f"{metrics['runtime_ms_per_request']:.4f} | {metrics['readability_score']:.1f} | "
                     f"{metrics['extensibility_score']:.1f} | `{metrics['source_path']}` |"
                 )
-        elif report.slug == "time_budget_selection":
+        elif report.kind == "time_budget_selection":
             lines.append("| Variant | Paradigm | Avg Regret | Oracle Match | Budget Hit | Runtime ms/request | Readability | Extensibility | Source |")
             lines.append("|---|---:|---:|---:|---:|---:|---:|---:|---|")
             for item in report.variant_results:
@@ -545,7 +485,7 @@ def generate_experiments_markdown(csv_paths: Sequence[Path], reports: Sequence[P
                     f"`{metrics['source_path']}` |"
                 )
         else:
-            raise ValueError(f"Unknown problem report: {report.slug}")
+            raise ValueError(f"Unknown problem kind: {report.kind}")
 
         lines.append("")
         lines.append("Metric notes:")
@@ -558,7 +498,7 @@ def generate_experiments_markdown(csv_paths: Sequence[Path], reports: Sequence[P
         for item in report.variant_results:
             lines.append(f"#### {item.name}")
             lines.append("")
-            if report.slug == "planner_selection":
+            if report.kind == "planner_selection":
                 lines.append("| Dataset | Scenario | Pick | Oracle | Regret | Rationale |")
                 lines.append("|---|---|---|---|---:|---|")
                 for case in item.cases:
@@ -568,7 +508,7 @@ def generate_experiments_markdown(csv_paths: Sequence[Path], reports: Sequence[P
                         f"{case['oracle_planner']} @ K={case['oracle_k_samples']} | "
                         f"{case['regret']:.3f} | {case['rationale']} |"
                     )
-            elif report.slug == "time_budget_selection":
+            elif report.kind == "time_budget_selection":
                 lines.append("| Dataset | Scenario | Budget ms | Pick | Pick ms | Oracle | Oracle ms | Budget Hit | Regret | Rationale |")
                 lines.append("|---|---|---:|---|---:|---|---:|---|---:|---|")
                 for case in item.cases:

@@ -28,9 +28,9 @@ Requests evaluated: `8` dataset/scenario pairs
 
 | Variant | Paradigm | Avg Regret | Oracle Match | Runtime ms/request | Readability | Extensibility | Source |
 |---|---:|---:|---:|---:|---:|---:|---|
-| functional_weighted | functional | 0.000 | 1.00 | 0.0189 | 54.5 | 30.2 | `experiments/planner_selection/functional_selector.py` |
-| oop_lexicographic | oop | 0.219 | 0.25 | 0.0271 | 49.4 | 41.6 | `experiments/planner_selection/oop_selector.py` |
-| pipeline_staged | pipeline | 0.136 | 0.38 | 0.0113 | 58.3 | 19.4 | `experiments/planner_selection/pipeline_selector.py` |
+| functional_weighted | functional | 0.000 | 1.00 | 0.0247 | 54.5 | 30.2 | `experiments/planner_selection/functional_selector.py` |
+| oop_lexicographic | oop | 0.219 | 0.25 | 0.0384 | 49.4 | 41.6 | `experiments/planner_selection/oop_selector.py` |
+| pipeline_staged | pipeline | 0.136 | 0.38 | 0.0143 | 58.3 | 19.4 | `experiments/planner_selection/pipeline_selector.py` |
 
 Metric notes:
 - `Avg Regret`: utility gap from an external oracle scorer; lower is better
@@ -93,9 +93,9 @@ Requests evaluated: `24` dataset/scenario/time-budget triples
 
 | Variant | Paradigm | Avg Regret | Oracle Match | Budget Hit | Runtime ms/request | Readability | Extensibility | Source |
 |---|---:|---:|---:|---:|---:|---:|---:|---|
-| functional_budgeted | functional | 0.000 | 1.00 | 1.00 | 0.0184 | 50.4 | 28.8 | `experiments/time_budget_selection/functional_budget_selector.py` |
-| oop_budget_lexicographic | oop | 0.099 | 0.62 | 1.00 | 0.0210 | 41.0 | 54.8 | `experiments/time_budget_selection/oop_budget_selector.py` |
-| pipeline_budget_staged | pipeline | 2.099 | 0.42 | 1.00 | 0.0090 | 55.0 | 19.0 | `experiments/time_budget_selection/pipeline_budget_selector.py` |
+| functional_budgeted | functional | 0.000 | 1.00 | 1.00 | 0.0133 | 50.4 | 28.8 | `experiments/time_budget_selection/functional_budget_selector.py` |
+| oop_budget_lexicographic | oop | 0.099 | 0.62 | 1.00 | 0.0198 | 41.0 | 54.8 | `experiments/time_budget_selection/oop_budget_selector.py` |
+| pipeline_budget_staged | pipeline | 2.099 | 0.42 | 1.00 | 0.0085 | 55.0 | 19.0 | `experiments/time_budget_selection/pipeline_budget_selector.py` |
 
 Metric notes:
 - `Avg Regret`: utility gap from the best feasible row under the requested time budget; lower is better

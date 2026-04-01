@@ -230,6 +230,11 @@ Each problem is implemented three different ways:
 
 All variants consume the same aggregated input rows, answer the same request type for their problem, and are scored under the same benchmark, readability, and extensibility proxies. The process uses version-controlled fixture CSVs in `experiments/data/`, so design comparisons are reproducible without regenerating the heavy benchmark suite. `scripts/validate_design_workflow.py` now also checks that every experiment module appears in generated docs, which keeps the process state externalized instead of hiding it in code only. Nothing in `experiments/` is assumed to be permanent.
 
+The workflow is now module-driven rather than import-driven:
+- each `experiments/<problem>/__init__.py` package declares its own metadata and request builder
+- `scripts/run_design_experiments.py` discovers those modules automatically
+- `scripts/validate_design_workflow.py` fails if a discovered module is missing from generated docs
+
 ### Docker
 ```bash
 docker build -t cuda-robotics .
