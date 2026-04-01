@@ -151,3 +151,5 @@ If we want to keep pushing the novelty argument, the next experiment should be:
 1. Add a feedback-oriented baseline beyond vanilla MPPI.
 2. Add a harder dynamic scenario with interacting moving agents, not just one scripted obstacle.
 3. Report exact success and final-distance comparisons at one or two fixed equal-time targets only, instead of many configurations.
+
+A submission-oriented gap analysis for `ICRA/IROS` is recorded separately in `paper/icra_iros_gap_list.md`.
