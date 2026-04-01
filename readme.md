@@ -46,12 +46,15 @@ Recent additions push the repository beyond direct CUDA ports of classic robotic
 | Project | Binaries | Highlights |
 |---|---|---|
 | Autodiff + GPU MLP foundation | `test_autodiff`, `test_gpu_mlp` | Dual-number forward-mode autodiff and a compact GPU MLP training/inference engine used as the base for later research-style experiments. |
+| Differentiable MPPI | `diff_mppi`, `comparison_diff_mppi` | Extends MPPI with a dual-number backward pass that refines the nominal control sequence with control gradients after the sampling update. |
 | Neuroevolution for Cart-Pole | `neuroevo`, `comparison_neuroevo` | Evolves 4096 neural policies in parallel on GPU and compares them against a CPU baseline with side-by-side learning curves. |
 | CudaPointCloud | `voxel_grid_filter`, `statistical_filter`, `normal_estimation`, `gicp`, `ransac_plane`, `benchmark_pointcloud` | GPU voxel filtering, outlier removal, PCA normals, plane extraction, and GICP registration for synthetic indoor point clouds. |
 | Swarm Optimization | `pso_cuda`, `differential_evolution`, `cma_es`, `aco_tsp`, `comparison_swarm` | Large-scale PSO, DE, CMA-ES, and ACO implementations with animated convergence comparisons. |
 
 | | |
 |---|---|
+| **MPPI vs Differentiable MPPI** | **Differentiable MPPI trajectory rollouts** |
+| <img src="https://rsasaki0109.github.io/CudaRobotics/comparison_diff_mppi.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/diff_mppi.gif" width="400"/> |
 | **Neuroevolution: CPU 100 vs CUDA 4096 individuals** | **Swarm Optimization: PSO vs DE vs CMA-ES** |
 | <img src="https://rsasaki0109.github.io/CudaRobotics/comparison_neuroevo.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/comparison_swarm.gif" width="400"/> |
 | **GPU Neuroevolution Cart-Pole replay** | **Particle Swarm Optimization** |
@@ -136,6 +139,8 @@ Combines particle filter (for robot pose) with per-particle EKF (for landmark po
 | State Lattice Planner | `slp_cuda` | Parallel lookup table search + trajectory optimization |
 | Potential Field | `potential_field` | Grid-parallel potential computation (attractive + repulsive) |
 | **3D Potential Field** | `potential_field_3d` | **3D grid-parallel potential (216K+ cells, drone/UAV)** |
+| MPPI | `mppi` | 4096-sample path-integral control on GPU |
+| Differentiable MPPI | `diff_mppi` | MPPI sampling update + autodiff control-gradient refinement |
 | PRM | `prm_cuda` | Parallel collision check + k-NN + edge collision |
 | Voronoi Road Map | `voronoi_road_map` | Jump Flooding Algorithm for parallel Voronoi diagram |
 
