@@ -123,6 +123,7 @@ Implication:
 Operational note:
 - fixture membership is now externalized in `experiments/data/manifest.json`
 - `scripts/refresh_design_fixtures.py` is the promoted path for copying selected benchmark CSVs into `experiments/data/`
+- `scripts/refresh_design_fixtures.py --check-sync` can be used locally to detect fixture drift against available build outputs
 
 ## D-008: The Workflow Must Survive More Than One Concrete Problem
 
