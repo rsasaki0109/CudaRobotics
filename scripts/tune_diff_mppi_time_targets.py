@@ -52,6 +52,20 @@ PRESETS = {
         "csv_out": "build/benchmark_diff_mppi_dynamic_bicycle_exact_time.csv",
         "summary_title": "Diff-MPPI Dynamic-Bicycle Exact-Time Tuning Summary",
     },
+    "uncertain_dynamic_nav": {
+        "bin": "./bin/benchmark_diff_mppi",
+        "scenarios": "uncertain_crossing,uncertain_slalom",
+        "planners": "mppi,feedback_mppi,diff_mppi_1,diff_mppi_3",
+        "time_targets": "1.0,1.5",
+        "search_seed_count": 4,
+        "final_seed_count": 4,
+        "k_min": 128,
+        "k_max": 16384,
+        "tolerance_ms": 0.03,
+        "max_evals": 8,
+        "csv_out": "build/benchmark_diff_mppi_uncertain_exact_time.csv",
+        "summary_title": "Diff-MPPI Uncertain Dynamic Exact-Time Tuning Summary",
+    },
 }
 
 

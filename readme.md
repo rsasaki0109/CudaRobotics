@@ -46,7 +46,7 @@ Recent additions push the repository beyond direct CUDA ports of classic robotic
 | Project | Binaries | Highlights |
 |---|---|---|
 | Autodiff + GPU MLP foundation | `test_autodiff`, `test_gpu_mlp` | Dual-number forward-mode autodiff and a compact GPU MLP training/inference engine used as the base for later research-style experiments. |
-| Differentiable MPPI | `diff_mppi`, `comparison_diff_mppi`, `benchmark_diff_mppi`, `benchmark_diff_mppi_cartpole`, `benchmark_diff_mppi_dynamic_bicycle` | Extends MPPI with a dual-number backward pass, side-by-side comparisons, dynamic-obstacle suites, both nominal-linearization and rollout-sensitivity feedback baselines, a `grad_only_3` ablation, a trace-based mechanism analysis, a pilot CartPole benchmark, and a higher-order dynamic-bicycle mobile-navigation follow-up outside the original 2D kinematic domain. |
+| Differentiable MPPI | `diff_mppi`, `comparison_diff_mppi`, `benchmark_diff_mppi`, `benchmark_diff_mppi_cartpole`, `benchmark_diff_mppi_dynamic_bicycle` | Extends MPPI with a dual-number backward pass, side-by-side comparisons, dynamic-obstacle suites, both nominal-linearization and rollout-sensitivity feedback baselines, a `grad_only_3` ablation, a trace-based mechanism analysis, an uncertainty follow-up with nominal-vs-actual obstacle mismatch, a pilot CartPole benchmark, and a higher-order dynamic-bicycle mobile-navigation follow-up outside the original 2D kinematic domain. |
 | Neural SDF Navigation | `neural_sdf`, `sdf_potential_field`, `sdf_mppi`, `comparison_sdf_nav` | Learns 2D signed distance fields with a GPU MLP, then uses them for potential-field planning and MPPI on non-circular obstacle layouts. |
 | Neuroevolution for Cart-Pole | `neuroevo`, `comparison_neuroevo` | Evolves 4096 neural policies in parallel on GPU and compares them against a CPU baseline with side-by-side learning curves. |
 | MiniIsaacGym | `mini_isaac`, `mini_isaac_rl` | Runs thousands of CartPole environments in parallel on GPU and trains a compact policy with GPU-side REINFORCE updates. |
@@ -117,6 +117,17 @@ python3 scripts/plot_diff_mppi.py --csv build/benchmark_diff_mppi_feedback_dynam
 ```
 
 This follow-up now includes two moving-obstacle tasks, a strengthened nominal-linearization `feedback_mppi` baseline, a closer rollout-sensitivity `feedback_mppi_sens` baseline, the earlier `grad_only_3` ablation, and an exact-time tuning script. In the current benchmark, both feedback baselines strongly improve over vanilla MPPI on `dynamic_crossing`, but neither solves `dynamic_slalom`, while Diff-MPPI remains successful on both tasks under fixed-budget and cap-based matched-time comparisons. The new sensitivity baseline is intentionally described as "closer" rather than "faithful": it uses rollout cost sensitivities to form feedback gains, but it still does not reproduce the full controller architecture of the recent literature. The current write-up is in `paper/diff_mppi_novelty_followup.md`, and the current `ICRA/IROS` submission-gap assessment is in `paper/icra_iros_gap_list.md`.
+
+Uncertainty follow-up:
+
+```bash
+./bin/benchmark_diff_mppi --scenarios uncertain_crossing,uncertain_slalom --planners mppi,feedback_mppi,diff_mppi_1,diff_mppi_3 --seed-count 4 --k-values 256,512,1024,2048,4096,6144,8192 --csv build/benchmark_diff_mppi_uncertain.csv
+python3 scripts/summarize_diff_mppi.py --csv build/benchmark_diff_mppi_uncertain.csv --markdown-out build/benchmark_diff_mppi_uncertain_summary.md --latex-out build/benchmark_diff_mppi_uncertain_summary.tex --time-caps 1.0,1.5 --time-targets 1.0,1.5
+python3 scripts/plot_diff_mppi.py --csv build/benchmark_diff_mppi_uncertain.csv --out-dir build/plots_uncertain --time-caps 1.0,1.5 --time-targets 1.0,1.5
+python3 scripts/tune_diff_mppi_time_targets.py --preset uncertain_dynamic_nav
+```
+
+This follow-up keeps the planner on the nominal dynamic-obstacle model while executing each episode against a seed-dependent perturbed obstacle trajectory. The perturbation changes obstacle time offset, speed scale, and lateral offset, so the benchmark is a mild model-mismatch study rather than a full partial-observation benchmark. The current result is strong enough to be useful in rebuttal: at fixed budget and under exact matched-time tuning, `mppi` remains unsuccessful on both `uncertain_crossing` and `uncertain_slalom`, `feedback_mppi` recovers the easier uncertain crossing task but still fails uncertain slalom, and Diff-MPPI remains successful on both. Representative `1.00 ms` rows are `uncertain_crossing: mppi K=7584, dist=2.97; feedback_mppi K=2087, dist=1.87; diff_mppi_1 K=5457, dist=1.89` and `uncertain_slalom: mppi K=7524, dist=14.17; feedback_mppi K=2058, dist=11.82; diff_mppi_3 K=346, dist=1.92`. The current write-up is in `paper/diff_mppi_uncertainty_followup.md`.
 
 Hybrid-versus-gradient-only ablation:
 
@@ -227,7 +238,7 @@ Combines particle filter (for robot pose) with per-particle EKF (for landmark po
 | Potential Field | `potential_field` | Grid-parallel potential computation (attractive + repulsive) |
 | **3D Potential Field** | `potential_field_3d` | **3D grid-parallel potential (216K+ cells, drone/UAV)** |
 | MPPI | `mppi` | 4096-sample path-integral control on GPU |
-| Differentiable MPPI | `diff_mppi`, `comparison_diff_mppi`, `benchmark_diff_mppi`, `benchmark_diff_mppi_cartpole`, `benchmark_diff_mppi_dynamic_bicycle` | MPPI sampling update + autodiff control-gradient refinement + multi-scenario CSV benchmarking under fixed sample and wall-clock caps, plus CartPole and dynamic-bicycle follow-up pilots outside the base kinematic suite |
+| Differentiable MPPI | `diff_mppi`, `comparison_diff_mppi`, `benchmark_diff_mppi`, `benchmark_diff_mppi_cartpole`, `benchmark_diff_mppi_dynamic_bicycle` | MPPI sampling update + autodiff control-gradient refinement + multi-scenario CSV benchmarking under fixed sample and wall-clock caps, plus uncertain-dynamic, CartPole, and dynamic-bicycle follow-up pilots outside the base kinematic suite |
 | Neural SDF Navigation | `neural_sdf`, `sdf_potential_field`, `sdf_mppi`, `comparison_sdf_nav` | Learned implicit obstacle fields for heatmap visualization, potential fields, and MPPI |
 | PRM | `prm_cuda` | Parallel collision check + k-NN + edge collision |
 | Voronoi Road Map | `voronoi_road_map` | Jump Flooding Algorithm for parallel Voronoi diagram |

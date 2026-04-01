@@ -15,6 +15,7 @@
 #include <fstream>
 #include <iostream>
 #include <map>
+#include <random>
 #include <sstream>
 #include <string>
 #include <sys/stat.h>
@@ -66,6 +67,10 @@ struct Scenario {
     Obstacle obstacles[MAX_OBSTACLES];
     int n_dyn_obs = 0;
     DynamicObstacle dynamic_obstacles[MAX_DYNAMIC_OBSTACLES];
+    bool use_dynamic_mismatch = false;
+    float dyn_time_offset_max = 0.0f;
+    float dyn_speed_scale_max = 0.0f;
+    float dyn_lateral_jitter = 0.0f;
 };
 
 struct PlannerVariant {
@@ -817,9 +822,11 @@ static float min_obstacle_margin(float x, float y, const Scenario& scenario, int
 
 class EpisodeRunner {
 public:
-    EpisodeRunner(const PlannerVariant& variant, const Scenario& scenario, int k_samples, int t_horizon, int seed,
+    EpisodeRunner(const PlannerVariant& variant, const Scenario& planning_scenario, const Scenario& eval_scenario,
+                  int k_samples, int t_horizon, int seed,
                   vector<TraceRow>* trace_rows = nullptr, int trace_max_steps = 0)
-        : variant_(variant), scenario_(scenario), k_samples_(k_samples), t_horizon_(t_horizon), seed_(seed),
+        : variant_(variant), planning_scenario_(planning_scenario), eval_scenario_(eval_scenario),
+          k_samples_(k_samples), t_horizon_(t_horizon), seed_(seed),
           trace_rows_(trace_rows), trace_max_steps_(trace_max_steps) {
         reset_state();
 
@@ -868,13 +875,13 @@ public:
         auto episode_begin = chrono::steady_clock::now();
         float total_control_ms = 0.0f;
 
-        for (int step = 0; step < scenario_.max_steps; step++) {
-            float goal_dx = rx_ - scenario_.cost_params.goal_x;
-            float goal_dy = ry_ - scenario_.cost_params.goal_y;
+        for (int step = 0; step < eval_scenario_.max_steps; step++) {
+            float goal_dx = rx_ - eval_scenario_.cost_params.goal_x;
+            float goal_dy = ry_ - eval_scenario_.cost_params.goal_y;
             float goal_dist = sqrtf(goal_dx * goal_dx + goal_dy * goal_dy);
-            float margin_before = min_obstacle_margin(rx_, ry_, scenario_, step);
+            float margin_before = min_obstacle_margin(rx_, ry_, eval_scenario_, step);
             min_goal_distance_ = std::min(min_goal_distance_, goal_dist);
-            if (goal_dist < scenario_.goal_tol) {
+            if (goal_dist < eval_scenario_.goal_tol) {
                 reached_goal_ = true;
                 steps_taken_ = step;
                 break;
@@ -894,10 +901,10 @@ public:
 
             float accel = h_nominal_[0];
             float steer = h_nominal_[1];
-            bicycle_step(rx_, ry_, rtheta_, rv_, accel, steer, scenario_.params);
-            cumulative_cost_ += host_step_cost(rx_, ry_, rtheta_, rv_, accel, steer, scenario_, step + 1);
+            bicycle_step(rx_, ry_, rtheta_, rv_, accel, steer, eval_scenario_.params);
+            cumulative_cost_ += host_step_cost(rx_, ry_, rtheta_, rv_, accel, steer, eval_scenario_, step + 1);
 
-            float margin = min_obstacle_margin(rx_, ry_, scenario_, step + 1);
+            float margin = min_obstacle_margin(rx_, ry_, eval_scenario_, step + 1);
             if (margin <= 0.0f || rx_ < 0.0f || rx_ > WORKSPACE || ry_ < 0.0f || ry_ > WORKSPACE) collisions_++;
 
             for (int t = 0; t < t_horizon_ - 1; t++) {
@@ -910,13 +917,13 @@ public:
         }
 
         auto episode_end = chrono::steady_clock::now();
-        float final_dx = rx_ - scenario_.cost_params.goal_x;
-        float final_dy = ry_ - scenario_.cost_params.goal_y;
+        float final_dx = rx_ - eval_scenario_.cost_params.goal_x;
+        float final_dy = ry_ - eval_scenario_.cost_params.goal_y;
         float final_distance = sqrtf(final_dx * final_dx + final_dy * final_dy);
-        if (final_distance < scenario_.goal_tol) reached_goal_ = true;
+        if (final_distance < eval_scenario_.goal_tol) reached_goal_ = true;
 
         EpisodeMetrics metrics;
-        metrics.scenario = scenario_.name;
+        metrics.scenario = eval_scenario_.name;
         metrics.planner = variant_.name;
         metrics.seed = seed_;
         metrics.k_samples = k_samples_;
@@ -954,31 +961,34 @@ private:
             for (int pass = 0; pass < open_loop_passes; pass++) {
                 rollout_kernel<<<(k_samples_ + block - 1) / block, block>>>(
                     sx, sy, stheta, sv, d_nominal_, d_costs_, d_perturbed_, d_rollout_states_, d_rng_,
-                    scenario_.params, scenario_.cost_params, scenario_.n_obs, scenario_.n_dyn_obs, start_step, k_samples_, t_horizon_);
+                    planning_scenario_.params, planning_scenario_.cost_params,
+                    planning_scenario_.n_obs, planning_scenario_.n_dyn_obs, start_step, k_samples_, t_horizon_);
                 compute_weights_kernel<<<1, 1>>>(d_costs_, d_weights_, k_samples_, DEFAULT_LAMBDA);
                 update_controls_kernel<<<(t_horizon_ + block - 1) / block, block>>>(
                     d_nominal_, d_perturbed_, d_weights_, k_samples_, t_horizon_);
             }
 
             if (variant_.use_feedback) {
-                rollout_nominal_kernel<<<1, 1>>>(sx, sy, stheta, sv, d_nominal_, d_states_, scenario_.params, t_horizon_);
+                rollout_nominal_kernel<<<1, 1>>>(sx, sy, stheta, sv, d_nominal_, d_states_, planning_scenario_.params, t_horizon_);
                 if (variant_.feedback_mode == 2) {
                     compute_rollout_initial_gradients_kernel<<<(k_samples_ + block - 1) / block, block>>>(
                         d_rollout_states_, d_perturbed_, d_rollout_init_grads_,
-                        scenario_.params, scenario_.cost_params, scenario_.n_obs, scenario_.n_dyn_obs,
+                        planning_scenario_.params, planning_scenario_.cost_params,
+                        planning_scenario_.n_obs, planning_scenario_.n_dyn_obs,
                         start_step, k_samples_, t_horizon_);
                     compute_sensitivity_feedback_gains_kernel<<<1, 1>>>(
                         d_nominal_, d_perturbed_, d_weights_, d_rollout_init_grads_, d_feedback_gains_,
                         DEFAULT_LAMBDA, k_samples_, t_horizon_);
                 } else {
                     compute_feedback_gains_kernel<<<1, 1>>>(
-                        d_states_, d_nominal_, d_feedback_gains_, scenario_.params, scenario_.cost_params, t_horizon_,
+                        d_states_, d_nominal_, d_feedback_gains_, planning_scenario_.params, planning_scenario_.cost_params, t_horizon_,
                         variant_.feedback_q_position, variant_.feedback_q_heading, variant_.feedback_q_speed,
                         variant_.feedback_r_accel, variant_.feedback_r_steer, variant_.feedback_terminal_scale);
                 }
                 rollout_feedback_kernel<<<(k_samples_ + block - 1) / block, block>>>(
                     sx, sy, stheta, sv, d_nominal_, d_states_, d_feedback_gains_, d_costs_, d_perturbed_, d_rng_,
-                    scenario_.params, scenario_.cost_params, scenario_.n_obs, scenario_.n_dyn_obs,
+                    planning_scenario_.params, planning_scenario_.cost_params,
+                    planning_scenario_.n_obs, planning_scenario_.n_dyn_obs,
                     start_step, k_samples_, t_horizon_,
                     variant_.feedback_gain_scale,
                     variant_.feedback_noise_accel,
@@ -1001,11 +1011,12 @@ private:
 
         if (variant_.use_gradient) {
             for (int gs = 0; gs < variant_.grad_steps; gs++) {
-                rollout_nominal_kernel<<<1, 1>>>(sx, sy, stheta, sv, d_nominal_, d_states_, scenario_.params, t_horizon_);
-                compute_gradient_kernel<<<1, 1>>>(d_states_, d_nominal_, d_grad_, scenario_.params, scenario_.cost_params,
-                                                  scenario_.n_obs, scenario_.n_dyn_obs, start_step, t_horizon_);
+                rollout_nominal_kernel<<<1, 1>>>(sx, sy, stheta, sv, d_nominal_, d_states_, planning_scenario_.params, t_horizon_);
+                compute_gradient_kernel<<<1, 1>>>(d_states_, d_nominal_, d_grad_, planning_scenario_.params, planning_scenario_.cost_params,
+                                                  planning_scenario_.n_obs, planning_scenario_.n_dyn_obs, start_step, t_horizon_);
                 gradient_step_kernel<<<(t_horizon_ + block - 1) / block, block>>>(
-                    d_nominal_, d_grad_, t_horizon_, variant_.alpha * scenario_.grad_alpha_scale, scenario_.params.max_steer);
+                    d_nominal_, d_grad_, t_horizon_,
+                    variant_.alpha * planning_scenario_.grad_alpha_scale, planning_scenario_.params.max_steer);
             }
         }
         CUDA_CHECK(cudaDeviceSynchronize());
@@ -1020,7 +1031,7 @@ private:
     void append_trace_rows(int episode_step, float goal_distance, float min_margin, float control_ms) {
         for (int t = 0; t < t_horizon_; t++) {
             TraceRow row;
-            row.scenario = scenario_.name;
+            row.scenario = eval_scenario_.name;
             row.planner = variant_.name;
             row.seed = seed_;
             row.k_samples = k_samples_;
@@ -1047,25 +1058,27 @@ private:
 
     void warmup_controller() {
         for (int iter = 0; iter < BENCH_WARMUP_ITERS; iter++) {
-            controller_update(scenario_.start_x, scenario_.start_y, scenario_.start_theta, scenario_.start_v, 0);
+            controller_update(planning_scenario_.start_x, planning_scenario_.start_y,
+                              planning_scenario_.start_theta, planning_scenario_.start_v, 0);
         }
     }
 
     void reset_state() {
-        rx_ = scenario_.start_x;
-        ry_ = scenario_.start_y;
-        rtheta_ = scenario_.start_theta;
-        rv_ = scenario_.start_v;
+        rx_ = eval_scenario_.start_x;
+        ry_ = eval_scenario_.start_y;
+        rtheta_ = eval_scenario_.start_theta;
+        rv_ = eval_scenario_.start_v;
         steps_taken_ = 0;
         collisions_ = 0;
         reached_goal_ = false;
         cumulative_cost_ = 0.0f;
-        min_goal_distance_ = sqrtf((rx_ - scenario_.cost_params.goal_x) * (rx_ - scenario_.cost_params.goal_x)
-                                 + (ry_ - scenario_.cost_params.goal_y) * (ry_ - scenario_.cost_params.goal_y));
+        min_goal_distance_ = sqrtf((rx_ - eval_scenario_.cost_params.goal_x) * (rx_ - eval_scenario_.cost_params.goal_x)
+                                 + (ry_ - eval_scenario_.cost_params.goal_y) * (ry_ - eval_scenario_.cost_params.goal_y));
     }
 
     PlannerVariant variant_;
-    Scenario scenario_;
+    Scenario planning_scenario_;
+    Scenario eval_scenario_;
     int k_samples_;
     int t_horizon_;
     int seed_;
@@ -1101,6 +1114,33 @@ private:
     vector<TraceRow>* trace_rows_ = nullptr;
     int trace_max_steps_ = 0;
 };
+
+static Scenario instantiate_eval_scenario(const Scenario& nominal, int seed) {
+    Scenario eval = nominal;
+    if (!nominal.use_dynamic_mismatch || nominal.n_dyn_obs <= 0) return eval;
+
+    std::mt19937 rng(static_cast<uint32_t>(seed) * 747796405u + 2891336453u);
+    std::uniform_real_distribution<float> unit(-1.0f, 1.0f);
+
+    for (int i = 0; i < eval.n_dyn_obs; i++) {
+        DynamicObstacle& obs = eval.dynamic_obstacles[i];
+        float speed = sqrtf(obs.vx * obs.vx + obs.vy * obs.vy);
+        float nx = 1.0f;
+        float ny = 0.0f;
+        if (speed > 1.0e-5f) {
+            nx = -obs.vy / speed;
+            ny = obs.vx / speed;
+        }
+        float time_offset = nominal.dyn_time_offset_max * unit(rng);
+        float speed_scale = 1.0f + nominal.dyn_speed_scale_max * unit(rng);
+        float lateral_jitter = nominal.dyn_lateral_jitter * unit(rng);
+        obs.x += obs.vx * time_offset + nx * lateral_jitter;
+        obs.y += obs.vy * time_offset + ny * lateral_jitter;
+        obs.vx *= speed_scale;
+        obs.vy *= speed_scale;
+    }
+    return eval;
+}
 
 static Scenario make_cluttered_scene() {
     Scenario s;
@@ -1241,6 +1281,26 @@ static Scenario make_dynamic_slalom_scene() {
     for (int i = 0; i < s.n_obs; i++) s.obstacles[i] = obs[i];
     s.n_dyn_obs = static_cast<int>(sizeof(dyn) / sizeof(dyn[0]));
     for (int i = 0; i < s.n_dyn_obs; i++) s.dynamic_obstacles[i] = dyn[i];
+    return s;
+}
+
+static Scenario make_uncertain_crossing_scene() {
+    Scenario s = make_dynamic_crossing_scene();
+    s.name = "uncertain_crossing";
+    s.use_dynamic_mismatch = true;
+    s.dyn_time_offset_max = 1.15f;
+    s.dyn_speed_scale_max = 0.18f;
+    s.dyn_lateral_jitter = 0.85f;
+    return s;
+}
+
+static Scenario make_uncertain_slalom_scene() {
+    Scenario s = make_dynamic_slalom_scene();
+    s.name = "uncertain_slalom";
+    s.use_dynamic_mismatch = true;
+    s.dyn_time_offset_max = 0.95f;
+    s.dyn_speed_scale_max = 0.16f;
+    s.dyn_lateral_jitter = 0.75f;
     return s;
 }
 
@@ -1390,6 +1450,8 @@ int main(int argc, char** argv) {
     all_scenarios.push_back(make_corner_scene());
     all_scenarios.push_back(make_dynamic_crossing_scene());
     all_scenarios.push_back(make_dynamic_slalom_scene());
+    all_scenarios.push_back(make_uncertain_crossing_scene());
+    all_scenarios.push_back(make_uncertain_slalom_scene());
 
     vector<Scenario> scenarios;
     if (!scenario_names.empty()) {
@@ -1515,8 +1577,9 @@ int main(int argc, char** argv) {
                 const PlannerVariant& variant = variants[vi];
                 for (int seed = 0; seed < seed_count; seed++) {
                     int run_seed = static_cast<int>(1000 + si * 100 + vi * 20 + seed * 7 + k_samples);
+                    Scenario eval_scenario = instantiate_eval_scenario(scenario, run_seed);
                     EpisodeRunner runner(
-                        variant, scenario, k_samples, DEFAULT_T_HORIZON, run_seed,
+                        variant, scenario, eval_scenario, k_samples, DEFAULT_T_HORIZON, run_seed,
                         trace_enabled ? &trace_rows : nullptr, trace_max_steps);
                     EpisodeMetrics metrics = runner.run();
                     rows.push_back(metrics);

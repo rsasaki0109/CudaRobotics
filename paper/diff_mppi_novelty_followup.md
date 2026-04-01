@@ -9,6 +9,8 @@ This note records five follow-up experiments added after the initial `diff_mppi`
 - a strengthened feedback-oriented MPPI baseline
 - a gradient-only ablation to separate local-refinement effects from the hybrid controller
 
+A later uncertainty follow-up with nominal-vs-actual obstacle mismatch is recorded separately in `paper/diff_mppi_uncertainty_followup.md`.
+
 Artifacts used:
 - `build/benchmark_diff_mppi_feedback_dynamic_pair.csv`
 - `build/benchmark_diff_mppi_feedback_dynamic_pair_summary.md`
