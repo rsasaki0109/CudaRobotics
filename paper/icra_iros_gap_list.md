@@ -51,6 +51,7 @@ The current line now has real positives:
 - a strengthened in-repo `feedback_mppi` baseline inside the same harness
 - a closer rollout-sensitivity `feedback_mppi_sens` baseline inside the same harness
 - a covariance-regression `feedback_mppi_cov` baseline inside the same harness
+- a fused covariance-plus-linearization `feedback_mppi_fused` baseline inside the same harness
 - a `grad_only_3` ablation that removes one weak alternative explanation
 - three outside-domain pilots: nonlinear `CartPole`, dynamic-bicycle mobile navigation, and planar manipulator obstacle avoidance
 - a narrow claim that is honest and empirically supported
@@ -88,18 +89,21 @@ Right now you compare against:
 - strengthened in-repo `feedback_mppi`
 - rollout-sensitivity `feedback_mppi_sens`
 - covariance-regression `feedback_mppi_cov`
+- fused covariance-plus-linearization `feedback_mppi_fused`
 - `grad_only_3`
 
 What is still missing is a literature-faithful sensitivity-aware MPPI baseline, for example:
-- a stronger `Feedback-MPPI`-style local feedback baseline
-- another rollout-differentiation or local linearization baseline
+- a stronger `Feedback-MPPI`-style local feedback baseline implemented as closely as possible inside the same harness
+- or a direct reproduction of one nearby rollout-differentiation / sensitivity-aware controller rather than another in-house proxy
 
 The newer baseline story is materially better than it was a few iterations ago:
 - it derives feedback gains from rollout initial-state sensitivities instead of only from a nominal local linearization
 - on `dynamic_crossing`, it reaches `0.75` success across `K={256,512,1024}` while vanilla MPPI remains at `0.00`
 - a newer `feedback_mppi_cov` variant regresses time-varying gains from sampled state-control covariance
 - on `dynamic_crossing`, `feedback_mppi_cov` reaches `1.00` success across `K={256,512,1024}`
-- on `dynamic_slalom`, it still fails, but it is now the strongest non-hybrid feedback baseline, reducing final distance to about `11.44-11.49` versus `11.80-11.91` for `feedback_mppi` and `12.75-12.81` for `feedback_mppi_sens`
+- a newer `feedback_mppi_fused` variant blends covariance-regressed gains with nominal-linearization gains over two feedback passes
+- on `dynamic_crossing`, `feedback_mppi_fused` reaches `1.00` success at `K={256,512}` with final distance about `1.86-1.91`
+- on `dynamic_slalom`, it still fails, but it is now the strongest non-hybrid feedback baseline, reducing final distance to about `10.23-10.30` versus `11.44-11.51` for `feedback_mppi_cov`, `11.80-11.91` for `feedback_mppi`, and `12.75-12.81` for `feedback_mppi_sens`
 
 So the baseline gap is narrower than before, but not closed.
 
@@ -148,6 +152,7 @@ That is already much better than most quick research repos.
 But a skeptical reviewer can still say:
 - the exact-time tuning currently searches `K` only, not the full controller design space
 - the exact-time result is currently concentrated on the dynamic two-task suite, not the full benchmark portfolio
+- the heavier `feedback_mppi_cov` and `feedback_mppi_fused` baselines currently have only fixed-budget and cap-based evidence, not refreshed exact-time sweeps
 - outside the base suite, the time-matched claim currently reaches only custom pilot domains, and the cleanest matched-time result is still the dynamic-obstacle base suite rather than the pilots
 
 The dynamic-bicycle exact-time result is still useful, but it currently reads as a conservative compute-matched spot check:
@@ -184,7 +189,7 @@ These are ordered by importance, not by ease.
 1. Strengthen the current direct sensitivity-aware baseline
 
 Minimum acceptable version:
-- keep the current nominal-linearization `feedback_mppi`, rollout-sensitivity `feedback_mppi_sens`, and covariance-regression `feedback_mppi_cov` baselines, but tighten them into a closer `Feedback-MPPI`-style comparison inside the same benchmark harness
+- keep the current nominal-linearization `feedback_mppi`, rollout-sensitivity `feedback_mppi_sens`, covariance-regression `feedback_mppi_cov`, and fused `feedback_mppi_fused` baselines, but tighten them into a closer `Feedback-MPPI`-style comparison inside the same benchmark harness
 - compare under fixed-budget and exact matched-time settings
 
 Why this is critical:
@@ -268,7 +273,7 @@ If the goal is a serious `ICRA/IROS full paper`, the minimum package I would tru
 1. Current static benchmark
 2. Current two dynamic tasks
 3. `grad_only_3` ablation
-4. literature-faithful `Feedback-MPPI`-style baseline beyond the current nominal-linearization `feedback_mppi`, rollout-sensitivity `feedback_mppi_sens`, and covariance-regression `feedback_mppi_cov`
+4. literature-faithful `Feedback-MPPI`-style baseline beyond the current nominal-linearization `feedback_mppi`, rollout-sensitivity `feedback_mppi_sens`, covariance-regression `feedback_mppi_cov`, and fused `feedback_mppi_fused`
 5. exact matched-time tuning on the final evaluation suite
 6. one higher-fidelity experiment outside 2D kinematic navigation
 
@@ -291,7 +296,7 @@ That framing is narrower, but more defensible.
 ## Recommended Next Steps
 
 Immediate next work:
-1. Strengthen the current `feedback_mppi_sens` / `feedback_mppi_cov` baselines in `benchmark_diff_mppi` into a more literature-faithful comparison.
+1. Strengthen the current `feedback_mppi_sens` / `feedback_mppi_cov` / `feedback_mppi_fused` baselines in `benchmark_diff_mppi` into a more literature-faithful comparison.
 2. Port the benchmark to one higher-fidelity domain.
 3. Carry the new exact matched-time tuning workflow into that stronger evaluation domain.
 

@@ -27,12 +27,13 @@ PLANNER_STYLES = {
     "feedback_mppi": {"label": "Feedback MPPI", "color": "#7b8c5a", "marker": "P"},
     "feedback_mppi_sens": {"label": "Feedback MPPI (sens)", "color": "#5a7db8", "marker": "X"},
     "feedback_mppi_cov": {"label": "Feedback MPPI (cov)", "color": "#8b5fbf", "marker": "v"},
+    "feedback_mppi_fused": {"label": "Feedback MPPI (fused)", "color": "#b05f3c", "marker": ">"},
     "grad_only_3": {"label": "Grad-Only (3 step)", "color": "#6c757d", "marker": "D"},
     "diff_mppi_1": {"label": "Diff-MPPI (1 grad)", "color": "#c65d33", "marker": "s"},
     "diff_mppi_3": {"label": "Diff-MPPI (3 grad)", "color": "#2a6f97", "marker": "^"},
 }
 
-PLOT_ORDER = ["mppi", "feedback_mppi", "feedback_mppi_sens", "feedback_mppi_cov", "grad_only_3", "diff_mppi_1", "diff_mppi_3"]
+PLOT_ORDER = ["mppi", "feedback_mppi", "feedback_mppi_sens", "feedback_mppi_cov", "feedback_mppi_fused", "grad_only_3", "diff_mppi_1", "diff_mppi_3"]
 SCENARIO_TITLES = {
     "arm_dynamic_sweep": "Planar Arm Dynamic Sweep",
     "arm_static_shelf": "Planar Arm Shelf Reach",
