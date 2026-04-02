@@ -83,6 +83,7 @@ struct PlannerVariant {
     int replan_stride = 1;
     int grad_steps = 0;
     float alpha = 0.0f;
+    float sampling_lambda = DEFAULT_LAMBDA;
     float feedback_gain_scale = 1.0f;
     float feedback_noise_accel = 0.9f;
     float feedback_noise_steer = 0.10f;
@@ -1237,7 +1238,7 @@ private:
                     sx, sy, stheta, sv, d_nominal_, d_costs_, d_perturbed_, d_rollout_states_, d_rng_,
                     planning_scenario_.params, planning_scenario_.cost_params,
                     planning_scenario_.n_obs, planning_scenario_.n_dyn_obs, start_step, k_samples_, t_horizon_);
-                compute_weights_kernel<<<1, 1>>>(d_costs_, d_weights_, k_samples_, DEFAULT_LAMBDA);
+                compute_weights_kernel<<<1, 1>>>(d_costs_, d_weights_, k_samples_, variant_.sampling_lambda);
                 update_controls_kernel<<<(t_horizon_ + block - 1) / block, block>>>(
                     d_nominal_, d_perturbed_, d_weights_, k_samples_, t_horizon_);
             }
@@ -1250,7 +1251,7 @@ private:
                             sx, sy, stheta, sv, d_nominal_, d_costs_, d_perturbed_, d_rollout_states_, d_rng_,
                             planning_scenario_.params, planning_scenario_.cost_params,
                             planning_scenario_.n_obs, planning_scenario_.n_dyn_obs, start_step, k_samples_, t_horizon_);
-                        compute_weights_kernel<<<1, 1>>>(d_costs_, d_weights_, k_samples_, DEFAULT_LAMBDA);
+                        compute_weights_kernel<<<1, 1>>>(d_costs_, d_weights_, k_samples_, variant_.sampling_lambda);
                         compute_rollout_initial_gradients_kernel<<<(k_samples_ + block - 1) / block, block>>>(
                             d_rollout_states_, d_perturbed_, d_rollout_init_grads_,
                             planning_scenario_.params, planning_scenario_.cost_params,
@@ -1258,13 +1259,13 @@ private:
                             start_step, k_samples_, t_horizon_);
                         compute_sensitivity_feedback_gains_kernel<<<1, 1>>>(
                             d_nominal_, d_perturbed_, d_weights_, d_rollout_init_grads_, d_feedback_gains_,
-                            DEFAULT_LAMBDA, k_samples_, t_horizon_);
+                            variant_.sampling_lambda, k_samples_, t_horizon_);
                     } else if (variant_.feedback_mode == 6) {
                         rollout_kernel<<<(k_samples_ + block - 1) / block, block>>>(
                             sx, sy, stheta, sv, d_nominal_, d_costs_, d_perturbed_, d_rollout_states_, d_rng_,
                             planning_scenario_.params, planning_scenario_.cost_params,
                             planning_scenario_.n_obs, planning_scenario_.n_dyn_obs, start_step, k_samples_, t_horizon_);
-                        compute_weights_kernel<<<1, 1>>>(d_costs_, d_weights_, k_samples_, DEFAULT_LAMBDA);
+                        compute_weights_kernel<<<1, 1>>>(d_costs_, d_weights_, k_samples_, variant_.sampling_lambda);
                         compute_covariance_feedback_gains_kernel<<<1, 1>>>(
                             d_nominal_, d_states_, d_perturbed_, d_rollout_states_, d_weights_, d_feedback_gains_,
                             k_samples_, t_horizon_, variant_.feedback_cov_regularization);
@@ -1280,7 +1281,7 @@ private:
                             sx, sy, stheta, sv, d_nominal_, d_costs_, d_perturbed_, d_rollout_states_, d_rng_,
                             planning_scenario_.params, planning_scenario_.cost_params,
                             planning_scenario_.n_obs, planning_scenario_.n_dyn_obs, start_step, k_samples_, t_horizon_);
-                        compute_weights_kernel<<<1, 1>>>(d_costs_, d_weights_, k_samples_, DEFAULT_LAMBDA);
+                        compute_weights_kernel<<<1, 1>>>(d_costs_, d_weights_, k_samples_, variant_.sampling_lambda);
                         compute_rollout_initial_gradients_kernel<<<(k_samples_ + block - 1) / block, block>>>(
                             d_rollout_states_, d_perturbed_, d_rollout_init_grads_,
                             planning_scenario_.params, planning_scenario_.cost_params,
@@ -1290,7 +1291,7 @@ private:
                             d_nominal_, d_perturbed_, d_weights_, k_samples_, t_horizon_);
                         compute_reference_feedback_gain_kernel<<<1, 1>>>(
                             d_nominal_, d_perturbed_, d_weights_, d_rollout_init_grads_, d_feedback_gains_,
-                            DEFAULT_LAMBDA, k_samples_, t_horizon_);
+                            variant_.sampling_lambda, k_samples_, t_horizon_);
                         rollout_nominal_kernel<<<1, 1>>>(sx, sy, stheta, sv, d_nominal_, d_states_, planning_scenario_.params, t_horizon_);
                     }
                 } else {
@@ -1304,13 +1305,13 @@ private:
                             start_step, k_samples_, t_horizon_);
                         compute_sensitivity_feedback_gains_kernel<<<1, 1>>>(
                             d_nominal_, d_perturbed_, d_weights_, d_rollout_init_grads_, d_feedback_gains_,
-                            DEFAULT_LAMBDA, k_samples_, t_horizon_);
+                            variant_.sampling_lambda, k_samples_, t_horizon_);
                     } else if (variant_.feedback_mode == 3 || variant_.feedback_mode == 4) {
                         rollout_kernel<<<(k_samples_ + block - 1) / block, block>>>(
                             sx, sy, stheta, sv, d_nominal_, d_costs_, d_perturbed_, d_rollout_states_, d_rng_,
                             planning_scenario_.params, planning_scenario_.cost_params,
                             planning_scenario_.n_obs, planning_scenario_.n_dyn_obs, start_step, k_samples_, t_horizon_);
-                        compute_weights_kernel<<<1, 1>>>(d_costs_, d_weights_, k_samples_, DEFAULT_LAMBDA);
+                        compute_weights_kernel<<<1, 1>>>(d_costs_, d_weights_, k_samples_, variant_.sampling_lambda);
                         compute_covariance_feedback_gains_kernel<<<1, 1>>>(
                             d_nominal_, d_states_, d_perturbed_, d_rollout_states_, d_weights_, d_feedback_gains_,
                             k_samples_, t_horizon_, variant_.feedback_cov_regularization);
@@ -1342,7 +1343,7 @@ private:
                         variant_.feedback_lateral_gain,
                         variant_.feedback_heading_gain,
                         variant_.feedback_setpoint_blend);
-                    compute_weights_kernel<<<1, 1>>>(d_costs_, d_weights_, k_samples_, DEFAULT_LAMBDA);
+                    compute_weights_kernel<<<1, 1>>>(d_costs_, d_weights_, k_samples_, variant_.sampling_lambda);
                     update_controls_kernel<<<(t_horizon_ + block - 1) / block, block>>>(
                         d_nominal_, d_perturbed_, d_weights_, k_samples_, t_horizon_);
                 }
@@ -1935,6 +1936,22 @@ int main(int argc, char** argv) {
         v.name = "feedback_mppi_ref";
         v.use_feedback = true;
         v.feedback_mode = 7;
+        v.feedback_gain_scale = 1.0f;
+        v.feedback_noise_accel = 0.0f;
+        v.feedback_noise_steer = 0.0f;
+        v.feedback_longitudinal_gain = 0.0f;
+        v.feedback_speed_gain = 0.0f;
+        v.feedback_lateral_gain = 0.0f;
+        v.feedback_heading_gain = 0.0f;
+        v.feedback_setpoint_blend = 0.0f;
+        variants.push_back(v);
+    }
+    {
+        PlannerVariant v;
+        v.name = "feedback_mppi_release";
+        v.use_feedback = true;
+        v.feedback_mode = 7;
+        v.sampling_lambda = 1.0f / 5.0f;
         v.feedback_gain_scale = 1.0f;
         v.feedback_noise_accel = 0.0f;
         v.feedback_noise_steer = 0.0f;

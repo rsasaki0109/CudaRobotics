@@ -264,6 +264,21 @@ So the release-style current-action baseline is immediately stronger than vanill
 It still does not solve `dynamic_slalom`, and it is still weaker than the heavier `feedback_mppi_fused` baseline on the hard task.
 But it matters because the repository now contains one baseline that is closer to the released `Feedback-MPPI` gain computation itself, not only to the surrounding controller architecture.
 
+The newer `feedback_mppi_release` baseline addresses the released weighting gap directly.
+
+At fixed rollout budgets:
+- `dynamic_crossing`, `feedback_mppi_release K=256`: success `1.00`, final distance `1.86`
+- `dynamic_crossing`, `feedback_mppi_release K=512`: success `1.00`, final distance `1.91`
+- `dynamic_slalom`, `feedback_mppi_release K=256`: success `0.00`, final distance `19.12`
+- `dynamic_slalom`, `feedback_mppi_release K=512`: success `0.00`, final distance `19.09`
+
+So the weight-matched release proxy is informative in a different way:
+- on `dynamic_crossing`, it is slightly stronger than `feedback_mppi_ref`, reaching the goal faster while staying in the same `0.61-0.72 ms` range
+- on `dynamic_slalom`, it is much worse than `feedback_mppi_ref`, `feedback_mppi_cov`, and `feedback_mppi_fused`
+
+That makes the result useful even though it is not flattering.
+It shows that matching the released current-action weighting alone does not explain the hybrid gains on the harder task.
+
 The same pattern survived wall-clock matching.
 
 Under a `1.00 ms` cap:
@@ -288,6 +303,8 @@ The newer architecture-gap and heavy-feedback exact-time runs are still informat
 - under a `1.00 ms` cap, the closer architecture row on `dynamic_slalom` is `feedback_mppi_hf K=256 @ 0.87 ms`, final distance `13.62`
 - under a `1.00 ms` cap, the closer released-gain row on `dynamic_crossing` is `feedback_mppi_ref K=512 @ 0.65 ms`, success `1.00`, final distance `1.87`
 - under a `1.00 ms` cap, the closer released-gain row on `dynamic_slalom` is `feedback_mppi_ref K=256 @ 0.63 ms`, final distance `11.89`
+- under a `1.00 ms` cap, the closer released-weight row on `dynamic_crossing` is `feedback_mppi_release K=1062 @ 1.01 ms`, success `1.00`, final distance `1.93`
+- under a `1.00 ms` cap, the closer released-weight row on `dynamic_slalom` is `feedback_mppi_release K=901 @ 1.01 ms`, final distance `19.11`
 - under a `3.50 ms` cap, the best current feedback row on `dynamic_slalom` is `feedback_mppi_fused K=256 @ 3.45 ms`, final distance `10.28`
 - under a `1.50 ms` equal-time target on the current fixed-`K` sweep, `feedback_mppi_cov K=256 @ 1.66 ms` is the closest lighter feedback row on `dynamic_slalom`, again with final distance `11.49`
 - under exact-time tuning, `feedback_mppi_cov` now reaches `dynamic_crossing: K=219 @ 1.474 ms, dist=1.92` and `K=292 @ 1.964 ms, dist=1.91`
@@ -313,6 +330,19 @@ At `1.50 ms`, the same pattern remains:
 
 So the release-style baseline no longer only has fixed-budget and cap-based evidence.
 It remains competitive after direct time matching, although it does not displace the stronger tuned `feedback_mppi` row on the hard task.
+
+The weight-matched release proxy now has exact-time rows too.
+
+At an exact target of `1.00 ms`, the tuned release-weight rows are:
+- `dynamic_crossing`, `feedback_mppi_release`: `K=1062 @ 1.009 ms`, success `1.00`, final distance `1.93`
+- `dynamic_slalom`, `feedback_mppi_release`: `K=901 @ 1.007 ms`, success `0.00`, final distance `19.11`
+
+At `1.50 ms`, the same split remains:
+- `dynamic_crossing`, `feedback_mppi_release`: `K=2173 @ 1.530 ms`, success `1.00`, final distance `1.90`
+- `dynamic_slalom`, `feedback_mppi_release`: `K=2033 @ 1.530 ms`, success `0.00`, final distance `19.13`
+
+So the repo now has targeted exact-time evidence for both the released-gain proxy and the released-weight proxy.
+That still does not make the comparison paper-faithful, but it removes the simpler objection that the weighting-side proxy was only shown under fixed budgets.
 
 The new exact-time tuning workflow sharpens that comparison further.
 
@@ -436,8 +466,8 @@ The stronger current version is:
 ## What Is Still Missing
 
 The main remaining gaps are now:
-- the current `feedback_mppi`, `feedback_mppi_ref`, `feedback_mppi_sens`, `feedback_mppi_cov`, and `feedback_mppi_fused` comparisons are all materially stronger than the earlier fixed-gain tracker, and all but the original `feedback_mppi_sens` now also have targeted exact-time evidence, but they still are not a full literature-faithful rollout-differentiation / feedback-MPPI baseline
-- the newer `feedback_mppi_hf` comparison narrows the controller-architecture gap, while `feedback_mppi_ref` narrows the released-gain gap and `feedback_mppi_cov` narrows the covariance-gain gap, but they are still in-repo proxies rather than paper-faithful reproductions
+- the current `feedback_mppi`, `feedback_mppi_ref`, `feedback_mppi_release`, `feedback_mppi_sens`, `feedback_mppi_cov`, and `feedback_mppi_fused` comparisons are all materially stronger than the earlier fixed-gain tracker, and all but the original `feedback_mppi_sens` now also have targeted exact-time evidence, but they still are not a full literature-faithful rollout-differentiation / feedback-MPPI baseline
+- the newer `feedback_mppi_hf` comparison narrows the controller-architecture gap, while `feedback_mppi_ref` narrows the released-gain gap, `feedback_mppi_release` narrows the released-weighting gap, and `feedback_mppi_cov` narrows the covariance-gain gap, but they are still in-repo proxies rather than paper-faithful reproductions
 - only two simple hand-designed 2D dynamic scenarios so far
 
 The gradient-only ablation, the six stronger feedback baselines, and the new trace-based mechanism analysis remove weaker alternative explanations, but they still do not close the stronger literature-baseline gap.
@@ -446,7 +476,7 @@ The gradient-only ablation, the six stronger feedback baselines, and the new tra
 
 If we want to keep pushing the novelty argument, the next experiment should be:
 
-1. Strengthen the current `feedback_mppi_ref` / `feedback_mppi_sens` / `feedback_mppi_cov` / `feedback_mppi_fused` / `feedback_mppi_hf` comparisons into a more literature-faithful baseline.
+1. Strengthen the current `feedback_mppi_ref` / `feedback_mppi_release` / `feedback_mppi_sens` / `feedback_mppi_cov` / `feedback_mppi_fused` / `feedback_mppi_hf` comparisons into a more literature-faithful baseline.
 2. Keep the heavier `feedback_mppi_fused` line as a narrowing study unless it also gets a broader exact-time sweep across more than one target.
 3. Extend the newer `feedback_mppi_hf` line only if a more literature-faithful controller reproduction is not ready first.
 4. Add a harder dynamic scenario with interacting moving agents, not just one scripted obstacle.

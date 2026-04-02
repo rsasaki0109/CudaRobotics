@@ -118,6 +118,12 @@ The newer baseline story is materially better than it was a few iterations ago:
 - a targeted exact-time sweep now tunes `feedback_mppi_ref` directly to shared `1.00 ms` and `1.50 ms` targets
 - at `1.00 ms`, `feedback_mppi_ref` reaches `dynamic_crossing: K=1263 @ 1.002 ms, success=1.00, dist=1.95` and `dynamic_slalom: K=1150 @ 1.023 ms, dist=11.89`
 - at `1.50 ms`, it reaches `dynamic_crossing: K=2362 @ 1.482 ms, success=1.00, dist=1.89` and `dynamic_slalom: K=2190 @ 1.472 ms, dist=11.89`
+- a newer `feedback_mppi_release` variant also matches the released weighting shape more closely
+- on `dynamic_crossing`, `feedback_mppi_release` reaches `1.00` success at `K={256,512}` with final distance about `1.86-1.91` while staying in the `0.61-0.72 ms` range
+- on `dynamic_slalom`, it still fails and in fact degrades to about `19.09-19.12`, which is useful because it shows the released weighting alone is not sufficient
+- a targeted exact-time sweep now tunes `feedback_mppi_release` directly to shared `1.00 ms` and `1.50 ms` targets
+- at `1.00 ms`, `feedback_mppi_release` reaches `dynamic_crossing: K=1062 @ 1.009 ms, success=1.00, dist=1.93` and `dynamic_slalom: K=901 @ 1.007 ms, dist=19.11`
+- at `1.50 ms`, it reaches `dynamic_crossing: K=2173 @ 1.530 ms, success=1.00, dist=1.90` and `dynamic_slalom: K=2033 @ 1.530 ms, dist=19.13`
 - a targeted exact-time sweep now also tunes `feedback_mppi_cov` directly to shared `1.50 ms` and `2.00 ms` targets
 - at `1.50 ms`, `feedback_mppi_cov` reaches `dynamic_crossing: K=219 @ 1.474 ms, success=1.00, dist=1.92` and `dynamic_slalom: K=211 @ 1.490 ms, dist=11.72`
 - at `2.00 ms`, it reaches `dynamic_crossing: K=292 @ 1.964 ms, success=1.00, dist=1.91` and `dynamic_slalom: K=293 @ 1.971 ms, dist=11.68`
@@ -171,7 +177,7 @@ That is already much better than most quick research repos.
 But a skeptical reviewer can still say:
 - the exact-time tuning currently searches `K` only, not the full controller design space
 - the exact-time result is currently concentrated on the dynamic two-task suite, not the full benchmark portfolio
-- the newer `feedback_mppi_ref` baseline narrows the released-gain gap and now has a targeted exact-time sweep, but it still remains an in-repo proxy rather than a paper-faithful controller reproduction
+- the newer `feedback_mppi_ref` and `feedback_mppi_release` baselines narrow the released-gain and released-weighting gaps and now have targeted exact-time sweeps, but they still remain in-repo proxies rather than a paper-faithful controller reproduction
 - the newer `feedback_mppi_cov`, `feedback_mppi_hf`, and `feedback_mppi_fused` baselines now also have targeted exact-time sweeps, but those still cover only selected targets rather than a broad matched-time study
 - outside the base suite, the time-matched claim currently reaches only custom pilot domains, and the cleanest matched-time result is still the dynamic-obstacle base suite rather than the pilots
 
@@ -209,7 +215,7 @@ These are ordered by importance, not by ease.
 1. Strengthen the current direct sensitivity-aware baseline
 
 Minimum acceptable version:
-- keep the current nominal-linearization `feedback_mppi`, release-style `feedback_mppi_ref`, rollout-sensitivity `feedback_mppi_sens`, covariance-regression `feedback_mppi_cov`, fused `feedback_mppi_fused`, and lower-rate-replan `feedback_mppi_hf` baselines, but tighten them into a closer `Feedback-MPPI`-style comparison inside the same benchmark harness
+- keep the current nominal-linearization `feedback_mppi`, release-style `feedback_mppi_ref`, release-weighting `feedback_mppi_release`, rollout-sensitivity `feedback_mppi_sens`, covariance-regression `feedback_mppi_cov`, fused `feedback_mppi_fused`, and lower-rate-replan `feedback_mppi_hf` baselines, but tighten them into a closer `Feedback-MPPI`-style comparison inside the same benchmark harness
 - compare under fixed-budget and exact matched-time settings
 
 Why this is critical:
@@ -293,7 +299,7 @@ If the goal is a serious `ICRA/IROS full paper`, the minimum package I would tru
 1. Current static benchmark
 2. Current two dynamic tasks
 3. `grad_only_3` ablation
-4. literature-faithful `Feedback-MPPI`-style baseline beyond the current nominal-linearization `feedback_mppi`, release-style `feedback_mppi_ref`, rollout-sensitivity `feedback_mppi_sens`, covariance-regression `feedback_mppi_cov`, fused `feedback_mppi_fused`, and lower-rate-replan `feedback_mppi_hf`
+4. literature-faithful `Feedback-MPPI`-style baseline beyond the current nominal-linearization `feedback_mppi`, release-style `feedback_mppi_ref`, release-weighting `feedback_mppi_release`, rollout-sensitivity `feedback_mppi_sens`, covariance-regression `feedback_mppi_cov`, fused `feedback_mppi_fused`, and lower-rate-replan `feedback_mppi_hf`
 5. exact matched-time tuning on the final evaluation suite
 6. one higher-fidelity experiment outside 2D kinematic navigation
 
@@ -316,7 +322,7 @@ That framing is narrower, but more defensible.
 ## Recommended Next Steps
 
 Immediate next work:
-1. Strengthen the current `feedback_mppi_ref` / `feedback_mppi_sens` / `feedback_mppi_cov` / `feedback_mppi_fused` / `feedback_mppi_hf` baselines in `benchmark_diff_mppi` into a more literature-faithful comparison.
+1. Strengthen the current `feedback_mppi_ref` / `feedback_mppi_release` / `feedback_mppi_sens` / `feedback_mppi_cov` / `feedback_mppi_fused` / `feedback_mppi_hf` baselines in `benchmark_diff_mppi` into a more literature-faithful comparison.
 2. Port the benchmark to one higher-fidelity domain.
 3. Carry the new exact matched-time tuning workflow into that stronger evaluation domain.
 
