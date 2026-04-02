@@ -28,6 +28,10 @@ Current variants:
   - `functional_weighted`
   - `oop_lexicographic`
   - `pipeline_staged`
+- fixture promotion:
+  - `functional_fixture_weighted`
+  - `oop_fixture_lexicographic`
+  - `pipeline_fixture_staged`
 - time-budget selection:
   - `functional_budgeted`
   - `oop_budget_lexicographic`
@@ -62,8 +66,11 @@ Current evidence from `docs/experiments.md`:
 - `functional_weighted` is the best benchmark fit on the current CSVs
 - `oop_lexicographic` has the strongest extensibility proxy
 - `pipeline_staged` is the fastest and reasonably readable
+- `functional_fixture_weighted` is currently the best fixture-promotion baseline on the shared portfolio requests
+- `oop_fixture_lexicographic` has the strongest extensibility proxy for fixture promotion
+- `pipeline_fixture_staged` keeps a staged portfolio baseline alive even though its regret is higher
 - `functional_budgeted` is currently the best constrained-fit baseline on the shared budgeted requests
-- `oop_budget_lexicographic` has the strongest extensibility proxy for the second concrete problem
+- `oop_budget_lexicographic` has the strongest extensibility proxy for time-budget selection
 - `pipeline_budget_staged` is the runtime-oriented budgeted baseline, even though its regret is currently worse
 
 Why:
@@ -72,6 +79,7 @@ Why:
 
 Operational note:
 - if a single answer is needed for automation right now, use `functional_weighted`
+- if a single answer is needed for fixture promotion right now, use `functional_fixture_weighted`
 - if a single answer is needed for budget-constrained automation right now, use `functional_budgeted`
 - these are temporary operating choices, not core architecture decisions
 
@@ -272,3 +280,15 @@ Decision:
 Why:
 - the next-step policy will evolve as the repo learns more about its own search process
 - changing process thresholds should not require rewriting renderer logic
+
+## D-019: New Problems Start Ungated Until They Have Two Snapshots
+
+Status: accepted
+
+Decision:
+- allow `scripts/check_design_regressions.py` to mark newly added policy problems as `PENDING` when they are not present in both compared snapshots yet
+- start enforcing regression limits only after the problem has at least two recorded snapshots
+
+Why:
+- adding a new concrete problem should not require fabricating historical snapshots
+- this keeps the gate strict for mature problems without blocking new search spaces from entering the workflow

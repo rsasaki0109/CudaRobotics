@@ -287,6 +287,7 @@ python3 scripts/check_scaffold_design_problem.py
 
 Current concrete problems:
 - `planner_selection`: choose one planner configuration per dataset/scenario pair
+- `fixture_promotion`: choose which benchmark fixture datasets survive into the lightweight experiment corpus
 - `time_budget_selection`: choose one planner configuration per dataset/scenario/time-budget request
 
 Each problem is implemented three different ways:

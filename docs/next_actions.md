@@ -8,28 +8,40 @@ This document turns snapshot history into the next process move. It does not pic
 
 | Problem | Action | Reason |
 |---|---|---|
-| Planner Selection | `hold` | `functional_weighted` is leading on quality, but the streak is still short. |
-| Time-Budget Selection | `hold` | `functional_budgeted` is leading on quality, but the streak is still short. |
+| Fixture Promotion | `hold` | `functional_fixture_weighted` is leading on quality, but the streak is still short. |
+| Planner Selection | `promotion_watch` | `functional_weighted` has a stable quality lead, but structural metrics still favor different variants. |
+| Time-Budget Selection | `promotion_watch` | `functional_budgeted` has a stable quality lead, but structural metrics still favor different variants. |
+
+## Fixture Promotion
+
+Recommended action: `hold`
+
+`functional_fixture_weighted` is leading on quality, but the streak is still short.
+
+Suggested next moves:
+
+- Keep convergence at the interface level.
+- Take another snapshot after the next meaningful fixture or implementation change.
 
 ## Planner Selection
 
-Recommended action: `hold`
+Recommended action: `promotion_watch`
 
-`functional_weighted` is leading on quality, but the streak is still short.
+`functional_weighted` has a stable quality lead, but structural metrics still favor different variants.
 
 Suggested next moves:
 
-- Keep convergence at the interface level.
-- Take another snapshot after the next meaningful fixture or implementation change.
+- Do not promote one implementation into `core/`.
+- Inspect `functional_weighted` for helpers that are now shared implicitly and extract only those if at least two variants can use them.
 
 ## Time-Budget Selection
 
-Recommended action: `hold`
+Recommended action: `promotion_watch`
 
-`functional_budgeted` is leading on quality, but the streak is still short.
+`functional_budgeted` has a stable quality lead, but structural metrics still favor different variants.
 
 Suggested next moves:
 
-- Keep convergence at the interface level.
-- Take another snapshot after the next meaningful fixture or implementation change.
+- Do not promote one implementation into `core/`.
+- Inspect `functional_budgeted` for helpers that are now shared implicitly and extract only those if at least two variants can use them.
 
