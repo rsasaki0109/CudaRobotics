@@ -29,7 +29,8 @@ PRESETS = {
         "scenarios": "dynamic_crossing,dynamic_slalom",
         "planners": "mppi,feedback_mppi,diff_mppi_1,diff_mppi_3",
         "time_targets": "1.0,1.5",
-        "seed_count": 4,
+        "search_seed_count": 4,
+        "final_seed_count": 4,
         "k_min": 128,
         "k_max": 16384,
         "tolerance_ms": 0.03,
@@ -40,9 +41,10 @@ PRESETS = {
     "dynamic_bicycle": {
         "bin": "./bin/benchmark_diff_mppi_dynamic_bicycle",
         "scenarios": "dynbike_crossing,dynbike_slalom",
-        "planners": "mppi,diff_mppi_1,diff_mppi_3",
+        "planners": "mppi,feedback_mppi_sens,diff_mppi_1,diff_mppi_3",
         "time_targets": "1.8,2.0",
-        "seed_count": 4,
+        "search_seed_count": 1,
+        "final_seed_count": 4,
         "k_min": 4,
         "k_max": 16384,
         "tolerance_ms": 0.06,
@@ -61,6 +63,7 @@ def parse_args():
     parser.add_argument("--scenarios", help="Comma-separated scenario names")
     parser.add_argument("--planners", help="Comma-separated planner names")
     parser.add_argument("--time-targets", help="Comma-separated target controller times in ms")
+    parser.add_argument("--search-seed-count", type=int, help="Episodes per search evaluation")
     parser.add_argument("--seed-count", type=int, help="Episodes per final tuned evaluation")
     parser.add_argument("--k-min", type=int, help="Minimum K for search")
     parser.add_argument("--k-max", type=int, help="Maximum K for search")
@@ -392,14 +395,16 @@ def main():
     scenarios = parse_string_list(args.scenarios if args.scenarios else preset["scenarios"])
     planners = parse_string_list(args.planners if args.planners else preset["planners"])
     time_targets = parse_float_list(args.time_targets if args.time_targets else preset["time_targets"])
-    seed_count = max(1, args.seed_count if args.seed_count is not None else preset["seed_count"])
+    search_seed_count = max(1, args.search_seed_count if args.search_seed_count is not None else preset["search_seed_count"])
+    final_seed_count = max(1, args.seed_count if args.seed_count is not None else preset["final_seed_count"])
     k_min = max(1, args.k_min if args.k_min is not None else preset["k_min"])
     k_max = max(k_min, args.k_max if args.k_max is not None else preset["k_max"])
     tolerance_ms = args.tolerance_ms if args.tolerance_ms is not None else preset["tolerance_ms"]
     max_evals = args.max_evals if args.max_evals is not None else preset["max_evals"]
     summary_title = args.summary_title if args.summary_title else preset["summary_title"]
 
-    cache = BenchmarkCache(bin_path, seed_count, workdir)
+    search_cache = BenchmarkCache(bin_path, search_seed_count, workdir)
+    final_cache = BenchmarkCache(bin_path, final_seed_count, workdir)
     selected_summary_rows = []
     selected_episode_rows = []
     search_trace_rows = []
@@ -409,7 +414,7 @@ def main():
             for scenario in scenarios:
                 for planner in planners:
                     best_summary, evaluated_records = tune_exact_target(
-                        cache,
+                        search_cache,
                         scenario,
                         planner,
                         target_ms,
@@ -419,12 +424,12 @@ def main():
                         max_evals,
                         temp_dir,
                     )
-                    best_record = next(record for record in evaluated_records if record["summary"]["k_samples"] == best_summary["k_samples"])
-                    selected_row = dict(best_summary)
+                    final_record = final_cache.evaluate(scenario, planner, best_summary["k_samples"], temp_dir)
+                    selected_row = dict(final_record["summary"])
                     selected_row["scenario"] = scenario
                     selected_row["planner"] = planner
                     selected_row["time_target_ms"] = target_ms
-                    selected_row["time_gap_ms"] = best_summary["avg_control_ms_mean"] - target_ms
+                    selected_row["time_gap_ms"] = final_record["summary"]["avg_control_ms_mean"] - target_ms
                     selected_summary_rows.append(selected_row)
 
                     for record in sorted(evaluated_records, key=lambda item: item["k_samples"]):
@@ -442,10 +447,10 @@ def main():
                             "time_gap_ms": summary["avg_control_ms_mean"] - target_ms,
                         })
 
-                    for row in best_record["rows"]:
+                    for row in final_record["rows"]:
                         episode_row = dict(row)
                         episode_row["time_target_ms"] = target_ms
-                        episode_row["time_gap_ms"] = best_summary["avg_control_ms_mean"] - target_ms
+                        episode_row["time_gap_ms"] = final_record["summary"]["avg_control_ms_mean"] - target_ms
                         selected_episode_rows.append(episode_row)
 
     csv_out = Path(args.csv_out if args.csv_out else preset["csv_out"])
