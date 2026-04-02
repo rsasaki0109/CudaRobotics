@@ -19,9 +19,19 @@ REQUIRED_DOCS = [
     ROOT / "docs" / "interfaces.md",
 ]
 
-INTERFACE_HINTS = {
-    "planner_selection": "planner_selector_interface.py",
-    "time_budget_selection": "time_budget_selector_interface.py",
+REQUIRED_MODULE_ATTRIBUTES = [
+    "PROBLEM_KIND",
+    "INTERFACE_FILE",
+    "TITLE",
+    "DESCRIPTION_LINES",
+    "REQUEST_SUMMARY",
+    "METRIC_NOTES",
+    "build_requests",
+]
+
+SUPPORTED_PROBLEM_KINDS = {
+    "planner_selection",
+    "time_budget_selection",
 }
 
 
@@ -39,8 +49,15 @@ def experiment_modules() -> list[str]:
 
 def validate_variant_module(module_name: str) -> None:
     module = importlib.import_module(f"experiments.{module_name}")
+    for attribute in REQUIRED_MODULE_ATTRIBUTES:
+        if not hasattr(module, attribute):
+            raise RuntimeError(f"experiments.{module_name} is missing {attribute}")
+
     if not hasattr(module, "build_variants"):
         raise RuntimeError(f"experiments.{module_name} is missing build_variants()")
+
+    if module.PROBLEM_KIND not in SUPPORTED_PROBLEM_KINDS:
+        raise RuntimeError(f"experiments.{module_name} has unsupported PROBLEM_KIND {module.PROBLEM_KIND}")
 
     variants = module.build_variants()
     if len(variants) < 3:
@@ -61,8 +78,7 @@ def validate_variant_module(module_name: str) -> None:
     if len(seen_paradigms) < 3:
         raise RuntimeError(f"experiments.{module_name} must keep at least 3 distinct paradigms alive")
 
-    interface_name = INTERFACE_HINTS.get(module_name, f"{module_name}_interface.py")
-    expected_interface = ROOT / "core" / interface_name
+    expected_interface = ROOT / "core" / module.INTERFACE_FILE
     if not expected_interface.exists():
         raise RuntimeError(f"Missing matching core interface: {expected_interface.relative_to(ROOT)}")
 

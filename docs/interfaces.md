@@ -88,6 +88,13 @@ Current experimental problems:
 - [`experiments/planner_selection`](../experiments/planner_selection)
 - [`experiments/time_budget_selection`](../experiments/time_budget_selection)
 
+Each experiment module is now self-describing:
+- `PROBLEM_KIND`: selects the evaluation family
+- `INTERFACE_FILE`: points back to the minimum matching contract in `core/`
+- `TITLE`, `DESCRIPTION_LINES`, `REQUEST_SUMMARY`, `METRIC_NOTES`: drive generated docs
+- `build_requests(rows)`: owns request generation for that problem
+- `build_variants()`: keeps the live concrete implementations discoverable
+
 Planner-selection variants:
 - [`experiments/planner_selection/functional_selector.py`](../experiments/planner_selection/functional_selector.py)
 - [`experiments/planner_selection/oop_selector.py`](../experiments/planner_selection/oop_selector.py)
@@ -115,6 +122,10 @@ Common evaluation rules:
 - same request set per problem
 - same oracle-based regret metric family
 - same readability and extensibility proxy metrics
+
+Discovery rule:
+- the runner discovers `experiments/*/__init__.py` packages automatically
+- the validator checks that every discovered module is represented in generated docs
 
 Current generated state:
 - [`docs/experiments.md`](../docs/experiments.md)
