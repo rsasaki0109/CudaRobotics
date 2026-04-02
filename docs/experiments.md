@@ -27,10 +27,10 @@ Requests evaluated: `8` dataset/scenario pairs
 ### Aggregate Scores
 
 | Variant | Paradigm | Avg Regret | Oracle Match | Runtime ms/request | Readability | Extensibility | Source |
-|---|---:|---:|---:|---:|---:|---:|---|
-| functional_weighted | functional | 0.000 | 1.00 | 0.0247 | 54.5 | 30.2 | `experiments/planner_selection/functional_selector.py` |
-| oop_lexicographic | oop | 0.219 | 0.25 | 0.0384 | 49.4 | 41.6 | `experiments/planner_selection/oop_selector.py` |
-| pipeline_staged | pipeline | 0.136 | 0.38 | 0.0143 | 58.3 | 19.4 | `experiments/planner_selection/pipeline_selector.py` |
+|---|---|---|---|---|---|---|---|
+| functional_weighted | functional | 0.000 | 1.00 | 0.0144 | 54.5 | 30.2 | `experiments/planner_selection/functional_selector.py` |
+| oop_lexicographic | oop | 0.219 | 0.25 | 0.0216 | 49.4 | 41.6 | `experiments/planner_selection/oop_selector.py` |
+| pipeline_staged | pipeline | 0.136 | 0.38 | 0.0094 | 58.3 | 19.4 | `experiments/planner_selection/pipeline_selector.py` |
 
 Metric notes:
 - `Avg Regret`: utility gap from an external oracle scorer; lower is better
@@ -42,7 +42,7 @@ Metric notes:
 #### functional_weighted
 
 | Dataset | Scenario | Pick | Oracle | Regret | Rationale |
-|---|---|---|---|---:|---|
+|---|---|---|---|---|---|
 | benchmark_diff_mppi | cluttered | diff_mppi_1 @ K=1024 | diff_mppi_1 @ K=1024 | 0.000 | weighted utility over success/final_distance/cumulative_cost/avg_control_ms/steps |
 | benchmark_diff_mppi | corner_turn | diff_mppi_1 @ K=1024 | diff_mppi_1 @ K=1024 | 0.000 | weighted utility over success/final_distance/cumulative_cost/avg_control_ms/steps |
 | benchmark_diff_mppi | narrow_passage | diff_mppi_1 @ K=4096 | diff_mppi_1 @ K=4096 | 0.000 | weighted utility over success/final_distance/cumulative_cost/avg_control_ms/steps |
@@ -55,7 +55,7 @@ Metric notes:
 #### oop_lexicographic
 
 | Dataset | Scenario | Pick | Oracle | Regret | Rationale |
-|---|---|---|---|---:|---|
+|---|---|---|---|---|---|
 | benchmark_diff_mppi | cluttered | diff_mppi_3 @ K=4096 | diff_mppi_1 @ K=1024 | 0.366 | lexicographic ordering: success > final_distance > cumulative_cost > avg_control_ms > steps |
 | benchmark_diff_mppi | corner_turn | diff_mppi_3 @ K=1024 | diff_mppi_1 @ K=1024 | 0.156 | lexicographic ordering: success > final_distance > cumulative_cost > avg_control_ms > steps |
 | benchmark_diff_mppi | narrow_passage | diff_mppi_1 @ K=4096 | diff_mppi_1 @ K=4096 | 0.000 | lexicographic ordering: success > final_distance > cumulative_cost > avg_control_ms > steps |
@@ -68,7 +68,7 @@ Metric notes:
 #### pipeline_staged
 
 | Dataset | Scenario | Pick | Oracle | Regret | Rationale |
-|---|---|---|---|---:|---|
+|---|---|---|---|---|---|
 | benchmark_diff_mppi | cluttered | diff_mppi_1 @ K=1024 | diff_mppi_1 @ K=1024 | 0.000 | staged filters: max success -> near-best final_distance -> near-fastest runtime -> near-best steps -> lowest cumulative_cost |
 | benchmark_diff_mppi | corner_turn | diff_mppi_3 @ K=1024 | diff_mppi_1 @ K=1024 | 0.156 | staged filters: max success -> near-best final_distance -> near-fastest runtime -> near-best steps -> lowest cumulative_cost |
 | benchmark_diff_mppi | narrow_passage | diff_mppi_1 @ K=1024 | diff_mppi_1 @ K=4096 | 0.103 | staged filters: max success -> near-best final_distance -> near-fastest runtime -> near-best steps -> lowest cumulative_cost |
@@ -92,10 +92,10 @@ Requests evaluated: `24` dataset/scenario/time-budget triples
 ### Aggregate Scores
 
 | Variant | Paradigm | Avg Regret | Oracle Match | Budget Hit | Runtime ms/request | Readability | Extensibility | Source |
-|---|---:|---:|---:|---:|---:|---:|---:|---|
-| functional_budgeted | functional | 0.000 | 1.00 | 1.00 | 0.0133 | 50.4 | 28.8 | `experiments/time_budget_selection/functional_budget_selector.py` |
-| oop_budget_lexicographic | oop | 0.099 | 0.62 | 1.00 | 0.0198 | 41.0 | 54.8 | `experiments/time_budget_selection/oop_budget_selector.py` |
-| pipeline_budget_staged | pipeline | 2.099 | 0.42 | 1.00 | 0.0085 | 55.0 | 19.0 | `experiments/time_budget_selection/pipeline_budget_selector.py` |
+|---|---|---|---|---|---|---|---|---|
+| functional_budgeted | functional | 0.000 | 1.00 | 1.00 | 0.0111 | 50.4 | 28.8 | `experiments/time_budget_selection/functional_budget_selector.py` |
+| oop_budget_lexicographic | oop | 0.099 | 0.62 | 1.00 | 0.0174 | 41.0 | 54.8 | `experiments/time_budget_selection/oop_budget_selector.py` |
+| pipeline_budget_staged | pipeline | 2.099 | 0.42 | 1.00 | 0.0072 | 55.0 | 19.0 | `experiments/time_budget_selection/pipeline_budget_selector.py` |
 
 Metric notes:
 - `Avg Regret`: utility gap from the best feasible row under the requested time budget; lower is better
@@ -107,7 +107,7 @@ Metric notes:
 #### functional_budgeted
 
 | Dataset | Scenario | Budget ms | Pick | Pick ms | Oracle | Oracle ms | Budget Hit | Regret | Rationale |
-|---|---|---:|---|---:|---|---:|---|---:|---|
+|---|---|---|---|---|---|---|---|---|---|
 | benchmark_diff_mppi | cluttered | 0.1796 | mppi @ K=1024 | 0.1796 | mppi @ K=1024 | 0.1796 | yes | 0.000 | weighted utility inside the time budget with a mild preference for spare headroom |
 | benchmark_diff_mppi | cluttered | 0.6092 | diff_mppi_1 @ K=1024 | 0.4933 | diff_mppi_1 @ K=1024 | 0.4933 | yes | 0.000 | weighted utility inside the time budget with a mild preference for spare headroom |
 | benchmark_diff_mppi | cluttered | 1.1294 | diff_mppi_1 @ K=1024 | 0.4933 | diff_mppi_1 @ K=1024 | 0.4933 | yes | 0.000 | weighted utility inside the time budget with a mild preference for spare headroom |
@@ -136,7 +136,7 @@ Metric notes:
 #### oop_budget_lexicographic
 
 | Dataset | Scenario | Budget ms | Pick | Pick ms | Oracle | Oracle ms | Budget Hit | Regret | Rationale |
-|---|---|---:|---|---:|---|---:|---|---:|---|
+|---|---|---|---|---|---|---|---|---|---|
 | benchmark_diff_mppi | cluttered | 0.1796 | mppi @ K=1024 | 0.1796 | mppi @ K=1024 | 0.1796 | yes | 0.000 | lexicographic ordering: success > final_distance > cumulative_cost > budget_slack > steps |
 | benchmark_diff_mppi | cluttered | 0.6092 | diff_mppi_1 @ K=1024 | 0.4933 | diff_mppi_1 @ K=1024 | 0.4933 | yes | 0.000 | lexicographic ordering: success > final_distance > cumulative_cost > budget_slack > steps |
 | benchmark_diff_mppi | cluttered | 1.1294 | diff_mppi_3 @ K=1024 | 1.1294 | diff_mppi_1 @ K=1024 | 0.4933 | yes | 0.299 | lexicographic ordering: success > final_distance > cumulative_cost > budget_slack > steps |
@@ -165,7 +165,7 @@ Metric notes:
 #### pipeline_budget_staged
 
 | Dataset | Scenario | Budget ms | Pick | Pick ms | Oracle | Oracle ms | Budget Hit | Regret | Rationale |
-|---|---|---:|---|---:|---|---:|---|---:|---|
+|---|---|---|---|---|---|---|---|---|---|
 | benchmark_diff_mppi | cluttered | 0.1796 | mppi @ K=1024 | 0.1796 | mppi @ K=1024 | 0.1796 | yes | 0.000 | staged filters: near-fastest feasible -> near-best success -> near-best final_distance -> lowest cost |
 | benchmark_diff_mppi | cluttered | 0.6092 | mppi @ K=1024 | 0.1796 | diff_mppi_1 @ K=1024 | 0.4933 | yes | 2.449 | staged filters: near-fastest feasible -> near-best success -> near-best final_distance -> lowest cost |
 | benchmark_diff_mppi | cluttered | 1.1294 | mppi @ K=1024 | 0.1796 | diff_mppi_1 @ K=1024 | 0.4933 | yes | 2.547 | staged filters: near-fastest feasible -> near-best success -> near-best final_distance -> lowest cost |

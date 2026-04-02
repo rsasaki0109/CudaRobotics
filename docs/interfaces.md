@@ -93,6 +93,7 @@ Each experiment module is now self-describing:
 - `INTERFACE_FILE`: points back to the minimum matching contract in `core/`
 - `TITLE`, `DESCRIPTION_LINES`, `REQUEST_SUMMARY`, `METRIC_NOTES`: drive generated docs
 - `build_requests(rows)`: owns request generation for that problem
+- `build_report(rows, iterations)`: owns problem-specific evaluation and report assembly
 - `build_variants()`: keeps the live concrete implementations discoverable
 
 Planner-selection variants:
