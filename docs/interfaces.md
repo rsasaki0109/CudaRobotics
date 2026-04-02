@@ -158,6 +158,7 @@ Comparison entrypoint:
 - [`scripts/check_design_regressions.py`](../scripts/check_design_regressions.py)
 - [`scripts/render_design_convergence.py`](../scripts/render_design_convergence.py)
 - [`scripts/render_design_actions.py`](../scripts/render_design_actions.py)
+- [`scripts/render_helper_promotion.py`](../scripts/render_helper_promotion.py)
 - [`scripts/check_scaffold_design_problem.py`](../scripts/check_scaffold_design_problem.py)
 
 Common evaluation rules:
@@ -178,10 +179,12 @@ Discovery rule:
 - design-history snapshots are validated under `experiments/history/*.json`
 - regression policy lives in [`experiments/history/policy.json`](../experiments/history/policy.json)
 - action policy lives in [`experiments/history/actions_policy.json`](../experiments/history/actions_policy.json)
+- helper promotion policy lives in [`experiments/history/helper_policy.json`](../experiments/history/helper_policy.json)
 - `scripts/check_design_regressions.py` compares the latest two snapshots against that policy
 - `scripts/compare_design_snapshots.py` renders a targeted delta between two snapshots without touching checked-in docs
 - `scripts/render_design_convergence.py` turns repeated snapshot outcomes into soft convergence signals
 - `scripts/render_design_actions.py` turns those signals into explicit next-step advice without auto-promoting an implementation
+- `scripts/render_helper_promotion.py` watches which helpers have survived reuse strongly enough to justify promotion review
 - the scaffold checker verifies that new problem stubs still match the current module contract
 
 Current generated state:
@@ -189,6 +192,7 @@ Current generated state:
 - [`docs/experiments_history.md`](../docs/experiments_history.md)
 - [`docs/convergence.md`](../docs/convergence.md)
 - [`docs/next_actions.md`](../docs/next_actions.md)
+- [`docs/helper_promotion.md`](../docs/helper_promotion.md)
 - [`docs/decisions.md`](../docs/decisions.md)
 - [`docs/interfaces.md`](../docs/interfaces.md)
 - [`experiments/history`](../experiments/history)

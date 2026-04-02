@@ -304,3 +304,15 @@ Decision:
 Why:
 - this is the smallest safe move from convergence evidence to code change
 - it reduces duplication without collapsing the search space into one implementation
+
+## D-021: Shared Helpers Need Their Own Watchlist
+
+Status: accepted
+
+Decision:
+- generate `docs/helper_promotion.md` from current `experiments.support` usage plus snapshot counts
+- classify helpers as `keep_in_experiments`, `promotion_watch`, or `core_candidate` via `experiments/history/helper_policy.json`
+
+Why:
+- helper extraction is now part of the improvement track, so it needs explicit visibility
+- this keeps promotion pressure focused on genuinely reused helpers instead of on whole implementations

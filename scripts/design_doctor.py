@@ -55,6 +55,11 @@ def parse_args() -> argparse.Namespace:
         help="Skip regenerating docs/next_actions.md.",
     )
     parser.add_argument(
+        "--skip-helper-promotion",
+        action="store_true",
+        help="Skip regenerating docs/helper_promotion.md.",
+    )
+    parser.add_argument(
         "--skip-validate",
         action="store_true",
         help="Skip scripts/validate_design_workflow.py.",
@@ -121,6 +126,9 @@ def main() -> int:
 
     if not args.skip_actions:
         run_step("refresh next-actions doc", [sys.executable, "scripts/render_design_actions.py"])
+
+    if not args.skip_helper_promotion:
+        run_step("refresh helper-promotion doc", [sys.executable, "scripts/render_helper_promotion.py"])
 
     if not args.skip_validate:
         run_step("validate design workflow", [sys.executable, "scripts/validate_design_workflow.py"])

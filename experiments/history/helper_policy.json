@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "thresholds": {
+    "promotion_watch": {
+      "min_problem_count": 2,
+      "min_variant_count": 2,
+      "min_problem_snapshots": 3
+    },
+    "core_candidate": {
+      "min_problem_count": 3,
+      "min_variant_count": 6,
+      "min_problem_snapshots": 5
+    }
+  }
+}
