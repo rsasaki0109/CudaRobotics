@@ -207,6 +207,18 @@ Concrete entrypoint:
 python3 scripts/run_design_experiments.py
 ```
 
+One-command local repair path:
+
+```bash
+python3 scripts/design_doctor.py
+```
+
+Create a new history snapshot while running the same repair path:
+
+```bash
+python3 scripts/design_doctor.py --snapshot-label local_check
+```
+
 Refresh the checked-in design docs:
 
 ```bash
@@ -264,6 +276,7 @@ The workflow is now module-driven rather than import-driven:
 - each `experiments/<problem>/__init__.py` package declares its own slug-like metadata and request builder
 - each problem package also owns its own report builder
 - `scripts/run_design_experiments.py` discovers those modules automatically
+- `scripts/design_doctor.py` is the promoted local entrypoint for refresh-and-validate maintenance
 - `scripts/run_design_experiments.py` also discovers fixture CSVs automatically from `experiments/data/`
 - `experiments/data/manifest.json` defines which benchmark CSVs are promoted into the lightweight fixture set
 - `scripts/refresh_design_fixtures.py --check-sync` catches drift between checked-in fixtures and available build outputs
