@@ -657,6 +657,45 @@ __global__ void compute_sensitivity_feedback_gains_kernel(
     }
 }
 
+__global__ void compute_reference_feedback_gain_kernel(
+    const float* d_nominal,
+    const float* d_perturbed,
+    const float* d_weights,
+    const float* d_rollout_init_grads,
+    float* d_feedback_gains,
+    float lambda,
+    int K,
+    int T)
+{
+    if (blockIdx.x != 0 || threadIdx.x != 0) return;
+
+    const float inv_lambda = 1.0f / fmaxf(1.0e-6f, lambda);
+    float weighted_grad[4] = {};
+    for (int k = 0; k < K; k++) {
+        float w = d_weights[k];
+        for (int j = 0; j < 4; j++) weighted_grad[j] += w * d_rollout_init_grads[k * 4 + j];
+    }
+
+    for (int i = 0; i < T * 8; i++) d_feedback_gains[i] = 0.0f;
+
+    float nominal_accel = d_nominal[0];
+    float nominal_steer = d_nominal[1];
+    for (int j = 0; j < 4; j++) {
+        float accel_gain = 0.0f;
+        float steer_gain = 0.0f;
+        for (int k = 0; k < K; k++) {
+            float w = d_weights[k];
+            float centered_grad = d_rollout_init_grads[k * 4 + j] - weighted_grad[j];
+            float delta_accel = d_perturbed[k * T * 2 + 0] - nominal_accel;
+            float delta_steer = d_perturbed[k * T * 2 + 1] - nominal_steer;
+            accel_gain += -inv_lambda * w * centered_grad * delta_accel;
+            steer_gain += -inv_lambda * w * centered_grad * delta_steer;
+        }
+        d_feedback_gains[0 * 4 + j] = accel_gain;
+        d_feedback_gains[1 * 4 + j] = steer_gain;
+    }
+}
+
 __global__ void compute_covariance_feedback_gains_kernel(
     const float* d_nominal,
     const float* d_nominal_states,
@@ -1022,12 +1061,12 @@ public:
                 controller_update(rx_, ry_, rtheta_, rv_, step);
                 controller_updates++;
                 sync_nominal_from_device();
-                if (uses_feedback_inner_loop()) sync_feedback_policy_from_device();
+                if (uses_feedback_local_action()) sync_feedback_policy_from_device();
                 CUDA_CHECK(cudaMemcpy(h_costs_.data(), d_costs_, h_costs_.size() * sizeof(float), cudaMemcpyDeviceToHost));
             }
             float accel = h_nominal_[0];
             float steer = h_nominal_[1];
-            if (uses_feedback_inner_loop()) {
+            if (uses_feedback_local_action()) {
                 compute_feedback_inner_action(accel, steer);
             }
             auto t1 = chrono::steady_clock::now();
@@ -1084,12 +1123,12 @@ private:
         CUDA_CHECK(cudaDeviceSynchronize());
     }
 
-    bool uses_feedback_inner_loop() const {
-        return variant_.use_feedback && (variant_.feedback_mode == 5 || variant_.feedback_mode == 6);
+    bool uses_feedback_local_action() const {
+        return variant_.use_feedback && (variant_.feedback_mode == 5 || variant_.feedback_mode == 6 || variant_.feedback_mode == 7);
     }
 
     bool should_replan(int step) const {
-        if (!uses_feedback_inner_loop()) return true;
+        if (variant_.feedback_mode != 6) return true;
         int stride = max(1, variant_.replan_stride);
         return (step % stride) == 0;
     }
@@ -1164,7 +1203,7 @@ private:
         h_nominal_[(t_horizon_ - 1) * 2 + 0] = 0.0f;
         h_nominal_[(t_horizon_ - 1) * 2 + 1] = 0.0f;
 
-        if (!uses_feedback_inner_loop()) return;
+        if (!uses_feedback_local_action()) return;
 
         for (int t = 0; t < t_horizon_; t++) {
             for (int i = 0; i < 4; i++) {
@@ -1204,7 +1243,7 @@ private:
             }
 
             if (variant_.use_feedback) {
-                if (uses_feedback_inner_loop()) {
+                if (uses_feedback_local_action()) {
                     rollout_nominal_kernel<<<1, 1>>>(sx, sy, stheta, sv, d_nominal_, d_states_, planning_scenario_.params, t_horizon_);
                     if (variant_.feedback_mode == 5) {
                         rollout_kernel<<<(k_samples_ + block - 1) / block, block>>>(
@@ -1220,7 +1259,7 @@ private:
                         compute_sensitivity_feedback_gains_kernel<<<1, 1>>>(
                             d_nominal_, d_perturbed_, d_weights_, d_rollout_init_grads_, d_feedback_gains_,
                             DEFAULT_LAMBDA, k_samples_, t_horizon_);
-                    } else {
+                    } else if (variant_.feedback_mode == 6) {
                         rollout_kernel<<<(k_samples_ + block - 1) / block, block>>>(
                             sx, sy, stheta, sv, d_nominal_, d_costs_, d_perturbed_, d_rollout_states_, d_rng_,
                             planning_scenario_.params, planning_scenario_.cost_params,
@@ -1236,6 +1275,23 @@ private:
                         blend_feedback_gains_kernel<<<(t_horizon_ * 8 + block - 1) / block, block>>>(
                             d_feedback_gains_, d_feedback_gains_aux_, t_horizon_,
                             variant_.feedback_cov_blend, variant_.feedback_lqr_blend);
+                    } else {
+                        rollout_kernel<<<(k_samples_ + block - 1) / block, block>>>(
+                            sx, sy, stheta, sv, d_nominal_, d_costs_, d_perturbed_, d_rollout_states_, d_rng_,
+                            planning_scenario_.params, planning_scenario_.cost_params,
+                            planning_scenario_.n_obs, planning_scenario_.n_dyn_obs, start_step, k_samples_, t_horizon_);
+                        compute_weights_kernel<<<1, 1>>>(d_costs_, d_weights_, k_samples_, DEFAULT_LAMBDA);
+                        compute_rollout_initial_gradients_kernel<<<(k_samples_ + block - 1) / block, block>>>(
+                            d_rollout_states_, d_perturbed_, d_rollout_init_grads_,
+                            planning_scenario_.params, planning_scenario_.cost_params,
+                            planning_scenario_.n_obs, planning_scenario_.n_dyn_obs,
+                            start_step, k_samples_, t_horizon_);
+                        update_controls_kernel<<<(t_horizon_ + block - 1) / block, block>>>(
+                            d_nominal_, d_perturbed_, d_weights_, k_samples_, t_horizon_);
+                        compute_reference_feedback_gain_kernel<<<1, 1>>>(
+                            d_nominal_, d_perturbed_, d_weights_, d_rollout_init_grads_, d_feedback_gains_,
+                            DEFAULT_LAMBDA, k_samples_, t_horizon_);
+                        rollout_nominal_kernel<<<1, 1>>>(sx, sy, stheta, sv, d_nominal_, d_states_, planning_scenario_.params, t_horizon_);
                     }
                 } else {
                 for (int fb_pass = 0; fb_pass < max(1, variant_.feedback_passes); fb_pass++) {
@@ -1872,6 +1928,21 @@ int main(int argc, char** argv) {
         v.feedback_cov_regularization = 0.18f;
         v.feedback_cov_blend = 0.75f;
         v.feedback_lqr_blend = 0.35f;
+        variants.push_back(v);
+    }
+    {
+        PlannerVariant v;
+        v.name = "feedback_mppi_ref";
+        v.use_feedback = true;
+        v.feedback_mode = 7;
+        v.feedback_gain_scale = 1.0f;
+        v.feedback_noise_accel = 0.0f;
+        v.feedback_noise_steer = 0.0f;
+        v.feedback_longitudinal_gain = 0.0f;
+        v.feedback_speed_gain = 0.0f;
+        v.feedback_lateral_gain = 0.0f;
+        v.feedback_heading_gain = 0.0f;
+        v.feedback_setpoint_blend = 0.0f;
         variants.push_back(v);
     }
     {
