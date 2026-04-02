@@ -35,6 +35,10 @@ jobs:
         run: |
           python3 scripts/validate_design_workflow.py
 
+      - name: Check design regressions
+        run: |
+          python3 scripts/check_design_regressions.py
+
       - name: Check scaffold workflow
         run: |
           python3 scripts/check_scaffold_design_problem.py

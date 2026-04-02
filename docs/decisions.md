@@ -221,3 +221,16 @@ Decision:
 Why:
 - a history log is only half-useful if readers still need to diff JSON by hand
 - the repo should show what changed between experiment states, not just that states exist
+
+## D-015: History Needs Explicit Regression Guardrails
+
+Status: accepted
+
+Decision:
+- store regression policy in `experiments/history/policy.json`
+- require `scripts/check_design_regressions.py` to compare the latest two snapshots against that policy
+- keep runtime out of the default regression gate because it is too environment-sensitive
+
+Why:
+- experiment-first should allow exploration, but not silent quality regressions
+- the repo needs an explicit notion of what must not get worse as designs evolve

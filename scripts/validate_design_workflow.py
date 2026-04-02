@@ -24,6 +24,7 @@ REQUIRED_DOCS = [
 FIXTURE_DIR = ROOT / "experiments" / "data"
 FIXTURE_MANIFEST = FIXTURE_DIR / "manifest.json"
 HISTORY_DIR = ROOT / "experiments" / "history"
+HISTORY_POLICY = HISTORY_DIR / "policy.json"
 
 REQUIRED_MODULE_ATTRIBUTES = [
     "PROBLEM_KIND",
@@ -133,7 +134,7 @@ def validate_history_snapshots() -> None:
     if not HISTORY_DIR.exists():
         raise RuntimeError(f"Missing design history directory: {HISTORY_DIR.relative_to(ROOT)}")
 
-    snapshots = sorted(HISTORY_DIR.glob("*.json"))
+    snapshots = sorted(path for path in HISTORY_DIR.glob("*.json") if path.name != HISTORY_POLICY.name)
     if not snapshots:
         raise RuntimeError("No design history snapshots found under experiments/history/")
 
@@ -179,6 +180,17 @@ def validate_history_snapshots() -> None:
                 raise RuntimeError(f"{path.relative_to(ROOT)} aggregate_table must be an object")
             if not isinstance(aggregate_table.get("headers"), list) or not isinstance(aggregate_table.get("rows"), list):
                 raise RuntimeError(f"{path.relative_to(ROOT)} aggregate_table must contain headers and rows lists")
+
+
+def validate_history_policy() -> None:
+    if not HISTORY_POLICY.exists():
+        raise RuntimeError(f"Missing design history policy: {HISTORY_POLICY.relative_to(ROOT)}")
+    data = json.loads(HISTORY_POLICY.read_text())
+    if data.get("schema_version") != 1:
+        raise RuntimeError("experiments/history/policy.json must declare schema_version 1")
+    problems = data.get("problems")
+    if not isinstance(problems, dict) or not problems:
+        raise RuntimeError("experiments/history/policy.json must contain a non-empty problems object")
 
 
 def normalize_generated_doc(text: str) -> str:
@@ -266,7 +278,7 @@ def validate_generated_history() -> None:
 
 
 def validate_snapshot_compare() -> None:
-    snapshots = sorted(HISTORY_DIR.glob("*.json"))
+    snapshots = sorted(path for path in HISTORY_DIR.glob("*.json") if path.name != HISTORY_POLICY.name)
     if len(snapshots) < 2:
         return
 
@@ -293,6 +305,7 @@ def main() -> int:
     validate_docs()
     validate_fixture_manifest()
     validate_history_snapshots()
+    validate_history_policy()
     modules = experiment_modules()
     if not modules:
         raise RuntimeError("No experiment modules found under experiments/")

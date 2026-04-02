@@ -1,0 +1,52 @@
+{
+  "schema_version": 1,
+  "comparison": "latest_vs_previous",
+  "problems": {
+    "planner_selection": {
+      "require_same_request_count": true,
+      "metrics": {
+        "Avg Regret": {
+          "direction": "min",
+          "max_regression": 0.0
+        },
+        "Oracle Match": {
+          "direction": "max",
+          "max_regression": 0.0
+        },
+        "Readability": {
+          "direction": "max",
+          "max_regression": 0.0
+        },
+        "Extensibility": {
+          "direction": "max",
+          "max_regression": 0.0
+        }
+      }
+    },
+    "time_budget_selection": {
+      "require_same_request_count": true,
+      "metrics": {
+        "Avg Regret": {
+          "direction": "min",
+          "max_regression": 0.0
+        },
+        "Oracle Match": {
+          "direction": "max",
+          "max_regression": 0.0
+        },
+        "Budget Hit": {
+          "direction": "max",
+          "max_regression": 0.0
+        },
+        "Readability": {
+          "direction": "max",
+          "max_regression": 0.0
+        },
+        "Extensibility": {
+          "direction": "max",
+          "max_regression": 0.0
+        }
+      }
+    }
+  }
+}
