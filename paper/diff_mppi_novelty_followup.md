@@ -34,6 +34,12 @@ Artifacts used:
 - `build/benchmark_diff_mppi_exact_time_ref.csv`
 - `build/benchmark_diff_mppi_exact_time_ref_search.csv`
 - `build/benchmark_diff_mppi_exact_time_ref_summary.md`
+- `build/benchmark_diff_mppi_exact_time_hf.csv`
+- `build/benchmark_diff_mppi_exact_time_hf_search.csv`
+- `build/benchmark_diff_mppi_exact_time_hf_summary.md`
+- `build/benchmark_diff_mppi_exact_time_fused.csv`
+- `build/benchmark_diff_mppi_exact_time_fused_search.csv`
+- `build/benchmark_diff_mppi_exact_time_fused_summary.md`
 - `build/benchmark_diff_mppi_exact_time.csv`
 - `build/benchmark_diff_mppi_exact_time_search.csv`
 - `build/benchmark_diff_mppi_exact_time_summary.md`
@@ -54,6 +60,8 @@ Artifacts used:
 - `build/plots_ref_gap_followup/diff_mppi_final_distance_vs_equal_time.png`
 - `build/plots_ref_gap_followup/diff_mppi_final_distance_vs_budget.png`
 - `build/plots_exact_time_ref/diff_mppi_final_distance_vs_equal_time.png`
+- `build/plots_exact_time_hf/diff_mppi_final_distance_vs_equal_time.png`
+- `build/plots_exact_time_fused/diff_mppi_final_distance_vs_equal_time.png`
 - `build/plots_ablation/diff_mppi_final_distance_vs_budget.png`
 - `build/plots_ablation/diff_mppi_final_distance_vs_equal_time.png`
 
@@ -270,17 +278,22 @@ The feedback baseline sits between them:
 - `dynamic_crossing` at `1.00 ms`: `feedback_mppi K=2048 @ 0.85 ms`, success `1.00`, final distance `1.84`
 - `dynamic_slalom` at `1.00 ms`: `feedback_mppi K=2048 @ 0.84 ms`, success `0.00`, final distance `11.88`
 
-For the heavier covariance-regression and fused controllers, the current repo only has cap-based and nearest-time spot checks rather than a full refreshed exact-time sweep.
-Those are still informative:
+For the heavier covariance-regression controllers, the current repo still only has cap-based and nearest-time spot checks rather than a full refreshed exact-time sweep.
+The newer architecture-gap and heavy-feedback exact-time runs are still informative:
 - under a `2.00 ms` cap, the best lighter feedback row on `dynamic_slalom` is `feedback_mppi_cov K=256 @ 1.66 ms`, final distance `11.49`
 - under a `1.00 ms` cap, the closer architecture row on `dynamic_slalom` is `feedback_mppi_hf K=256 @ 0.87 ms`, final distance `13.62`
 - under a `1.00 ms` cap, the closer released-gain row on `dynamic_crossing` is `feedback_mppi_ref K=512 @ 0.65 ms`, success `1.00`, final distance `1.87`
 - under a `1.00 ms` cap, the closer released-gain row on `dynamic_slalom` is `feedback_mppi_ref K=256 @ 0.63 ms`, final distance `11.89`
 - under a `3.50 ms` cap, the best current feedback row on `dynamic_slalom` is `feedback_mppi_fused K=256 @ 3.45 ms`, final distance `10.28`
 - under a `1.50 ms` equal-time target on the current fixed-`K` sweep, `feedback_mppi_cov K=256 @ 1.66 ms` is the closest lighter feedback row on `dynamic_slalom`, again with final distance `11.49`
+- under exact-time tuning, `feedback_mppi_hf` now reaches `dynamic_crossing: K=285 @ 0.978 ms, dist=2.77`, `K=368 @ 1.486 ms, dist=2.75`, and `K=443 @ 1.989 ms, dist=2.65`
+- under exact-time tuning, `feedback_mppi_hf` also reaches `dynamic_slalom: K=276 @ 0.989 ms, dist=13.63`, `K=369 @ 1.498 ms, dist=13.34`, and `K=441 @ 1.980 ms, dist=13.40`
+- under exact-time tuning, `feedback_mppi_fused` reaches `dynamic_crossing: K=153 @ 1.968 ms, success=1.00, dist=1.94`
+- under exact-time tuning, `feedback_mppi_fused` reaches `dynamic_slalom: K=137 @ 1.993 ms, dist=10.51`
 
 So the newer feedback family is materially stronger than the earlier baselines on the hard task, even though the hybrid controller still remains the only successful family.
 The current release-style row is especially useful for reviewer defense because it shows that the main qualitative claim survives even after moving one step closer to the public `Feedback-MPPI` gain computation.
+The new architecture-gap and heavy-feedback exact-time rows matter for the same reason: they remove the easy objection that those stronger in-repo baselines were only shown under fixed budgets or loose wall-clock caps.
 
 It now also survives a targeted exact-time tuning pass.
 
@@ -418,7 +431,7 @@ The stronger current version is:
 
 The main remaining gaps are now:
 - the current `feedback_mppi`, `feedback_mppi_ref`, `feedback_mppi_sens`, `feedback_mppi_cov`, and `feedback_mppi_fused` comparisons are all materially stronger than the earlier fixed-gain tracker, but still not a full literature-faithful rollout-differentiation / feedback-MPPI baseline
-- the newer `feedback_mppi_hf` comparison narrows the controller-architecture gap, while `feedback_mppi_ref` narrows the released-gain gap, but both are still in-repo proxies rather than paper-faithful reproductions
+- the newer `feedback_mppi_hf` comparison narrows the controller-architecture gap, while `feedback_mppi_ref` narrows the released-gain gap, and both now also have exact-time evidence, but they are still in-repo proxies rather than paper-faithful reproductions
 - only two simple hand-designed 2D dynamic scenarios so far
 
 The gradient-only ablation, the six stronger feedback baselines, and the new trace-based mechanism analysis remove weaker alternative explanations, but they still do not close the stronger literature-baseline gap.
@@ -428,8 +441,8 @@ The gradient-only ablation, the six stronger feedback baselines, and the new tra
 If we want to keep pushing the novelty argument, the next experiment should be:
 
 1. Strengthen the current `feedback_mppi_ref` / `feedback_mppi_sens` / `feedback_mppi_cov` / `feedback_mppi_fused` / `feedback_mppi_hf` comparisons into a more literature-faithful baseline.
-2. Keep the heavier `feedback_mppi_fused` line only as a narrowing study unless it also gets a refreshed exact-time sweep.
-3. Extend the newer `feedback_mppi_hf` line with a cleaner exact-time tuning protocol once the tuner supports that regime reliably.
+2. Keep the heavier `feedback_mppi_fused` line as a narrowing study unless it also gets a broader exact-time sweep across more than one target.
+3. Extend the newer `feedback_mppi_hf` line only if a more literature-faithful controller reproduction is not ready first.
 4. Add a harder dynamic scenario with interacting moving agents, not just one scripted obstacle.
 5. Keep exact-time tuned success and final-distance comparisons at one or two fixed targets in the main paper, instead of many configurations.
 

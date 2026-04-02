@@ -110,12 +110,16 @@ The newer baseline story is materially better than it was a few iterations ago:
 - on `dynamic_slalom`, it still fails, but it is now the strongest non-hybrid feedback baseline, reducing final distance to about `10.23-10.30` versus `11.44-11.51` for `feedback_mppi_cov`, `11.80-11.91` for `feedback_mppi`, and `12.75-12.81` for `feedback_mppi_sens`
 - a newer `feedback_mppi_hf` variant decouples lower-rate replanning from per-step local feedback execution
 - under a `1.00 ms` cap, `feedback_mppi_hf K=256 @ 0.87 ms` improves over MPPI on both dynamic tasks, lowering terminal distance from `3.04 -> 2.83` on `dynamic_crossing` and from `14.33 -> 13.62` on `dynamic_slalom`
+- a targeted exact-time sweep now tunes `feedback_mppi_hf` directly to shared `1.00`, `1.50`, and `2.00 ms` targets
+- at those targets, `feedback_mppi_hf` still improves over MPPI on both tasks, for example `dynamic_crossing: K=285 @ 0.978 ms, dist=2.77` and `dynamic_slalom: K=369 @ 1.498 ms, dist=13.34`
 - a newer `feedback_mppi_ref` variant follows the released `Feedback-MPPI` current-action gain structure more closely
 - on `dynamic_crossing`, `feedback_mppi_ref` reaches `1.00` success at `K={256,512}` with final distance about `1.87-1.91` while staying in the `0.56-0.65 ms` range
 - on `dynamic_slalom`, it still fails, but lowers final distance to about `11.89-12.08`, which is materially better than `mppi` and `feedback_mppi_hf`
 - a targeted exact-time sweep now tunes `feedback_mppi_ref` directly to shared `1.00 ms` and `1.50 ms` targets
 - at `1.00 ms`, `feedback_mppi_ref` reaches `dynamic_crossing: K=1263 @ 1.002 ms, success=1.00, dist=1.95` and `dynamic_slalom: K=1150 @ 1.023 ms, dist=11.89`
 - at `1.50 ms`, it reaches `dynamic_crossing: K=2362 @ 1.482 ms, success=1.00, dist=1.89` and `dynamic_slalom: K=2190 @ 1.472 ms, dist=11.89`
+- a targeted exact-time sweep now also tunes the heavier `feedback_mppi_fused` baseline to a shared `2.00 ms` target
+- at `2.00 ms`, `feedback_mppi_fused` reaches `dynamic_crossing: K=153 @ 1.968 ms, success=1.00, dist=1.94` and `dynamic_slalom: K=137 @ 1.993 ms, dist=10.51`
 
 So the baseline gap is narrower than before, but not closed.
 
@@ -164,9 +168,9 @@ That is already much better than most quick research repos.
 But a skeptical reviewer can still say:
 - the exact-time tuning currently searches `K` only, not the full controller design space
 - the exact-time result is currently concentrated on the dynamic two-task suite, not the full benchmark portfolio
-- the heavier `feedback_mppi_cov` and `feedback_mppi_fused` baselines currently have only fixed-budget and cap-based evidence, not refreshed exact-time sweeps
-- the newer `feedback_mppi_hf` baseline narrows the controller-architecture gap, but it still does not have a clean exact-time tuned result in the checked-in package
+- the heavier `feedback_mppi_cov` baseline still has only fixed-budget and cap-based evidence, not a refreshed exact-time sweep
 - the newer `feedback_mppi_ref` baseline narrows the released-gain gap and now has a targeted exact-time sweep, but it still remains an in-repo proxy rather than a paper-faithful controller reproduction
+- the newer `feedback_mppi_hf` and `feedback_mppi_fused` baselines now also have targeted exact-time sweeps, but those still cover only selected targets rather than a broad matched-time study
 - outside the base suite, the time-matched claim currently reaches only custom pilot domains, and the cleanest matched-time result is still the dynamic-obstacle base suite rather than the pilots
 
 The dynamic-bicycle exact-time result is still useful, but it currently reads as a conservative compute-matched spot check:
