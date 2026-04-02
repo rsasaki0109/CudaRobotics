@@ -190,6 +190,30 @@ make -j8
 
 Executables are in `bin/`.
 
+## Experiment-First Development
+
+This repository now treats some design work as `experiment -> convergence`, not `abstract design -> implementation`.
+
+Current process split:
+- `core/`: only the minimum interfaces that multiple variants already share
+- `experiments/`: discardable concrete variants with different design styles
+- `docs/experiments.md`: generated comparison results
+- `docs/decisions.md`: why something is kept, rejected, or not yet promoted
+- `docs/interfaces.md`: the current minimum stable contract
+
+Concrete entrypoint:
+
+```bash
+python3 scripts/run_design_experiments.py
+```
+
+The current comparison problem is intentionally concrete: selecting one planner configuration per benchmark scenario from the existing Diff-MPPI CSV outputs. It is implemented three different ways:
+- functional weighted scoring
+- OOP lexicographic objectives
+- staged pipeline filters
+
+All three consume the same aggregated input rows, answer the same request type, and are scored under the same benchmark, readability, and extensibility proxies. Nothing in `experiments/` is assumed to be permanent.
+
 ### Docker
 ```bash
 docker build -t cuda-robotics .
