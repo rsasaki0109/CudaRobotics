@@ -116,6 +116,7 @@ They share interfaces, not design style.
 
 Comparison entrypoint:
 - [`scripts/run_design_experiments.py`](../scripts/run_design_experiments.py)
+- [`scripts/refresh_design_docs.py`](../scripts/refresh_design_docs.py)
 
 Common evaluation rules:
 - same CSV inputs
@@ -126,7 +127,9 @@ Common evaluation rules:
 
 Discovery rule:
 - the runner discovers `experiments/*/__init__.py` packages automatically
+- the runner discovers fixture CSVs automatically from `experiments/data/*.csv`
 - the validator checks that every discovered module is represented in generated docs
+- the validator also checks that the checked-in `docs/experiments.md` matches the generated output, while normalizing the volatile runtime column
 
 Current generated state:
 - [`docs/experiments.md`](../docs/experiments.md)

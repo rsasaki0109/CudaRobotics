@@ -207,6 +207,12 @@ Concrete entrypoint:
 python3 scripts/run_design_experiments.py
 ```
 
+Refresh the checked-in design docs:
+
+```bash
+python3 scripts/refresh_design_docs.py
+```
+
 Scaffold a new concrete problem with 3 disposable variants:
 
 ```bash
@@ -234,7 +240,8 @@ The workflow is now module-driven rather than import-driven:
 - each `experiments/<problem>/__init__.py` package declares its own metadata and request builder
 - each problem package also owns its own report builder
 - `scripts/run_design_experiments.py` discovers those modules automatically
-- `scripts/validate_design_workflow.py` fails if a discovered module is missing from generated docs
+- `scripts/run_design_experiments.py` also discovers fixture CSVs automatically from `experiments/data/`
+- `scripts/validate_design_workflow.py` fails if a discovered module is missing from generated docs or if `docs/experiments.md` is stale; the runtime column is normalized during that check because it is machine-dependent
 
 ### Docker
 ```bash

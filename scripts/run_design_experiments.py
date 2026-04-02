@@ -18,13 +18,6 @@ from core.planner_selector_interface import AggregateBenchmarkRow
 from experiments.support import ProblemReport, render_markdown_table
 
 
-DEFAULT_DATASETS = [
-    "experiments/data/benchmark_diff_mppi.csv",
-    "experiments/data/benchmark_diff_mppi_uncertain.csv",
-    "experiments/data/benchmark_diff_mppi_dynamic_bicycle.csv",
-]
-
-
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run experiment-first design comparisons across concrete design problems.")
     parser.add_argument(
@@ -50,7 +43,7 @@ def discover_csvs(explicit_paths: list[str] | None) -> list[Path]:
     if explicit_paths:
         paths = [ROOT / path for path in explicit_paths]
     else:
-        paths = [ROOT / path for path in DEFAULT_DATASETS]
+        paths = sorted((ROOT / "experiments" / "data").glob("*.csv"))
     return [path for path in paths if path.exists()]
 
 
