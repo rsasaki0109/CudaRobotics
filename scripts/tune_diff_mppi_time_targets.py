@@ -23,20 +23,53 @@ SUMMARY_METRICS = [
 ]
 
 
+PRESETS = {
+    "dynamic_nav": {
+        "bin": "./bin/benchmark_diff_mppi",
+        "scenarios": "dynamic_crossing,dynamic_slalom",
+        "planners": "mppi,feedback_mppi,diff_mppi_1,diff_mppi_3",
+        "time_targets": "1.0,1.5",
+        "seed_count": 4,
+        "k_min": 128,
+        "k_max": 16384,
+        "tolerance_ms": 0.03,
+        "max_evals": 8,
+        "csv_out": "build/benchmark_diff_mppi_exact_time.csv",
+        "summary_title": "Diff-MPPI Exact-Time Tuning Summary",
+    },
+    "dynamic_bicycle": {
+        "bin": "./bin/benchmark_diff_mppi_dynamic_bicycle",
+        "scenarios": "dynbike_crossing,dynbike_slalom",
+        "planners": "mppi,diff_mppi_1,diff_mppi_3",
+        "time_targets": "1.8,2.0",
+        "seed_count": 4,
+        "k_min": 4,
+        "k_max": 16384,
+        "tolerance_ms": 0.06,
+        "max_evals": 9,
+        "csv_out": "build/benchmark_diff_mppi_dynamic_bicycle_exact_time.csv",
+        "summary_title": "Diff-MPPI Dynamic-Bicycle Exact-Time Tuning Summary",
+    },
+}
+
+
 def parse_args():
     parser = argparse.ArgumentParser(description="Tune exact wall-clock-matched K values for benchmark_diff_mppi.")
-    parser.add_argument("--bin", default="./bin/benchmark_diff_mppi", help="Path to benchmark_diff_mppi binary")
-    parser.add_argument("--scenarios", default="dynamic_crossing,dynamic_slalom", help="Comma-separated scenario names")
-    parser.add_argument("--planners", default="mppi,feedback_mppi,diff_mppi_1,diff_mppi_3", help="Comma-separated planner names")
-    parser.add_argument("--time-targets", default="1.0,1.5", help="Comma-separated target controller times in ms")
-    parser.add_argument("--seed-count", type=int, default=4, help="Episodes per final tuned evaluation")
-    parser.add_argument("--k-min", type=int, default=128, help="Minimum K for search")
-    parser.add_argument("--k-max", type=int, default=16384, help="Maximum K for search")
-    parser.add_argument("--tolerance-ms", type=float, default=0.03, help="Target timing tolerance in ms")
-    parser.add_argument("--max-evals", type=int, default=8, help="Maximum search evaluations per scenario/planner/target")
-    parser.add_argument("--csv-out", default="build/benchmark_diff_mppi_exact_time.csv", help="Detailed tuned CSV output")
+    parser.add_argument("--preset", choices=sorted(PRESETS), default="dynamic_nav",
+                        help="Named benchmark preset for defaults")
+    parser.add_argument("--bin", help="Path to benchmark binary")
+    parser.add_argument("--scenarios", help="Comma-separated scenario names")
+    parser.add_argument("--planners", help="Comma-separated planner names")
+    parser.add_argument("--time-targets", help="Comma-separated target controller times in ms")
+    parser.add_argument("--seed-count", type=int, help="Episodes per final tuned evaluation")
+    parser.add_argument("--k-min", type=int, help="Minimum K for search")
+    parser.add_argument("--k-max", type=int, help="Maximum K for search")
+    parser.add_argument("--tolerance-ms", type=float, help="Target timing tolerance in ms")
+    parser.add_argument("--max-evals", type=int, help="Maximum search evaluations per scenario/planner/target")
+    parser.add_argument("--csv-out", help="Detailed tuned CSV output")
     parser.add_argument("--search-csv-out", help="Optional CSV of all search evaluations")
     parser.add_argument("--summary-out", help="Markdown summary output path")
+    parser.add_argument("--summary-title", help="Markdown summary title")
     return parser.parse_args()
 
 
@@ -285,9 +318,9 @@ def fmt_pm(mean_value, std_value, digits=2):
     return f"{mean_value:.{digits}f} ± {std_value:.{digits}f}"
 
 
-def build_markdown(selected_rows, aggregate_rows, diff_rows, feedback_rows, search_rows, csv_out):
+def build_markdown(selected_rows, aggregate_rows, diff_rows, feedback_rows, search_rows, csv_out, summary_title):
     lines = []
-    lines.append("# Diff-MPPI Exact-Time Tuning Summary")
+    lines.append(f"# {summary_title}")
     lines.append("")
     lines.append(f"Selected tuned CSV: `{csv_out}`")
     lines.append("")
@@ -348,19 +381,23 @@ def build_markdown(selected_rows, aggregate_rows, diff_rows, feedback_rows, sear
 
 def main():
     args = parse_args()
+    preset = PRESETS[args.preset]
     workdir = Path.cwd()
-    bin_path = Path(args.bin)
+    bin_path = Path(args.bin if args.bin else preset["bin"])
     if not bin_path.is_absolute():
         bin_path = (workdir / bin_path).resolve()
     if not bin_path.exists():
         raise SystemExit(f"Benchmark binary not found: {bin_path}")
 
-    scenarios = parse_string_list(args.scenarios)
-    planners = parse_string_list(args.planners)
-    time_targets = parse_float_list(args.time_targets)
-    seed_count = max(1, args.seed_count)
-    k_min = max(1, args.k_min)
-    k_max = max(k_min, args.k_max)
+    scenarios = parse_string_list(args.scenarios if args.scenarios else preset["scenarios"])
+    planners = parse_string_list(args.planners if args.planners else preset["planners"])
+    time_targets = parse_float_list(args.time_targets if args.time_targets else preset["time_targets"])
+    seed_count = max(1, args.seed_count if args.seed_count is not None else preset["seed_count"])
+    k_min = max(1, args.k_min if args.k_min is not None else preset["k_min"])
+    k_max = max(k_min, args.k_max if args.k_max is not None else preset["k_max"])
+    tolerance_ms = args.tolerance_ms if args.tolerance_ms is not None else preset["tolerance_ms"]
+    max_evals = args.max_evals if args.max_evals is not None else preset["max_evals"]
+    summary_title = args.summary_title if args.summary_title else preset["summary_title"]
 
     cache = BenchmarkCache(bin_path, seed_count, workdir)
     selected_summary_rows = []
@@ -378,8 +415,8 @@ def main():
                         target_ms,
                         k_min,
                         k_max,
-                        args.tolerance_ms,
-                        args.max_evals,
+                        tolerance_ms,
+                        max_evals,
                         temp_dir,
                     )
                     best_record = next(record for record in evaluated_records if record["summary"]["k_samples"] == best_summary["k_samples"])
@@ -411,7 +448,7 @@ def main():
                         episode_row["time_gap_ms"] = best_summary["avg_control_ms_mean"] - target_ms
                         selected_episode_rows.append(episode_row)
 
-    csv_out = Path(args.csv_out)
+    csv_out = Path(args.csv_out if args.csv_out else preset["csv_out"])
     summary_out = Path(args.summary_out) if args.summary_out else csv_out.with_name(f"{csv_out.stem}_summary.md")
     search_csv_out = Path(args.search_csv_out) if args.search_csv_out else csv_out.with_name(f"{csv_out.stem}_search.csv")
 
@@ -421,7 +458,15 @@ def main():
     aggregate_rows = aggregate_selected(selected_summary_rows)
     diff_rows = best_family_rows(selected_summary_rows, "diff")
     feedback_rows = best_family_rows(selected_summary_rows, "feedback")
-    markdown = build_markdown(selected_summary_rows, aggregate_rows, diff_rows, feedback_rows, search_trace_rows, csv_out)
+    markdown = build_markdown(
+        selected_summary_rows,
+        aggregate_rows,
+        diff_rows,
+        feedback_rows,
+        search_trace_rows,
+        csv_out,
+        summary_title,
+    )
     summary_out.parent.mkdir(parents=True, exist_ok=True)
     summary_out.write_text(markdown)
 

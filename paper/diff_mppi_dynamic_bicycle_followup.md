@@ -15,6 +15,11 @@ It writes `build/benchmark_diff_mppi_dynamic_bicycle.csv`, with summaries in:
 - `build/benchmark_diff_mppi_dynamic_bicycle_summary.tex`
 - `build/plots_dynamic_bicycle/`
 
+The exact-time tuning follow-up writes:
+- `build/benchmark_diff_mppi_dynamic_bicycle_exact_time.csv`
+- `build/benchmark_diff_mppi_dynamic_bicycle_exact_time_search.csv`
+- `build/benchmark_diff_mppi_dynamic_bicycle_exact_time_summary.md`
+
 ## Domain
 
 The dynamics are a five-state dynamic bicycle model:
@@ -79,21 +84,36 @@ However, the same task also shows that higher-order dynamics make the deeper ref
 So the follow-up is useful partly because it is not uniformly flattering.
 It shows transfer, but it also shows that refinement depth needs tuning once the dynamics get less forgiving.
 
-### 3. The main signal is fixed-budget transfer, not matched-time dominance
+### 3. Exact matched-time tuning partially closes the compute-matching criticism
 
-The generic summary and plotting scripts can still emit cap-based and equal-time tables for this benchmark, but those views should not be the primary evidence here.
+The earlier generic cap/equal-time tables were weak for this benchmark because the planner-time bands were far apart:
+- `mppi` around `0.06-0.09 ms`
+- `diff_mppi_1` around `0.55-0.65 ms`
+- `diff_mppi_3` around `1.5-1.8 ms`
 
-Reason:
-- `mppi` operates around `0.06-0.09 ms`
-- `diff_mppi_1` operates around `0.55-0.65 ms`
-- `diff_mppi_3` operates around `1.5-1.8 ms`
+That gap is now addressed with the same exact-time search workflow used in the main dynamic-obstacle suite:
 
-Those timing bands are too far apart for the current generic equal-time summaries to be especially meaningful without an exact retuning loop like the one used in the main 2D dynamic-obstacle suite.
+```bash
+python3 scripts/tune_diff_mppi_time_targets.py --preset dynamic_bicycle
+```
 
-For this benchmark, the reviewer-safe interpretation should therefore stay focused on:
-- fixed-budget transfer
-- low-budget success behavior
-- the fact that the controller stack remains functional on richer mobile dynamics
+The current tuned targets are `1.80 ms` and `2.00 ms`.
+At those targets, all planners can be matched directly by choosing different rollout counts:
+- `dynbike_crossing @ 1.80 ms`: `mppi K=14005 @ 1.782 ms`, `diff_mppi_3 K=2155 @ 1.764 ms`
+- `dynbike_slalom @ 1.80 ms`: `mppi K=13982 @ 1.781 ms`, `diff_mppi_3 K=589 @ 1.784 ms`
+- `dynbike_slalom @ 2.00 ms`: `mppi K=15353 @ 1.997 ms`, `diff_mppi_1 K=11408 @ 1.985 ms`
+
+The matched-time result is more modest than the low-budget fixed-`K` story, which is exactly the right thing to report.
+
+Representative rows:
+- `dynbike_slalom @ 1.80 ms`: `mppi` final distance `2.25`, `diff_mppi_3` final distance `2.22`
+- `dynbike_crossing @ 2.00 ms`: `mppi` final distance `2.14`, `diff_mppi_1` final distance `2.13`
+
+So the exact-time view does not reveal a dramatic outside-domain win.
+What it does show is still useful:
+- the hybrid controllers remain competitive after controller time is matched directly
+- they often achieve essentially the same terminal quality with far smaller tuned rollout counts
+- the low-budget fixed-`K` gains are not just an artifact of refusing to retune compute
 
 ## Updated Interpretation
 
@@ -109,7 +129,7 @@ This is stronger than the CartPole-only story because:
 It still does not close the final venue-level gap because:
 - the benchmark is still custom rather than standardized
 - it is not Isaac, MuJoCo locomotion, or a manipulator benchmark
-- there is no exact matched-time tuning loop for this domain yet
+- the current exact-time result is still a medium-fidelity pilot rather than a standardized robotics-domain benchmark
 
 ## Practical Value
 
