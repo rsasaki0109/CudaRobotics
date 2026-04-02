@@ -140,7 +140,12 @@ What is still missing is a cleaner explanation of mechanism, for example:
 - when it should fail
 - whether the gain comes from better sample efficiency, better local stabilization, or better obstacle timing
 
-Even a lightweight analysis section would help.
+A lightweight analysis section now exists in the repo-level follow-up:
+- `benchmark_diff_mppi` can emit per-step trace CSVs with sampled controls, refined controls, and local gradients
+- `scripts/plot_diff_mppi_mechanism.py` produces correction-vs-episode, correction-vs-horizon, and success-vs-`K` figures
+- on `dynamic_slalom @ K=1024`, the correction is strongly front-loaded, with early-horizon correction `0.018 -> 0.025` for Diff-MPPI versus late-horizon correction `0.001`
+
+That partially addresses the empirical-only criticism, because it shows where the extra compute is going. But it is still a lightweight empirical mechanism check, not a deeper theoretical account.
 
 ## What Would Make This ICRA/IROS-Plausible
 
@@ -198,6 +203,10 @@ Examples:
 
 Why this helps:
 - it makes the contribution more than "we tried a variant and it looked better"
+
+Current status:
+- partially done via the new trace-based `dynamic_slalom` analysis
+- still missing broader multi-task / multi-seed mechanism plots and a tighter causal account
 
 ### Tier 3: Nice-To-Have
 

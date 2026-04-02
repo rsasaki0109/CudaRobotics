@@ -163,6 +163,32 @@ This matters because it narrows the interpretation:
 
 > The observed gain is not just "adding gradients." The useful behavior comes from combining MPPI's global stochastic search with a short local refinement stage.
 
+## Mechanism Analysis
+
+The remaining reviewer-style question is whether the hybrid controller is doing something structurally different, or whether it is just another way to spend more compute.
+
+To make that more explicit, the benchmark now supports a trace mode:
+- it records the sampled nominal controls before refinement
+- it records the final controls after refinement
+- it records the local control gradients used by the refinement stage
+- it writes per-episode-step and per-horizon-step traces to CSV
+
+The current mechanism example uses `dynamic_slalom` at `K=1024`, which is the more diagnostic of the two dynamic tasks because vanilla MPPI and the strengthened `feedback_mppi` baseline both remain unsuccessful there while Diff-MPPI succeeds.
+
+The resulting summary is:
+- `mppi`: early-horizon correction `0.000`, late-horizon correction `0.000`
+- `feedback_mppi`: early-horizon correction `0.000`, late-horizon correction `0.000`
+- `diff_mppi_1`: early-horizon correction `0.018`, late-horizon correction `0.001`, mean gradient norm `3.589`, peak first-action correction `0.032`
+- `diff_mppi_3`: early-horizon correction `0.025`, late-horizon correction `0.001`, mean gradient norm `2.699`, peak first-action correction `0.047`
+
+The main qualitative signal is that the correction is strongly front-loaded in the horizon. The early-horizon correction is about `18x` larger than the late-horizon correction for `diff_mppi_1`, and about `25x` larger for `diff_mppi_3`.
+
+That matters because it supports a narrower and more defensible mechanism claim:
+
+> The autodiff stage does not replace the sampled MPPI plan wholesale. It mostly sharpens the near-term actions that are actually executed, which is exactly the regime where a moving-obstacle timing error is most costly.
+
+This is still a lightweight mechanism analysis, not a full theory section. But it does answer one of the easier reviewer objections: the hybrid controller is not merely "more compute in general"; it is using the extra compute to make concentrated local corrections where the control sequence is most sensitive.
+
 ## Why This Helps the Novelty Story
 
 Before this follow-up, the strongest evidence was:
@@ -178,6 +204,7 @@ After this follow-up, the story is stronger because:
 - the advantage also survives direct exact-time tuning, where planner-specific `K` values are chosen to hit shared timing targets within roughly `0.01-0.03 ms`
 - the result is about success, not only smaller terminal distance
 - the gradient-only ablation shows that hybridization, not just local gradient descent, is carrying the effect
+- the new trace figures show that the refinement stage is front-loaded on the early horizon instead of rewriting the whole control sequence
 
 This is still not a broad novelty claim about all differentiable MPPI methods. But it is a more defensible narrow claim for this implementation direction.
 
@@ -197,7 +224,7 @@ The two biggest gaps are now:
 - the current `feedback_mppi` comparison is stronger than the earlier fixed-gain tracker, but still not a full literature-faithful rollout-differentiation / feedback-MPPI baseline
 - only two simple hand-designed 2D dynamic scenarios so far
 
-The gradient-only ablation and strengthened feedback baseline remove weaker alternative explanations, but they still do not close the stronger literature-baseline gap.
+The gradient-only ablation, strengthened feedback baseline, and new trace-based mechanism analysis remove weaker alternative explanations, but they still do not close the stronger literature-baseline gap.
 
 ## Next Step
 
