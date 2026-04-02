@@ -122,6 +122,7 @@ Comparison entrypoint:
 - [`scripts/snapshot_design_experiments.py`](../scripts/snapshot_design_experiments.py)
 - [`scripts/compare_design_snapshots.py`](../scripts/compare_design_snapshots.py)
 - [`scripts/check_design_regressions.py`](../scripts/check_design_regressions.py)
+- [`scripts/render_design_convergence.py`](../scripts/render_design_convergence.py)
 - [`scripts/check_scaffold_design_problem.py`](../scripts/check_scaffold_design_problem.py)
 
 Common evaluation rules:
@@ -143,11 +144,13 @@ Discovery rule:
 - regression policy lives in [`experiments/history/policy.json`](../experiments/history/policy.json)
 - `scripts/check_design_regressions.py` compares the latest two snapshots against that policy
 - `scripts/compare_design_snapshots.py` renders a targeted delta between two snapshots without touching checked-in docs
+- `scripts/render_design_convergence.py` turns repeated snapshot outcomes into soft convergence signals
 - the scaffold checker verifies that new problem stubs still match the current module contract
 
 Current generated state:
 - [`docs/experiments.md`](../docs/experiments.md)
 - [`docs/experiments_history.md`](../docs/experiments_history.md)
+- [`docs/convergence.md`](../docs/convergence.md)
 - [`docs/decisions.md`](../docs/decisions.md)
 - [`docs/interfaces.md`](../docs/interfaces.md)
 - [`experiments/history`](../experiments/history)

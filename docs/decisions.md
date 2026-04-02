@@ -234,3 +234,16 @@ Decision:
 Why:
 - experiment-first should allow exploration, but not silent quality regressions
 - the repo needs an explicit notion of what must not get worse as designs evolve
+
+## D-016: Convergence Must Be Read From History, Not Assumed
+
+Status: accepted
+
+Decision:
+- generate `docs/convergence.md` from design-history snapshots
+- treat repeated quality leadership as a soft signal, not an automatic promotion trigger
+- keep runtime out of convergence calls because it is too volatile
+
+Why:
+- the repo should show where convergence is beginning without pretending that one snapshot proves it
+- this keeps implementation promotion evidence-based while preserving exploration

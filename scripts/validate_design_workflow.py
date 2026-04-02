@@ -18,6 +18,7 @@ if str(ROOT) not in sys.path:
 REQUIRED_DOCS = [
     ROOT / "docs" / "experiments.md",
     ROOT / "docs" / "experiments_history.md",
+    ROOT / "docs" / "convergence.md",
     ROOT / "docs" / "decisions.md",
     ROOT / "docs" / "interfaces.md",
 ]
@@ -277,6 +278,30 @@ def validate_generated_history() -> None:
         )
 
 
+def validate_generated_convergence() -> None:
+    out_dir = ROOT / "build" / "design_docs_validation"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    subprocess.run(
+        [
+            sys.executable,
+            "scripts/render_design_convergence.py",
+            "--output",
+            str((out_dir / "convergence.md").relative_to(ROOT)),
+        ],
+        cwd=ROOT,
+        check=True,
+    )
+    generated = out_dir / "convergence.md"
+    if not generated.exists():
+        raise RuntimeError("render_design_convergence.py did not generate convergence.md in validation output")
+    checked_in = ROOT / "docs" / "convergence.md"
+    if checked_in.read_text() != generated.read_text():
+        raise RuntimeError(
+            "docs/convergence.md is stale. "
+            "Run `python3 scripts/render_design_convergence.py` and commit the refreshed doc."
+        )
+
+
 def validate_snapshot_compare() -> None:
     snapshots = sorted(path for path in HISTORY_DIR.glob("*.json") if path.name != HISTORY_POLICY.name)
     if len(snapshots) < 2:
@@ -313,6 +338,7 @@ def main() -> int:
         validate_variant_module(module_name)
     validate_generated_experiments(modules)
     validate_generated_history()
+    validate_generated_convergence()
     validate_snapshot_compare()
     print("Design workflow validation passed")
     return 0
