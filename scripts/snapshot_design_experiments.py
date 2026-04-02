@@ -28,6 +28,7 @@ LEADER_METRICS = [
     ("Readability", "max"),
     ("Extensibility", "max"),
 ]
+TABLE_TEXT_COLUMNS = {"Variant", "Paradigm", "Source"}
 
 
 def parse_args() -> argparse.Namespace:
@@ -111,13 +112,37 @@ def table_records(problem: dict[str, object]) -> list[dict[str, str]]:
     ]
 
 
+def numeric_headers(problem: dict[str, object]) -> list[str]:
+    headers = list(problem["aggregate_table"]["headers"])
+    return [header for header in headers if header not in TABLE_TEXT_COLUMNS]
+
+
+def parse_metric_value(value: str) -> float:
+    return float(value.replace("<runtime>", "0"))
+
+
+def format_delta(value: float) -> str:
+    magnitude = abs(value)
+    if magnitude < 0.1:
+        return f"{value:+.4f}"
+    return f"{value:+.3f}"
+
+
+def problem_map(snapshot: dict[str, object]) -> dict[str, dict[str, object]]:
+    return {str(problem["slug"]): problem for problem in snapshot["problems"]}
+
+
+def variant_records(problem: dict[str, object]) -> dict[str, dict[str, str]]:
+    return {record["Variant"]: record for record in table_records(problem)}
+
+
 def leader_cell(problem: dict[str, object], metric: str, direction: str) -> str:
     records = table_records(problem)
     if not records or metric not in records[0]:
         return "-"
 
     def score(record: dict[str, str]) -> float:
-        return float(record[metric].replace("<runtime>", "0"))
+        return parse_metric_value(record[metric])
 
     best = records[0]
     for record in records[1:]:
@@ -174,6 +199,84 @@ def problem_history_rows(problem_slug: str, snapshots: list[dict[str, object]]) 
     return title, lines
 
 
+def latest_delta_rows(left_problem: dict[str, object], right_problem: dict[str, object]) -> list[str]:
+    available_headers = set(left_problem["aggregate_table"]["headers"]) & set(right_problem["aggregate_table"]["headers"])
+    present_metrics = [(metric, direction) for metric, direction in LEADER_METRICS if metric in available_headers]
+    lines: list[str] = []
+    lines.append("| Metric | Previous | Current | Changed |")
+    lines.append("|---|---|---|---|")
+    for metric, direction in present_metrics:
+        previous = leader_cell(left_problem, metric, direction)
+        current = leader_cell(right_problem, metric, direction)
+        changed = "yes" if previous != current else "no"
+        lines.append(f"| {metric} | {previous} | {current} | {changed} |")
+    return lines
+
+
+def latest_variant_delta_rows(left_problem: dict[str, object], right_problem: dict[str, object]) -> list[str]:
+    left_records = variant_records(left_problem)
+    right_records = variant_records(right_problem)
+    variant_names = sorted(set(left_records) & set(right_records))
+    metric_headers = [header for header in numeric_headers(right_problem) if header in left_problem["aggregate_table"]["headers"]]
+    lines: list[str] = []
+    lines.append("| Variant | " + " | ".join(f"Δ {header}" for header in metric_headers) + " |")
+    lines.append("|" + "|".join("---" for _ in range(len(metric_headers) + 1)) + "|")
+    for variant_name in variant_names:
+        row = [variant_name]
+        for header in metric_headers:
+            left_value = parse_metric_value(left_records[variant_name][header])
+            right_value = parse_metric_value(right_records[variant_name][header])
+            row.append(format_delta(right_value - left_value))
+        lines.append("| " + " | ".join(row) + " |")
+    return lines
+
+
+def generate_snapshot_delta_lines(left_snapshot: dict[str, object], right_snapshot: dict[str, object]) -> list[str]:
+    lines: list[str] = []
+    lines.append(
+        f"Comparing `{left_snapshot['snapshot_id']}` -> `{right_snapshot['snapshot_id']}`."
+    )
+    lines.append("")
+    lines.append("_Runtime deltas remain machine-dependent; quality and structure metrics are the more stable signals._")
+    lines.append("")
+
+    left_problems = problem_map(left_snapshot)
+    right_problems = problem_map(right_snapshot)
+    problem_slugs = list(dict.fromkeys([*left_problems.keys(), *right_problems.keys()]))
+
+    for problem_slug in problem_slugs:
+        left_problem = left_problems.get(problem_slug)
+        right_problem = right_problems.get(problem_slug)
+        if left_problem is None or right_problem is None:
+            title = str((right_problem or left_problem)["title"])
+            lines.append(f"### {title}")
+            lines.append("")
+            if left_problem is None:
+                lines.append(f"Problem added in `{right_snapshot['snapshot_id']}`.")
+            else:
+                lines.append(f"Problem removed after `{left_snapshot['snapshot_id']}`.")
+            lines.append("")
+            continue
+
+        title = str(right_problem["title"])
+        lines.append(f"### {title}")
+        lines.append("")
+        lines.append(
+            f"Requests: `{left_problem['request_count']} -> {right_problem['request_count']}`"
+        )
+        lines.append("")
+        lines.append("Leader changes:")
+        lines.append("")
+        lines.extend(latest_delta_rows(left_problem, right_problem))
+        lines.append("")
+        lines.append("Variant metric deltas:")
+        lines.append("")
+        lines.extend(latest_variant_delta_rows(left_problem, right_problem))
+        lines.append("")
+
+    return lines
+
+
 def generate_history_markdown(snapshots: list[dict[str, object]]) -> str:
     lines: list[str] = []
     lines.append("# Experiments History")
@@ -191,6 +294,14 @@ def generate_history_markdown(snapshots: list[dict[str, object]]) -> str:
 
     lines.extend(snapshot_summary_rows(snapshots))
     lines.append("")
+
+    lines.append("## Latest Delta")
+    lines.append("")
+    if len(snapshots) < 2:
+        lines.append("Add another snapshot to render inter-snapshot deltas.")
+        lines.append("")
+    else:
+        lines.extend(generate_snapshot_delta_lines(snapshots[-2], snapshots[-1]))
 
     problem_slugs: list[str] = []
     seen: set[str] = set()

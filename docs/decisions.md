@@ -209,3 +209,15 @@ Decision:
 Why:
 - the workflow is only useful if it is cheap enough to run before commits
 - the lower-level scripts should stay individually callable, but local maintenance should not require remembering the full sequence
+
+## D-014: History Needs A Delta View, Not Just Snapshots
+
+Status: accepted
+
+Decision:
+- `docs/experiments_history.md` must render the latest inter-snapshot delta
+- `scripts/compare_design_snapshots.py` should expose the same comparison without rewriting the history doc
+
+Why:
+- a history log is only half-useful if readers still need to diff JSON by hand
+- the repo should show what changed between experiment states, not just that states exist

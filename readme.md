@@ -219,6 +219,12 @@ Create a new history snapshot while running the same repair path:
 python3 scripts/design_doctor.py --snapshot-label local_check
 ```
 
+Render a targeted comparison between the latest two snapshots:
+
+```bash
+python3 scripts/compare_design_snapshots.py
+```
+
 Refresh the checked-in design docs:
 
 ```bash
@@ -281,6 +287,7 @@ The workflow is now module-driven rather than import-driven:
 - `experiments/data/manifest.json` defines which benchmark CSVs are promoted into the lightweight fixture set
 - `scripts/refresh_design_fixtures.py --check-sync` catches drift between checked-in fixtures and available build outputs
 - `scripts/snapshot_design_experiments.py` records aggregate design states into `experiments/history/` and regenerates `docs/experiments_history.md`
+- `scripts/compare_design_snapshots.py` renders the latest or selected snapshot delta without editing checked-in docs
 - `scripts/validate_design_workflow.py` fails if a discovered module is missing from generated docs or if `docs/experiments.md` is stale; the runtime column is normalized during that check because it is machine-dependent
 
 ### Docker
