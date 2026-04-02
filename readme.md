@@ -70,6 +70,23 @@ Recent additions push the repository beyond direct CUDA ports of classic robotic
 | **Ant Colony Optimization for TSP** | |
 | <img src="https://rsasaki0109.github.io/CudaRobotics/aco_tsp.gif" width="400"/> | |
 
+## Research Results Snapshot
+
+Recent research-style additions are summarized on the GitHub Pages gallery:
+
+- https://rsasaki0109.github.io/CudaRobotics/
+
+Concise highlights:
+
+| Area | Current takeaway |
+|---|---|
+| Diff-MPPI, dynamic navigation | Under a matched `1.0 ms` controller budget, `mppi` stays unsuccessful on `dynamic_slalom` at about `14.12` final distance, `feedback_mppi_ref` reduces that to about `11.90`, and `diff_mppi_3` reaches success with about `1.95` final distance. |
+| Diff-MPPI, manipulator pilot | On `arm_static_shelf` with `K=256`, vanilla `mppi` stays at `success=0.00` and `0.23` final distance, while `feedback_mppi_ref` and `feedback_mppi_cov` both reach `success=1.00` at about `0.15`. |
+| Neural SDF navigation | The repo now includes learned 2D SDFs, potential-field planning, and MPPI rollouts on non-circular obstacle layouts, with side-by-side GIF comparisons against circle-based approximations. |
+| MiniIsaacGym RL | The GPU REINFORCE CartPole run currently improves average survival from about `82.6` to `180.4` steps within `160` generations. |
+| CudaPointCloud | The current synthetic-room benchmark reaches up to about `599x` speedup for normal estimation and `492x` for statistical filtering on `2,000` points. |
+| Swarm / neuroevolution | The repo now includes GPU PSO, DE, CMA-ES, ACO, and `4096`-way neuroevolution with GIF-based convergence comparisons. |
+
 ### Diff-MPPI experiment workflow
 
 Fixed rollout budget:
@@ -88,8 +105,7 @@ python3 scripts/summarize_diff_mppi.py --csv build/benchmark_diff_mppi_wall_cloc
 python3 scripts/plot_diff_mppi.py --csv build/benchmark_diff_mppi_wall_clock.csv --out-dir build/plots --time-caps 1.1,1.5,2.0
 ```
 
-The benchmark writes per-episode CSV metrics, including the strengthened nominal-linearization `feedback_mppi` baseline, the release-style current-action `feedback_mppi_ref` baseline, the rollout-sensitivity `feedback_mppi_sens` baseline, the covariance-regression `feedback_mppi_cov` baseline, the heavier fused `feedback_mppi_fused` baseline, the lower-rate-replan `feedback_mppi_hf` baseline, and the `grad_only_3` ablation. The summarizer emits Markdown and LaTeX tables for fixed-budget, cap-based wall-clock, and equal-time target comparisons, and the plotter generates paper-friendly PNG/PDF figures in `build/plots/`, including `diff_mppi_final_distance_vs_time_cap.*` and `diff_mppi_final_distance_vs_equal_time.*`.
-A paper-style interpretation of the current benchmark is collected in `paper/diff_mppi_results.md`, and the current narrowed main-paper draft is in `paper/diff_mppi_submission_draft.md`.
+The benchmark writes per-episode CSV metrics, including the strengthened nominal-linearization `feedback_mppi` baseline, the release-style current-action `feedback_mppi_ref` baseline, the rollout-sensitivity `feedback_mppi_sens` baseline, the covariance-regression `feedback_mppi_cov` baseline, the heavier fused `feedback_mppi_fused` baseline, the lower-rate-replan `feedback_mppi_hf` baseline, and the `grad_only_3` ablation. The summarizer emits Markdown and LaTeX tables for fixed-budget, cap-based wall-clock, and equal-time target comparisons, and the plotter generates PNG/PDF figures in `build/plots/`, including `diff_mppi_final_distance_vs_time_cap.*` and `diff_mppi_final_distance_vs_equal_time.*`. A reader-facing summary now lives in the README section above and on GitHub Pages; detailed local working notes remain under `paper/`.
 
 Exact matched-time tuning:
 
