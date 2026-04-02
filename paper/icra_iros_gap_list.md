@@ -48,6 +48,7 @@ The current line now has real positives:
 - fixed-budget, cap-based, equal-time, and exact-time-tuned comparisons
 - two dynamic scenarios, not just one
 - a strengthened in-repo `feedback_mppi` baseline inside the same harness
+- a closer rollout-sensitivity `feedback_mppi_sens` baseline inside the same harness
 - a `grad_only_3` ablation that removes one weak alternative explanation
 - a narrow claim that is honest and empirically supported
 
@@ -82,15 +83,23 @@ Those claims are too broad relative to the literature above.
 Right now you compare against:
 - vanilla `mppi`
 - strengthened in-repo `feedback_mppi`
+- rollout-sensitivity `feedback_mppi_sens`
 - `grad_only_3`
 
 What is still missing is a literature-faithful sensitivity-aware MPPI baseline, for example:
 - a stronger `Feedback-MPPI`-style local feedback baseline
 - another rollout-differentiation or local linearization baseline
 
+The new `feedback_mppi_sens` comparison is a meaningful improvement over the earlier state of the repo:
+- it derives feedback gains from rollout initial-state sensitivities instead of only from a nominal local linearization
+- on `dynamic_crossing`, it reaches `0.75` success across `K={256,512,1024}` while vanilla MPPI remains at `0.00`
+- on `dynamic_slalom`, it still fails, and it is still weaker than the simpler `feedback_mppi` baseline
+
+So the baseline gap is narrower than before, but not closed.
+
 This is the most dangerous missing experiment because a reviewer can reasonably say:
 
-> The paper shows that hybrid search plus local sensitivity helps over vanilla MPPI and over a stronger in-repo feedback controller, but does not yet show whether the proposed implementation is actually better than existing sensitivity-aware MPPI variants.
+> The paper shows that hybrid search plus local sensitivity helps over vanilla MPPI and over stronger in-repo feedback controllers, but does not yet show whether the proposed implementation is actually better than existing sensitivity-aware MPPI variants.
 
 That is a direct novelty threat, not just a "future work" point.
 
@@ -160,7 +169,7 @@ These are ordered by importance, not by ease.
 1. Strengthen the current direct sensitivity-aware baseline
 
 Minimum acceptable version:
-- upgrade the current nominal-linearization `feedback_mppi` baseline into a closer `Feedback-MPPI`-style comparison inside the same benchmark harness
+- keep the current nominal-linearization `feedback_mppi` and rollout-sensitivity `feedback_mppi_sens` baselines, but tighten the latter into a closer `Feedback-MPPI`-style comparison inside the same benchmark harness
 - compare under fixed-budget and exact matched-time settings
 
 Why this is critical:
@@ -237,7 +246,7 @@ If the goal is a serious `ICRA/IROS full paper`, the minimum package I would tru
 1. Current static benchmark
 2. Current two dynamic tasks
 3. `grad_only_3` ablation
-4. literature-faithful `Feedback-MPPI`-style baseline beyond the current nominal-linearization `feedback_mppi`
+4. literature-faithful `Feedback-MPPI`-style baseline beyond the current nominal-linearization `feedback_mppi` and rollout-sensitivity `feedback_mppi_sens`
 5. exact matched-time tuning on the final evaluation suite
 6. one higher-fidelity experiment outside 2D kinematic navigation
 
@@ -260,7 +269,7 @@ That framing is narrower, but more defensible.
 ## Recommended Next Steps
 
 Immediate next work:
-1. Strengthen the current nominal-linearization `feedback_mppi` baseline in `benchmark_diff_mppi` into a more literature-faithful comparison.
+1. Strengthen the current rollout-sensitivity `feedback_mppi_sens` baseline in `benchmark_diff_mppi` into a more literature-faithful comparison.
 2. Port the benchmark to one higher-fidelity domain.
 3. Carry the new exact matched-time tuning workflow into that stronger evaluation domain.
 

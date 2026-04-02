@@ -65,6 +65,21 @@ This baseline is not a full reproduction of recent `Feedback-MPPI` literature. C
 
 So this closes part of the baseline gap, but not all of it.
 
+### 5. Closer rollout-sensitivity baseline
+
+The benchmark now also includes `feedback_mppi_sens`, which is meant to be closer to recent sensitivity-aware MPPI papers than the Riccati-style in-repo baseline above.
+
+This variant uses:
+- one open-loop MPPI update pass to obtain sampled rollouts and weights
+- a backward pass through each sampled rollout to estimate `dJ / dx_0`
+- a feedback gain built from the weighted covariance between sampled controls and rollout initial-state sensitivities
+- a closed-loop rollout pass around an interpolated nominal-state setpoint
+
+This is closer to the surrounding literature because the feedback gain is derived from rollout sensitivities rather than only from a nominal local linearization.
+
+It is still not a full literature-faithful reproduction.
+In particular, the repository baseline still omits the higher-frequency controller architecture and local setpoint schedule used in recent `Feedback-MPPI` papers.
+
 ## Main Result
 
 The dynamic-obstacle suite with the added feedback baseline is now the strongest novelty-supporting result in the repository so far.
@@ -86,6 +101,17 @@ At `K=1024`:
 - `dynamic_slalom`, `feedback_mppi`: success `0.00`, final distance `11.82`
 
 So a stronger closed-loop MPPI baseline does recover the easier crossing task, but it still does not solve the harder dynamic slalom task.
+
+The newer rollout-sensitivity baseline sharpens that interpretation further.
+
+At fixed rollout budgets on the dynamic pair benchmark:
+- `dynamic_crossing`, `feedback_mppi_sens K=256`: success `0.75`, final distance `2.01`
+- `dynamic_crossing`, `feedback_mppi_sens K=512`: success `0.75`, final distance `1.95`
+- `dynamic_slalom`, `feedback_mppi_sens K=256`: success `0.00`, final distance `12.83`
+- `dynamic_slalom`, `feedback_mppi_sens K=512`: success `0.00`, final distance `12.76`
+
+So the closer sensitivity-aware baseline still improves markedly over vanilla MPPI, especially on `dynamic_crossing`, but it does not explain away the hybrid result.
+It remains weaker than Diff-MPPI on both dynamic tasks, and on `dynamic_slalom` it is still weaker than the simpler nominal-linearization `feedback_mppi` baseline.
 
 The same pattern survived wall-clock matching.
 
@@ -199,6 +225,7 @@ After this follow-up, the story is stronger because:
 - the dynamic suite introduces genuinely time-dependent planning challenges
 - the same win pattern now appears in both a crossing task and a dynamic slalom task
 - a strengthened feedback-oriented baseline now exists inside the same harness
+- a closer rollout-sensitivity feedback baseline now also exists inside the same harness
 - that baseline helps on the easier dynamic crossing case, but still fails on dynamic slalom
 - the advantage remains visible under an equal-time target, not only a loose cap
 - the advantage also survives direct exact-time tuning, where planner-specific `K` values are chosen to hit shared timing targets within roughly `0.01-0.03 ms`
@@ -221,10 +248,10 @@ The stronger current version is:
 ## What Is Still Missing
 
 The two biggest gaps are now:
-- the current `feedback_mppi` comparison is stronger than the earlier fixed-gain tracker, but still not a full literature-faithful rollout-differentiation / feedback-MPPI baseline
+- the current `feedback_mppi` and `feedback_mppi_sens` comparisons are both materially stronger than the earlier fixed-gain tracker, but still not a full literature-faithful rollout-differentiation / feedback-MPPI baseline
 - only two simple hand-designed 2D dynamic scenarios so far
 
-The gradient-only ablation, strengthened feedback baseline, and new trace-based mechanism analysis remove weaker alternative explanations, but they still do not close the stronger literature-baseline gap.
+The gradient-only ablation, the two stronger feedback baselines, and the new trace-based mechanism analysis remove weaker alternative explanations, but they still do not close the stronger literature-baseline gap.
 
 ## Next Step
 
