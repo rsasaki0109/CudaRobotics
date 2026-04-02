@@ -11,9 +11,9 @@ Concrete problem under comparison:
 
 ## Inputs
 
-- `build/benchmark_diff_mppi.csv`
-- `build/benchmark_diff_mppi_uncertain.csv`
-- `build/benchmark_diff_mppi_dynamic_bicycle.csv`
+- `experiments/data/benchmark_diff_mppi.csv`
+- `experiments/data/benchmark_diff_mppi_uncertain.csv`
+- `experiments/data/benchmark_diff_mppi_dynamic_bicycle.csv`
 
 Requests evaluated: `8` dataset/scenario pairs
 
@@ -21,9 +21,9 @@ Requests evaluated: `8` dataset/scenario pairs
 
 | Variant | Paradigm | Avg Regret | Oracle Match | Runtime ms/request | Readability | Extensibility | Source |
 |---|---:|---:|---:|---:|---:|---:|---|
-| functional_weighted | functional | 0.000 | 1.00 | 0.0357 | 54.5 | 30.2 | `experiments/planner_selection/functional_selector.py` |
-| oop_lexicographic | oop | 0.219 | 0.25 | 0.0547 | 49.4 | 41.6 | `experiments/planner_selection/oop_selector.py` |
-| pipeline_staged | pipeline | 0.136 | 0.38 | 0.0209 | 58.3 | 19.4 | `experiments/planner_selection/pipeline_selector.py` |
+| functional_weighted | functional | 0.000 | 1.00 | 0.0367 | 54.5 | 30.2 | `experiments/planner_selection/functional_selector.py` |
+| oop_lexicographic | oop | 0.219 | 0.25 | 0.0558 | 49.4 | 41.6 | `experiments/planner_selection/oop_selector.py` |
+| pipeline_staged | pipeline | 0.136 | 0.38 | 0.0216 | 58.3 | 19.4 | `experiments/planner_selection/pipeline_selector.py` |
 
 Metric notes:
 - `Avg Regret`: utility gap from an external oracle scorer; lower is better
