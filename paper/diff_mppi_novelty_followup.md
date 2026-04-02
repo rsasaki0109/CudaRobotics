@@ -2,9 +2,10 @@
 
 Date: 2026-04-02
 
-This note records four follow-up experiments added after the initial `diff_mppi` results draft:
+This note records five follow-up experiments added after the initial `diff_mppi` results draft:
 - a dynamic-obstacle benchmark suite with two scenarios
 - an equal-time target comparison in addition to the earlier cap-based wall-clock analysis
+- an exact matched-time tuning workflow that searches `K` directly for shared wall-clock targets
 - a strengthened feedback-oriented MPPI baseline
 - a gradient-only ablation to separate local-refinement effects from the hybrid controller
 
@@ -12,6 +13,9 @@ Artifacts used:
 - `build/benchmark_diff_mppi_feedback_dynamic_pair.csv`
 - `build/benchmark_diff_mppi_feedback_dynamic_pair_summary.md`
 - `build/benchmark_diff_mppi_feedback_dynamic_pair_summary.tex`
+- `build/benchmark_diff_mppi_exact_time.csv`
+- `build/benchmark_diff_mppi_exact_time_search.csv`
+- `build/benchmark_diff_mppi_exact_time_summary.md`
 - `build/benchmark_diff_mppi_ablation.csv`
 - `build/benchmark_diff_mppi_ablation_summary.md`
 - `build/benchmark_diff_mppi_ablation_summary.tex`
@@ -32,13 +36,14 @@ The benchmark now includes two dynamic scenarios:
 
 These are still 2D kinematic studies, but together they cover two different interaction patterns: timed crossing and dynamic perturbation of a nontrivial geometric route.
 
-### 2. Equal-time selection
+### 2. Equal-time and exact-time selection
 
 The analysis scripts now support two wall-clock views:
 - cap-based selection: best configuration whose average control time stays below a budget
 - equal-time targets: closest configuration to a target time, planner by planner
+- exact-time tuning: a direct search over integer `K` values to hit the same target time without relying on a pre-sampled rollout grid
 
-The equal-time target view is stricter than the earlier cap-only result because it removes the advantage of simply using much less time than the opponent.
+The equal-time target view is stricter than the earlier cap-only result because it removes the advantage of simply using much less time than the opponent. The exact-time tuning workflow is stricter again because it shrinks the remaining timing gap to the target instead of inheriting the fixed `K` sweep.
 
 ### 3. Gradient-only ablation
 
@@ -100,13 +105,31 @@ The feedback baseline sits between them:
 - `dynamic_crossing` at `1.00 ms`: `feedback_mppi K=2048 @ 0.85 ms`, success `1.00`, final distance `1.84`
 - `dynamic_slalom` at `1.00 ms`: `feedback_mppi K=2048 @ 0.84 ms`, success `0.00`, final distance `11.88`
 
+The new exact-time tuning workflow sharpens that comparison further.
+
+At an exact target of `1.00 ms`, the tuned configurations are:
+- `dynamic_crossing`, `mppi`: `K=7827 @ 0.988 ms`, success `0.00`, final distance `2.98`
+- `dynamic_crossing`, `feedback_mppi`: `K=2154 @ 1.008 ms`, success `1.00`, final distance `1.91`
+- `dynamic_crossing`, best Diff-MPPI: `diff_mppi_3 K=1447 @ 0.990 ms`, success `1.00`, final distance `1.85`
+- `dynamic_slalom`, `mppi`: `K=7790 @ 0.988 ms`, success `0.00`, final distance `14.21`
+- `dynamic_slalom`, `feedback_mppi`: `K=2123 @ 0.987 ms`, success `0.00`, final distance `11.91`
+- `dynamic_slalom`, best Diff-MPPI: `diff_mppi_3 K=453 @ 1.009 ms`, success `1.00`, final distance `1.92`
+
+At `1.50 ms`, the same ordering remains:
+- `dynamic_crossing`, `mppi`: `K=11844 @ 1.484 ms`, final distance `3.05`
+- `dynamic_crossing`, `feedback_mppi`: `K=3546 @ 1.481 ms`, final distance `1.85`
+- `dynamic_crossing`, best Diff-MPPI: `diff_mppi_3 K=5435 @ 1.465 ms`, final distance `1.88`
+- `dynamic_slalom`, `mppi`: `K=11775 @ 1.473 ms`, final distance `14.17`
+- `dynamic_slalom`, `feedback_mppi`: `K=3517 @ 1.483 ms`, final distance `11.78`
+- `dynamic_slalom`, best Diff-MPPI: `diff_mppi_3 K=4176 @ 1.479 ms`, final distance `1.93`
+
 So the dynamic obstacle suite gives a stronger claim than the earlier static-scene benchmark:
 
 > Across two distinct time-varying obstacle scenarios, the lightweight MPPI + autodiff refinement controller reaches successful trajectories where vanilla MPPI remains unsuccessful, even under matched per-step compute budgets.
 
 The more precise current version is:
 
-> Across two distinct time-varying obstacle scenarios, a strengthened feedback-oriented MPPI baseline closes part of the gap to the hybrid controller, but only the hybrid MPPI + autodiff refinement controller remains successful on both tasks under matched per-step compute budgets.
+> Across two distinct time-varying obstacle scenarios, a strengthened feedback-oriented MPPI baseline closes part of the gap to the hybrid controller, but only the hybrid MPPI + autodiff refinement controller remains successful on both tasks under cap-based, equal-time, and exact-time matched per-step compute budgets.
 
 ## Hybrid vs Gradient-Only Ablation
 
@@ -152,6 +175,7 @@ After this follow-up, the story is stronger because:
 - a strengthened feedback-oriented baseline now exists inside the same harness
 - that baseline helps on the easier dynamic crossing case, but still fails on dynamic slalom
 - the advantage remains visible under an equal-time target, not only a loose cap
+- the advantage also survives direct exact-time tuning, where planner-specific `K` values are chosen to hit shared timing targets within roughly `0.01-0.03 ms`
 - the result is about success, not only smaller terminal distance
 - the gradient-only ablation shows that hybridization, not just local gradient descent, is carrying the effect
 
@@ -181,6 +205,6 @@ If we want to keep pushing the novelty argument, the next experiment should be:
 
 1. Strengthen the current nominal-linearization `feedback_mppi` comparison into a more literature-faithful baseline.
 2. Add a harder dynamic scenario with interacting moving agents, not just one scripted obstacle.
-3. Report exact success and final-distance comparisons at one or two fixed equal-time targets only, instead of many configurations.
+3. Keep exact-time tuned success and final-distance comparisons at one or two fixed targets in the main paper, instead of many configurations.
 
 A submission-oriented gap analysis for `ICRA/IROS` is recorded separately in `paper/icra_iros_gap_list.md`.

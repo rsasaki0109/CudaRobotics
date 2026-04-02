@@ -1105,6 +1105,7 @@ int main(int argc, char** argv) {
     string csv_path = "build/benchmark_diff_mppi.csv";
     vector<int> k_values;
     vector<string> scenario_names;
+    vector<string> planner_names;
     int seed_count = -1;
     for (int i = 1; i < argc; i++) {
         string arg = argv[i];
@@ -1113,6 +1114,7 @@ int main(int argc, char** argv) {
         else if (arg == "--k-values" && i + 1 < argc) k_values = parse_int_list(argv[++i]);
         else if (arg == "--seed-count" && i + 1 < argc) seed_count = std::max(1, atoi(argv[++i]));
         else if (arg == "--scenarios" && i + 1 < argc) scenario_names = parse_string_list(argv[++i]);
+        else if (arg == "--planners" && i + 1 < argc) planner_names = parse_string_list(argv[++i]);
     }
 
     ensure_build_dir();
@@ -1152,6 +1154,20 @@ int main(int argc, char** argv) {
     variants.push_back({"grad_only_3", false, false, true, 3, 0.004f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f});
     variants.push_back({"diff_mppi_1", true, false, true, 1, 0.010f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f});
     variants.push_back({"diff_mppi_3", true, false, true, 3, 0.006f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f});
+
+    if (!planner_names.empty()) {
+        vector<PlannerVariant> filtered;
+        for (const auto& wanted : planner_names) {
+            auto it = find_if(variants.begin(), variants.end(),
+                              [&](const PlannerVariant& v) { return v.name == wanted; });
+            if (it == variants.end()) {
+                fprintf(stderr, "Unknown planner: %s\n", wanted.c_str());
+                return 1;
+            }
+            filtered.push_back(*it);
+        }
+        variants.swap(filtered);
+    }
 
     if (k_values.empty()) k_values = quick ? vector<int>{1024, 4096} : vector<int>{1024, 2048, 4096};
     if (seed_count <= 0) seed_count = quick ? 2 : 4;

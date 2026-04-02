@@ -5,7 +5,7 @@ Date: 2026-04-01
 This note turns the current benchmark outputs into a paper-style `Results` section draft for the `diff_mppi` line.
 It is intentionally narrow. The goal is not to oversell "differentiable MPPI" as a new idea, but to state a defensible empirical claim around a lightweight CUDA hybrid controller.
 
-A later dynamic-obstacle suite, equal-time, gradient-only ablation, and strengthened in-repo feedback-baseline follow-up is recorded separately in `paper/diff_mppi_novelty_followup.md`.
+A later dynamic-obstacle suite, exact matched-time tuning, gradient-only ablation, and strengthened in-repo feedback-baseline follow-up is recorded separately in `paper/diff_mppi_novelty_followup.md`.
 
 Artifacts used:
 - `build/benchmark_diff_mppi.csv`
@@ -168,7 +168,7 @@ Suggested captions:
 These points should remain in the base multi-scenario draft unless new experiments remove them:
 - The evaluation is still 2D and kinematic.
 - The dynamic-obstacle evidence lives in a separate follow-up benchmark suite.
-- The equal-time comparison is based on the nearest sampled configuration, not a continuous tuning procedure.
+- Exact matched-time tuning now exists in the dynamic follow-up, but not yet across the full four-task base suite.
 - `cluttered`, `corner_turn`, and `slalom` still end without full success in the current setup.
 - The current feedback-oriented comparison is a strengthened in-repo nominal-linearization baseline, not a full reproduction of the recent literature.
 
@@ -178,5 +178,5 @@ If we want this section to become a stronger paper result, the next experiment s
 
 1. Strengthen the feedback-oriented comparison beyond the current in-repo nominal-linearization baseline.
 2. Keep more than one dynamic-obstacle scenario.
-3. Tighten the equal-time comparison from sampled nearest matches to stricter time-matched tuning.
+3. Extend the exact matched-time tuning workflow beyond the dynamic follow-up into the broader task suite.
 4. Keep fixed-budget, cap-based, and equal-time views, rather than collapsing to only one view.

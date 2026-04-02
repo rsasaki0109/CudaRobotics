@@ -45,7 +45,7 @@ That combination usually struggles at `ICRA/IROS` unless the empirical evidence 
 ## What Is Already Good
 
 The current line now has real positives:
-- fixed-budget, cap-based, and equal-time comparisons
+- fixed-budget, cap-based, equal-time, and exact-time-tuned comparisons
 - two dynamic scenarios, not just one
 - a strengthened in-repo `feedback_mppi` baseline inside the same harness
 - a `grad_only_3` ablation that removes one weak alternative explanation
@@ -112,18 +112,19 @@ It does make it harder to justify a main-track acceptance when nearby papers eva
 
 The current dynamic tasks are good for internal iteration, but they are not yet strong enough as the final evaluation layer.
 
-### 4. The matched-time story is much better, but still not airtight
+### 4. The matched-time story is much better, and now has direct tuning, but is still not complete
 
 The project now has:
 - cap-based comparisons
 - equal-time nearest-match comparisons
+- exact matched-time tuning on the current dynamic two-task suite
 
 That is already much better than most quick research repos.
 
 But a skeptical reviewer can still say:
-- equal-time matching is discrete, not fully optimized
-- the controller families are not tuned under a common search budget
-- the time-matched claim may depend on the sampled `K` grid
+- the exact-time tuning currently searches `K` only, not the full controller design space
+- the exact-time result is currently concentrated on the dynamic two-task suite, not the full benchmark portfolio
+- the time-matched claim is still limited to 2D toy domains
 
 That is fixable, but right now it remains a vulnerability.
 
@@ -166,10 +167,10 @@ Best options:
 Why this is critical:
 - it moves the paper out of "2D toy benchmark only"
 
-3. Tighten time matching
+3. Extend the direct time-tuning protocol
 
 Needed change:
-- replace nearest-grid equal-time matching with a tuning procedure that chooses controller parameters to hit the same compute target more exactly
+- keep the new exact matched-time search in the final experimental package and extend it beyond `K`-only tuning on the current dynamic suite
 
 Why this matters:
 - it makes the compute-quality claim much harder to dismiss
@@ -220,10 +221,10 @@ If the goal is a serious `ICRA/IROS full paper`, the minimum package I would tru
 2. Current two dynamic tasks
 3. `grad_only_3` ablation
 4. literature-faithful `Feedback-MPPI`-style baseline beyond the current nominal-linearization `feedback_mppi`
-5. exact matched-time tuning
+5. exact matched-time tuning on the final evaluation suite
 6. one higher-fidelity experiment outside 2D kinematic navigation
 
-Without items `4-6`, the paper is still too easy to down-score on originality and significance.
+Without items `4` and `6`, and without carrying item `5` through the final evaluation suite, the paper is still too easy to down-score on originality and significance.
 
 ## Fastest Acceptable Paper Framing
 
@@ -243,8 +244,8 @@ That framing is narrower, but more defensible.
 
 Immediate next work:
 1. Strengthen the current nominal-linearization `feedback_mppi` baseline in `benchmark_diff_mppi` into a more literature-faithful comparison.
-2. Replace nearest-match equal-time analysis with exact matched-time tuning.
-3. Port the benchmark to one higher-fidelity domain.
+2. Port the benchmark to one higher-fidelity domain.
+3. Carry the new exact matched-time tuning workflow into that stronger evaluation domain.
 
 If time is limited:
 1. aim for `workshop / late-breaking results / open-source systems demo`

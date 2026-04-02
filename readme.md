@@ -91,6 +91,14 @@ python3 scripts/plot_diff_mppi.py --csv build/benchmark_diff_mppi_wall_clock.csv
 The benchmark writes per-episode CSV metrics, including the strengthened nominal-linearization `feedback_mppi` baseline and the `grad_only_3` ablation. The summarizer emits Markdown and LaTeX tables for fixed-budget, cap-based wall-clock, and equal-time target comparisons, and the plotter generates paper-friendly PNG/PDF figures in `build/plots/`, including `diff_mppi_final_distance_vs_time_cap.*` and `diff_mppi_final_distance_vs_equal_time.*`.
 A paper-style interpretation of the current benchmark is collected in `paper/diff_mppi_results.md`.
 
+Exact matched-time tuning:
+
+```bash
+python3 scripts/tune_diff_mppi_time_targets.py --scenarios dynamic_crossing,dynamic_slalom --planners mppi,feedback_mppi,diff_mppi_1,diff_mppi_3 --time-targets 1.0,1.5 --seed-count 4 --csv-out build/benchmark_diff_mppi_exact_time.csv
+```
+
+This search tunes `K` per planner and scenario to hit shared controller-time targets directly, instead of selecting the nearest value from a fixed sweep. The script writes tuned episode rows to `build/benchmark_diff_mppi_exact_time.csv`, a search trace to `build/benchmark_diff_mppi_exact_time_search.csv`, and a summary to `build/benchmark_diff_mppi_exact_time_summary.md`.
+
 Dynamic-obstacle follow-up:
 
 ```bash
@@ -99,7 +107,7 @@ python3 scripts/summarize_diff_mppi.py --csv build/benchmark_diff_mppi_feedback_
 python3 scripts/plot_diff_mppi.py --csv build/benchmark_diff_mppi_feedback_dynamic_pair.csv --out-dir build/plots_feedback_dynamic_pair --time-caps 1.0,1.5 --time-targets 1.0,1.5
 ```
 
-This follow-up now includes two moving-obstacle tasks, a strengthened nominal-linearization `feedback_mppi` baseline, and the earlier `grad_only_3` ablation. In the current benchmark, `feedback_mppi` recovers `dynamic_crossing` across the tested rollout budgets except the smallest `K=256` case, but still fails `dynamic_slalom`, while Diff-MPPI remains successful on both tasks under fixed-budget and matched-time comparisons. The current write-up is in `paper/diff_mppi_novelty_followup.md`, and the current `ICRA/IROS` submission-gap assessment is in `paper/icra_iros_gap_list.md`.
+This follow-up now includes two moving-obstacle tasks, a strengthened nominal-linearization `feedback_mppi` baseline, the earlier `grad_only_3` ablation, and an exact-time tuning script. In the current benchmark, `feedback_mppi` recovers `dynamic_crossing` across the tested rollout budgets except the smallest `K=256` case, but still fails `dynamic_slalom`, while Diff-MPPI remains successful on both tasks under fixed-budget, cap-based matched-time, and exact-time tuned comparisons. The current write-up is in `paper/diff_mppi_novelty_followup.md`, and the current `ICRA/IROS` submission-gap assessment is in `paper/icra_iros_gap_list.md`.
 
 Hybrid-versus-gradient-only ablation:
 
