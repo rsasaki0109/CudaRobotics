@@ -117,6 +117,7 @@ They share interfaces, not design style.
 Comparison entrypoint:
 - [`scripts/run_design_experiments.py`](../scripts/run_design_experiments.py)
 - [`scripts/refresh_design_docs.py`](../scripts/refresh_design_docs.py)
+- [`scripts/check_scaffold_design_problem.py`](../scripts/check_scaffold_design_problem.py)
 
 Common evaluation rules:
 - same CSV inputs
@@ -130,6 +131,7 @@ Discovery rule:
 - the runner discovers fixture CSVs automatically from `experiments/data/*.csv`
 - the validator checks that every discovered module is represented in generated docs
 - the validator also checks that the checked-in `docs/experiments.md` matches the generated output, while normalizing the volatile runtime column
+- the scaffold checker verifies that new problem stubs still match the current module contract
 
 Current generated state:
 - [`docs/experiments.md`](../docs/experiments.md)
