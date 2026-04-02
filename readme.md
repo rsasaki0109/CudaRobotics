@@ -306,6 +306,7 @@ The workflow is now module-driven rather than import-driven:
 - `scripts/refresh_design_fixtures.py --check-sync` catches drift between checked-in fixtures and available build outputs
 - `scripts/snapshot_design_experiments.py` records aggregate design states into `experiments/history/` and regenerates `docs/experiments_history.md`
 - `experiments/history/policy.json` defines which metrics are allowed to regress, and by how much
+- `experiments/history/actions_policy.json` defines when the process should `hold`, `diversify`, or watch for promotion
 - `scripts/check_design_regressions.py` compares the latest two snapshots against that policy
 - `scripts/compare_design_snapshots.py` renders the latest or selected snapshot delta without editing checked-in docs
 - `scripts/render_design_convergence.py` summarizes which quality signals have started to survive across snapshots

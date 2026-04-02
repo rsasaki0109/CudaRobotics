@@ -260,3 +260,15 @@ Decision:
 Why:
 - observing convergence is not enough if the repo still leaves the next step implicit
 - action labels make the process inspectable without turning it into a rigid promotion pipeline
+
+## D-018: Action Heuristics Must Be Policy, Not Hidden Code
+
+Status: accepted
+
+Decision:
+- store thresholds and canned action advice in `experiments/history/actions_policy.json`
+- keep `scripts/render_design_actions.py` as an interpreter of that policy, not the owner of those numbers
+
+Why:
+- the next-step policy will evolve as the repo learns more about its own search process
+- changing process thresholds should not require rewriting renderer logic
