@@ -35,6 +35,7 @@ Two scenarios are included:
 Compared planners:
 - `mppi`
 - `feedback_mppi_cov`
+- `feedback_mppi_ref`
 - `diff_mppi_1`
 - `diff_mppi_3`
 
@@ -50,36 +51,42 @@ The clearest result is `arm_static_shelf`.
 
 At `K=256`:
 - `mppi`: success `0.00`, final distance `0.23`
-- `diff_mppi_1`: success `0.75`, final distance `0.15`
+- `diff_mppi_1`: success `0.75`, final distance `0.16`
 - `feedback_mppi_cov`: success `1.00`, final distance `0.15`
-- `diff_mppi_3`: success `0.25`, final distance `0.18`
+- `feedback_mppi_ref`: success `1.00`, final distance `0.15`
+- `diff_mppi_3`: success `0.50`, final distance `0.16`
 
 At `K=512`:
-- `mppi`: success `0.00`, final distance `0.22`
-- `diff_mppi_1`: success `1.00`, final distance `0.15`
+- `mppi`: success `0.00`, final distance `0.21`
+- `diff_mppi_1`: success `0.75`, final distance `0.15`
 - `feedback_mppi_cov`: success `1.00`, final distance `0.15`
-- `diff_mppi_3`: success `0.75`, final distance `0.15`
+- `feedback_mppi_ref`: success `1.00`, final distance `0.15`
+- `diff_mppi_3`: success `0.00`, final distance `0.18`
 
 This matters because the benchmark is no longer just "navigation plus CartPole".
-The hybrid controller now has a custom manipulation-domain result where vanilla MPPI remains unsuccessful while the lighter hybrid refinement succeeds on most or all seeds.
+The hybrid controller now has a custom manipulation-domain result where vanilla MPPI remains unsuccessful while both the covariance-feedback and current-action feedback baselines succeed on all four seeds.
+The new point is not that `feedback_mppi_ref` beats everything.
+It is that a closer released-gain proxy also survives in a manipulation-style task, and does so at lower controller time than the heavier covariance baseline.
 
 ### 2. The dynamic manipulator task is improved, but not solved
 
 `arm_dynamic_sweep` is intentionally harder and the current result should not be oversold.
 
 At `K=256`:
-- `mppi`: final distance `0.34`
-- `feedback_mppi_cov`: final distance `0.31`
-- `diff_mppi_1`: final distance `0.30`
-- `diff_mppi_3`: final distance `0.29`
-
-At `K=512`:
-- `mppi`: final distance `0.35`
+- `mppi`: final distance `0.33`
 - `feedback_mppi_cov`: final distance `0.29`
-- `diff_mppi_1`: final distance `0.31`
+- `feedback_mppi_ref`: final distance `0.30`
+- `diff_mppi_1`: final distance `0.30`
 - `diff_mppi_3`: final distance `0.30`
 
-So the moving-obstacle manipulator task currently behaves like the earlier CartPole and dynamic-bicycle pilots:
+At `K=512`:
+- `mppi`: final distance `0.36`
+- `feedback_mppi_cov`: final distance `0.30`
+- `feedback_mppi_ref`: final distance `0.30`
+- `diff_mppi_1`: final distance `0.30`
+- `diff_mppi_3`: final distance `0.30`
+
+So the moving-obstacle manipulator task currently behaves like the earlier dynamic-bicycle pilot:
 - the hybrid and closer feedback baselines reduce terminal error materially
 - none of the planners fully solve the task yet
 
@@ -97,22 +104,25 @@ The current `3.0 ms` spot-check is best treated conservatively.
 It is useful for checking that the manipulator benchmark can be passed through the same exact-time tooling, but it is not as clean as the main dynamic-navigation exact-time suite.
 
 Representative selected rows:
-- `arm_static_shelf`: `mppi K=4096 @ 0.72 ms`, `diff_mppi_1 K=4096 @ 1.71 ms`, `diff_mppi_3 K=681 @ 3.02 ms`
-- `arm_dynamic_sweep`: `mppi K=4096 @ 0.74 ms`, `diff_mppi_1 K=4096 @ 1.77 ms`, `diff_mppi_3 K=128 @ 3.05 ms`
+- `2.0 ms`, `arm_static_shelf`: `mppi K=4096 @ 0.75 ms`, `feedback_mppi_cov K=194 @ 1.96 ms`, `feedback_mppi_ref K=448 @ 2.05 ms`, `diff_mppi_3 K=64 @ 2.90 ms`
+- `2.0 ms`, `arm_dynamic_sweep`: `mppi K=4096 @ 0.76 ms`, `feedback_mppi_cov K=190 @ 1.97 ms`, `feedback_mppi_ref K=432 @ 2.03 ms`, `diff_mppi_1 K=4096 @ 1.76 ms`
+- `3.0 ms`, `arm_static_shelf`: `feedback_mppi_cov K=291 @ 2.96 ms`, success `1.00`, final distance `0.15`
+- `3.0 ms`, `arm_dynamic_sweep`: `feedback_mppi_ref K=1693 @ 3.02 ms`, final distance `0.29`
 
-That means the exact-time story here is not yet the strong reviewer-facing point.
-The cleaner evidence is still the fixed-budget shelf result and the fixed-budget dynamic-sweep quality reduction.
+That means the exact-time story here is now usable, but still secondary.
+The cleaner evidence is still the fixed-budget shelf result, where the new current-action feedback proxy and the covariance baseline both beat vanilla MPPI decisively.
 
 ## Updated Interpretation
 
 The reviewer-safe interpretation is:
 
-> We now have a third outside-domain pilot beyond CartPole and dynamic-bicycle navigation: a custom planar manipulator obstacle-avoidance benchmark. In that manipulation pilot, vanilla MPPI remains unsuccessful on the static shelf task while one-step Diff-MPPI reaches `0.75-1.00` success and the covariance-feedback controller reaches `1.00` success. The moving-obstacle manipulator task is not yet solved, but the hybrid and covariance-feedback variants still reduce terminal error relative to vanilla MPPI.
+> We now have a third outside-domain pilot beyond CartPole and dynamic-bicycle navigation: a custom planar manipulator obstacle-avoidance benchmark. In that manipulation pilot, vanilla MPPI remains unsuccessful on the static shelf task while one-step Diff-MPPI reaches `0.75` success, the covariance-feedback controller reaches `1.00` success, and the newer current-action `feedback_mppi_ref` proxy also reaches `1.00` success. The moving-obstacle manipulator task is not yet solved, but the hybrid and both feedback baselines still reduce terminal error relative to vanilla MPPI.
 
 This is stronger than the earlier outside-domain story because:
 - it is an obstacle-avoidance reaching problem, not only stabilization
 - it is closer to manipulation than CartPole
 - it gives at least one concrete success-rate split in a manipulator-style task
+- it now includes a closer released-gain feedback proxy, not only covariance feedback and hybrid refinement
 
 It still does not close the final venue-level gap because:
 - the model is still a custom planar 2-link arm

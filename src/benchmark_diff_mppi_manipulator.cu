@@ -102,8 +102,10 @@ struct PlannerVariant {
     string name;
     bool use_feedback = false;
     bool use_gradient = false;
+    int feedback_mode = 0;
     int grad_steps = 0;
     float alpha = 0.0f;
+    float sampling_lambda = DEFAULT_LAMBDA;
     float torque_sigma_1 = 0.0f;
     float torque_sigma_2 = 0.0f;
     float feedback_gain_scale = 0.0f;
@@ -688,6 +690,95 @@ __global__ void compute_covariance_feedback_gains_kernel(
     }
 }
 
+__global__ void compute_rollout_initial_gradients_kernel(
+    const float* d_rollout_states,
+    const float* d_perturbed,
+    float* d_rollout_init_grads,
+    ArmParams params,
+    ArmCostParams cp,
+    int n_obs,
+    int n_dyn_obs,
+    int start_step,
+    int K,
+    int T)
+{
+    int k = blockIdx.x * blockDim.x + threadIdx.x;
+    if (k >= K) return;
+
+    const float* states = &d_rollout_states[k * (T + 1) * 4];
+    const float* controls = &d_perturbed[k * T * 2];
+
+    float adj[4];
+    terminal_grad(states[T * 4 + 0], states[T * 4 + 1], states[T * 4 + 2], states[T * 4 + 3], params, cp, adj);
+    for (int t = T - 1; t >= 0; t--) {
+        float q1 = states[t * 4 + 0];
+        float q2 = states[t * 4 + 1];
+        float dq1 = states[t * 4 + 2];
+        float dq2 = states[t * 4 + 3];
+        float tau1 = controls[t * 2 + 0];
+        float tau2 = controls[t * 2 + 1];
+        float J[4][6];
+        float stage_grad_vec[6];
+        float next_adj[4];
+        float tau_world = (start_step + t) * params.dt;
+        arm_jacobian(q1, q2, dq1, dq2, tau1, tau2, params, J);
+        stage_cost_grad(q1, q2, dq1, dq2, tau1, tau2, params, cp, n_obs, n_dyn_obs, tau_world, stage_grad_vec);
+        for (int col = 0; col < 4; col++) {
+            next_adj[col] = stage_grad_vec[col];
+            for (int row = 0; row < 4; row++) next_adj[col] += J[row][col] * adj[row];
+        }
+        for (int i = 0; i < 4; i++) adj[i] = next_adj[i];
+    }
+    for (int i = 0; i < 4; i++) d_rollout_init_grads[k * 4 + i] = adj[i];
+}
+
+__global__ void compute_reference_feedback_gain_kernel(
+    const float* d_nominal,
+    const float* d_perturbed,
+    const float* d_weights,
+    const float* d_rollout_init_grads,
+    float* d_feedback_gains,
+    float lambda,
+    int K,
+    int T)
+{
+    if (blockIdx.x != 0 || threadIdx.x != 0) return;
+
+    const float inv_lambda = 1.0f / fmaxf(1.0e-6f, lambda);
+    float weighted_grad[4] = {};
+    for (int k = 0; k < K; k++) {
+        float w = d_weights[k];
+        for (int j = 0; j < 4; j++) weighted_grad[j] += w * d_rollout_init_grads[k * 4 + j];
+    }
+
+    for (int i = 0; i < T * 8; i++) d_feedback_gains[i] = 0.0f;
+
+    float nominal_tau1 = d_nominal[0];
+    float nominal_tau2 = d_nominal[1];
+    for (int j = 0; j < 4; j++) {
+        float gain_tau1 = 0.0f;
+        float gain_tau2 = 0.0f;
+        for (int k = 0; k < K; k++) {
+            float w = d_weights[k];
+            float centered_grad = d_rollout_init_grads[k * 4 + j] - weighted_grad[j];
+            float delta_tau1 = d_perturbed[k * T * 2 + 0] - nominal_tau1;
+            float delta_tau2 = d_perturbed[k * T * 2 + 1] - nominal_tau2;
+            gain_tau1 += -inv_lambda * w * centered_grad * delta_tau1;
+            gain_tau2 += -inv_lambda * w * centered_grad * delta_tau2;
+        }
+        d_feedback_gains[0 * 4 + j] = gain_tau1;
+        d_feedback_gains[1 * 4 + j] = gain_tau2;
+    }
+}
+
+__global__ void broadcast_first_feedback_gain_kernel(float* d_feedback_gains, int T) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    int total = T * 8;
+    if (idx >= total) return;
+    int base_idx = idx % 8;
+    d_feedback_gains[idx] = d_feedback_gains[base_idx];
+}
+
 __global__ void rollout_feedback_kernel(
     float sq1, float sq2, float sdq1, float sdq2,
     const float* d_nominal,
@@ -814,6 +905,7 @@ public:
         CUDA_CHECK(cudaMalloc(&d_weights_, k_samples_ * sizeof(float)));
         CUDA_CHECK(cudaMalloc(&d_perturbed_, k_samples_ * t_horizon_ * 2 * sizeof(float)));
         CUDA_CHECK(cudaMalloc(&d_rollout_states_, k_samples_ * (t_horizon_ + 1) * 4 * sizeof(float)));
+        CUDA_CHECK(cudaMalloc(&d_rollout_init_grads_, k_samples_ * 4 * sizeof(float)));
         CUDA_CHECK(cudaMalloc(&d_states_, h_states_.size() * sizeof(float)));
         CUDA_CHECK(cudaMalloc(&d_grad_, h_nominal_.size() * sizeof(float)));
         CUDA_CHECK(cudaMalloc(&d_feedback_gains_, t_horizon_ * 8 * sizeof(float)));
@@ -827,6 +919,7 @@ public:
         CUDA_CHECK(cudaFree(d_weights_));
         CUDA_CHECK(cudaFree(d_perturbed_));
         CUDA_CHECK(cudaFree(d_rollout_states_));
+        CUDA_CHECK(cudaFree(d_rollout_init_grads_));
         CUDA_CHECK(cudaFree(d_states_));
         CUDA_CHECK(cudaFree(d_grad_));
         CUDA_CHECK(cudaFree(d_feedback_gains_));
@@ -917,7 +1010,7 @@ private:
             q1_, q2_, dq1_, dq2_, d_nominal_, d_costs_, d_perturbed_, d_rollout_states_, d_rng_,
             scenario_.params, scenario_.cost_params, scenario_.n_obs, scenario_.n_dyn_obs,
             start_step, k_samples_, t_horizon_, variant_.torque_sigma_1, variant_.torque_sigma_2);
-        compute_weights_kernel<<<1, 1>>>(d_costs_, d_weights_, k_samples_, DEFAULT_LAMBDA);
+        compute_weights_kernel<<<1, 1>>>(d_costs_, d_weights_, k_samples_, variant_.sampling_lambda);
         update_controls_kernel<<<(t_horizon_ + block - 1) / block, block>>>(
             d_nominal_, d_perturbed_, d_weights_, k_samples_, t_horizon_);
 
@@ -926,7 +1019,7 @@ private:
                 q1_, q2_, dq1_, dq2_, d_nominal_, d_costs_, d_perturbed_, d_rollout_states_, d_rng_,
                 scenario_.params, scenario_.cost_params, scenario_.n_obs, scenario_.n_dyn_obs,
                 start_step, k_samples_, t_horizon_, variant_.torque_sigma_1, variant_.torque_sigma_2);
-            compute_weights_kernel<<<1, 1>>>(d_costs_, d_weights_, k_samples_, DEFAULT_LAMBDA);
+            compute_weights_kernel<<<1, 1>>>(d_costs_, d_weights_, k_samples_, variant_.sampling_lambda);
             update_controls_kernel<<<(t_horizon_ + block - 1) / block, block>>>(
                 d_nominal_, d_perturbed_, d_weights_, k_samples_, t_horizon_);
 
@@ -935,17 +1028,29 @@ private:
                 q1_, q2_, dq1_, dq2_, d_nominal_, d_costs_, d_perturbed_, d_rollout_states_, d_rng_,
                 scenario_.params, scenario_.cost_params, scenario_.n_obs, scenario_.n_dyn_obs,
                 start_step, k_samples_, t_horizon_, variant_.feedback_noise_torque_1, variant_.feedback_noise_torque_2);
-            compute_weights_kernel<<<1, 1>>>(d_costs_, d_weights_, k_samples_, DEFAULT_LAMBDA);
-            compute_covariance_feedback_gains_kernel<<<1, 1>>>(
-                d_nominal_, d_states_, d_perturbed_, d_rollout_states_, d_weights_, d_feedback_gains_,
-                k_samples_, t_horizon_, variant_.feedback_cov_regularization);
+            compute_weights_kernel<<<1, 1>>>(d_costs_, d_weights_, k_samples_, variant_.sampling_lambda);
+            if (variant_.feedback_mode == 2) {
+                compute_rollout_initial_gradients_kernel<<<(k_samples_ + block - 1) / block, block>>>(
+                    d_rollout_states_, d_perturbed_, d_rollout_init_grads_,
+                    scenario_.params, scenario_.cost_params, scenario_.n_obs, scenario_.n_dyn_obs,
+                    start_step, k_samples_, t_horizon_);
+                compute_reference_feedback_gain_kernel<<<1, 1>>>(
+                    d_nominal_, d_perturbed_, d_weights_, d_rollout_init_grads_, d_feedback_gains_,
+                    variant_.sampling_lambda, k_samples_, t_horizon_);
+                broadcast_first_feedback_gain_kernel<<<(t_horizon_ * 8 + block - 1) / block, block>>>(
+                    d_feedback_gains_, t_horizon_);
+            } else {
+                compute_covariance_feedback_gains_kernel<<<1, 1>>>(
+                    d_nominal_, d_states_, d_perturbed_, d_rollout_states_, d_weights_, d_feedback_gains_,
+                    k_samples_, t_horizon_, variant_.feedback_cov_regularization);
+            }
             rollout_feedback_kernel<<<(k_samples_ + block - 1) / block, block>>>(
                 q1_, q2_, dq1_, dq2_, d_nominal_, d_states_, d_feedback_gains_,
                 d_costs_, d_perturbed_, d_rng_, scenario_.params, scenario_.cost_params,
                 scenario_.n_obs, scenario_.n_dyn_obs, start_step, k_samples_, t_horizon_,
                 variant_.feedback_gain_scale, variant_.feedback_noise_torque_1, variant_.feedback_noise_torque_2,
                 variant_.feedback_q_gain, variant_.feedback_dq_gain, variant_.feedback_setpoint_blend);
-            compute_weights_kernel<<<1, 1>>>(d_costs_, d_weights_, k_samples_, DEFAULT_LAMBDA);
+            compute_weights_kernel<<<1, 1>>>(d_costs_, d_weights_, k_samples_, variant_.sampling_lambda);
             update_controls_kernel<<<(t_horizon_ + block - 1) / block, block>>>(
                 d_nominal_, d_perturbed_, d_weights_, k_samples_, t_horizon_);
         }
@@ -1006,6 +1111,7 @@ private:
     float* d_weights_ = nullptr;
     float* d_perturbed_ = nullptr;
     float* d_rollout_states_ = nullptr;
+    float* d_rollout_init_grads_ = nullptr;
     float* d_states_ = nullptr;
     float* d_grad_ = nullptr;
     float* d_feedback_gains_ = nullptr;
@@ -1203,6 +1309,7 @@ int main(int argc, char** argv) {
         PlannerVariant v;
         v.name = "feedback_mppi_cov";
         v.use_feedback = true;
+        v.feedback_mode = 1;
         v.torque_sigma_1 = 1.05f;
         v.torque_sigma_2 = 1.05f;
         v.feedback_gain_scale = 0.70f;
@@ -1212,6 +1319,21 @@ int main(int argc, char** argv) {
         v.feedback_dq_gain = 0.22f;
         v.feedback_setpoint_blend = 0.20f;
         v.feedback_cov_regularization = 0.25f;
+        variants.push_back(v);
+    }
+    {
+        PlannerVariant v;
+        v.name = "feedback_mppi_ref";
+        v.use_feedback = true;
+        v.feedback_mode = 2;
+        v.torque_sigma_1 = 1.05f;
+        v.torque_sigma_2 = 1.05f;
+        v.feedback_gain_scale = 1.00f;
+        v.feedback_noise_torque_1 = 0.80f;
+        v.feedback_noise_torque_2 = 0.80f;
+        v.feedback_q_gain = 0.0f;
+        v.feedback_dq_gain = 0.0f;
+        v.feedback_setpoint_blend = 0.0f;
         variants.push_back(v);
     }
     {
