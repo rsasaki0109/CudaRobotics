@@ -292,3 +292,15 @@ Decision:
 Why:
 - adding a new concrete problem should not require fabricating historical snapshots
 - this keeps the gate strict for mature problems without blocking new search spaces from entering the workflow
+
+## D-020: Shared Helper Extraction Comes Before Variant Promotion
+
+Status: accepted
+
+Decision:
+- when a `promotion_watch` problem shows stable quality leadership, first extract repeated helper logic into `experiments/support.py`
+- keep policy logic and ranking rules inside the variants unless at least two live variants genuinely share them
+
+Why:
+- this is the smallest safe move from convergence evidence to code change
+- it reduces duplication without collapsing the search space into one implementation

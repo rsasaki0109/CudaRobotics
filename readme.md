@@ -312,6 +312,7 @@ The workflow is now module-driven rather than import-driven:
 - `scripts/compare_design_snapshots.py` renders the latest or selected snapshot delta without editing checked-in docs
 - `scripts/render_design_convergence.py` summarizes which quality signals have started to survive across snapshots
 - `scripts/render_design_actions.py` turns those survival signals into explicit next-step advice
+- repeated helper extraction happens in `experiments/support.py` before any implementation is considered for promotion
 - `scripts/validate_design_workflow.py` fails if a discovered module is missing from generated docs or if `docs/experiments.md` is stale; the runtime column is normalized during that check because it is machine-dependent
 
 ### Docker

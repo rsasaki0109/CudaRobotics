@@ -94,6 +94,25 @@ def normalize(values: Sequence[float]) -> list[float]:
     return [(value - low) / (high - low) for value in values]
 
 
+def rows_for_dataset_scenario(
+    rows: Sequence[AggregateBenchmarkRow],
+    dataset: str,
+    scenario: str,
+) -> list[AggregateBenchmarkRow]:
+    return [row for row in rows if row.dataset == dataset and row.scenario == scenario]
+
+
+def feasible_rows(
+    rows: Sequence[AggregateBenchmarkRow],
+    time_budget_ms: float,
+) -> list[AggregateBenchmarkRow]:
+    return [row for row in rows if row.avg_control_ms <= time_budget_ms + 1.0e-9]
+
+
+def fastest_row(rows: Sequence[AggregateBenchmarkRow]) -> AggregateBenchmarkRow:
+    return min(rows, key=lambda row: (row.avg_control_ms, row.final_distance, row.k_samples, row.planner))
+
+
 def utility_map(candidates: Sequence[AggregateBenchmarkRow]) -> dict[tuple[str, int], float]:
     final_distance_norm = normalize([row.final_distance for row in candidates])
     cumulative_cost_norm = normalize([row.cumulative_cost for row in candidates])
