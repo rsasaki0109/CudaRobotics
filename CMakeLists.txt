@@ -152,6 +152,7 @@ target_link_libraries(comparison_diff_mppi ${OpenCV_LIBS})
 
 add_executable(benchmark_diff_mppi src/benchmark_diff_mppi.cu)
 add_executable(benchmark_diff_mppi_cartpole src/benchmark_diff_mppi_cartpole.cu)
+add_executable(benchmark_diff_mppi_dynamic_bicycle src/benchmark_diff_mppi_dynamic_bicycle.cu)
 
 add_executable(neural_sdf src/neural_sdf.cu)
 target_link_libraries(neural_sdf ${OpenCV_LIBS})

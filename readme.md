@@ -46,7 +46,7 @@ Recent additions push the repository beyond direct CUDA ports of classic robotic
 | Project | Binaries | Highlights |
 |---|---|---|
 | Autodiff + GPU MLP foundation | `test_autodiff`, `test_gpu_mlp` | Dual-number forward-mode autodiff and a compact GPU MLP training/inference engine used as the base for later research-style experiments. |
-| Differentiable MPPI | `diff_mppi`, `comparison_diff_mppi`, `benchmark_diff_mppi`, `benchmark_diff_mppi_cartpole` | Extends MPPI with a dual-number backward pass, side-by-side comparisons, dynamic-obstacle suites, both nominal-linearization and rollout-sensitivity feedback baselines, a `grad_only_3` ablation, a trace-based mechanism analysis, and a pilot CartPole benchmark outside the 2D navigation domain. |
+| Differentiable MPPI | `diff_mppi`, `comparison_diff_mppi`, `benchmark_diff_mppi`, `benchmark_diff_mppi_cartpole`, `benchmark_diff_mppi_dynamic_bicycle` | Extends MPPI with a dual-number backward pass, side-by-side comparisons, dynamic-obstacle suites, both nominal-linearization and rollout-sensitivity feedback baselines, a `grad_only_3` ablation, a trace-based mechanism analysis, a pilot CartPole benchmark, and a higher-order dynamic-bicycle mobile-navigation follow-up outside the original 2D kinematic domain. |
 | Neural SDF Navigation | `neural_sdf`, `sdf_potential_field`, `sdf_mppi`, `comparison_sdf_nav` | Learns 2D signed distance fields with a GPU MLP, then uses them for potential-field planning and MPPI on non-circular obstacle layouts. |
 | Neuroevolution for Cart-Pole | `neuroevo`, `comparison_neuroevo` | Evolves 4096 neural policies in parallel on GPU and compares them against a CPU baseline with side-by-side learning curves. |
 | MiniIsaacGym | `mini_isaac`, `mini_isaac_rl` | Runs thousands of CartPole environments in parallel on GPU and trains a compact policy with GPU-side REINFORCE updates. |
@@ -138,6 +138,16 @@ python3 scripts/plot_diff_mppi.py --csv build/benchmark_diff_mppi_cartpole.csv -
 
 This pilot benchmark reuses the repository's nonlinear CartPole dynamics to test Diff-MPPI outside the 2D kinematic navigation setting. The current result is mixed by design rather than oversold: on `cartpole_recover`, `diff_mppi_3` improves over vanilla MPPI at `K=256` and `K=2048`, while on `cartpole_large_angle` the best Diff-MPPI variant slightly lowers terminal stabilization error at `K=512` and `K=1024` but none of the planners fully solve the task. This partially addresses the "2D-only" reviewer concern, but it is still a pilot underactuated-dynamics benchmark rather than a full high-fidelity robotics evaluation. The current write-up is in `paper/diff_mppi_cartpole_followup.md`.
 
+Dynamic-bicycle mobile-navigation follow-up:
+
+```bash
+./bin/benchmark_diff_mppi_dynamic_bicycle --csv build/benchmark_diff_mppi_dynamic_bicycle.csv
+python3 scripts/summarize_diff_mppi.py --csv build/benchmark_diff_mppi_dynamic_bicycle.csv --markdown-out build/benchmark_diff_mppi_dynamic_bicycle_summary.md --latex-out build/benchmark_diff_mppi_dynamic_bicycle_summary.tex --time-caps 0.1,0.7,1.8 --time-targets 0.1,0.7,1.8
+python3 scripts/plot_diff_mppi.py --csv build/benchmark_diff_mppi_dynamic_bicycle.csv --out-dir build/plots_dynamic_bicycle --time-caps 0.1,0.7,1.8 --time-targets 0.1,0.7,1.8
+```
+
+This follow-up adds a higher-order mobile-navigation benchmark with steering lag, drag, static obstacles, and moving obstacles. The default sweep focuses on the low-budget regime `K={32,64,128,256}`, where transfer is most informative. The current result is intentionally narrow: `diff_mppi_3` improves the `dynbike_crossing` task at `K=32` and `K=64`, and on `dynbike_slalom` it lifts success from `0.75` to `1.00` at `K=32` while lowering final distance from `12.60` to `2.24`. The same benchmark also shows that deeper refinement is tuning-sensitive on higher-order dynamics, so this should be read as a stronger mobile-dynamics pilot rather than as a closed high-fidelity evaluation gap. The current write-up is in `paper/diff_mppi_dynamic_bicycle_followup.md`.
+
 ### Point-cloud benchmark snapshot
 
 `bin/benchmark_pointcloud` generates a synthetic room cloud and compares CPU vs GPU implementations of voxel-grid filtering, statistical outlier removal, normal estimation, RANSAC plane fitting, and GICP registration.
@@ -216,7 +226,7 @@ Combines particle filter (for robot pose) with per-particle EKF (for landmark po
 | Potential Field | `potential_field` | Grid-parallel potential computation (attractive + repulsive) |
 | **3D Potential Field** | `potential_field_3d` | **3D grid-parallel potential (216K+ cells, drone/UAV)** |
 | MPPI | `mppi` | 4096-sample path-integral control on GPU |
-| Differentiable MPPI | `diff_mppi`, `comparison_diff_mppi`, `benchmark_diff_mppi` | MPPI sampling update + autodiff control-gradient refinement + multi-scenario CSV benchmarking under fixed sample and wall-clock caps |
+| Differentiable MPPI | `diff_mppi`, `comparison_diff_mppi`, `benchmark_diff_mppi`, `benchmark_diff_mppi_cartpole`, `benchmark_diff_mppi_dynamic_bicycle` | MPPI sampling update + autodiff control-gradient refinement + multi-scenario CSV benchmarking under fixed sample and wall-clock caps, plus CartPole and dynamic-bicycle follow-up pilots outside the base kinematic suite |
 | Neural SDF Navigation | `neural_sdf`, `sdf_potential_field`, `sdf_mppi`, `comparison_sdf_nav` | Learned implicit obstacle fields for heatmap visualization, potential fields, and MPPI |
 | PRM | `prm_cuda` | Parallel collision check + k-NN + edge collision |
 | Voronoi Road Map | `voronoi_road_map` | Jump Flooding Algorithm for parallel Voronoi diagram |

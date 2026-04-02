@@ -39,6 +39,8 @@ SCENARIO_TITLES = {
     "corner_turn": "Corner Turn",
     "dynamic_crossing": "Dynamic Crossing",
     "dynamic_slalom": "Dynamic Slalom",
+    "dynbike_crossing": "Dynamic Bicycle Crossing",
+    "dynbike_slalom": "Dynamic Bicycle Slalom",
     "narrow_passage": "Narrow Passage",
     "slalom": "Slalom",
 }
