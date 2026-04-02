@@ -47,6 +47,7 @@ That combination usually struggles at `ICRA/IROS` unless the empirical evidence 
 The current line now has real positives:
 - fixed-budget, cap-based, equal-time, and exact-time-tuned comparisons
 - two dynamic scenarios, not just one
+- an uncertainty follow-up with nominal-vs-actual obstacle mismatch on the dynamic pair
 - a strengthened in-repo `feedback_mppi` baseline inside the same harness
 - a closer rollout-sensitivity `feedback_mppi_sens` baseline inside the same harness
 - a `grad_only_3` ablation that removes one weak alternative explanation
@@ -220,6 +221,11 @@ Examples:
 Why this helps:
 - `C2U-MPPI` and related work already push toward uncertain dynamic settings
 - it raises the realism of the benchmark substantially
+
+Current status:
+- partially addressed by the new `uncertain_crossing` and `uncertain_slalom` follow-up
+- that follow-up uses seed-dependent obstacle time-offset, speed-scale, and lateral-offset mismatch while the planner still optimizes against the nominal obstacle motion
+- it is still model mismatch, not yet observation noise, delayed sensing, or probabilistic prediction
 
 5. Add one mechanism analysis
 
