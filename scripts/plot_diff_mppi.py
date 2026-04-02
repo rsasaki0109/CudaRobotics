@@ -34,6 +34,8 @@ PLANNER_STYLES = {
 
 PLOT_ORDER = ["mppi", "feedback_mppi", "feedback_mppi_sens", "feedback_mppi_cov", "grad_only_3", "diff_mppi_1", "diff_mppi_3"]
 SCENARIO_TITLES = {
+    "arm_dynamic_sweep": "Planar Arm Dynamic Sweep",
+    "arm_static_shelf": "Planar Arm Shelf Reach",
     "cartpole_large_angle": "CartPole Large-Angle Recovery",
     "cartpole_recover": "CartPole Recovery",
     "cluttered": "Cluttered Field",
