@@ -247,3 +247,16 @@ Decision:
 Why:
 - the repo should show where convergence is beginning without pretending that one snapshot proves it
 - this keeps implementation promotion evidence-based while preserving exploration
+
+## D-017: Convergence Must Lead To A Visible Next Move
+
+Status: accepted
+
+Decision:
+- generate `docs/next_actions.md` from snapshot history and convergence signals
+- express process moves as `diversify`, `hold`, `promotion_watch`, or `promote_shared_helpers`
+- keep the output advisory; it should guide the next search step, not collapse the search space automatically
+
+Why:
+- observing convergence is not enough if the repo still leaves the next step implicit
+- action labels make the process inspectable without turning it into a rigid promotion pipeline

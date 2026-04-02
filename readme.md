@@ -237,6 +237,12 @@ Render convergence signals from the snapshot history:
 python3 scripts/render_design_convergence.py
 ```
 
+Render the next suggested process moves from those convergence signals:
+
+```bash
+python3 scripts/render_design_actions.py
+```
+
 Refresh the checked-in design docs:
 
 ```bash
@@ -303,6 +309,7 @@ The workflow is now module-driven rather than import-driven:
 - `scripts/check_design_regressions.py` compares the latest two snapshots against that policy
 - `scripts/compare_design_snapshots.py` renders the latest or selected snapshot delta without editing checked-in docs
 - `scripts/render_design_convergence.py` summarizes which quality signals have started to survive across snapshots
+- `scripts/render_design_actions.py` turns those survival signals into explicit next-step advice
 - `scripts/validate_design_workflow.py` fails if a discovered module is missing from generated docs or if `docs/experiments.md` is stale; the runtime column is normalized during that check because it is machine-dependent
 
 ### Docker
