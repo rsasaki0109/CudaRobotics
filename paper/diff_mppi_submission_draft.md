@@ -1,0 +1,333 @@
+# Diff-MPPI Main-Paper Draft
+
+Date: 2026-04-03
+
+This document is a submission-oriented draft for the strongest paper the current repository can support.
+It is intentionally narrower than the repository itself.
+
+The goal is not to describe every benchmark or every baseline variant.
+The goal is to produce one paper argument that a reviewer can follow in a short read.
+
+## Working Title
+
+Candidate title:
+
+> Diff-MPPI: A Lightweight Hybrid MPPI Controller with Local Autodiff Refinement Under Matched Compute Budgets
+
+Safer alternative:
+
+> A Lightweight Hybrid MPPI Controller with Local Autodiff Refinement Under Matched Compute Budgets
+
+The safer title is better if we want to reduce novelty pushback.
+
+## One-Sentence Claim
+
+The entire paper should revolve around this sentence:
+
+> A minimal hybrid controller that augments vanilla MPPI with a short autodiff refinement stage improves trajectory quality under matched per-step compute budgets beyond strong non-hybrid MPPI feedback baselines, especially on hard dynamic-obstacle tasks.
+
+Everything that does not help this claim should move to appendix or be removed.
+
+## What Goes In Main Text
+
+Main text should contain only four empirical blocks:
+
+1. Base dynamic suite
+   - `dynamic_crossing`
+   - `dynamic_slalom`
+
+2. Exact-time evaluation
+   - same two tasks
+   - same matched-time protocol
+
+3. Mechanism analysis
+   - one figure from the trace workflow
+   - show front-loaded correction and why gradient-only is insufficient
+
+4. One stronger outside-domain benchmark
+   - use the planar manipulator pilot
+   - focus on `arm_static_shelf`
+   - mention `arm_dynamic_sweep` as a harder quality-only follow-up
+
+Everything else should move to appendix:
+- old static 2D four-task suite
+- CartPole pilot
+- dynamic-bicycle pilot
+- uncertainty follow-up
+- all secondary baseline variants that do not make the closest comparison sharper
+
+## What Should Stay In The Baseline Table
+
+Do not show every in-repo proxy in the main paper.
+That reads like exploration, not a final claim.
+
+Main table should keep only:
+- `mppi`
+- `feedback_mppi_ref`
+- `feedback_mppi_cov`
+- `diff_mppi_3`
+
+Optional fifth row if space permits:
+- `feedback_mppi_fused`
+
+Do not put these in the main table:
+- `feedback_mppi_release`
+- `feedback_mppi_hf`
+- `feedback_mppi_sens`
+- `grad_only_3`
+
+Those are useful rebuttal or appendix baselines, but they dilute the paper story.
+
+## Why These Four Rows
+
+`mppi` is the default baseline.
+
+`feedback_mppi_ref` is the closest released-gain proxy currently in the repo.
+It is the right answer to "what if a reviewer asks for a Feedback-MPPI-style comparison?"
+
+`feedback_mppi_cov` is the strongest lighter non-hybrid feedback baseline in the outside-domain manipulator pilot and still competitive in dynamic navigation.
+
+`diff_mppi_3` is the clearest final hybrid method.
+`diff_mppi_1` is useful for appendix ablation, not the main story.
+
+## Abstract Draft
+
+Sampling-based controllers such as MPPI remain attractive for nonlinear obstacle-avoidance control, but their solution quality can degrade under tight rollout budgets. We study a lightweight hybrid controller that first performs a standard MPPI sampling update and then applies a short local autodiff refinement to the control sequence. The resulting controller is intentionally minimal: it does not differentiate through the full sampling process and it preserves the original MPPI update as the dominant planning step. We evaluate the method against vanilla MPPI and stronger non-hybrid feedback MPPI baselines under fixed rollout budgets and exact matched-time controller budgets. On two dynamic-obstacle navigation tasks, the hybrid controller remains successful under matched per-step compute budgets where vanilla MPPI remains unsuccessful, while strong non-hybrid feedback baselines reduce but do not close the gap on the harder task. We further evaluate the method on a planar manipulator obstacle-avoidance pilot, where a current-action feedback baseline and a covariance-feedback baseline both outperform vanilla MPPI on a static shelf-reaching task. These results support a narrow empirical claim: a short autodiff refinement stage can improve the compute-quality tradeoff of MPPI beyond strong non-hybrid feedback variants, particularly on hard dynamic-obstacle tasks.
+
+## Introduction Draft
+
+### Problem framing
+
+MPPI is widely used because it handles nonlinear dynamics and nonconvex costs with a simple rollout-based update.
+However, under limited rollout budgets, vanilla MPPI can produce trajectories that are qualitatively close to useful behavior without reaching a successful control sequence.
+
+This is the regime we target.
+We do not claim to replace MPPI.
+We study whether a very short local refinement stage can improve the control sequence after the MPPI update without discarding the basic MPPI controller structure.
+
+### Positioning
+
+The paper should not claim:
+- "differentiable MPPI is new"
+- "gradient information in sampling-based control is new"
+- "dynamic-obstacle MPPI is new"
+
+The paper should claim:
+
+> a minimal CUDA hybrid controller, built on top of a plain MPPI update and a short local autodiff refinement, improves trajectory quality under matched compute budgets beyond strong non-hybrid feedback MPPI baselines on hard dynamic-obstacle tasks.
+
+### Contributions
+
+Use only three contributions in the paper:
+
+1. A minimal hybrid MPPI controller with a short local autodiff refinement stage that preserves the standard MPPI sampling update.
+2. A matched-time evaluation protocol that compares the hybrid controller against vanilla MPPI and strong non-hybrid feedback MPPI baselines under shared per-step controller budgets.
+3. Evidence across dynamic-obstacle navigation and a planar manipulator obstacle-avoidance pilot that the hybrid controller improves the compute-quality tradeoff, while clarifying the limits of closer non-hybrid feedback baselines.
+
+## Method Draft
+
+### Controller structure
+
+Describe the method in exactly three steps:
+
+1. Sample rollouts around the current nominal control sequence and perform the standard MPPI weighted update.
+2. Roll out the updated nominal sequence and differentiate the trajectory cost with respect to the nominal controls using a lightweight backward pass.
+3. Apply a small number of local gradient steps to the control sequence before execution.
+
+Important wording:
+- say "local refinement"
+- say "short refinement stage"
+- say "post-MPPI refinement"
+- do not say "end-to-end differentiable MPPI layer"
+
+### What makes it lightweight
+
+Be explicit:
+- the MPPI update is unchanged
+- the refinement uses only a few gradient steps
+- the backward pass is local to the post-update nominal sequence
+- the method is compared under exact matched-time budgets
+
+### Baseline language
+
+State clearly that the repo includes multiple in-house feedback proxies, but the main paper keeps only the closest and strongest non-hybrid ones.
+This reads as deliberate curation instead of uncontrolled benchmark growth.
+
+## Experimental Section Draft
+
+### Main suite
+
+Main suite should be:
+- `dynamic_crossing`
+- `dynamic_slalom`
+
+Main planners:
+- `mppi`
+- `feedback_mppi_ref`
+- `feedback_mppi_cov`
+- `diff_mppi_3`
+
+Optional appendix planners:
+- `feedback_mppi_fused`
+- `feedback_mppi_hf`
+- `feedback_mppi_release`
+- `feedback_mppi_sens`
+- `grad_only_3`
+- `diff_mppi_1`
+
+### Main result table
+
+The main table should have two blocks:
+
+Block A: fixed-budget, `K in {256, 512, 1024}`
+- success
+- final distance
+- average control ms
+
+Block B: exact-time, targets `{1.0, 1.5, 2.0} ms`
+- success
+- final distance
+- matched `K`
+- measured control ms
+
+### Main narrative
+
+The main narrative should be:
+
+1. Vanilla MPPI fails on both dynamic tasks at low and medium budgets.
+2. `feedback_mppi_ref` recovers the easier `dynamic_crossing` task under both fixed-budget and exact-time tuning.
+3. Stronger non-hybrid feedback baselines reduce terminal error further, but still do not solve `dynamic_slalom`.
+4. `diff_mppi_3` remains the only controller family that consistently succeeds on both tasks.
+
+That sequence is easy for reviewers to follow.
+
+## Key Numbers To Use
+
+These are the cleanest current numbers for the paper story.
+
+### Dynamic navigation, fixed budget
+
+From the current dynamic follow-up and gap-closure runs:
+- `dynamic_crossing`, `mppi K=256`: success `0.00`, final distance about `3.04`
+- `dynamic_crossing`, `feedback_mppi_ref K=256`: success `1.00`, final distance about `1.90`
+- `dynamic_crossing`, `feedback_mppi_release K=256`: success `1.00`, final distance about `1.86`
+- `dynamic_crossing`, `feedback_mppi_fused K=256`: success `1.00`, final distance about `1.87`
+- `dynamic_crossing`, `diff_mppi_3 K=256`: success `1.00`, final distance about `1.91`
+
+- `dynamic_slalom`, `mppi K=256`: success `0.00`, final distance about `14.33`
+- `dynamic_slalom`, `feedback_mppi_ref K=256`: success `0.00`, final distance about `11.87`
+- `dynamic_slalom`, `feedback_mppi_cov K=256`: success `0.00`, final distance about `11.49`
+- `dynamic_slalom`, `feedback_mppi_fused K=256`: success `0.00`, final distance about `10.28`
+- `dynamic_slalom`, `diff_mppi_3 K=256`: success `1.00`, final distance about `1.89`
+
+The main sentence should be:
+
+> stronger non-hybrid feedback closes much of the easy-task gap, but the hard dynamic-slalom success split remains unique to the hybrid controller.
+
+### Dynamic navigation, exact time
+
+From the current exact-time summaries:
+
+- `1.00 ms`, `dynamic_crossing`
+  - `mppi`: `K=6990 @ 0.986 ms`, dist `2.98`
+  - `feedback_mppi_ref`: `K=1263 @ 1.002 ms`, success `1.00`, dist `1.95`
+  - `feedback_mppi_release`: `K=1062 @ 1.009 ms`, success `1.00`, dist `1.93`
+  - `diff_mppi_3`: `K=854 @ 1.011 ms`, success `1.00`, dist `1.98`
+
+- `1.00 ms`, `dynamic_slalom`
+  - `mppi`: `K=7000 @ 0.983 ms`, dist `14.12`
+  - `feedback_mppi_ref`: `K=917 @ 1.002 ms`, dist `11.90`
+  - `feedback_mppi_release`: `K=901 @ 1.007 ms`, dist `19.11`
+  - `diff_mppi_3`: `K=128 @ 1.051 ms`, success `1.00`, dist `1.95`
+
+This is the cleanest matched-time claim in the repository.
+
+### Outside-domain manipulator
+
+Use the static shelf task in the main text and dynamic sweep as supporting text.
+
+Fixed-budget shelf result:
+- `arm_static_shelf`, `mppi K=256`: success `0.00`, final distance `0.23`
+- `arm_static_shelf`, `feedback_mppi_cov K=256`: success `1.00`, final distance `0.15`, avg ms `2.65`
+- `arm_static_shelf`, `feedback_mppi_ref K=256`: success `1.00`, final distance `0.15`, avg ms `1.90`
+- `arm_static_shelf`, `diff_mppi_1 K=256`: success `0.75`, final distance `0.16`
+
+Dynamic sweep quality result:
+- `arm_dynamic_sweep`, `mppi K=256`: final distance `0.33`
+- `arm_dynamic_sweep`, `feedback_mppi_cov K=256`: final distance `0.29`
+- `arm_dynamic_sweep`, `feedback_mppi_ref K=256`: final distance `0.30`
+- `arm_dynamic_sweep`, `diff_mppi_1 K=256`: final distance `0.30`
+
+This should not be oversold as a decisive manipulation win.
+It should be presented as a stronger outside-domain pilot that confirms the method does not collapse immediately outside the navigation suite.
+
+## Mechanism Figure Draft
+
+Use one figure only.
+
+Recommended figure:
+- `dynamic_slalom` correction-vs-horizon
+- `dynamic_slalom` success-vs-K
+
+Main explanation:
+- correction magnitude is front-loaded in the horizon
+- the refinement sharpens near-term controls rather than rewriting the whole plan
+- gradient-only is not enough
+- non-hybrid feedback reduces terminal error but does not cross the hard-task success boundary
+
+That is enough for a mechanism section.
+
+## What To Put In Appendix
+
+Appendix A:
+- full baseline zoo
+- `feedback_mppi_release`
+- `feedback_mppi_hf`
+- `feedback_mppi_sens`
+- `feedback_mppi_fused`
+- `grad_only_3`
+
+Appendix B:
+- uncertainty follow-up
+- dynamic-bicycle pilot
+- CartPole pilot
+
+Appendix C:
+- additional exact-time sweeps
+- search traces
+
+Appendix D:
+- implementation details and CUDA kernels
+
+## Limitations Draft
+
+Keep limitations short and direct.
+
+Recommended limitations paragraph:
+
+The current contribution is empirical and intentionally narrow. The closest feedback baselines in the repository are strong in-repo proxies, but they are not a full paper-faithful reproduction of recent sensitivity-aware MPPI controllers. The outside-domain evaluation is stronger than the earlier navigation-only suite, but it still relies on custom pilot domains rather than standardized high-fidelity robotics benchmarks. Accordingly, we position the paper as a compute-quality tradeoff study of a lightweight hybrid controller, not as a definitive new general-purpose replacement for MPPI.
+
+## Reviewer-Facing Framing
+
+If the paper is written from the current evidence, the intended reviewer reaction should be:
+
+- the claim is narrow
+- the evidence is careful
+- the matched-time comparison is real
+- the paper knows its limits
+- the hard dynamic task split is interesting
+
+That is the path to `accept`.
+The path to `strong accept` still needs one stronger benchmark or one truly literature-faithful baseline reproduction.
+
+## Immediate Next Writing Step
+
+Turn this draft into four files:
+
+1. `paper/diff_mppi_abstract.md`
+2. `paper/diff_mppi_intro.md`
+3. `paper/diff_mppi_method.md`
+4. `paper/diff_mppi_experiments.md`
+
+If time is limited, do not split yet.
+Submit from this single draft first and only modularize later.

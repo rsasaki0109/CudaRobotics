@@ -89,7 +89,7 @@ python3 scripts/plot_diff_mppi.py --csv build/benchmark_diff_mppi_wall_clock.csv
 ```
 
 The benchmark writes per-episode CSV metrics, including the strengthened nominal-linearization `feedback_mppi` baseline, the release-style current-action `feedback_mppi_ref` baseline, the rollout-sensitivity `feedback_mppi_sens` baseline, the covariance-regression `feedback_mppi_cov` baseline, the heavier fused `feedback_mppi_fused` baseline, the lower-rate-replan `feedback_mppi_hf` baseline, and the `grad_only_3` ablation. The summarizer emits Markdown and LaTeX tables for fixed-budget, cap-based wall-clock, and equal-time target comparisons, and the plotter generates paper-friendly PNG/PDF figures in `build/plots/`, including `diff_mppi_final_distance_vs_time_cap.*` and `diff_mppi_final_distance_vs_equal_time.*`.
-A paper-style interpretation of the current benchmark is collected in `paper/diff_mppi_results.md`.
+A paper-style interpretation of the current benchmark is collected in `paper/diff_mppi_results.md`, and the current narrowed main-paper draft is in `paper/diff_mppi_submission_draft.md`.
 
 Exact matched-time tuning:
 
