@@ -113,6 +113,9 @@ The newer baseline story is materially better than it was a few iterations ago:
 - a newer `feedback_mppi_ref` variant follows the released `Feedback-MPPI` current-action gain structure more closely
 - on `dynamic_crossing`, `feedback_mppi_ref` reaches `1.00` success at `K={256,512}` with final distance about `1.87-1.91` while staying in the `0.56-0.65 ms` range
 - on `dynamic_slalom`, it still fails, but lowers final distance to about `11.89-12.08`, which is materially better than `mppi` and `feedback_mppi_hf`
+- a targeted exact-time sweep now tunes `feedback_mppi_ref` directly to shared `1.00 ms` and `1.50 ms` targets
+- at `1.00 ms`, `feedback_mppi_ref` reaches `dynamic_crossing: K=1263 @ 1.002 ms, success=1.00, dist=1.95` and `dynamic_slalom: K=1150 @ 1.023 ms, dist=11.89`
+- at `1.50 ms`, it reaches `dynamic_crossing: K=2362 @ 1.482 ms, success=1.00, dist=1.89` and `dynamic_slalom: K=2190 @ 1.472 ms, dist=11.89`
 
 So the baseline gap is narrower than before, but not closed.
 
@@ -163,7 +166,7 @@ But a skeptical reviewer can still say:
 - the exact-time result is currently concentrated on the dynamic two-task suite, not the full benchmark portfolio
 - the heavier `feedback_mppi_cov` and `feedback_mppi_fused` baselines currently have only fixed-budget and cap-based evidence, not refreshed exact-time sweeps
 - the newer `feedback_mppi_hf` baseline narrows the controller-architecture gap, but it still does not have a clean exact-time tuned result in the checked-in package
-- the newer `feedback_mppi_ref` baseline narrows the released-gain gap, but it still has only fixed-budget and fixed-grid cap/equal-time evidence rather than a refreshed exact-time sweep
+- the newer `feedback_mppi_ref` baseline narrows the released-gain gap and now has a targeted exact-time sweep, but it still remains an in-repo proxy rather than a paper-faithful controller reproduction
 - outside the base suite, the time-matched claim currently reaches only custom pilot domains, and the cleanest matched-time result is still the dynamic-obstacle base suite rather than the pilots
 
 The dynamic-bicycle exact-time result is still useful, but it currently reads as a conservative compute-matched spot check:

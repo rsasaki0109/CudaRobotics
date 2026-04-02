@@ -31,6 +31,9 @@ Artifacts used:
 - `build/benchmark_diff_mppi_ref_gap_followup.csv`
 - `build/benchmark_diff_mppi_ref_gap_followup_summary.md`
 - `build/benchmark_diff_mppi_ref_gap_followup_summary.tex`
+- `build/benchmark_diff_mppi_exact_time_ref.csv`
+- `build/benchmark_diff_mppi_exact_time_ref_search.csv`
+- `build/benchmark_diff_mppi_exact_time_ref_summary.md`
 - `build/benchmark_diff_mppi_exact_time.csv`
 - `build/benchmark_diff_mppi_exact_time_search.csv`
 - `build/benchmark_diff_mppi_exact_time_summary.md`
@@ -50,6 +53,7 @@ Artifacts used:
 - `build/plots_ref_gap_followup/diff_mppi_final_distance_vs_time_cap.png`
 - `build/plots_ref_gap_followup/diff_mppi_final_distance_vs_equal_time.png`
 - `build/plots_ref_gap_followup/diff_mppi_final_distance_vs_budget.png`
+- `build/plots_exact_time_ref/diff_mppi_final_distance_vs_equal_time.png`
 - `build/plots_ablation/diff_mppi_final_distance_vs_budget.png`
 - `build/plots_ablation/diff_mppi_final_distance_vs_equal_time.png`
 
@@ -277,6 +281,19 @@ Those are still informative:
 
 So the newer feedback family is materially stronger than the earlier baselines on the hard task, even though the hybrid controller still remains the only successful family.
 The current release-style row is especially useful for reviewer defense because it shows that the main qualitative claim survives even after moving one step closer to the public `Feedback-MPPI` gain computation.
+
+It now also survives a targeted exact-time tuning pass.
+
+At an exact target of `1.00 ms`, the tuned release-style rows are:
+- `dynamic_crossing`, `feedback_mppi_ref`: `K=1263 @ 1.002 ms`, success `1.00`, final distance `1.95`
+- `dynamic_slalom`, `feedback_mppi_ref`: `K=1150 @ 1.023 ms`, success `0.00`, final distance `11.89`
+
+At `1.50 ms`, the same pattern remains:
+- `dynamic_crossing`, `feedback_mppi_ref`: `K=2362 @ 1.482 ms`, success `1.00`, final distance `1.89`
+- `dynamic_slalom`, `feedback_mppi_ref`: `K=2190 @ 1.472 ms`, success `0.00`, final distance `11.89`
+
+So the release-style baseline no longer only has fixed-budget and cap-based evidence.
+It remains competitive after direct time matching, although it does not displace the stronger tuned `feedback_mppi` row on the hard task.
 
 The new exact-time tuning workflow sharpens that comparison further.
 
