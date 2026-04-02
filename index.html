@@ -1,0 +1,519 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CudaRobotics Research Results</title>
+  <style>
+    :root {
+      --bg: #f2ede3;
+      --paper: #fffaf1;
+      --ink: #1f1a17;
+      --muted: #6f6259;
+      --accent: #a1401c;
+      --accent-soft: #ead1c5;
+      --line: #d8c7b7;
+      --card: #fff8ee;
+      --shadow: rgba(47, 31, 18, 0.12);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family: Georgia, "Times New Roman", serif;
+      background:
+        radial-gradient(circle at top left, rgba(161, 64, 28, 0.18), transparent 28rem),
+        radial-gradient(circle at bottom right, rgba(81, 127, 93, 0.14), transparent 26rem),
+        var(--bg);
+      color: var(--ink);
+      line-height: 1.55;
+    }
+
+    a {
+      color: var(--accent);
+      text-decoration: none;
+    }
+
+    a:hover {
+      text-decoration: underline;
+    }
+
+    .shell {
+      max-width: 1180px;
+      margin: 0 auto;
+      padding: 28px 20px 72px;
+    }
+
+    .hero {
+      background: linear-gradient(140deg, rgba(255, 250, 241, 0.96), rgba(245, 233, 219, 0.96));
+      border: 1px solid var(--line);
+      border-radius: 28px;
+      padding: 34px 30px 30px;
+      box-shadow: 0 16px 42px var(--shadow);
+      overflow: hidden;
+      position: relative;
+    }
+
+    .hero::after {
+      content: "";
+      position: absolute;
+      right: -80px;
+      top: -90px;
+      width: 220px;
+      height: 220px;
+      border-radius: 50%;
+      background: rgba(161, 64, 28, 0.08);
+    }
+
+    .eyebrow,
+    .kicker {
+      font-family: "Courier New", Courier, monospace;
+      font-size: 0.84rem;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    h1,
+    h2,
+    h3 {
+      margin: 0;
+      font-weight: 700;
+      line-height: 1.1;
+    }
+
+    h1 {
+      margin-top: 10px;
+      font-size: clamp(2.2rem, 5vw, 4.4rem);
+      max-width: 12ch;
+    }
+
+    .hero p {
+      max-width: 60rem;
+      margin: 16px 0 0;
+      font-size: 1.05rem;
+    }
+
+    .hero-links {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin-top: 22px;
+    }
+
+    .button {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      border: 1px solid var(--ink);
+      border-radius: 999px;
+      padding: 10px 16px;
+      background: var(--paper);
+      color: var(--ink);
+      font-family: "Courier New", Courier, monospace;
+      font-size: 0.9rem;
+    }
+
+    .button.alt {
+      background: var(--ink);
+      color: var(--paper);
+      border-color: var(--ink);
+    }
+
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+      gap: 14px;
+      margin-top: 28px;
+    }
+
+    .stat {
+      background: rgba(255, 248, 238, 0.88);
+      border: 1px solid var(--line);
+      border-radius: 20px;
+      padding: 16px;
+    }
+
+    .stat strong {
+      display: block;
+      font-size: 1.8rem;
+      margin-top: 8px;
+    }
+
+    section {
+      margin-top: 34px;
+    }
+
+    .section-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: end;
+      gap: 16px;
+      margin-bottom: 16px;
+    }
+
+    .section-head p {
+      margin: 0;
+      color: var(--muted);
+      max-width: 44rem;
+    }
+
+    .summary-grid,
+    .gallery,
+    .project-grid {
+      display: grid;
+      gap: 16px;
+    }
+
+    .summary-grid {
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    }
+
+    .gallery {
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    }
+
+    .project-grid {
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    }
+
+    .card {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 22px;
+      padding: 18px;
+      box-shadow: 0 10px 30px rgba(47, 31, 18, 0.08);
+    }
+
+    .card p,
+    .card ul {
+      margin: 12px 0 0;
+    }
+
+    .metric {
+      display: inline-block;
+      margin-top: 10px;
+      padding: 4px 10px;
+      border-radius: 999px;
+      background: var(--accent-soft);
+      color: var(--accent);
+      font-family: "Courier New", Courier, monospace;
+      font-size: 0.82rem;
+    }
+
+    figure {
+      margin: 0;
+    }
+
+    img {
+      width: 100%;
+      display: block;
+      border-radius: 16px;
+      border: 1px solid var(--line);
+      background: #f8f0e5;
+    }
+
+    figcaption {
+      margin-top: 10px;
+      color: var(--muted);
+      font-size: 0.95rem;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      overflow: hidden;
+      box-shadow: 0 10px 30px rgba(47, 31, 18, 0.08);
+    }
+
+    th,
+    td {
+      padding: 12px 14px;
+      text-align: left;
+      border-bottom: 1px solid var(--line);
+      vertical-align: top;
+    }
+
+    th {
+      background: rgba(161, 64, 28, 0.08);
+      font-size: 0.92rem;
+    }
+
+    tr:last-child td {
+      border-bottom: 0;
+    }
+
+    .footer {
+      margin-top: 36px;
+      color: var(--muted);
+      font-size: 0.95rem;
+    }
+
+    code {
+      font-family: "Courier New", Courier, monospace;
+      font-size: 0.92em;
+    }
+
+    @media (max-width: 700px) {
+      .shell {
+        padding: 16px 14px 48px;
+      }
+
+      .hero {
+        padding: 24px 18px;
+      }
+
+      .section-head {
+        display: block;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <header class="hero">
+      <div class="eyebrow">CUDA robotics algorithms and research extensions</div>
+      <h1>CudaRobotics Results Snapshot</h1>
+      <p>
+        GPU implementations of classic robotics algorithms plus newer research-style additions:
+        Diff-MPPI, neural SDF navigation, GPU neuroevolution, MiniIsaacGym, point-cloud processing,
+        and large-scale swarm optimization.
+      </p>
+      <div class="hero-links">
+        <a class="button alt" href="https://github.com/rsasaki0109/CudaRobotics">GitHub Repository</a>
+        <a class="button" href="https://github.com/rsasaki0109/CudaRobotics/blob/master/readme.md">README</a>
+      </div>
+      <div class="stats">
+        <div class="stat">
+          <div class="eyebrow">Dynamic slalom at 1.0 ms</div>
+          <strong>1.95</strong>
+          <div>Diff-MPPI final distance</div>
+        </div>
+        <div class="stat">
+          <div class="eyebrow">Manipulator shelf at K=256</div>
+          <strong>1.00</strong>
+          <div><code>feedback_mppi_ref</code> success</div>
+        </div>
+        <div class="stat">
+          <div class="eyebrow">MiniIsaac RL</div>
+          <strong>82.6 -> 180.4</strong>
+          <div>Average CartPole survival</div>
+        </div>
+        <div class="stat">
+          <div class="eyebrow">Point-cloud speedup</div>
+          <strong>599x</strong>
+          <div>Normal estimation peak speedup</div>
+        </div>
+      </div>
+    </header>
+
+    <section>
+      <div class="section-head">
+        <div>
+          <div class="kicker">At a glance</div>
+          <h2>Current takeaways</h2>
+        </div>
+        <p>Updated from the repository state on 2026-04-03.</p>
+      </div>
+      <div class="summary-grid">
+        <div class="card">
+          <h3>Diff-MPPI on dynamic navigation</h3>
+          <p>
+            Under a matched <code>1.0 ms</code> controller budget, vanilla <code>mppi</code> stays unsuccessful on
+            <code>dynamic_slalom</code> at about <code>14.12</code> final distance. The closer non-hybrid baseline
+            <code>feedback_mppi_ref</code> improves that to about <code>11.90</code>, while <code>diff_mppi_3</code>
+            reaches success at about <code>1.95</code>.
+          </p>
+          <span class="metric">Main evidence: matched-time dynamic obstacle suite</span>
+        </div>
+        <div class="card">
+          <h3>Manipulator pilot</h3>
+          <p>
+            On <code>arm_static_shelf</code> with <code>K=256</code>, vanilla <code>mppi</code> remains at
+            <code>success=0.00</code> and <code>0.23</code> final distance, while both
+            <code>feedback_mppi_ref</code> and <code>feedback_mppi_cov</code> reach
+            <code>success=1.00</code> at about <code>0.15</code>.
+          </p>
+          <span class="metric">Outside-domain pilot: planar arm obstacle avoidance</span>
+        </div>
+        <div class="card">
+          <h3>Neural SDF navigation</h3>
+          <p>
+            The repository now learns 2D signed distance fields with a GPU MLP and uses them for both
+            potential-field planning and MPPI rollouts on non-circular obstacle layouts.
+          </p>
+          <span class="metric">Side-by-side GIFs against circle-based approximations</span>
+        </div>
+        <div class="card">
+          <h3>GPU learning and optimization</h3>
+          <p>
+            GPU REINFORCE improves MiniIsaac CartPole survival from about <code>82.6</code> to
+            <code>180.4</code> steps, while neuroevolution and swarm solvers run thousands of candidates in parallel.
+          </p>
+          <span class="metric">MiniIsaacGym, neuroevolution, PSO, DE, CMA-ES, ACO</span>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <div class="section-head">
+        <div>
+          <div class="kicker">Main result set</div>
+          <h2>Diff-MPPI</h2>
+        </div>
+        <p>The strongest current story is the hybrid MPPI plus short autodiff refinement line.</p>
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th>Benchmark</th>
+            <th>Comparison</th>
+            <th>Current result</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>dynamic_slalom</code>, matched <code>1.0 ms</code></td>
+            <td><code>mppi</code> vs <code>feedback_mppi_ref</code> vs <code>diff_mppi_3</code></td>
+            <td><code>14.12</code> vs <code>11.90</code> vs <code>1.95</code> final distance</td>
+          </tr>
+          <tr>
+            <td><code>dynamic_crossing</code>, matched <code>1.0 ms</code></td>
+            <td><code>mppi</code> vs <code>feedback_mppi_release</code></td>
+            <td><code>3.04</code> vs <code>1.93</code> final distance</td>
+          </tr>
+          <tr>
+            <td><code>arm_static_shelf</code>, <code>K=256</code></td>
+            <td><code>mppi</code> vs <code>feedback_mppi_ref</code> vs <code>feedback_mppi_cov</code></td>
+            <td><code>0.00 / 0.23</code> vs <code>1.00 / 0.15</code> vs <code>1.00 / 0.15</code> success / final distance</td>
+          </tr>
+          <tr>
+            <td><code>dynamic_bicycle</code>, low budget</td>
+            <td><code>dynbike_slalom K=32</code></td>
+            <td><code>mppi</code> stays at <code>0.75 / 12.60</code>, while <code>diff_mppi_1</code> reaches <code>1.00 / 2.24</code></td>
+          </tr>
+        </tbody>
+      </table>
+      <div class="gallery" style="margin-top: 16px;">
+        <figure class="card">
+          <img src="comparison_diff_mppi.gif" alt="MPPI and Diff-MPPI comparison">
+          <figcaption>Side-by-side rollout comparison between vanilla MPPI and Diff-MPPI.</figcaption>
+        </figure>
+        <figure class="card">
+          <img src="diff_mppi.gif" alt="Differentiable MPPI trajectory rollouts">
+          <figcaption>Trajectory rollouts from the differentiable refinement controller.</figcaption>
+        </figure>
+      </div>
+    </section>
+
+    <section>
+      <div class="section-head">
+        <div>
+          <div class="kicker">Other research additions</div>
+          <h2>Neural SDF, MiniIsaac, Point Clouds, Swarm</h2>
+        </div>
+        <p>These are useful repository-level results even though Diff-MPPI is the current main research thread.</p>
+      </div>
+      <div class="project-grid">
+        <div class="card">
+          <figure>
+            <img src="comparison_sdf_nav.gif" alt="Neural SDF navigation comparison">
+          </figure>
+          <h3>Neural SDF Navigation</h3>
+          <p>GPU MLP SDF learning, potential-field planning, and MPPI on non-circular obstacles.</p>
+        </div>
+        <div class="card">
+          <figure>
+            <img src="neural_sdf.gif" alt="Neural SDF field comparison">
+          </figure>
+          <h3>SDF Quality</h3>
+          <p>Learned signed distance field against the analytic reference field.</p>
+        </div>
+        <div class="card">
+          <figure>
+            <img src="mini_isaac_rl.gif" alt="MiniIsaac RL training">
+          </figure>
+          <h3>MiniIsaacGym RL</h3>
+          <p>GPU REINFORCE improves average survival from about <code>82.6</code> to <code>180.4</code> steps.</p>
+        </div>
+        <div class="card">
+          <figure>
+            <img src="mini_isaac.gif" alt="MiniIsaac parallel simulation">
+          </figure>
+          <h3>MiniIsaac Parallel Sim</h3>
+          <p>Thousands of nonlinear CartPole environments simulated in parallel on GPU.</p>
+        </div>
+        <div class="card">
+          <figure>
+            <img src="comparison_neuroevo.gif" alt="Neuroevolution comparison">
+          </figure>
+          <h3>GPU Neuroevolution</h3>
+          <p>Parallel evolution of <code>4096</code> neural policies with replay and learning-curve comparisons.</p>
+        </div>
+        <div class="card">
+          <figure>
+            <img src="comparison_swarm.gif" alt="Swarm optimization comparison">
+          </figure>
+          <h3>Swarm Optimization</h3>
+          <p>GPU PSO, DE, CMA-ES, and ACO with animated convergence comparisons.</p>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <div class="section-head">
+        <div>
+          <div class="kicker">Point-cloud snapshot</div>
+          <h2>CudaPointCloud</h2>
+        </div>
+        <p>Representative numbers from the current synthetic-room benchmark.</p>
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th>Points</th>
+            <th>Operation</th>
+            <th>CPU</th>
+            <th>GPU</th>
+            <th>Speedup</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>2,000</td>
+            <td>Statistical Filter</td>
+            <td>388.79 ms</td>
+            <td>0.79 ms</td>
+            <td><strong>492.3x</strong></td>
+          </tr>
+          <tr>
+            <td>2,000</td>
+            <td>Normal Estimation</td>
+            <td>574.33 ms</td>
+            <td>0.96 ms</td>
+            <td><strong>599.0x</strong></td>
+          </tr>
+          <tr>
+            <td>20,000</td>
+            <td>RANSAC Plane</td>
+            <td>142.38 ms</td>
+            <td>1.04 ms</td>
+            <td><strong>136.3x</strong></td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <p class="footer">
+      Last updated: 2026-04-03 JST. For build instructions, binaries, and the full experiment workflow,
+      see the repository README on GitHub.
+    </p>
+  </div>
+</body>
+</html>
