@@ -161,7 +161,7 @@ There are now three partial exceptions:
 
 That helps because the project is no longer purely a 2D kinematic story.
 The dynamic-bicycle and planar-manipulator results are the more useful of the three for reviewer defense, because they stay in obstacle-avoidance planning while adding richer vehicle or manipulator dynamics.
-The manipulator pilot is especially helpful because it produces a real success-rate split on `arm_static_shelf`: vanilla `mppi` remains unsuccessful while `diff_mppi_1` reaches `0.75-1.00` success and `feedback_mppi_cov` reaches `1.00`.
+The manipulator pilot is especially helpful because it produces a real success-rate split on `arm_static_shelf`: vanilla `mppi` remains unsuccessful while `diff_mppi_1` reaches `0.75`, `feedback_mppi_cov` reaches `1.00`, and the newer `feedback_mppi_ref` baseline also reaches `1.00`.
 But none of these pilots yet counts as the kind of stronger robotics-domain evaluation that fully closes this gap.
 
 ### 4. The matched-time story is much better, and now has direct tuning, but is still not complete
