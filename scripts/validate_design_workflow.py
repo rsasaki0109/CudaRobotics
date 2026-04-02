@@ -21,6 +21,7 @@ REQUIRED_DOCS = [
 
 INTERFACE_HINTS = {
     "planner_selection": "planner_selector_interface.py",
+    "time_budget_selection": "time_budget_selector_interface.py",
 }
 
 
@@ -72,7 +73,7 @@ def validate_docs() -> None:
             raise RuntimeError(f"Missing required doc: {path.relative_to(ROOT)}")
 
 
-def validate_generated_experiments() -> None:
+def validate_generated_experiments(modules: list[str]) -> None:
     out_dir = ROOT / "build" / "design_docs_validation"
     out_dir.mkdir(parents=True, exist_ok=True)
     subprocess.run(
@@ -83,6 +84,10 @@ def validate_generated_experiments() -> None:
     generated = out_dir / "experiments.md"
     if not generated.exists():
         raise RuntimeError("run_design_experiments.py did not generate experiments.md in validation output")
+    generated_text = generated.read_text()
+    for module_name in modules:
+        if module_name not in generated_text:
+            raise RuntimeError(f"Generated experiments.md is missing the {module_name} section")
 
 
 def main() -> int:
@@ -92,7 +97,7 @@ def main() -> int:
         raise RuntimeError("No experiment modules found under experiments/")
     for module_name in modules:
         validate_variant_module(module_name)
-    validate_generated_experiments()
+    validate_generated_experiments(modules)
     print("Design workflow validation passed")
     return 0
 

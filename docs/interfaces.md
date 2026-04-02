@@ -1,23 +1,31 @@
 # Interfaces
 
-This repository now treats design exploration as a first-class workflow.
-The stable part is intentionally small.
+This repository treats design exploration as a first-class workflow.
+The stable part is intentionally small and only expands after repeated reuse.
 
 ## Stable Core
 
-Current stable interface:
+Current stable interfaces:
 - [`core/planner_selector_interface.py`](../core/planner_selector_interface.py)
+- [`core/time_budget_selector_interface.py`](../core/time_budget_selector_interface.py)
 
-Minimal objects:
+Shared benchmark row:
 - `AggregateBenchmarkRow`
+
+Planner-selection contract:
 - `SelectionRequest`
 - `Recommendation`
 - `PlannerSelector`
 
-The contract is intentionally narrow:
+Time-budget-selection contract:
+- `TimeBudgetRequest`
+- `TimeBudgetRecommendation`
+- `TimeBudgetSelector`
+
+The contracts are intentionally narrow:
 - every implementation reads the same aggregated benchmark rows
-- every implementation answers the same dataset/scenario request
-- every implementation returns the same recommendation payload
+- every implementation answers the same request type for its problem
+- every implementation returns the same recommendation payload for its problem
 
 Current interface shape:
 
@@ -50,24 +58,51 @@ class Recommendation:
     k_samples: int
     score: float
     rationale: str
+
+
+@dataclass(frozen=True)
+class TimeBudgetRequest:
+    dataset: str
+    scenario: str
+    time_budget_ms: float
+
+
+@dataclass(frozen=True)
+class TimeBudgetRecommendation:
+    variant: str
+    dataset: str
+    scenario: str
+    time_budget_ms: float
+    planner: str
+    k_samples: int
+    score: float
+    rationale: str
 ```
 
-Only this contract is considered stable today.
-Scoring rules, ranking rules, and selection heuristics are explicitly not stable.
+Only these contracts are stable today.
+Scoring rules, ranking rules, budget heuristics, and request-generation logic are explicitly not stable.
 
 ## Experimental Variants
 
-Current experimental variants:
+Current experimental problems:
+- [`experiments/planner_selection`](../experiments/planner_selection)
+- [`experiments/time_budget_selection`](../experiments/time_budget_selection)
+
+Planner-selection variants:
 - [`experiments/planner_selection/functional_selector.py`](../experiments/planner_selection/functional_selector.py)
 - [`experiments/planner_selection/oop_selector.py`](../experiments/planner_selection/oop_selector.py)
 - [`experiments/planner_selection/pipeline_selector.py`](../experiments/planner_selection/pipeline_selector.py)
 
-The variants are intentionally heterogeneous:
-- `functional_weighted`: weighted utility from normalized metrics
-- `oop_lexicographic`: objective objects plus lexicographic ranking
-- `pipeline_staged`: staged filtering pipeline
+Time-budget-selection variants:
+- [`experiments/time_budget_selection/functional_budget_selector.py`](../experiments/time_budget_selection/functional_budget_selector.py)
+- [`experiments/time_budget_selection/oop_budget_selector.py`](../experiments/time_budget_selection/oop_budget_selector.py)
+- [`experiments/time_budget_selection/pipeline_budget_selector.py`](../experiments/time_budget_selection/pipeline_budget_selector.py)
 
-They share the interface, not the design style.
+The variants are intentionally heterogeneous:
+- planner selection keeps weighted utility, lexicographic ranking, and staged filtering alive
+- time-budget selection keeps weighted feasible utility, lexicographic slack-aware ranking, and staged budget filtering alive
+
+They share interfaces, not design style.
 
 ## Evaluation Harness
 
@@ -77,9 +112,14 @@ Comparison entrypoint:
 Common evaluation rules:
 - same CSV inputs
 - same aggregation path from episode rows to comparable summary rows
-- same request set
-- same oracle-based regret metric
+- same request set per problem
+- same oracle-based regret metric family
 - same readability and extensibility proxy metrics
+
+Current generated state:
+- [`docs/experiments.md`](../docs/experiments.md)
+- [`docs/decisions.md`](../docs/decisions.md)
+- [`docs/interfaces.md`](../docs/interfaces.md)
 
 ## Core vs Experiments
 
