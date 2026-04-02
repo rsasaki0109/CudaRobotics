@@ -27,8 +27,8 @@ PRESETS = {
     "dynamic_nav": {
         "bin": "./bin/benchmark_diff_mppi",
         "scenarios": "dynamic_crossing,dynamic_slalom",
-        "planners": "mppi,feedback_mppi,diff_mppi_1,diff_mppi_3",
-        "time_targets": "1.0,1.5",
+        "planners": "mppi,feedback_mppi,feedback_mppi_sens,feedback_mppi_cov,diff_mppi_1,diff_mppi_3",
+        "time_targets": "1.0,1.5,2.0",
         "search_seed_count": 4,
         "final_seed_count": 4,
         "k_min": 128,
@@ -55,8 +55,8 @@ PRESETS = {
     "uncertain_dynamic_nav": {
         "bin": "./bin/benchmark_diff_mppi",
         "scenarios": "uncertain_crossing,uncertain_slalom",
-        "planners": "mppi,feedback_mppi,diff_mppi_1,diff_mppi_3",
-        "time_targets": "1.0,1.5",
+        "planners": "mppi,feedback_mppi,feedback_mppi_cov,diff_mppi_1,diff_mppi_3",
+        "time_targets": "1.0,1.5,2.0",
         "search_seed_count": 4,
         "final_seed_count": 4,
         "k_min": 128,
