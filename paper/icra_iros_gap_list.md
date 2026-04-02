@@ -97,8 +97,8 @@ That is a direct novelty threat, not just a "future work" point.
 ### 3. The experiment tier is still below flagship-conference expectations
 
 Current evaluation is still:
-- 2D
-- kinematic
+- mostly 2D
+- mostly kinematic
 - hand-designed environments
 - no hardware
 - no standard public robotics benchmark
@@ -110,7 +110,11 @@ It does make it harder to justify a main-track acceptance when nearby papers eva
 - 7-DOF manipulators
 - uncertain dynamic environments with perception noise
 
-The current dynamic tasks are good for internal iteration, but they are not yet strong enough as the final evaluation layer.
+There is now one partial exception:
+- a pilot nonlinear CartPole benchmark outside the 2D navigation suite
+
+That helps because the project is no longer purely a 2D kinematic story.
+But it still does not count as the kind of stronger robotics-domain evaluation that fully closes this gap.
 
 ### 4. The matched-time story is much better, and now has direct tuning, but is still not complete
 
@@ -171,6 +175,10 @@ Best options:
 
 Why this is critical:
 - it moves the paper out of "2D toy benchmark only"
+
+Current status:
+- partially addressed by the new `benchmark_diff_mppi_cartpole` pilot
+- not closed, because CartPole is still an underactuated control toy domain rather than a high-fidelity robotics task
 
 3. Extend the direct time-tuning protocol
 
@@ -233,7 +241,7 @@ If the goal is a serious `ICRA/IROS full paper`, the minimum package I would tru
 5. exact matched-time tuning on the final evaluation suite
 6. one higher-fidelity experiment outside 2D kinematic navigation
 
-Without items `4` and `6`, and without carrying item `5` through the final evaluation suite, the paper is still too easy to down-score on originality and significance.
+The new CartPole pilot means item `6` is now partially addressed, but not at the level that would make me remove it from the minimum list. Without item `4`, and without a stronger version of item `6`, and without carrying item `5` through the final evaluation suite, the paper is still too easy to down-score on originality and significance.
 
 ## Fastest Acceptable Paper Framing
 

@@ -5,7 +5,7 @@ Date: 2026-04-01
 This note turns the current benchmark outputs into a paper-style `Results` section draft for the `diff_mppi` line.
 It is intentionally narrow. The goal is not to oversell "differentiable MPPI" as a new idea, but to state a defensible empirical claim around a lightweight CUDA hybrid controller.
 
-A later dynamic-obstacle suite, exact matched-time tuning, gradient-only ablation, strengthened in-repo feedback-baseline follow-up, and trace-based mechanism analysis are recorded separately in `paper/diff_mppi_novelty_followup.md`.
+A later dynamic-obstacle suite, exact matched-time tuning, gradient-only ablation, strengthened in-repo feedback-baseline follow-up, trace-based mechanism analysis, and a pilot CartPole outside-domain benchmark are recorded separately in `paper/diff_mppi_novelty_followup.md` and `paper/diff_mppi_cartpole_followup.md`.
 
 Artifacts used:
 - `build/benchmark_diff_mppi.csv`

@@ -32,6 +32,8 @@ PLANNER_STYLES = {
 
 PLOT_ORDER = ["mppi", "feedback_mppi", "grad_only_3", "diff_mppi_1", "diff_mppi_3"]
 SCENARIO_TITLES = {
+    "cartpole_large_angle": "CartPole Large-Angle Recovery",
+    "cartpole_recover": "CartPole Recovery",
     "cluttered": "Cluttered Field",
     "corner_turn": "Corner Turn",
     "dynamic_crossing": "Dynamic Crossing",
