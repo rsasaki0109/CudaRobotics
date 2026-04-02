@@ -59,6 +59,33 @@ class ProblemReport:
     case_tables: list[TitledTable]
 
 
+def markdown_table_to_dict(table: MarkdownTable) -> dict[str, object]:
+    return {
+        "headers": list(table.headers),
+        "rows": [list(row) for row in table.rows],
+    }
+
+
+def titled_table_to_dict(titled_table: TitledTable) -> dict[str, object]:
+    return {
+        "title": titled_table.title,
+        "table": markdown_table_to_dict(titled_table.table),
+    }
+
+
+def problem_report_to_dict(report: ProblemReport) -> dict[str, object]:
+    return {
+        "slug": report.slug,
+        "title": report.title,
+        "description_lines": list(report.description_lines),
+        "request_summary": report.request_summary,
+        "metric_notes": list(report.metric_notes),
+        "request_count": report.request_count,
+        "aggregate_table": markdown_table_to_dict(report.aggregate_table),
+        "case_tables": [titled_table_to_dict(table) for table in report.case_tables],
+    }
+
+
 def normalize(values: Sequence[float]) -> list[float]:
     low = min(values)
     high = max(values)

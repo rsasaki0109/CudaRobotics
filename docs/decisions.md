@@ -184,3 +184,16 @@ Decision:
 Why:
 - the scaffolder is how new search spaces enter the repo
 - if the scaffold drifts from the validator contract, the workflow decays silently
+
+## D-012: Experiment History Must Be Snapshotted, Not Reconstructed From Memory
+
+Status: accepted
+
+Decision:
+- store design-history snapshots under `experiments/history/`
+- generate `docs/experiments_history.md` from those snapshots
+- validate snapshot schema and checked-in history docs in `scripts/validate_design_workflow.py`
+
+Why:
+- the repo should show how design decisions changed over time, not just the current winner
+- snapshots make process evolution inspectable without relying on chat logs or local shells

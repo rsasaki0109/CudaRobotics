@@ -17,11 +17,13 @@ if str(ROOT) not in sys.path:
 
 REQUIRED_DOCS = [
     ROOT / "docs" / "experiments.md",
+    ROOT / "docs" / "experiments_history.md",
     ROOT / "docs" / "decisions.md",
     ROOT / "docs" / "interfaces.md",
 ]
 FIXTURE_DIR = ROOT / "experiments" / "data"
 FIXTURE_MANIFEST = FIXTURE_DIR / "manifest.json"
+HISTORY_DIR = ROOT / "experiments" / "history"
 
 REQUIRED_MODULE_ATTRIBUTES = [
     "PROBLEM_KIND",
@@ -127,6 +129,58 @@ def validate_fixture_manifest() -> None:
         )
 
 
+def validate_history_snapshots() -> None:
+    if not HISTORY_DIR.exists():
+        raise RuntimeError(f"Missing design history directory: {HISTORY_DIR.relative_to(ROOT)}")
+
+    snapshots = sorted(HISTORY_DIR.glob("*.json"))
+    if not snapshots:
+        raise RuntimeError("No design history snapshots found under experiments/history/")
+
+    required_snapshot_keys = {
+        "schema_version",
+        "snapshot_id",
+        "created_at",
+        "label",
+        "inputs",
+        "benchmark_iterations",
+        "problems",
+    }
+    required_problem_keys = {
+        "slug",
+        "title",
+        "description_lines",
+        "request_summary",
+        "metric_notes",
+        "request_count",
+        "aggregate_table",
+        "case_tables",
+    }
+
+    for path in snapshots:
+        data = json.loads(path.read_text())
+        missing = required_snapshot_keys - set(data)
+        if missing:
+            raise RuntimeError(f"{path.relative_to(ROOT)} is missing snapshot keys: {sorted(missing)}")
+        if data["schema_version"] != 1:
+            raise RuntimeError(f"{path.relative_to(ROOT)} has unsupported schema_version {data['schema_version']}")
+        if not isinstance(data["inputs"], list) or not data["inputs"]:
+            raise RuntimeError(f"{path.relative_to(ROOT)} must contain a non-empty inputs list")
+        if not isinstance(data["problems"], list) or not data["problems"]:
+            raise RuntimeError(f"{path.relative_to(ROOT)} must contain a non-empty problems list")
+        for problem in data["problems"]:
+            missing_problem = required_problem_keys - set(problem)
+            if missing_problem:
+                raise RuntimeError(
+                    f"{path.relative_to(ROOT)} contains a problem entry missing keys: {sorted(missing_problem)}"
+                )
+            aggregate_table = problem["aggregate_table"]
+            if not isinstance(aggregate_table, dict):
+                raise RuntimeError(f"{path.relative_to(ROOT)} aggregate_table must be an object")
+            if not isinstance(aggregate_table.get("headers"), list) or not isinstance(aggregate_table.get("rows"), list):
+                raise RuntimeError(f"{path.relative_to(ROOT)} aggregate_table must contain headers and rows lists")
+
+
 def normalize_generated_doc(text: str) -> str:
     lines = text.splitlines()
     normalized: list[str] = []
@@ -184,15 +238,44 @@ def validate_generated_experiments(modules: list[str]) -> None:
         )
 
 
+def validate_generated_history() -> None:
+    out_dir = ROOT / "build" / "design_docs_validation"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    subprocess.run(
+        [
+            sys.executable,
+            "scripts/snapshot_design_experiments.py",
+            "--render-only",
+            "--history-dir",
+            str((ROOT / "experiments" / "history").relative_to(ROOT)),
+            "--docs-path",
+            str((out_dir / "experiments_history.md").relative_to(ROOT)),
+        ],
+        cwd=ROOT,
+        check=True,
+    )
+    generated = out_dir / "experiments_history.md"
+    if not generated.exists():
+        raise RuntimeError("snapshot_design_experiments.py did not generate experiments_history.md in validation output")
+    checked_in = ROOT / "docs" / "experiments_history.md"
+    if checked_in.read_text() != generated.read_text():
+        raise RuntimeError(
+            "docs/experiments_history.md is stale. "
+            "Run `python3 scripts/snapshot_design_experiments.py --render-only` and commit the refreshed doc."
+        )
+
+
 def main() -> int:
     validate_docs()
     validate_fixture_manifest()
+    validate_history_snapshots()
     modules = experiment_modules()
     if not modules:
         raise RuntimeError("No experiment modules found under experiments/")
     for module_name in modules:
         validate_variant_module(module_name)
     validate_generated_experiments(modules)
+    validate_generated_history()
     print("Design workflow validation passed")
     return 0
 
