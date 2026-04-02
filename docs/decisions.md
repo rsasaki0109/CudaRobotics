@@ -120,6 +120,10 @@ Implication:
 - when the benchmark meaningfully changes, refresh the fixtures intentionally instead of coupling every code edit to every heavy benchmark rerun
 - fixture discovery should be automatic inside `experiments/data/` so adding a new fixture does not require editing the central runner
 
+Operational note:
+- fixture membership is now externalized in `experiments/data/manifest.json`
+- `scripts/refresh_design_fixtures.py` is the promoted path for copying selected benchmark CSVs into `experiments/data/`
+
 ## D-008: The Workflow Must Survive More Than One Concrete Problem
 
 Status: accepted

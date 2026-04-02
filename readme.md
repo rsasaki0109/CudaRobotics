@@ -213,6 +213,12 @@ Refresh the checked-in design docs:
 python3 scripts/refresh_design_docs.py
 ```
 
+Refresh the version-controlled fixture CSVs from the selected build outputs:
+
+```bash
+python3 scripts/refresh_design_fixtures.py
+```
+
 Scaffold a new concrete problem with 3 disposable variants:
 
 ```bash
@@ -247,6 +253,7 @@ The workflow is now module-driven rather than import-driven:
 - each problem package also owns its own report builder
 - `scripts/run_design_experiments.py` discovers those modules automatically
 - `scripts/run_design_experiments.py` also discovers fixture CSVs automatically from `experiments/data/`
+- `experiments/data/manifest.json` defines which benchmark CSVs are promoted into the lightweight fixture set
 - `scripts/validate_design_workflow.py` fails if a discovered module is missing from generated docs or if `docs/experiments.md` is stale; the runtime column is normalized during that check because it is machine-dependent
 
 ### Docker

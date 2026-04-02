@@ -1,0 +1,19 @@
+{
+  "fixtures": [
+    {
+      "filename": "benchmark_diff_mppi.csv",
+      "source": "build/benchmark_diff_mppi.csv",
+      "description": "Base Diff-MPPI benchmark fixture used by planner-selection experiments."
+    },
+    {
+      "filename": "benchmark_diff_mppi_dynamic_bicycle.csv",
+      "source": "build/benchmark_diff_mppi_dynamic_bicycle.csv",
+      "description": "Higher-order mobile benchmark fixture used by planner-selection and time-budget experiments."
+    },
+    {
+      "filename": "benchmark_diff_mppi_uncertain.csv",
+      "source": "build/benchmark_diff_mppi_uncertain.csv",
+      "description": "Uncertainty follow-up fixture used by planner-selection and time-budget experiments."
+    }
+  ]
+}
