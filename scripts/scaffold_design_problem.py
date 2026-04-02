@@ -51,7 +51,7 @@ INIT_TEMPLATE = """from .functional_variant import FunctionalVariant
 from .oop_variant import OOPVariant
 from .pipeline_variant import PipelineVariant
 
-PROBLEM_KIND = "planner_selection"
+PROBLEM_KIND = "{problem_kind}"
 INTERFACE_FILE = "{interface_file}"
 TITLE = "{problem_title}"
 DESCRIPTION_LINES = [
@@ -179,6 +179,10 @@ def to_class_name(slug: str) -> str:
     return "".join(part.capitalize() for part in slug.split("_"))
 
 
+def to_title(slug: str) -> str:
+    return " ".join(part.capitalize() for part in slug.split("_"))
+
+
 def write_file(path: Path, content: str, force: bool, dry_run: bool) -> None:
     if path.exists() and not force:
         return
@@ -197,8 +201,9 @@ def main() -> int:
     files = {
         ROOT / "core" / f"{slug}_interface.py": INTERFACE_TEMPLATE.format(problem_class=problem_class),
         ROOT / "experiments" / slug / "__init__.py": INIT_TEMPLATE.format(
+            problem_kind=slug,
             interface_file=f"{slug}_interface.py",
-            problem_title=problem_class.replace("_", " "),
+            problem_title=to_title(slug),
         ),
         ROOT / "experiments" / slug / "functional_variant.py": FUNCTIONAL_TEMPLATE.format(
             interface_import=interface_import, problem_class=problem_class

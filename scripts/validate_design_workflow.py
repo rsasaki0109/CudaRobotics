@@ -31,11 +31,6 @@ REQUIRED_MODULE_ATTRIBUTES = [
     "build_report",
 ]
 
-SUPPORTED_PROBLEM_KINDS = {
-    "planner_selection",
-    "time_budget_selection",
-}
-
 
 def experiment_modules() -> list[str]:
     modules: list[str] = []
@@ -58,8 +53,10 @@ def validate_variant_module(module_name: str) -> None:
     if not hasattr(module, "build_variants"):
         raise RuntimeError(f"experiments.{module_name} is missing build_variants()")
 
-    if module.PROBLEM_KIND not in SUPPORTED_PROBLEM_KINDS:
-        raise RuntimeError(f"experiments.{module_name} has unsupported PROBLEM_KIND {module.PROBLEM_KIND}")
+    if not isinstance(module.PROBLEM_KIND, str) or not re.fullmatch(r"[a-z0-9_]+", module.PROBLEM_KIND):
+        raise RuntimeError(
+            f"experiments.{module_name} must expose a slug-like PROBLEM_KIND, got {module.PROBLEM_KIND!r}"
+        )
 
     variants = module.build_variants()
     if len(variants) < 3:
