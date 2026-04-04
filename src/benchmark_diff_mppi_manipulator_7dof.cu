@@ -279,7 +279,13 @@ __device__ inline float stage_cost_device(
     const ArmParams7& params, const CostParams7& cp,
     int n_obs, int n_dyn_obs, float time_world)
 {
-    float ee_dist = ee_distance(q, params, cp);
+    // Single FK call for both goal distance and obstacle checking
+    float pos[NDOF + 1][3];
+    fk_joint_positions(q, params, pos);
+    float dx_g = pos[NDOF][0] - cp.goal_x;
+    float dy_g = pos[NDOF][1] - cp.goal_y;
+    float dz_g = pos[NDOF][2] - cp.goal_z;
+    float ee_dist = sqrtf(dx_g*dx_g + dy_g*dy_g + dz_g*dz_g + 1.0e-6f);
     float cost = cp.goal_weight * ee_dist * params.dt;
 
     float ctrl_cost = 0.0f;
@@ -290,10 +296,6 @@ __device__ inline float stage_cost_device(
     }
     cost += cp.control_weight * ctrl_cost * params.dt;
     cost += cp.velocity_weight * vel_cost * params.dt;
-
-    // Obstacle cost: check collision at link midpoints and end effector
-    float pos[NDOF + 1][3];
-    fk_joint_positions(q, params, pos);
     // Sample 10 points along the arm chain
     for (int link = 0; link < NDOF; link++) {
         float mx = 0.5f * (pos[link][0] + pos[link + 1][0]);
@@ -447,10 +449,10 @@ __device__ inline void terminal_grad_fn(
     }
 }
 
-// Stage cost gradient w.r.t. state + control (6+7=21 dims -> only control grads needed for adjoint)
-// Stage cost gradient: state part via FD (14 passes), control part analytically.
-// Control cost = control_weight * sum(tau_j^2) * dt, which has gradient 2*control_weight*tau_j*dt.
-// Obstacle/goal/velocity costs don't depend on tau, so the control gradient is analytical.
+// Stage cost gradient: q part via FD (7 passes), dq and ctrl parts analytical.
+// Goal/obstacle costs depend only on q (through FK), not dq or tau.
+// Velocity cost = vel_weight * dq_j^2 * dt → analytical dq gradient.
+// Control cost = ctrl_weight * tau_j^2 * dt → analytical ctrl gradient.
 __device__ inline void stage_cost_grad_fn(
     const float q[NDOF], const float dq[NDOF], const float tau[NDOF],
     const ArmParams7& params, const CostParams7& cp,
@@ -458,16 +460,20 @@ __device__ inline void stage_cost_grad_fn(
     float grad_state[STATE_DIM], float grad_ctrl[CTRL_DIM])
 {
     float eps = 1.0e-3f;
-    float q_tmp[NDOF], dq_tmp[NDOF];
     float cost_base = stage_cost_device(q, dq, tau, params, cp, n_obs, n_dyn_obs, time_world);
 
-    // State gradient via finite differences (14 passes of stage_cost_device)
-    for (int var = 0; var < STATE_DIM; var++) {
-        for (int j = 0; j < NDOF; j++) { q_tmp[j] = q[j]; dq_tmp[j] = dq[j]; }
-        if (var < NDOF) q_tmp[var] += eps;
-        else dq_tmp[var - NDOF] += eps;
-        float cost_plus = stage_cost_device(q_tmp, dq_tmp, tau, params, cp, n_obs, n_dyn_obs, time_world);
-        grad_state[var] = (cost_plus - cost_base) / eps;
+    // q gradient via finite differences (7 passes of stage_cost_device)
+    for (int j = 0; j < NDOF; j++) {
+        float q_tmp[NDOF];
+        for (int i = 0; i < NDOF; i++) q_tmp[i] = q[i];
+        q_tmp[j] += eps;
+        float cost_plus = stage_cost_device(q_tmp, dq, tau, params, cp, n_obs, n_dyn_obs, time_world);
+        grad_state[j] = (cost_plus - cost_base) / eps;
+    }
+
+    // dq gradient: analytical (d/d_dq_j of velocity_weight * dq_j^2 * dt)
+    for (int j = 0; j < NDOF; j++) {
+        grad_state[NDOF + j] = 2.0f * cp.velocity_weight * dq[j] * params.dt;
     }
 
     // Control gradient: analytical (d/d_tau_j of control_weight * tau_j^2 * dt)
