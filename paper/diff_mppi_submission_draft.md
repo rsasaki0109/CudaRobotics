@@ -120,19 +120,41 @@ The paper should claim:
 
 ### Key related work to cite
 
-- **MPPI as Preconditioned Gradient Descent** (Fazlyab et al., arXiv:2603.24489, March 2026): provides theoretical basis for our approach — our autodiff stage adds explicit gradient steps after MPPI's implicit gradient step.
-- **Feedback-MPPI** (Belvedere et al., arXiv:2506.14855, RA-L 2026): rollout-differentiation feedback gains; our `feedback_mppi_ref` baseline follows their released gain computation. We additionally test a two-rate variant (`feedback_mppi_faithful`) and show it fails on dynamic tasks.
-- **Step-MPPI** (Le et al., arXiv:2604.01539, April 2026): learns a neural sampling distribution for single-step lookahead. Our approach is complementary: training-free, applied post-MPPI as a refinement rather than modifying the sampling distribution.
-- **MPPI-IPDDP** (hybrid MPPI + gradient-based DDP, IEEE TRO 2025): similar hybrid motivation. Our approach is simpler — pure autodiff refinement without requiring convex corridor construction.
+**Theoretical foundation:**
+- **MPPI as Preconditioned Gradient Descent** (Fazlyab et al., arXiv:2603.24489, March 2026): proves MPPI is a preconditioned gradient descent step with unit step size. Our autodiff stage adds explicit gradient steps after this implicit step — a standard "coarse + fine" optimization pattern.
+
+**Sampling + gradient hybrid precedents:**
+- **CEM-GD** (Bharadhwaj et al., arXiv:2004.08763, L4DC 2020): combines cross-entropy method with gradient descent for model-based RL planning. This is the closest methodological precedent. Key differences: (1) we use MPPI not CEM, (2) our parallelized gradient retains 85% of the sampling budget within the same wall-clock time (CEM-GD does not evaluate under matched compute), (3) we include a 7-DOF manipulation evaluation.
+- **MPPI-IPDDP** (hybrid MPPI + gradient-based DDP, IEEE TRO 2025): uses MPPI for coarse trajectory + IPDDP for smoothing inside a convex corridor. Our approach is simpler — pure autodiff refinement without corridor construction.
+
+**Feedback-based MPPI extensions:**
+- **Feedback-MPPI** (Belvedere et al., arXiv:2506.14855, RA-L 2026): rollout-differentiation feedback gains. Our `feedback_mppi_ref` baseline follows their gain computation. We additionally test a two-rate variant (`feedback_mppi_faithful`) and show current-action-only gains fail on dynamic tasks.
+- **Step-MPPI** (Le et al., arXiv:2604.01539, April 2026): learns a neural sampling distribution for single-step lookahead. Complementary: training-free post-MPPI refinement vs learned sampling modification.
+
+**GPU-accelerated control:**
+- **DiffMPC** (Toyota Research, arXiv:2510.06179, 2025): GPU-accelerated differentiable MPC in JAX for learning. Different goal — they differentiate through the entire MPC for policy learning; we add gradient steps within MPPI for real-time control.
+- **cuNRTO** (arXiv:2603.02642, 2026): GPU robust trajectory optimization for Franka manipulator. Optimization-based (SQP) rather than sampling-based.
 - **MPPI-Generic** (arXiv:2409.07563): CUDA MPPI library; we share the GPU-parallel rollout design pattern.
+
+### What makes our contribution distinct from CEM-GD
+
+CEM-GD (2020) established that combining sampling and gradient steps improves MPC planning. Our contribution is:
+
+1. **Compute-competitive parallelization**: with parallelized gradient computation, the hybrid controller uses K=6216 samples at 1.0 ms — 85% of MPPI's K=7271 — plus 3 gradient steps. The gradient refinement comes at minimal cost to the sampling budget. CEM-GD does not evaluate under matched wall-clock time.
+
+2. **Empirical evidence on hard dynamic-obstacle tasks**: `dynamic_slalom` is a task where no non-hybrid feedback variant succeeds at any compute budget. This goes beyond CEM-GD's model-based RL benchmarks.
+
+3. **7-DOF manipulation with analytical Jacobians**: extends evaluation to 14D state, 7D control, demonstrating the approach scales to higher-dimensional robotics domains.
+
+4. **Feedback architecture analysis**: testing and ruling out a two-rate Feedback-MPPI variant provides evidence that the gradient refinement is not replaceable by pure feedback.
 
 ### Contributions
 
 Use only three contributions in the paper:
 
-1. A minimal hybrid MPPI controller with a short local autodiff refinement stage that preserves the standard MPPI sampling update, interpretable as adding explicit gradient steps to MPPI's implicit preconditioned gradient descent.
-2. A matched-time evaluation protocol with parallelized gradient computation, comparing the hybrid controller against vanilla MPPI and strong non-hybrid feedback baselines (including a Feedback-MPPI-style two-rate variant) under shared per-step controller budgets.
-3. Evidence across dynamic-obstacle navigation (2D bicycle) and a 7-DOF serial-arm manipulation benchmark that the hybrid controller improves the compute-quality tradeoff, while clarifying the limits of non-hybrid feedback architectures.
+1. A minimal hybrid MPPI controller with a short local autodiff refinement stage that preserves the standard MPPI sampling update, interpretable as adding explicit gradient steps to MPPI's implicit preconditioned gradient descent (Fazlyab et al., 2026). With parallelized gradient computation, the refinement retains 85% of the sampling budget within the same wall-clock time.
+2. A matched-time evaluation protocol comparing the hybrid controller against vanilla MPPI and strong non-hybrid feedback baselines (including a Feedback-MPPI-style two-rate variant) under shared per-step controller budgets, on both 2D dynamic-obstacle navigation and a 7-DOF serial-arm manipulation benchmark.
+3. Evidence that the hybrid controller is the only method family that solves the hardest dynamic-obstacle task across 6 non-hybrid baselines, and that a two-rate feedback architecture with current-action-only gains cannot replicate this result.
 
 ## Method Draft
 
