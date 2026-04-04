@@ -487,7 +487,7 @@
           <div class="kicker">Point-cloud snapshot</div>
           <h2>CudaPointCloud</h2>
         </div>
-        <p>Synthetic-room benchmark. CPU baselines use brute-force O(n&sup2;) neighborhood search; large speedups at small point counts reflect this baseline choice. GPU times include kernel execution only (not host-device transfer).</p>
+        <p>Synthetic-room benchmark. Both CPU and GPU use the same brute-force algorithms (no KD-trees or spatial indices). GPU wall-clock times include device synchronization and internal memory operations. Large speedups at small n reflect O(n&sup2;) k-NN parallelization.</p>
       </div>
       <table>
         <thead>
