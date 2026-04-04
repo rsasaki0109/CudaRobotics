@@ -261,6 +261,56 @@ Dynamic sweep quality result:
 This should not be oversold as a decisive manipulation win.
 It should be presented as a stronger outside-domain pilot that confirms the method does not collapse immediately outside the navigation suite.
 
+## 7-DOF Manipulator Results (New)
+
+A Panda-like 7-DOF serial-arm benchmark with 14D state, 7D control, 3D workspace obstacles, and analytical dynamics Jacobians.
+
+### Two scenarios
+
+- `7dof_shelf_reach`: reach a target while avoiding a static workspace obstacle
+- `7dof_dynamic_avoid`: reach a target while avoiding a moving 3D obstacle
+
+### Fixed-budget key numbers
+
+`7dof_dynamic_avoid`:
+- `mppi K=256`: success `0.75`, final distance `0.273`, avg ms `0.38`
+- `feedback_mppi_ref K=256`: success `1.00`, final distance `0.090`, avg ms `3.47`
+- `diff_mppi_3 K=256`: success `0.50`, final distance `0.465`, avg ms `5.71`
+
+`7dof_shelf_reach`:
+- `mppi K=256`: success `0.25`, final distance `0.340`, avg ms `0.33`
+- `diff_mppi_1 K=256`: success `0.50`, final distance `0.331`, avg ms `1.44`
+- `diff_mppi_3 K=256`: success `0.50`, final distance `0.259`, avg ms `3.63`
+
+### Exact-time key numbers (new)
+
+`7dof_shelf_reach` at `3.0 ms` target:
+- `mppi` (K=4096 @ 0.97 ms): success `0.00`, final distance `0.41`
+- `diff_mppi_3` (K=32 @ 3.53 ms): success `1.00`, final distance `0.14`
+
+This is a strong result: the hybrid controller finds the obstacle-free path at very low K (32 samples) where high-K pure sampling fails. The gradient refinement compensates for the small sample budget.
+
+### Narrative for main text
+
+Use `7dof_dynamic_avoid` as the main outside-domain result showing that feedback-MPPI extends to high-DOF manipulation. Use `7dof_shelf_reach` exact-time result as a supporting finding where the hybrid controller outperforms at matched compute.
+
+### What not to say
+
+Do not claim Diff-MPPI dominates on all 7-DOF tasks. `feedback_mppi_ref` wins on `7dof_dynamic_avoid` and that should be acknowledged honestly.
+
+## feedback_mppi_faithful Finding (New)
+
+A `feedback_mppi_faithful` variant was tested on the base dynamic navigation suite. It combines the released current-action gain computation with a two-rate controller architecture (replan every 2 steps, local feedback between replans).
+
+Result: fails on both `dynamic_crossing` and `dynamic_slalom` even at K=8192 (2.1 ms/step).
+
+Comparison:
+- `feedback_mppi_ref` (every-step replan): success `1.00` on `dynamic_crossing` at K=256 (0.60 ms)
+- `feedback_mppi_faithful` (stride=2 replan): success `0.00` on `dynamic_crossing` at K=8192 (2.06 ms)
+- `diff_mppi_3` (hybrid): success `1.00` on both tasks at K=256 (0.91 ms)
+
+This finding belongs in the paper as evidence that the two-rate feedback architecture with current-action-only gains is insufficient for dynamic-obstacle tasks. The autodiff refinement provides complementary value that pure feedback cannot replicate.
+
 ## Mechanism Figure Draft
 
 Use one figure only.
@@ -288,6 +338,8 @@ Appendix A:
 - `grad_only_3`
 
 Appendix B:
+- 7-DOF manipulator full results (fixed-budget and exact-time)
+- feedback_mppi_faithful two-rate architecture analysis
 - uncertainty follow-up
 - dynamic-bicycle pilot
 - CartPole pilot
@@ -305,7 +357,7 @@ Keep limitations short and direct.
 
 Recommended limitations paragraph:
 
-The current contribution is empirical and intentionally narrow. The closest feedback baselines in the repository are strong in-repo proxies, but they are not a full paper-faithful reproduction of recent sensitivity-aware MPPI controllers. The outside-domain evaluation is stronger than the earlier navigation-only suite, but it still relies on custom pilot domains rather than standardized high-fidelity robotics benchmarks. Accordingly, we position the paper as a compute-quality tradeoff study of a lightweight hybrid controller, not as a definitive new general-purpose replacement for MPPI.
+The current contribution is empirical and intentionally narrow. The closest feedback baselines in the repository are strong in-repo proxies, including a two-rate variant tested under the released gain computation, but they are not a full paper-faithful reproduction of the complete sensitivity-aware MPPI controller stack. The outside-domain evaluation now spans a 7-DOF manipulator with 3D workspace obstacles, but it still relies on custom benchmark domains rather than standardized suites like MuJoCo manipulation tasks or Isaac Gym environments. Accordingly, we position the paper as a compute-quality tradeoff study of a lightweight hybrid controller, not as a definitive replacement for MPPI.
 
 ## Reviewer-Facing Framing
 
@@ -314,11 +366,13 @@ If the paper is written from the current evidence, the intended reviewer reactio
 - the claim is narrow
 - the evidence is careful
 - the matched-time comparison is real
+- the 7-DOF evaluation is non-trivial (14D state, 3D obstacles)
+- the two-rate feedback analysis is informative
 - the paper knows its limits
 - the hard dynamic task split is interesting
 
 That is the path to `accept`.
-The path to `strong accept` still needs one stronger benchmark or one truly literature-faithful baseline reproduction.
+The path to `strong accept` still needs one stronger standardized benchmark or one truly literature-faithful full-stack baseline reproduction.
 
 ## Immediate Next Writing Step
 
