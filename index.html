@@ -319,28 +319,37 @@
           <div class="kicker">At a glance</div>
           <h2>Current takeaways</h2>
         </div>
-        <p>Updated from the repository state on 2026-04-03.</p>
+        <p>Updated from the repository state on 2026-04-05.</p>
       </div>
       <div class="summary-grid">
         <div class="card">
           <h3>Diff-MPPI on dynamic navigation</h3>
           <p>
-            Under a matched <code>1.0 ms</code> controller budget, vanilla <code>mppi</code> stays unsuccessful on
-            <code>dynamic_slalom</code> at about <code>14.12</code> final distance. The closer non-hybrid baseline
-            <code>feedback_mppi_ref</code> improves that to about <code>11.90</code>, while <code>diff_mppi_3</code>
-            reaches success at about <code>1.95</code>.
+            At matched <code>1.0 ms</code> budget on <code>dynamic_slalom</code>,
+            <strong>diff_mppi_3 is the only successful controller</strong> (dist <code>1.91</code>)
+            across 6 non-hybrid baselines. The strongest non-hybrid baseline
+            <code>feedback_mppi_fused</code> reaches <code>10.30</code>, while vanilla MPPI stays at <code>14.16</code>.
           </p>
-          <span class="metric">Main evidence: matched-time dynamic obstacle suite</span>
+          <span class="metric">Main evidence: matched-time dynamic obstacle suite with 6 baselines</span>
         </div>
         <div class="card">
-          <h3>Manipulator pilot</h3>
+          <h3>7-DOF manipulator</h3>
           <p>
-            On <code>arm_static_shelf</code> with <code>K=256</code>, vanilla <code>mppi</code> remains at
-            <code>success=0.00</code> and <code>0.23</code> final distance, while both
-            <code>feedback_mppi_ref</code> and <code>feedback_mppi_cov</code> reach
-            <code>success=1.00</code> at about <code>0.15</code>.
+            On <code>7dof_dynamic_avoid</code> at <code>K=512</code>, <code>diff_mppi_3</code> reaches
+            <strong>success=1.00 at 0.84 ms</strong>, while <code>feedback_mppi_ref</code> reaches
+            0.75 at 4.01 ms. The hybrid controller is 4.8x faster and more reliable
+            on this 14-dimensional manipulation task.
           </p>
-          <span class="metric">Outside-domain pilot: planar arm obstacle avoidance</span>
+          <span class="metric">High-DOF evaluation: Panda-like 7-DOF arm with 3D obstacles</span>
+        </div>
+        <div class="card">
+          <h3>Faithful baseline analysis</h3>
+          <p>
+            A two-rate <code>feedback_mppi_faithful</code> variant combining released current-action gains
+            with stride-2 replanning fails even at <code>K=8192</code> (<code>2.1 ms</code>), confirming
+            that the autodiff refinement provides value that pure feedback cannot replicate.
+          </p>
+          <span class="metric">Baseline architecture study: current-action-only vs hybrid</span>
         </div>
         <div class="card">
           <h3>Neural SDF navigation</h3>
@@ -380,23 +389,28 @@
         <tbody>
           <tr>
             <td><code>dynamic_slalom</code>, matched <code>1.0 ms</code></td>
-            <td><code>mppi</code> vs <code>feedback_mppi_ref</code> vs <code>diff_mppi_3</code></td>
-            <td><code>14.12</code> vs <code>11.90</code> vs <code>1.95</code> final distance</td>
+            <td><code>mppi</code> vs 5 feedback baselines vs <code>diff_mppi_3</code></td>
+            <td><strong>Only diff_mppi_3 succeeds</strong> (<code>1.91</code>). Best non-hybrid: <code>feedback_mppi_fused</code> at <code>10.30</code>.</td>
+          </tr>
+          <tr>
+            <td><code>7dof_dynamic_avoid</code>, <code>K=512</code></td>
+            <td><code>diff_mppi_3</code> vs <code>feedback_mppi_ref</code></td>
+            <td><code>diff_mppi_3</code>: <strong>success=1.00 @ 0.84 ms</strong>. <code>feedback_mppi_ref</code>: 0.75 @ 4.01 ms.</td>
           </tr>
           <tr>
             <td><code>dynamic_crossing</code>, matched <code>1.0 ms</code></td>
-            <td><code>mppi</code> vs <code>feedback_mppi_release</code></td>
-            <td><code>3.04</code> vs <code>1.93</code> final distance</td>
+            <td><code>mppi</code> vs <code>feedback_mppi_ref</code> vs <code>diff_mppi_3</code></td>
+            <td><code>3.02</code> vs <code>1.93</code> vs <code>1.85</code> final distance</td>
           </tr>
           <tr>
             <td><code>arm_static_shelf</code>, <code>K=256</code></td>
-            <td><code>mppi</code> vs <code>feedback_mppi_ref</code> vs <code>feedback_mppi_cov</code></td>
-            <td><code>0.00 / 0.23</code> vs <code>1.00 / 0.15</code> vs <code>1.00 / 0.15</code> success / final distance</td>
+            <td><code>mppi</code> vs <code>feedback_mppi_ref</code></td>
+            <td><code>0.00 / 0.23</code> vs <code>1.00 / 0.15</code> success / final distance</td>
           </tr>
           <tr>
             <td><code>dynamic_bicycle</code>, low budget</td>
             <td><code>dynbike_slalom K=32</code></td>
-            <td><code>mppi</code> stays at <code>0.75 / 12.60</code>, while <code>diff_mppi_1</code> reaches <code>1.00 / 2.24</code></td>
+            <td><code>mppi</code>: <code>0.75 / 12.60</code>, <code>diff_mppi_1</code>: <code>1.00 / 2.24</code></td>
           </tr>
         </tbody>
       </table>
