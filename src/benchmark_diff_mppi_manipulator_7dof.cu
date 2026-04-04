@@ -104,6 +104,7 @@ struct PlannerVariant {
     int feedback_mode = 0;
     int grad_steps = 0;
     float alpha = 0.0f;
+    float grad_clip = 50.0f;
     float sampling_lambda = DEFAULT_LAMBDA;
     float torque_sigma[NDOF] = {8.0f, 8.0f, 6.0f, 6.0f, 2.0f, 2.0f, 1.5f};
     float feedback_gain_scale = 0.0f;
@@ -648,10 +649,50 @@ __global__ void rollout_nominal_kernel(
     }
 }
 
-__global__ void compute_gradient_kernel(
-    const float* d_states, const float* d_nominal, float* d_grad,
+// Phase 1: Parallel cost gradient + Jacobian computation (T threads)
+// Each thread handles one timestep — the expensive FK-based FD runs in parallel.
+__global__ void precompute_cost_gradients_kernel(
+    const float* d_states, const float* d_nominal,
+    float* d_stage_grads_s,   // T * STATE_DIM
+    float* d_stage_grads_c,   // T * CTRL_DIM
+    float* d_jacobians,       // T * STATE_DIM * (STATE_DIM + CTRL_DIM)
     ArmParams7 params, CostParams7 cp,
     int n_obs, int n_dyn_obs, int start_step, int T)
+{
+    int t = blockIdx.x * blockDim.x + threadIdx.x;
+    if (t >= T) return;
+
+    float q[NDOF], dq[NDOF], tau[NDOF];
+    for (int j = 0; j < NDOF; j++) {
+        q[j] = d_states[t * STATE_DIM + j];
+        dq[j] = d_states[t * STATE_DIM + NDOF + j];
+        tau[j] = d_nominal[t * CTRL_DIM + j];
+    }
+
+    float grad_s[STATE_DIM], grad_c[CTRL_DIM];
+    float tau_world = (start_step + t) * params.dt;
+    stage_cost_grad_fn(q, dq, tau, params, cp, n_obs, n_dyn_obs, tau_world, grad_s, grad_c);
+
+    for (int j = 0; j < STATE_DIM; j++) d_stage_grads_s[t * STATE_DIM + j] = grad_s[j];
+    for (int j = 0; j < CTRL_DIM; j++) d_stage_grads_c[t * CTRL_DIM + j] = grad_c[j];
+
+    // Analytical Jacobian (cheap, no FK)
+    float J[STATE_DIM][STATE_DIM + CTRL_DIM];
+    arm7_jacobian(q, dq, tau, params, J);
+    int stride = STATE_DIM * (STATE_DIM + CTRL_DIM);
+    for (int r = 0; r < STATE_DIM; r++)
+        for (int c = 0; c < STATE_DIM + CTRL_DIM; c++)
+            d_jacobians[t * stride + r * (STATE_DIM + CTRL_DIM) + c] = J[r][c];
+}
+
+// Phase 2: Sequential backward adjoint pass (1 thread, matrix ops only, no FK)
+__global__ void backward_adjoint_kernel(
+    const float* d_states,
+    const float* d_stage_grads_s,
+    const float* d_stage_grads_c,
+    const float* d_jacobians,
+    float* d_grad,
+    ArmParams7 params, CostParams7 cp, int T)
 {
     if (blockIdx.x != 0 || threadIdx.x != 0) return;
 
@@ -665,25 +706,17 @@ __global__ void compute_gradient_kernel(
         terminal_grad_fn(q, dq, params, cp, adj);
     }
 
+    int jac_stride = STATE_DIM * (STATE_DIM + CTRL_DIM);
     for (int t = T - 1; t >= 0; t--) {
-        float q[NDOF], dq[NDOF], tau[NDOF];
-        for (int j = 0; j < NDOF; j++) {
-            q[j] = d_states[t * STATE_DIM + j];
-            dq[j] = d_states[t * STATE_DIM + NDOF + j];
-            tau[j] = d_nominal[t * CTRL_DIM + j];
-        }
-
-        float J[STATE_DIM][STATE_DIM + CTRL_DIM];
-        float grad_s[STATE_DIM], grad_c[CTRL_DIM];
-        float tau_world = (start_step + t) * params.dt;
-        arm7_jacobian(q, dq, tau, params, J);
-        stage_cost_grad_fn(q, dq, tau, params, cp, n_obs, n_dyn_obs, tau_world, grad_s, grad_c);
+        const float* J_flat = &d_jacobians[t * jac_stride];
+        const float* gs = &d_stage_grads_s[t * STATE_DIM];
+        const float* gc = &d_stage_grads_c[t * CTRL_DIM];
 
         // Control gradient = stage_cost_grad_ctrl + J_ctrl^T * adj
         for (int j = 0; j < CTRL_DIM; j++) {
-            float g = grad_c[j];
+            float g = gc[j];
             for (int row = 0; row < STATE_DIM; row++) {
-                g += J[row][STATE_DIM + j] * adj[row];
+                g += J_flat[row * (STATE_DIM + CTRL_DIM) + STATE_DIM + j] * adj[row];
             }
             d_grad[t * CTRL_DIM + j] = g;
         }
@@ -691,9 +724,9 @@ __global__ void compute_gradient_kernel(
         // Adjoint update: adj_new = stage_cost_grad_state + J_state^T * adj
         float new_adj[STATE_DIM];
         for (int col = 0; col < STATE_DIM; col++) {
-            float a = grad_s[col];
+            float a = gs[col];
             for (int row = 0; row < STATE_DIM; row++) {
-                a += J[row][col] * adj[row];
+                a += J_flat[row * (STATE_DIM + CTRL_DIM) + col] * adj[row];
             }
             new_adj[col] = a;
         }
@@ -702,12 +735,22 @@ __global__ void compute_gradient_kernel(
 }
 
 __global__ void gradient_step_kernel(
-    float* d_nominal, const float* d_grad, int T, float alpha, ArmParams7 params)
+    float* d_nominal, const float* d_grad, int T, float alpha, float grad_clip, ArmParams7 params)
 {
     int t = blockIdx.x * blockDim.x + threadIdx.x;
     if (t >= T) return;
+    // Per-timestep gradient norm clipping
+    float norm_sq = 0.0f;
     for (int j = 0; j < CTRL_DIM; j++) {
-        float val = d_nominal[t * CTRL_DIM + j] - alpha * d_grad[t * CTRL_DIM + j];
+        float g = d_grad[t * CTRL_DIM + j];
+        norm_sq += g * g;
+    }
+    float scale = alpha;
+    if (grad_clip > 0.0f && norm_sq > grad_clip * grad_clip) {
+        scale = alpha * grad_clip / sqrtf(norm_sq);
+    }
+    for (int j = 0; j < CTRL_DIM; j++) {
+        float val = d_nominal[t * CTRL_DIM + j] - scale * d_grad[t * CTRL_DIM + j];
         d_nominal[t * CTRL_DIM + j] = clampf_local(val, -params.max_torque[j], params.max_torque[j]);
     }
 }
@@ -820,6 +863,9 @@ public:
         CUDA_CHECK(cudaMalloc(&d_rollout_init_grads_, k_samples_ * STATE_DIM * sizeof(float)));
         CUDA_CHECK(cudaMalloc(&d_states_, h_states_.size() * sizeof(float)));
         CUDA_CHECK(cudaMalloc(&d_grad_, h_nominal_.size() * sizeof(float)));
+        CUDA_CHECK(cudaMalloc(&d_stage_grads_s_, t_horizon_ * STATE_DIM * sizeof(float)));
+        CUDA_CHECK(cudaMalloc(&d_stage_grads_c_, t_horizon_ * CTRL_DIM * sizeof(float)));
+        CUDA_CHECK(cudaMalloc(&d_jacobians_, t_horizon_ * STATE_DIM * (STATE_DIM + CTRL_DIM) * sizeof(float)));
         CUDA_CHECK(cudaMalloc(&d_feedback_gains_, t_horizon_ * GAINS_PER_STEP * sizeof(float)));
         CUDA_CHECK(cudaMalloc(&d_start_state_, STATE_DIM * sizeof(float)));
         CUDA_CHECK(cudaMalloc(&d_sigma_, CTRL_DIM * sizeof(float)));
@@ -837,6 +883,9 @@ public:
         CUDA_CHECK(cudaFree(d_rollout_init_grads_));
         CUDA_CHECK(cudaFree(d_states_));
         CUDA_CHECK(cudaFree(d_grad_));
+        CUDA_CHECK(cudaFree(d_stage_grads_s_));
+        CUDA_CHECK(cudaFree(d_stage_grads_c_));
+        CUDA_CHECK(cudaFree(d_jacobians_));
         CUDA_CHECK(cudaFree(d_feedback_gains_));
         CUDA_CHECK(cudaFree(d_start_state_));
         CUDA_CHECK(cudaFree(d_sigma_));
@@ -970,12 +1019,18 @@ private:
         if (variant_.use_gradient) {
             for (int gs = 0; gs < variant_.grad_steps; gs++) {
                 rollout_nominal_kernel<<<1, 1>>>(d_start_state_, d_nominal_, d_states_, scenario_.params, t_horizon_);
-                compute_gradient_kernel<<<1, 1>>>(
-                    d_states_, d_nominal_, d_grad_, scenario_.params, scenario_.cost_params,
+                // Phase 1: parallel cost gradient + Jacobian (T threads)
+                precompute_cost_gradients_kernel<<<(t_horizon_ + block - 1) / block, block>>>(
+                    d_states_, d_nominal_, d_stage_grads_s_, d_stage_grads_c_, d_jacobians_,
+                    scenario_.params, scenario_.cost_params,
                     scenario_.n_obs, scenario_.n_dyn_obs, start_step, t_horizon_);
+                // Phase 2: sequential backward adjoint (1 thread, no FK)
+                backward_adjoint_kernel<<<1, 1>>>(
+                    d_states_, d_stage_grads_s_, d_stage_grads_c_, d_jacobians_, d_grad_,
+                    scenario_.params, scenario_.cost_params, t_horizon_);
                 gradient_step_kernel<<<(t_horizon_ + block - 1) / block, block>>>(
                     d_nominal_, d_grad_, t_horizon_,
-                    variant_.alpha * scenario_.grad_alpha_scale, scenario_.params);
+                    variant_.alpha * scenario_.grad_alpha_scale, variant_.grad_clip, scenario_.params);
             }
         }
         CUDA_CHECK(cudaDeviceSynchronize());
@@ -1018,6 +1073,9 @@ private:
     float* d_rollout_init_grads_ = nullptr;
     float* d_states_ = nullptr;
     float* d_grad_ = nullptr;
+    float* d_stage_grads_s_ = nullptr;
+    float* d_stage_grads_c_ = nullptr;
+    float* d_jacobians_ = nullptr;
     float* d_feedback_gains_ = nullptr;
     float* d_start_state_ = nullptr;
     float* d_sigma_ = nullptr;
