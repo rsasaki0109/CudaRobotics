@@ -1029,7 +1029,7 @@ static Scenario make_7dof_shelf_reach() {
     s.goal_tol = 0.15f;
     s.max_steps = 300;
     s.grad_alpha_scale = 0.5f;
-    // Goal: reach forward, avoiding obstacles in the workspace
+    // Goal: reach forward, avoiding obstacle in the workspace
     s.cost_params.goal_x = 0.40f;
     s.cost_params.goal_y = 0.15f;
     s.cost_params.goal_z = 0.35f;
@@ -1041,7 +1041,7 @@ static Scenario make_7dof_shelf_reach() {
     s.cost_params.terminal_weight = 50.0f;
     // Obstacle blocking the direct path
     const Obstacle3D obs[] = {
-        {0.32f,  0.08f, 0.28f, 0.06f},  // blocking sphere mid-path
+        {0.32f,  0.08f, 0.28f, 0.06f},
     };
     s.n_obs = static_cast<int>(sizeof(obs) / sizeof(obs[0]));
     for (int i = 0; i < s.n_obs; i++) s.obstacles[i] = obs[i];
