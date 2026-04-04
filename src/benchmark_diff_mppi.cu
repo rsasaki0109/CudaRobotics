@@ -773,6 +773,8 @@ __global__ void blend_feedback_gains_kernel(
     d_out[idx] = out_scale * d_out[idx] + aux_scale * d_aux[idx];
 }
 
+// Single-thread kernel: sequential min-reduce + normalize (K is small enough that
+// a single-thread scan is faster than a parallel reduction with launch overhead).
 __global__ void compute_weights_kernel(const float* d_costs, float* d_weights, int K, float lambda) {
     if (blockIdx.x != 0 || threadIdx.x != 0) return;
     float min_cost = FLT_MAX;
@@ -804,6 +806,7 @@ __global__ void update_controls_kernel(float* d_nominal, const float* d_perturbe
     d_nominal[t * 2 + 1] = steer;
 }
 
+// Single-thread kernel: sequential forward rollout (each state depends on the previous).
 __global__ void rollout_nominal_kernel(
     float sx, float sy, float stheta, float sv,
     const float* d_nominal, float* d_states,
@@ -912,6 +915,9 @@ __global__ void precompute_nav_gradients_kernel(
 }
 
 // Phase 2: Sequential backward adjoint pass (1 thread, matrix ops only)
+// Single-thread kernel: sequential backward adjoint pass (each timestep depends on
+// the next). Cost gradients and Jacobians are precomputed in parallel by
+// precompute_nav_gradients_kernel, so this kernel does matrix ops only.
 __global__ void backward_nav_adjoint_kernel(
     const float* d_states,
     const float* d_stage_grads,

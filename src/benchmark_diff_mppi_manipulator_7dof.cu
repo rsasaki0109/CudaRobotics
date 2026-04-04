@@ -595,6 +595,7 @@ __global__ void rollout_kernel(
     d_rng[k] = local_rng;
 }
 
+// Single-thread: sequential min-reduce + normalize (K small enough for single-thread scan).
 __global__ void compute_weights_kernel(const float* d_costs, float* d_weights, int K, float lambda) {
     if (blockIdx.x != 0 || threadIdx.x != 0) return;
     float min_cost = FLT_MAX;
@@ -626,6 +627,7 @@ __global__ void update_controls_kernel(
     for (int j = 0; j < NDOF; j++) d_nominal[t * CTRL_DIM + j] = tau[j];
 }
 
+// Single-thread: sequential forward rollout (each state depends on the previous).
 __global__ void rollout_nominal_kernel(
     const float* d_start_state, const float* d_nominal, float* d_states,
     ArmParams7 params, int T)
