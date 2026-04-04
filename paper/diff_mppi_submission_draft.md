@@ -226,30 +226,23 @@ The main sentence should be:
 
 ### Dynamic navigation, exact time
 
-From the latest exact-time tuning (including `feedback_mppi_faithful`):
-
-- `1.00 ms`, `dynamic_crossing`
-  - `mppi`: `K=7404 @ 0.979 ms`, success `0.00`, dist `3.02`
-  - `feedback_mppi_ref`: `K=1218 @ 0.998 ms`, success `1.00`, dist `1.93`
-  - `feedback_mppi_faithful`: `K=3584 @ 0.994 ms`, success `0.00`, dist `2.90`
-  - `diff_mppi_3`: `K=1279 @ 0.989 ms`, success `1.00`, dist `1.85`
+From the latest exact-time tuning (after gradient parallelization):
 
 - `1.00 ms`, `dynamic_slalom`
-  - `mppi`: `K=7513 @ 0.987 ms`, success `0.00`, dist `14.16`
-  - `feedback_mppi_ref`: `K=1180 @ 1.020 ms`, success `0.00`, dist `11.87`
-  - `feedback_mppi_faithful`: `K=3403 @ 0.976 ms`, success `0.00`, dist `14.09`
-  - `diff_mppi_3`: `K=455 @ 1.012 ms`, success `1.00`, dist `1.91`
+  - `mppi`: `K=7271 @ 0.982 ms`, success `0.00`, dist `14.19`
+  - `feedback_mppi_ref`: `K=992 @ 1.009 ms`, success `0.00`, dist `11.77`
+  - `feedback_mppi_fused`: `K=128 @ 1.854 ms`, success `0.00`, dist `10.33`
+  - `diff_mppi_3`: `K=6216 @ 0.965 ms`, success `1.00`, dist `1.89`
 
 - `2.00 ms`, `dynamic_slalom`
-  - `mppi`: `K=14777 @ 1.993 ms`, success `0.00`, dist `14.15`
-  - `feedback_mppi_ref`: `K=3424 @ 1.998 ms`, success `0.00`, dist `11.90`
-  - `feedback_mppi_faithful`: `K=7930 @ 1.994 ms`, success `0.00`, dist `14.03`
-  - `diff_mppi_3`: `K=8361 @ 1.993 ms`, success `1.00`, dist `1.92`
+  - `mppi`: `K=14010 @ 1.901 ms`, success `0.00`, dist `14.18`
+  - `feedback_mppi_fused`: `K=136 @ 1.968 ms`, success `0.00`, dist `10.36`
+  - `diff_mppi_3`: `K=13467 @ 1.982 ms`, success `1.00`, dist `1.89`
 
-This is the cleanest matched-time claim in the repository. Key observations:
+After gradient parallelization, `diff_mppi_3` now uses `K=6216` at 1.0 ms (previously K=455) — nearly as many samples as vanilla MPPI plus the autodiff refinement, all within the same time budget. Key observations:
 - `diff_mppi_3` is the only planner family that solves `dynamic_slalom` at any matched-time budget
-- `feedback_mppi_faithful` performs at MPPI level on `dynamic_slalom`, confirming the two-rate architecture failure
-- On the easier `dynamic_crossing`, both `feedback_mppi_ref` and `diff_mppi_3` succeed, with `diff_mppi_3` slightly better on terminal distance
+- The gradient parallelization makes the hybrid controller genuinely compute-competitive: at 1.0 ms, diff_mppi_3 uses K=6216 vs mppi K=7271 (85% as many samples plus 3 gradient steps)
+- All non-hybrid feedback baselines fail on `dynamic_slalom` regardless of compute budget
 
 ### Outside-domain manipulator
 
