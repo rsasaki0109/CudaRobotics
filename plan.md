@@ -1,555 +1,753 @@
-# CudaRobotics — Codex 引き継ぎドキュメント
+# CudaRobotics 引き継ぎドキュメント
 
-## このドキュメントの目的
+最終更新: 2026-04-04 JST
 
-Codex（または他の AI コーディングエージェント）が **このファイルだけ読めば全作業を完了できる** ように、
-現状・未完了タスク・実装仕様・ビルド手順・受け入れ基準を全て記載する。
-
----
-
-## 1. リポジトリ概要
-
-- **パス**: ``
-- **GitHub**: `rsasaki0109/CudaRobotics`
-- **言語**: CUDA C++ (C++14 / CUDA 14)
-- **ビルド**: `cmake -B build && cmake --build build -j$(nproc)`
-- **環境**: Ubuntu 22.04, CUDA 12.0, OpenCV 4.6, Eigen3
-- **GIF 配信**: GitHub Pages (`rsasaki0109.github.io/CudaRobotics/`)、`gh-pages` ブランチ
-- **現在のブランチ**: `master`（全作業は master 上で行う。ブランチ分けは不要に変更）
+このファイルは、Claude あるいは別のコーディングエージェントにそのまま渡すための、現状整理と次アクションの handoff です。
+前の `plan.md` はかなり古く、未実装扱いだったものがすでに大量に実装・push 済みなので、内容を全面更新しています。
 
 ---
 
-## 2. 現在の状態
+## 0. まず結論
 
-### 2-A: 完成済み（ビルド確認済み、push 済み）
+この repo はもう「未完成の実装集」ではなく、かなり大きく 3 本の流れに分かれています。
 
-84 個の CMake ターゲット。以下のアルゴリズムが実装済み:
+1. **CudaRobotics 本体**
+   - 既存の CUDA robotics 実装群
+   - CPU vs CUDA の多数の GIF
+   - README / GitHub Pages で外向けに見せられる状態
 
-**Localization**: EKF, PF, FastSLAM, AMCL, emcl2, PFoE
-**SLAM**: Graph SLAM
-**Registration**: ICP, NDT, GICP (新規、未ビルド確認)
-**Path Planning**: A*, Dijkstra, RRT, RRT*, Informed RRT*, RRT* RS, RRT-Connect, 3D RRT*, DWA, Frenet, State Lattice, Potential Field, 3D PF, PRM, Voronoi, Hybrid A*, STOMP, Value Iteration, MPPI
-**Multi-agent**: Multi-robot Planner, ORCA, Social Force
-**Mapping**: Occupancy Grid
-**Path Tracking**: LQR (2種)
-**Benchmark**: PF, DWA, RRT
-**Comparison GIFs**: 20+ の CPU vs CUDA 比較
+2. **Diff-MPPI 研究ライン**
+   - いま一番論文の核になりうるライン
+   - dynamic navigation / uncertainty / CartPole / dynamic bicycle / planar manipulator まで follow-up あり
+   - baseline gap はかなり縮まったが、まだ「paper-faithful reproduction」までは行っていない
 
-### 2-B: 新規作成済み（未ビルド確認、未コミット）
+3. **experiment-first 開発プロセス**
+   - `core/` と `experiments/` を分けた「experiment -> convergence」型の開発フロー
+   - docs / history / regression / convergence / next-actions / helper-promotion まで一通り回る
+   - これは repo の開発方法そのものを支える基盤で、もう独立した成果物になっている
 
-以下のファイルが master 上に存在するが、まだ `git add` / `git commit` / `git push` されていない:
+現時点での方針は次の通りです。
 
-```
-# 共通基盤 (Project 0)
-include/autodiff_engine.cuh    # Dual Number 自動微分エンジン
-include/gpu_mlp.cuh            # GPU MLP 推論/学習エンジン
-src/test_autodiff.cu           # autodiff テスト
-src/test_gpu_mlp.cu            # GPU MLP テスト
-
-# Neuroevolution (Project 2)
-include/gpu_neural_net.cuh     # GPU NN (input→32→16→output)
-include/gpu_environments.cuh   # Cart-Pole 環境
-include/gpu_genetic.cuh        # 遺伝的操作カーネル
-src/neuroevo.cu                # メイン: 4096個体を同時進化
-src/comparison_neuroevo.cu     # CPU 100 vs GPU 4096 比較
-
-# CudaPointCloud (Project 4)
-include/cuda_pointcloud.cuh    # GPU 点群データ構造
-src/voxel_grid_filter.cu       # ボクセルグリッドダウンサンプリング
-src/statistical_filter.cu      # 統計的外れ値除去
-src/normal_estimation.cu       # 法線推定 (PCA)
-src/gicp.cu                    # Generalized ICP
-src/ransac_plane.cu            # RANSAC 平面検出
-src/benchmark_pointcloud.cu    # PCL vs GPU ベンチマーク
-
-# Swarm Optimization (Project 5)
-include/benchmark_functions.cuh # Rastrigin, Rosenbrock, Ackley, Schwefel
-src/pso.cu                     # Particle Swarm Optimization (N=100K)
-src/differential_evolution.cu  # DE/rand/1/bin (N=10K)
-src/cma_es.cu                  # CMA-ES (lambda=4096)
-src/aco_tsp.cu                 # ACO for TSP (4096蟻, 50都市)
-src/comparison_swarm.cu        # 全手法比較
-```
-
-### 2-C: 未実装 (Project 1, 3, 6)
-
-以下の3プロジェクトはまだソースコードが存在しない:
-
-- **Project 1: Differentiable MPPI** — MPPI + 自動微分で勾配も使う制御
-- **Project 3: Neural SDF Navigation** — MLP で SDF を表現し経路計画
-- **Project 6: MiniIsaacGym** — 軽量 differentiable simulator
+- **論文本文を今すぐ詰めるのは最優先ではない**
+- **README と GitHub Pages には成果サマリが反映済み**
+- **次に大きく効くのは、Diff-MPPI の stronger benchmark か paper-faithful baseline reproduction**
+- **experiment-first 側は主要目標を達成済みで、今は improvement track**
 
 ---
 
-## 3. Codex がやるべきタスク（優先順位順）
+## 1. 現在の Git / リポジトリ状態
 
-### Task 1: 未コミットファイルのビルド確認とコミット
+- リポジトリパス: `.`
+- 主要ブランチ: `master`
+- 公開用ブランチ: `gh-pages`
+- 現在の `master` HEAD: `4d596e5` `Summarize research results in README`
+- 直前の主要 commit:
+  - `16128df` `Add Diff-MPPI submission draft`
+  - `3c090db` `Add manipulator feedback baseline follow-up`
+  - `461c172` `Add release-weighting Diff-MPPI baseline`
+  - `d121598` `Add covariance exact-time baseline for Diff-MPPI`
+  - `11aac81` `Add exact-time gap-closure presets for Diff-MPPI`
+- `gh-pages` 側の最新:
+  - `9a3d948` `Add research results landing page`
+
+この handoff を書いている時点で:
+
+- `git status --short` は clean
+- `master` / `gh-pages` とも push 済み
+
+---
+
+## 2. 今この repo で「終わっていること」
+
+### 2.1 既存 CUDA robotics 群
+
+古典ロボティクスの CUDA 実装群は repo の元々の中核で、README 冒頭の CPU vs CUDA 比較 GIF 群もこの系統です。
+
+主なカテゴリ:
+
+- Localization:
+  - EKF, PF, FastSLAM, AMCL, emcl2, PFoE
+- Path planning / navigation:
+  - A*, Dijkstra, RRT, RRT*, DWA, Frenet, Voronoi, Potential Field, MPPI など
+- Mapping / tracking / multi-agent:
+  - Occupancy Grid, LQR, multi-robot planner など
+
+この部分は「未実装」ではありません。README と GitHub Pages の既存 GIF 群で外向けに見せられる状態です。
+
+### 2.2 研究拡張ライン
+
+README の `Novel Research Extensions` に出ている以下は、すでに実装済みです。
+
+- autodiff + GPU MLP 基盤
+- Diff-MPPI
+- Neural SDF Navigation
+- GPU neuroevolution
+- MiniIsaacGym
+- CudaPointCloud
+- Swarm optimization
+
+### 2.3 公開面
+
+外向けの成果サマリは、もう最低限できています。
+
+- README:
+  - `Research Results Snapshot` を追加済み
+  - 論文ドラフトではなく「今 repo に何があって何が出ているか」を先に見せる形
+- GitHub Pages:
+  - `https://rsasaki0109.github.io/CudaRobotics/`
+  - `index.html` を新設済み
+  - Diff-MPPI, SDF, MiniIsaac, PointCloud, swarm の結果サマリと GIF を表示
+
+つまり、次の担当者は「まず repo の成果を表に出す」作業から始める必要はありません。
+
+---
+
+## 3. 研究ラインの現状整理
+
+### 3.1 最重要ライン: Diff-MPPI
+
+これが現在もっとも論文主題に近いラインです。
+
+中身は「vanilla MPPI の sampling update の後に、短い autodiff refinement を足す lightweight hybrid controller」です。
+
+広く言って「Diff-MPPI 全体が新しい」と主張するのは厳しいですが、次の狭い主張はかなり defend しやすくなっています。
+
+> lightweight CUDA MPPI + short autodiff refinement は、
+> strong non-hybrid feedback baselines と比べても、
+> hard dynamic-obstacle tasks において、
+> matched-time budget 下で better compute-quality tradeoff を示す
+
+### 3.2 Diff-MPPI で今ある benchmark 群
+
+#### 主 benchmark
+
+- `src/benchmark_diff_mppi.cu`
+  - main dynamic navigation suite
+  - fixed-budget
+  - cap-based wall-clock
+  - equal-time target
+  - exact matched-time tuning と接続
+
+#### follow-up 群
+
+- `src/benchmark_diff_mppi_cartpole.cu`
+  - CartPole outside-domain pilot
+- `src/benchmark_diff_mppi_dynamic_bicycle.cu`
+  - steering lag / drag を入れた higher-order mobile dynamics
+- `src/benchmark_diff_mppi_manipulator.cu`
+  - planar 2-link manipulator obstacle-avoidance pilot
+
+### 3.3 Diff-MPPI で今ある baseline 群
+
+現時点では baseline はかなり増えています。README の記述もこの状態に合わせて更新済みです。
+
+main suite には少なくとも以下があります。
+
+- `mppi`
+- `feedback_mppi`
+  - nominal-linearization 系の強化 baseline
+- `feedback_mppi_ref`
+  - released gain に寄せた current-action feedback proxy
+- `feedback_mppi_release`
+  - released weighting まで寄せた proxy
+- `feedback_mppi_sens`
+  - rollout-sensitivity 系
+- `feedback_mppi_cov`
+  - covariance-regression 系
+- `feedback_mppi_hf`
+  - low-rate replan / high-frequency feedback 実行系
+- `feedback_mppi_fused`
+  - heavier fused feedback baseline
+- `grad_only_3`
+  - hybrid の中の gradient-only ablation
+- `diff_mppi_1`
+- `diff_mppi_3`
+
+重要なのは、
+
+- baseline gap は前よりかなり狭い
+- ただし **paper-faithful reproduction ではまだない**
+
+という点です。
+
+### 3.4 Diff-MPPI の現在の strongest talking points
+
+README と Pages で今押している数字はこのあたりです。
+
+#### dynamic navigation
+
+README の現在値:
+
+- `dynamic_slalom` matched `1.0 ms`
+  - `mppi`: unsuccessful, final distance 約 `14.12`
+  - `feedback_mppi_ref`: 約 `11.90`
+  - `diff_mppi_3`: successful, 約 `1.95`
+
+この task がいちばん diagnostic です。
+easy task の `dynamic_crossing` は strong feedback baseline でもかなり詰められる一方、hard task の `dynamic_slalom` は hybrid がまだ一番強い、という構図になっています。
+
+#### manipulator pilot
+
+README の現在値:
+
+- `arm_static_shelf`, `K=256`
+  - `mppi`: `success=0.00`, final distance `0.23`
+  - `feedback_mppi_ref`: `success=1.00`, `0.15`
+  - `feedback_mppi_cov`: `success=1.00`, `0.15`
+
+manipulator では「hybrid が圧勝」というより、「vanilla MPPI を強い feedback baseline が明確に上回る outside-domain pilot がある」という位置づけです。
+これは reviewer の「2D kinematic nav だけ」という批判を弱める材料にはなりますが、main result の核は still dynamic navigation 側です。
+
+### 3.5 mechanism analysis
+
+trace ベースの mechanism 分析も入っています。
+
+- `scripts/plot_diff_mppi_mechanism.py`
+- trace 出力は `benchmark_diff_mppi` の `--trace-csv`
+
+現在の重要ポイント:
+
+- `dynamic_slalom @ K=1024`
+- `diff_mppi_1` と `diff_mppi_3` は early-horizon 側の correction が強い
+- late-horizon 側はほぼ小さい
+
+つまり、
+
+> autodiff stage は sampled plan 全体を大きく置き換えるのではなく、
+> 実際に直近で実行される control を前寄りに sharpen している
+
+という説明を支える材料になっています。
+
+### 3.6 uncertainty follow-up
+
+`paper/diff_mppi_uncertainty_followup.md` にまとまっています。
+
+これは nominal obstacle model のまま plan して、実行側だけ obstacle の time offset / speed scale / lateral offset を seed ごとにずらす mild mismatch study です。
+
+現状の読み方:
+
+- `uncertain_crossing`
+  - feedback baseline でもかなり回復する
+- `uncertain_slalom`
+  - hybrid の優位が残る
+
+これは rebuttal や limitations 対応には効きますが、ここを main story にしすぎる必要はありません。
+
+### 3.7 outside-domain pilots
+
+現在の outside-domain 系:
+
+- CartPole
+- dynamic bicycle
+- planar manipulator
+
+この順に価値があります。
+
+- CartPole:
+  - 一番弱い pilot
+  - 「完全に 2D nav しかない」ではない、程度
+- dynamic bicycle:
+  - higher-order mobile dynamics として useful
+  - strong feedback baseline が efficiency competitor になる点が面白い
+- planar manipulator:
+  - 一番 reviewer に返しやすい outside-domain pilot
+  - ただし standardized benchmark ではない
+
+結論としては:
+
+- outside-domain evidence は **ある**
+- しかし venue-level の strongest gap を fully close はしていない
+
+---
+
+## 4. Diff-MPPI の文書群マップ
+
+Diff-MPPI の文書は散らばっているので、次の担当者はまずこれを見ればよいです。
+
+### 主な文書
+
+- `paper/diff_mppi_results.md`
+  - 初期の results draft
+- `paper/diff_mppi_novelty_followup.md`
+  - baseline 強化と exact-time の follow-up をまとめた主ノート
+- `paper/diff_mppi_uncertainty_followup.md`
+  - uncertainty follow-up
+- `paper/diff_mppi_cartpole_followup.md`
+  - CartPole pilot
+- `paper/diff_mppi_dynamic_bicycle_followup.md`
+  - dynamic bicycle pilot
+- `paper/diff_mppi_manipulator_followup.md`
+  - planar manipulator pilot
+- `paper/icra_iros_gap_list.md`
+  - venue-level の gap analysis
+- `paper/diff_mppi_submission_draft.md`
+  - submission 向けに主張を細くした draft
+
+### 実務的な読み順
+
+もし Claude が `Diff-MPPI` ラインを続けるなら、この順がよいです。
+
+1. `readme.md`
+2. `paper/diff_mppi_submission_draft.md`
+3. `paper/diff_mppi_novelty_followup.md`
+4. `paper/icra_iros_gap_list.md`
+5. `paper/diff_mppi_manipulator_followup.md`
+
+理由:
+
+- README で現状の outward-facing summary を掴む
+- submission draft で「今どこを主張として切っているか」を掴む
+- novelty follow-up で raw evidence を把握する
+- gap list で reviewer 目線の弱点を確認する
+- manipulator follow-up で outside-domain の strongest pilot を確認する
+
+---
+
+## 5. いま論文を書かなくてよい、という前提での優先順位
+
+ユーザー意向として、今は「まず paper を完成させる」より、成果整理・引き継ぎ・将来の continuation をしやすくすることが重要です。
+
+その前提だと、優先度は次の順です。
+
+### 優先度 A
+
+- README / Pages / handoff docs の整合
+- 再現コマンドと生成物の整理
+- 次の担当者が迷わない状態にする
+
+これは今回の `plan.md` 更新もその一部です。
+
+### 優先度 B
+
+Diff-MPPI を続けるなら:
+
+- paper-faithful に近い baseline reproduction
+- stronger public benchmark
+- main figure / main table の固定
+
+### 優先度 C
+
+experiment-first workflow の extension
+
+- 4つ目の problem を足す
+- helper promotion を進める
+- history / convergence をさらに使う
+
+このラインは「完成済みの基盤の improvement」です。すぐやらなくてもよいです。
+
+---
+
+## 6. experiment-first 開発フローの現状
+
+これはユーザーから明確に要求されて導入したプロセスで、今はかなり整っています。
+
+### 6.1 目的
+
+設計先行ではなく、
+
+> experiment -> convergence
+
+で進めること。
+
+つまり、
+
+- 最初から完璧な抽象を置かない
+- まず concrete variants を複数作る
+- 同一 interface / 同一 input / 同一 metrics で比べる
+- 共通部分が見えたら最小抽象だけ残す
+
+という方針です。
+
+### 6.2 今ある problem 群
+
+現在は少なくとも 3 つの concrete problem が回っています。
+
+1. `planner_selection`
+2. `time_budget_selection`
+3. `fixture_promotion`
+
+各 problem に対して、3 variants あります。
+
+典型的には:
+
+- functional
+- oop
+- pipeline
+
+### 6.3 重要ディレクトリ
+
+- `core/`
+  - 最小 interface だけを置く
+- `experiments/`
+  - discardable concrete variants
+- `docs/experiments.md`
+  - 現在の比較結果
+- `docs/decisions.md`
+  - 採用 / 保留 / 不採用の理由
+- `docs/interfaces.md`
+  - 現在の最小 interface
+- `docs/experiments_history.md`
+  - snapshot 履歴
+- `docs/convergence.md`
+  - leader streak / convergence signal
+- `docs/next_actions.md`
+  - 現時点での action recommendation
+- `docs/helper_promotion.md`
+  - shared helper の watchlist
+
+### 6.4 主要スクリプト
+
+- `scripts/run_design_experiments.py`
+  - comparison 実行
+- `scripts/refresh_design_docs.py`
+  - docs 更新
+- `scripts/snapshot_design_experiments.py`
+  - history snapshot 生成
+- `scripts/compare_design_snapshots.py`
+  - snapshot delta 比較
+- `scripts/check_design_regressions.py`
+  - regression guard
+- `scripts/render_design_convergence.py`
+  - convergence doc 生成
+- `scripts/render_design_actions.py`
+  - next-actions doc 生成
+- `scripts/render_helper_promotion.py`
+  - helper promotion watchlist 生成
+- `scripts/design_doctor.py`
+  - 入口 1 本にまとめた maintenance command
+- `scripts/validate_design_workflow.py`
+  - whole workflow validation
+- `scripts/scaffold_design_problem.py`
+  - 新 problem scaffold
+- `scripts/check_scaffold_design_problem.py`
+  - scaffold self-check
+
+### 6.5 外部化された policy
+
+- `experiments/history/policy.json`
+  - regression policy
+- `experiments/history/actions_policy.json`
+  - action recommendation policy
+- `experiments/history/helper_policy.json`
+  - helper promotion policy
+- `experiments/data/manifest.json`
+  - tracked fixture set
+
+### 6.6 現状の評価
+
+このラインは「まだ作り途中」ではなく、主要目標を達成しています。
+
+今の状態:
+
+- 3 problems で回る
+- docs 自動生成される
+- history が残る
+- regression が見られる
+- convergence / next_actions / helper promotion まで出る
+- design doctor で一括更新できる
+
+つまり、
+
+> “設計が進化し続ける場所”
+
+という目標に対して、かなり近い状態です。
+
+### 6.7 これ以上このラインでやるなら
+
+優先度は下がりますが、やるとしたら:
+
+- 4つ目の concrete problem
+- helper promotion の実際の昇格
+- history 可視化の強化
+
+ただし、Diff-MPPI の論文価値に直結するのはこのラインではありません。
+
+---
+
+## 7. README / GitHub Pages の現状
+
+### 7.1 README
+
+`readme.md` は最近整理済みです。
+
+重要箇所:
+
+- `Research Results Snapshot`
+  - 主な成果の短いまとめ
+- `Diff-MPPI experiment workflow`
+  - benchmark / summarize / plot / exact-time tuning / mechanism / uncertainty / outside-domain follow-up の導線
+- `Experiment-First Development`
+  - process 側の導線
+
+つまり README は今、
+
+- repo の顔
+- 再現導線
+- 成果サマリ
+
+を兼ねています。
+
+### 7.2 GitHub Pages
+
+`gh-pages` には `index.html` を追加済みで、結果サマリ landing page があります。
+
+URL:
+
+- `https://rsasaki0109.github.io/CudaRobotics/`
+
+載せている内容:
+
+- hero summary
+- Diff-MPPI の current takeaways
+- manipulator / dynamic nav の数字
+- Neural SDF, MiniIsaac, neuroevolution, swarm
+- point-cloud speedup table
+
+いま Pages 側で直す必要がある urgent issue はありません。
+
+---
+
+## 8. 今後 Claude が最初に見るべきソース / 生成物
+
+### 8.1 Diff-MPPI のコード
+
+- `src/benchmark_diff_mppi.cu`
+- `src/benchmark_diff_mppi_manipulator.cu`
+- `src/benchmark_diff_mppi_dynamic_bicycle.cu`
+- `src/diff_mppi.cu`
+- `src/comparison_diff_mppi.cu`
+
+### 8.2 Diff-MPPI のスクリプト
+
+- `scripts/summarize_diff_mppi.py`
+- `scripts/plot_diff_mppi.py`
+- `scripts/plot_diff_mppi_mechanism.py`
+- `scripts/tune_diff_mppi_time_targets.py`
+
+### 8.3 主な build 生成物
+
+代表的な summary 類:
+
+- `build/benchmark_diff_mppi_exact_time_summary.md`
+- `build/benchmark_diff_mppi_exact_time_ref_summary.md`
+- `build/benchmark_diff_mppi_exact_time_cov_summary.md`
+- `build/benchmark_diff_mppi_exact_time_hf_summary.md`
+- `build/benchmark_diff_mppi_exact_time_fused_summary.md`
+- `build/benchmark_diff_mppi_manipulator_summary.md`
+- `build/benchmark_diff_mppi_manipulator_exact_time_summary.md`
+
+代表的な plot:
+
+- `build/plots/diff_mppi_final_distance_vs_time_cap.png`
+- `build/plots/diff_mppi_final_distance_vs_equal_time.png`
+- `build/plots_mechanism/dynamic_slalom_correction_vs_horizon.png`
+
+これらは README や paper notes の記述と対応しています。
+
+### 8.4 experiment-first 側
+
+- `scripts/design_doctor.py`
+- `scripts/validate_design_workflow.py`
+- `docs/experiments.md`
+- `docs/experiments_history.md`
+- `docs/convergence.md`
+- `docs/next_actions.md`
+- `docs/helper_promotion.md`
+
+---
+
+## 9. 現時点での「新規性」と「論文性」の判断
+
+これは repo 内でかなり議論してきたので、判断を固定しておきます。
+
+### 9.1 repo / artifact として
+
+かなり強いです。
+
+理由:
+
+- CUDA robotics 実装の量
+- GPU learning / point-cloud / swarm まで広い
+- GIF / README / Pages が整っている
+- experiment-first process 自体も成果物になっている
+
+### 9.2 Diff-MPPI 論文として
+
+**strong accept ではない**
+
+現時点の評価は概ね:
+
+- workshop / demo / artifact / tech report:
+  - 強い
+- main-track:
+  - `weak accept` から `borderline accept` くらい
+
+### 9.3 strong accept に届いていない理由
+
+主な gap:
+
+1. baseline はかなり近づいたが、まだ paper-faithful reproduction ではない
+2. outside-domain は増えたが、public standardized benchmark / high-fidelity robotics domain ではない
+3. 原理的新規性は狭く、systems / control empirical contribution として読むのが自然
+
+### 9.4 ただし以前よりかなり良くなった点
+
+- exact matched-time tuning がある
+- strong non-hybrid baselines が多い
+- mechanism analysis がある
+- uncertainty がある
+- outside-domain pilots が複数ある
+- manipulator pilot まである
+
+つまり、今は
+
+> reject 級ではないが、still strong accept 級でもない
+
+という位置です。
+
+---
+
+## 10. もし Claude がこの後続けるなら、何をやるべきか
+
+### 10.1 パターン A: 論文性を本当に上げに行く場合
+
+優先順位:
+
+1. **paper-faithful baseline reproduction**
+   - 近い proxy を増やすのではなく、closest baseline を 1 本本気で再現する
+2. **stronger public benchmark**
+   - 7-DOF / Isaac / MuJoCo / public manipulation benchmark 系
+3. **main table / main figure 固定**
+   - dynamic nav
+   - one stronger domain
+   - one mechanism figure
+
+この 3 つが main-track 的には一番効きます。
+
+### 10.2 パターン B: repo をさらに見せやすくする場合
+
+優先順位:
+
+1. README の表現調整
+2. Pages のスクリーンショット / 図追加
+3. benchmark summary から HTML を自動生成
+
+ただし、ここは論文の acceptability を劇的には上げません。
+
+### 10.3 パターン C: experiment-first をさらに伸ばす場合
+
+優先順位:
+
+1. 4つ目の concrete problem
+2. helper promotion の実行
+3. richer history visualization
+
+これは process 研究としては面白いですが、Diff-MPPI 本体の venue-level gap を埋める話ではありません。
+
+---
+
+## 11. 今この repo で「やらなくていいこと」
+
+次の担当者が無駄に時間を使わないために明記します。
+
+- もう一度「全部未実装扱い」から見直すこと
+  - 古い `plan.md` がそういう状態だっただけで、今は違う
+- README / Pages をゼロから作り直すこと
+  - もう成果サマリは入っている
+- experiment-first workflow を「まだ未完成」と誤認して土台ばかり触ること
+  - 今は improvement track
+- baseline proxy をさらに無限に増やすこと
+  - 価値は逓減している
+- paper draft を無理に main task にすること
+  - ユーザーは現時点でそこを最優先にしていない
+
+---
+
+## 12. 再現コマンド集
+
+### 12.1 基本ビルド
 
 ```bash
-cd .
-cmake -B build
+cmake -S . -B build
 cmake --build build -j$(nproc)
 ```
 
-ビルドエラーがあれば修正する。よくあるエラー:
-- `__device__` 関数内で `std::sin` → `sinf` に変更
-- CMakeLists.txt のターゲット重複 → 重複を削除
-- 不足している `#include` → 追加
-- `--expt-relaxed-constexpr` が必要な場合 → `target_compile_options` 追加
-
-ビルド成功後:
-```bash
-git add -A
-git commit -m "Add P0 (autodiff+MLP), P2 (neuroevolution), P4 (pointcloud), P5 (swarm optimization)"
-git push origin master
-```
-
-### Task 2: テスト実行
+### 12.2 Diff-MPPI main benchmark
 
 ```bash
-./bin/test_autodiff    # "ALL TESTS PASSED" を確認
-./bin/test_gpu_mlp     # XOR loss<0.01, SDF loss<0.05 を確認
-./bin/benchmark_pointcloud  # 速度比較テーブル出力を確認
+./bin/benchmark_diff_mppi --quick
+python3 scripts/summarize_diff_mppi.py --csv build/benchmark_diff_mppi.csv
+python3 scripts/plot_diff_mppi.py --csv build/benchmark_diff_mppi.csv --out-dir build/plots
 ```
 
-テストが失敗したら修正してコミット。
-
-### Task 3: GIF 生成
-
-新規バイナリを実行して GIF を生成:
+### 12.3 exact matched-time
 
 ```bash
-cd bin
-for b in neuroevo comparison_neuroevo pso_cuda aco_tsp comparison_swarm; do
-  timeout 120 ./$b
-done
+python3 scripts/tune_diff_mppi_time_targets.py --preset dynamic_nav
 ```
 
-生成された gif/ 以下の avi を gif に変換:
-```bash
-cd ../gif
-for f in *.avi; do
-  name="${f%.avi}"
-  ffmpeg -y -i "$f" -vf "fps=15,scale=400:-1" -loop 0 "${name}.gif" 2>/dev/null
-done
-rm -f *.avi
-```
-
-### Task 4: gh-pages 更新
+### 12.4 uncertainty follow-up
 
 ```bash
-git stash
-git checkout gh-pages
-git checkout master -- gif/*.gif
-cp gif/*.gif .
-git add *.gif gif/*.gif
-git commit -m "Update GIFs"
-git push origin gh-pages
-git checkout master
-git stash pop
+python3 scripts/tune_diff_mppi_time_targets.py --preset uncertain_dynamic_nav
 ```
 
-### Task 5: Project 1 — Differentiable MPPI を実装
-
-#### 概要
-既存の MPPI (src/mppi.cu) を拡張し、勾配ベース最適化を追加する。
-Dual Number 自動微分 (include/autodiff_engine.cuh) を使って dynamics と cost の勾配を計算。
-
-#### 作成するファイル
-
-**include/diff_dynamics.cuh**:
-```cpp
-#pragma once
-#include "autodiff_engine.cuh"
-
-namespace cudabot {
-
-struct BicycleParams {
-    float L = 2.5f;
-    float max_speed = 5.0f;
-    float max_steer = 0.5f;
-    float dt = 0.05f;
-};
-
-// 通常 forward pass
-__device__ void bicycle_step(
-    float& x, float& y, float& theta, float& v,
-    float accel, float steer, const BicycleParams& p)
-{
-    v += accel * p.dt;
-    if (v > p.max_speed) v = p.max_speed;
-    if (v < 0) v = 0;
-    theta += v / p.L * tanf(steer) * p.dt;
-    x += v * cosf(theta) * p.dt;
-    y += v * sinf(theta) * p.dt;
-}
-
-// Dual Number 版（微分可能）
-__device__ void bicycle_step_diff(
-    Dualf& x, Dualf& y, Dualf& theta, Dualf& v,
-    Dualf accel, Dualf steer, const BicycleParams& p)
-{
-    v = v + accel * p.dt;
-    v = clamp(v, 0.0f, p.max_speed);
-    theta = theta + v / Dualf::constant(p.L) * cudabot::tan(steer) * p.dt;
-    x = x + v * cudabot::cos(theta) * p.dt;
-    y = y + v * cudabot::sin(theta) * p.dt;
-}
-
-// ヤコビアン: 6回の forward pass で 4x6 行列を構築
-__device__ void bicycle_jacobian(
-    float x, float y, float theta, float v,
-    float accel, float steer, const BicycleParams& p,
-    float J[4][6])
-{
-    float inputs[6] = {x, y, theta, v, accel, steer};
-    for (int col = 0; col < 6; col++) {
-        Dualf dx = (col==0) ? Dualf::variable(x) : Dualf::constant(x);
-        Dualf dy = (col==1) ? Dualf::variable(y) : Dualf::constant(y);
-        Dualf dth = (col==2) ? Dualf::variable(theta) : Dualf::constant(theta);
-        Dualf dv = (col==3) ? Dualf::variable(v) : Dualf::constant(v);
-        Dualf da = (col==4) ? Dualf::variable(accel) : Dualf::constant(accel);
-        Dualf ds = (col==5) ? Dualf::variable(steer) : Dualf::constant(steer);
-        bicycle_step_diff(dx, dy, dth, dv, da, ds, p);
-        J[0][col] = dx.deriv;
-        J[1][col] = dy.deriv;
-        J[2][col] = dth.deriv;
-        J[3][col] = dv.deriv;
-    }
-}
-
-} // namespace cudabot
-```
-
-**include/diff_cost.cuh**:
-```cpp
-#pragma once
-#include "autodiff_engine.cuh"
-
-namespace cudabot {
-
-struct Obstacle { float x, y, r; };
-
-struct CostParams {
-    float goal_x = 45.0f, goal_y = 45.0f;
-    float goal_weight = 5.0f;
-    float control_weight = 0.1f;
-    float obs_weight = 10.0f;
-    float obs_influence = 5.0f;
-};
-
-// Smooth obstacle cost (微分可能、log-barrier)
-__device__ Dualf obstacle_cost_diff(
-    Dualf px, Dualf py,
-    const Obstacle* obs, int n_obs, float influence)
-{
-    Dualf cost = Dualf::constant(0.0f);
-    for (int i = 0; i < n_obs; i++) {
-        Dualf dx = px - Dualf::constant(obs[i].x);
-        Dualf dy = py - Dualf::constant(obs[i].y);
-        Dualf d = cudabot::sqrt(dx * dx + dy * dy) - Dualf::constant(obs[i].r);
-        // smooth barrier: if d < influence, cost += weight / d^2
-        if (d.val < influence && d.val > 0.1f) {
-            cost = cost + Dualf::constant(1.0f) / (d * d);
-        } else if (d.val <= 0.1f) {
-            cost = cost + Dualf::constant(1000.0f);
-        }
-    }
-    return cost;
-}
-
-__device__ Dualf goal_cost_diff(Dualf px, Dualf py, float gx, float gy, float w) {
-    Dualf dx = px - Dualf::constant(gx);
-    Dualf dy = py - Dualf::constant(gy);
-    return Dualf::constant(w) * cudabot::sqrt(dx * dx + dy * dy + Dualf::constant(0.01f));
-}
-
-__device__ Dualf control_cost_diff(Dualf a, Dualf s, float w) {
-    return Dualf::constant(w) * (a * a + s * s);
-}
-
-} // namespace cudabot
-```
-
-**src/diff_mppi.cu**:
-
-カーネル構成:
-1. `mppi_rollout_kernel` — 既存 MPPI と同じ（4096サンプル並列ロールアウト）
-2. `compute_gradient_kernel` — 1スレッド、T→0 方向に backward propagation
-   - 各タイムステップ t で:
-     - bicycle_jacobian() で ∂f/∂u_t を計算
-     - stage_cost の ∂c/∂u_t を Dual Number で計算
-     - chain rule: dJ/du_t = dc_t/du_t + (∂f/∂u_t)^T * dJ/dx_{t+1}
-3. `compute_weights_kernel` — softmin（既存と同じ）
-4. `update_controls_kernel` — 重み付き平均（既存と同じ）
-5. `gradient_step_kernel` — `u[t] -= alpha * grad[t]`（T スレッド）
-
-メインループ:
-```
-各ステップで:
-1. mppi_rollout_kernel (4096 samples)
-2. compute_weights_kernel + update_controls_kernel (MPPI 更新)
-3. compute_gradient_kernel (勾配計算)
-4. gradient_step_kernel (alpha=0.01)
-5. apply u[0], shift horizon
-```
-
-テスト環境: 50x50m、10個の円形障害物（src/mppi.cu と同じ配置）
-Start: (5, 5, 0, 0), Goal: (45, 45)
-
-可視化: 800x800、サンプル軌道を200本表示（コスト色付き green→red）、
-nominal trajectory を太い青線、勾配方向を矢印で表示（オプション）
-
-**src/comparison_diff_mppi.cu**:
-- 左: 標準 MPPI（サンプリングのみ）
-- 右: Differentiable MPPI（サンプリング + 勾配）
-- 各ステップのコストを右上にグラフ表示
-- 800x400、gif 出力
-
-CMakeLists.txt に追加:
-```cmake
-add_executable(diff_mppi src/diff_mppi.cu)
-target_link_libraries(diff_mppi ${OpenCV_LIBS})
-
-add_executable(comparison_diff_mppi src/comparison_diff_mppi.cu)
-target_link_libraries(comparison_diff_mppi ${OpenCV_LIBS})
-```
-
-受け入れ基準:
-- Diff-MPPI が標準 MPPI より少ないステップでゴール到達
-- 勾配が数値微分と一致（相対誤差 < 5%）
-- comparison gif が視覚的に差がわかる
-
-### Task 6: Project 3 — Neural SDF Navigation を実装
-
-#### 作成するファイル
-
-**src/neural_sdf.cu**:
-- gpu_mlp.cuh の GpuMLP を使って 2D SDF を学習
-- 障害物: 円3個 + 壁2個の組み合わせ
-- 学習データ: 64x64 グリッドから真の SDF を計算、10000 サンプルで学習
-- MLP: 2→64→64→64→1 (ReLU, linear output)
-- SGD, lr=0.001, batch=256, epochs=500
-- 可視化: 左=真の SDF (heatmap)、右=学習した SDF (heatmap)
-- gif 出力: gif/neural_sdf.gif
-
-**src/sdf_potential_field.cu**:
-- 学習済み Neural SDF でポテンシャルフィールドナビゲーション
-- カーネル: compute_sdf_potential_kernel (100x100 グリッド、1スレッド/セル)
-  - MLP forward で SDF(x,y) を評価
-  - SDF 勾配を数値微分 (h=0.01)
-  - attractive + repulsive potential
-- Gradient descent on CPU
-- gif 出力: gif/sdf_potential_field.gif
-
-**src/sdf_mppi.cu**:
-- MPPI のコスト関数に Neural SDF を組み込む
-- rollout_kernel 内で MLP forward → SDF 値をコスト化
-- MLP 重みは `__constant__` memory
-- K=4096, T=30
-- gif 出力: gif/sdf_mppi.gif
-
-**src/comparison_sdf_nav.cu**:
-- 左: 従来の circle obstacle MPPI
-- 右: Neural SDF MPPI
-- 複雑な形状（L字型障害物）で Neural SDF の優位性を示す
-- gif 出力: gif/comparison_sdf_nav.gif
-
-CMakeLists.txt に追加:
-```cmake
-add_executable(neural_sdf src/neural_sdf.cu)
-target_link_libraries(neural_sdf ${OpenCV_LIBS})
-
-add_executable(sdf_potential_field src/sdf_potential_field.cu)
-target_link_libraries(sdf_potential_field ${OpenCV_LIBS})
-
-add_executable(sdf_mppi src/sdf_mppi.cu)
-target_link_libraries(sdf_mppi ${OpenCV_LIBS})
-
-add_executable(comparison_sdf_nav src/comparison_sdf_nav.cu)
-target_link_libraries(comparison_sdf_nav ${OpenCV_LIBS})
-```
-
-### Task 7: Project 6 — MiniIsaacGym を実装
-
-#### 作成するファイル
-
-**include/rigid_body_2d.cuh**:
-```cpp
-struct RigidBody2D {
-    float x, y, angle;      // position + orientation
-    float vx, vy, omega;    // velocity + angular velocity
-    float mass, inertia;
-    float radius;            // collision radius (circle approx)
-};
-
-__device__ void integrate(RigidBody2D& body, float fx, float fy, float torque, float dt) {
-    body.vx += fx / body.mass * dt;
-    body.vy += (fy / body.mass + gravity) * dt;
-    body.omega += torque / body.inertia * dt;
-    body.x += body.vx * dt;
-    body.y += body.vy * dt;
-    body.angle += body.omega * dt;
-}
-```
-
-**include/contact_2d.cuh**:
-```cpp
-// 接触検出: 円-円、円-壁
-// 接触力: penalty method (spring + damper)
-// k_spring = 10000, k_damper = 100
-__device__ void compute_contact_force(
-    const RigidBody2D& a, const RigidBody2D& b,
-    float& fx, float& fy);
-
-__device__ void compute_wall_force(
-    const RigidBody2D& body, float wall_y,
-    float& fx, float& fy);
-```
-
-**include/parallel_env.cuh**:
-```cpp
-class ParallelEnv {
-public:
-    ParallelEnv(int n_envs, int env_type); // 0=CartPole, 1=PushBox
-    ~ParallelEnv();
-    void reset_all();
-    void step(const float* d_actions, float* d_obs, float* d_rewards, int* d_dones);
-    int obs_dim() const;
-    int action_dim() const;
-private:
-    // device arrays for all environments' states
-    float* d_states_; // [n_envs * state_dim]
-    int n_envs_;
-};
-```
-
-**src/mini_isaac.cu**:
-- 4096 環境の Cart-Pole を同時シミュレーション
-- カーネル: cartpole_step_kernel (1スレッド=1環境)
-- OpenCV: 代表的な1環境の cart-pole アニメーション + 全環境の報酬ヒストグラム
-- gif 出力: gif/mini_isaac.gif
-
-**src/mini_isaac_rl.cu**:
-- REINFORCE (方策勾配法) を GPU で実行
-- 方策 NN: 4→32→16→1 (tanh)
-- 全て GPU で完結: シミュレーション → 報酬 → 勾配 → 更新
-- 学習曲線を表示（世代 vs 平均報酬）
-- Cart-Pole を200世代以内に解決
-- gif 出力: gif/mini_isaac_rl.gif
-
-CMakeLists.txt に追加:
-```cmake
-add_executable(mini_isaac src/mini_isaac.cu)
-target_link_libraries(mini_isaac ${OpenCV_LIBS})
-
-add_executable(mini_isaac_rl src/mini_isaac_rl.cu)
-target_link_libraries(mini_isaac_rl ${OpenCV_LIBS})
-```
-
-### Task 8: README 最終更新
-
-全プロジェクトの GIF と説明を README に追加:
-
-- Novel Research セクションを新設
-- 各プロジェクトの GIF + 1-2行の説明
-- GitHub Pages URL で画像参照
-- ベンチマーク結果（あれば）
-
-### Task 9: 最終 push
+### 12.5 dynamic bicycle
 
 ```bash
-git add -A
-git commit -m "Add 6 novel research projects: Diff-MPPI, Neuroevolution, Neural SDF, CudaPointCloud, Swarm, MiniIsaacGym"
-git push origin master
+./bin/benchmark_diff_mppi_dynamic_bicycle --csv build/benchmark_diff_mppi_dynamic_bicycle.csv
+python3 scripts/tune_diff_mppi_time_targets.py --preset dynamic_bicycle
+```
 
-# gh-pages 更新
-git stash
-git checkout gh-pages
-git checkout master -- gif/*.gif
-cp gif/*.gif .
-git add -A
-git commit -m "Final GIF update"
-git push origin gh-pages
-git checkout master
-git stash pop
+### 12.6 manipulator pilot
+
+```bash
+./bin/benchmark_diff_mppi_manipulator --seed-count 4 --k-values 256,512 --csv build/benchmark_diff_mppi_manipulator.csv
+python3 scripts/tune_diff_mppi_time_targets.py --preset manipulator_pilot
+```
+
+### 12.7 design workflow maintenance
+
+```bash
+python3 scripts/design_doctor.py
+python3 scripts/validate_design_workflow.py
+python3 scripts/check_design_regressions.py
 ```
 
 ---
 
-## 4. 共通規約（全ファイル共通）
+## 13. handoff 用の短い一言まとめ
 
-### エラーチェックマクロ
-```cpp
-#define CUDA_CHECK(call) do { \
-    cudaError_t err = (call); \
-    if (err != cudaSuccess) { \
-        fprintf(stderr, "CUDA error at %s:%d: %s\n", \
-                __FILE__, __LINE__, cudaGetErrorString(err)); \
-        exit(EXIT_FAILURE); \
-    } \
-} while (0)
-```
+Claude 向けに一言で言うと、今の repo はこうです。
 
-### コーディング規約
-- Eigen はデバイスコードで使用禁止（ホスト側のみ OK）
-- `__device__` 内の数学関数は `sinf`, `cosf`, `sqrtf`, `expf`, `tanf` を使用
-- `std::sin` 等は `__host__` 関数のみ
-- cuRAND でデバイス側乱数生成
-- 行列演算は全て inline 実装（2x2, 3x3, 4x4）
-
-### 可視化規約
-- OpenCV で可視化
-- VideoWriter: XVID codec (`cv::VideoWriter::fourcc('X','V','I','D')`)
-- 絶対パス: `gif/xxx.avi`
-- ffmpeg 変換: `system("ffmpeg -y -i input.avi -vf 'fps=15,scale=400:-1' -loop 0 output.gif 2>/dev/null");`
-- ウィンドウ名は各アルゴリズム名
-
-### CMakeLists.txt 規約
-- `add_executable(name src/name.cu)` + `target_link_libraries(name ${OpenCV_LIBS})`
-- Eigen 使用時は `target_compile_options(name PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)`
-- 重複ターゲット名がないか確認
-
-### Git 規約
-- Co-Authored-By は付けない
-- コミットメッセージは英語
-- force push しない
+> CudaRobotics はすでにかなり完成している。
+> 今の主戦場は Diff-MPPI の narrow-but-defensible research line で、
+> README / GitHub Pages で成果公開は済み、
+> experiment-first 開発フローも基盤として完成済み。
+> 次に本当に価値があるのは、
+> 「もっと paper-faithful な baseline」か
+> 「もっと強い benchmark」
+> のどちらかを 1 本きちんと入れること。
 
 ---
 
-## 5. トラブルシューティング
+## 14. もし最初の 30 分でやるなら
 
-### ビルドエラー: `__device__` 内で `std::sin` が使えない
-→ `sinf`, `cosf` 等に置き換え
+本当に次担当がすぐ入るなら、この順がよいです。
 
-### ビルドエラー: Eigen の `__host__ __device__` 警告
-→ `--expt-relaxed-constexpr` を追加。警告は無視して OK
+1. `git log --oneline -n 20`
+2. `sed -n '1,260p' readme.md`
+3. `sed -n '1,260p' paper/diff_mppi_submission_draft.md`
+4. `sed -n '1,260p' paper/icra_iros_gap_list.md`
+5. `sed -n '1,260p' paper/diff_mppi_novelty_followup.md`
+6. 必要なら `./bin/benchmark_diff_mppi --quick`
 
-### VideoWriter が 0 byte のファイルを生成する
-→ GStreamer backend の問題。XVID codec + 絶対パスで解決
-→ それでもダメなら `std::vector<cv::Mat> frames;` でフレーム収集 → ループ後に VideoWriter
+これで、
 
-### CMake "target already exists"
-→ 重複した `add_executable` がないか `grep -n "add_executable(targetname" CMakeLists.txt` で確認
+- 何があるか
+- 何を主張しているか
+- 何が弱点か
+- 次にどこを埋めるか
 
-### gh-pages ブランチ切り替えで master のファイルが消える
-→ `git stash` してから checkout。完了後 `git stash pop`
-→ 新規ファイルは `git add` してから stash
+まで一通り把握できます。
 
-### テストで数値微分と一致しない
-→ h=1e-4 程度を使用。相対誤差 5% 以内なら OK
-
----
-
-## 6. 完了条件
-
-全てのタスク (1-9) が完了し、以下を満たすこと:
-
-- [ ] `cmake --build build -j$(nproc)` がエラーなしで完了
-- [ ] `test_autodiff` が "ALL TESTS PASSED" を出力
-- [ ] `test_gpu_mlp` が XOR loss < 0.01 を出力
-- [ ] 全新規バイナリが `timeout 5 ./binary` でクラッシュしない
-- [ ] gif/ に全新規アルゴリズムの GIF が存在
-- [ ] README に全プロジェクトの説明と GIF リンク
-- [ ] `git push origin master` 完了
-- [ ] gh-pages に GIF がアップロード済み

@@ -1125,11 +1125,11 @@ private:
     }
 
     bool uses_feedback_local_action() const {
-        return variant_.use_feedback && (variant_.feedback_mode == 5 || variant_.feedback_mode == 6 || variant_.feedback_mode == 7);
+        return variant_.use_feedback && (variant_.feedback_mode == 5 || variant_.feedback_mode == 6 || variant_.feedback_mode == 7 || variant_.feedback_mode == 8);
     }
 
     bool should_replan(int step) const {
-        if (variant_.feedback_mode != 6) return true;
+        if (variant_.feedback_mode != 6 && variant_.feedback_mode != 8) return true;
         int stride = max(1, variant_.replan_stride);
         return (step % stride) == 0;
     }
@@ -1215,13 +1215,15 @@ private:
             h_states_[t_horizon_ * 4 + i] = h_states_[(t_horizon_ - 1) * 4 + i];
         }
 
-        for (int t = 0; t < t_horizon_ - 1; t++) {
-            for (int i = 0; i < 8; i++) {
-                h_feedback_gains_host_[t * 8 + i] = h_feedback_gains_host_[(t + 1) * 8 + i];
+        if (variant_.feedback_mode != 8) {
+            for (int t = 0; t < t_horizon_ - 1; t++) {
+                for (int i = 0; i < 8; i++) {
+                    h_feedback_gains_host_[t * 8 + i] = h_feedback_gains_host_[(t + 1) * 8 + i];
+                }
             }
-        }
-        for (int i = 0; i < 8; i++) {
-            h_feedback_gains_host_[(t_horizon_ - 1) * 8 + i] = 0.0f;
+            for (int i = 0; i < 8; i++) {
+                h_feedback_gains_host_[(t_horizon_ - 1) * 8 + i] = 0.0f;
+            }
         }
     }
 
@@ -1960,6 +1962,22 @@ int main(int argc, char** argv) {
         v.feedback_lateral_gain = 0.0f;
         v.feedback_heading_gain = 0.0f;
         v.feedback_setpoint_blend = 0.0f;
+        variants.push_back(v);
+    }
+    {
+        PlannerVariant v;
+        v.name = "feedback_mppi_faithful";
+        v.use_feedback = true;
+        v.feedback_mode = 8;
+        v.replan_stride = 2;
+        v.feedback_gain_scale = 1.0f;
+        v.feedback_noise_accel = 0.0f;
+        v.feedback_noise_steer = 0.0f;
+        v.feedback_longitudinal_gain = 0.0f;
+        v.feedback_speed_gain = 0.0f;
+        v.feedback_lateral_gain = 0.0f;
+        v.feedback_heading_gain = 0.0f;
+        v.feedback_setpoint_blend = 0.30f;
         variants.push_back(v);
     }
     {
