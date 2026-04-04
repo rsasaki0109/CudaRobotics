@@ -235,7 +235,9 @@ Current status:
 - partially addressed by the new `benchmark_diff_mppi_cartpole` pilot
 - partially addressed again by the new `benchmark_diff_mppi_dynamic_bicycle` pilot
 - partially addressed further by the new `benchmark_diff_mppi_manipulator` pilot
-- not closed, because CartPole is still an underactuated control toy domain, the dynamic-bicycle benchmark is still a custom medium-fidelity pilot, and the manipulator benchmark is still a custom planar `2-link` task rather than a standardized or higher-fidelity manipulation suite
+- **substantially addressed** by the new `benchmark_diff_mppi_manipulator_7dof` benchmark: Panda-like 7-DOF serial arm with 14D state, 7D control, 3D workspace obstacles, analytical Jacobians, and two scenarios (`7dof_shelf_reach`, `7dof_dynamic_avoid`). On `7dof_dynamic_avoid`, `feedback_mppi_ref` reaches `1.00` success at `K=256` while vanilla MPPI reaches `0.75`. This is no longer a toy 2-link task but a high-dimensional manipulation domain.
+- an additional `feedback_mppi_faithful` two-rate variant was tested: combining released current-action gain with stride=2 replan. It fails on both dynamic tasks even at K=8192 (2.1 ms/step), confirming that current-action-only feedback gains lose temporal coverage between replans.
+- still not fully closed, because the 7-DOF benchmark is still a custom simplified model rather than a standardized suite, and Diff-MPPI does not consistently outperform feedback baselines on the 7-DOF tasks
 
 3. Extend the direct time-tuning protocol
 
