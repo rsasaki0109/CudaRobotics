@@ -107,6 +107,8 @@ We study whether a very short local refinement stage can improve the control seq
 
 ### Positioning
 
+Recent work by Fazlyab et al. (2026) shows that classical MPPI is exactly a preconditioned gradient descent step with unit step size on a KL-regularized distribution objective. Our autodiff refinement adds explicit local gradient steps after this implicit gradient update, sharpening the solution in regions where the sampling-based preconditioner is coarse — particularly around dynamic obstacles where the cost landscape changes rapidly between timesteps.
+
 The paper should not claim:
 - "differentiable MPPI is new"
 - "gradient information in sampling-based control is new"
@@ -114,15 +116,23 @@ The paper should not claim:
 
 The paper should claim:
 
-> a minimal CUDA hybrid controller, built on top of a plain MPPI update and a short local autodiff refinement, improves trajectory quality under matched compute budgets beyond strong non-hybrid feedback MPPI baselines on hard dynamic-obstacle tasks.
+> a minimal CUDA hybrid controller, built on top of a plain MPPI update and a short local autodiff refinement, improves trajectory quality under matched compute budgets beyond strong non-hybrid feedback MPPI baselines on hard dynamic-obstacle tasks, including a 7-DOF manipulator benchmark.
+
+### Key related work to cite
+
+- **MPPI as Preconditioned Gradient Descent** (Fazlyab et al., arXiv:2603.24489, March 2026): provides theoretical basis for our approach — our autodiff stage adds explicit gradient steps after MPPI's implicit gradient step.
+- **Feedback-MPPI** (Belvedere et al., arXiv:2506.14855, RA-L 2026): rollout-differentiation feedback gains; our `feedback_mppi_ref` baseline follows their released gain computation. We additionally test a two-rate variant (`feedback_mppi_faithful`) and show it fails on dynamic tasks.
+- **Step-MPPI** (Le et al., arXiv:2604.01539, April 2026): learns a neural sampling distribution for single-step lookahead. Our approach is complementary: training-free, applied post-MPPI as a refinement rather than modifying the sampling distribution.
+- **MPPI-IPDDP** (hybrid MPPI + gradient-based DDP, IEEE TRO 2025): similar hybrid motivation. Our approach is simpler — pure autodiff refinement without requiring convex corridor construction.
+- **MPPI-Generic** (arXiv:2409.07563): CUDA MPPI library; we share the GPU-parallel rollout design pattern.
 
 ### Contributions
 
 Use only three contributions in the paper:
 
-1. A minimal hybrid MPPI controller with a short local autodiff refinement stage that preserves the standard MPPI sampling update.
-2. A matched-time evaluation protocol that compares the hybrid controller against vanilla MPPI and strong non-hybrid feedback MPPI baselines under shared per-step controller budgets.
-3. Evidence across dynamic-obstacle navigation and a planar manipulator obstacle-avoidance pilot that the hybrid controller improves the compute-quality tradeoff, while clarifying the limits of closer non-hybrid feedback baselines.
+1. A minimal hybrid MPPI controller with a short local autodiff refinement stage that preserves the standard MPPI sampling update, interpretable as adding explicit gradient steps to MPPI's implicit preconditioned gradient descent.
+2. A matched-time evaluation protocol with parallelized gradient computation, comparing the hybrid controller against vanilla MPPI and strong non-hybrid feedback baselines (including a Feedback-MPPI-style two-rate variant) under shared per-step controller budgets.
+3. Evidence across dynamic-obstacle navigation (2D bicycle) and a 7-DOF serial-arm manipulation benchmark that the hybrid controller improves the compute-quality tradeoff, while clarifying the limits of non-hybrid feedback architectures.
 
 ## Method Draft
 

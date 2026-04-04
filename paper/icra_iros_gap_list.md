@@ -1,6 +1,6 @@
 # Diff-MPPI ICRA/IROS Gap List
 
-Date: 2026-04-02
+Date: 2026-04-05 (updated)
 
 This note is a submission-oriented gap analysis for the current `Diff-MPPI` line.
 It is written for an `ICRA/IROS full paper` decision, not for a workshop, demo, or repository release.
@@ -20,14 +20,17 @@ Primary references:
 - `Path Integral Control with Rollout Clustering and Dynamic Obstacles (2024)`: https://arxiv.org/abs/2403.18066
 - `Chance-Constrained Sampling-Based MPC for Collision Avoidance in Uncertain Dynamic Environments / C2U-MPPI (2025)`: https://arxiv.org/abs/2501.08520
 - `DRPA-MPPI (2025)`: https://arxiv.org/abs/2503.20134
-- `Feedback-MPPI (2025)`: https://arxiv.org/abs/2506.14855
+- `Feedback-MPPI (2025, RA-L 2026)`: https://arxiv.org/abs/2506.14855
 - `One-Step CDF-MPPI (2025)`: https://arxiv.org/abs/2509.00836
+- `MPPI-IPDDP (hybrid MPPI+DDP, IEEE TRO 2025)`: https://arxiv.org/abs/2208.02439
+- `MPPI as Preconditioned Gradient Descent (2026)`: https://arxiv.org/abs/2603.24489
+- `Step-MPPI / Differentiable Predictive Control (2026)`: https://arxiv.org/abs/2604.01539
 
 ## Bottom Line
 
 Current status:
 - `Workshop / spotlight demo / open-source systems contribution`: strong
-- `ICRA/IROS full paper, submitted today`: weak
+- `ICRA/IROS full paper, submitted today`: borderline (improved from weak)
 - `ICRA/IROS full paper after one more literature-faithful baseline and one higher-fidelity experiment`: plausible
 
 Short version:
@@ -71,12 +74,21 @@ That is substantially better than the earlier single-scenario story.
 Existing papers already cover much of the surrounding idea space:
 - `PI-Net (2017)` already made path-integral control differentiable.
 - `Differentiable MPC (2018)` already made optimization-based control layers differentiable.
-- `Feedback-MPPI (2025)` adds sensitivity-derived local feedback to MPPI and evaluates on a quadruped and quadrotor.
+- `Feedback-MPPI (2025, RA-L 2026)` adds sensitivity-derived local feedback to MPPI and evaluates on a quadruped and quadrotor.
 - `Rollout Clustering + Dynamic Obstacles (2024)` and `DRPA-MPPI (2025)` already claim dynamic-obstacle improvements for MPPI.
 - `C2U-MPPI (2025)` already pushes MPPI-style dynamic-obstacle avoidance into uncertain and real-world human-shared settings.
 - `One-Step CDF-MPPI (2025)` combines distance-field gradients with MPPI and evaluates on high-dimensional manipulation.
+- `MPPI-IPDDP (IEEE TRO 2025)` already proposes a hybrid MPPI + gradient-based DDP approach for smooth collision-free trajectories.
+- `MPPI as Preconditioned Gradient Descent (2026)` formally proves MPPI is a preconditioned gradient step, which provides a theoretical lens for our hybrid approach.
+- `Step-MPPI (2026)` learns a neural sampling distribution to achieve multi-step foresight with single-step latency, combining differentiable methods with MPPI from a different angle.
 
-Because of that, the current paper cannot rely on any of these claims alone:
+However, the new framing is now stronger than before:
+
+> Fazlyab et al. (2026) show MPPI is exactly a preconditioned gradient descent step. Our autodiff refinement adds explicit local gradient steps after this implicit gradient update. This two-stage structure — coarse sampling-based gradient followed by fine local gradient — is a well-motivated optimization strategy, and we show empirically that it helps specifically on hard dynamic-obstacle tasks where the sampling-based preconditioner is insufficient.
+
+This framing partially addresses the incrementality concern because it connects the method to a principled optimization structure rather than being "just another heuristic on top of MPPI".
+
+Remaining vulnerability: the paper cannot rely on any of these claims alone:
 - "MPPI but differentiable"
 - "MPPI but better on dynamic obstacles"
 - "MPPI plus gradient information"
@@ -204,7 +216,11 @@ A lightweight analysis section now exists in the repo-level follow-up:
 - `scripts/plot_diff_mppi_mechanism.py` produces correction-vs-episode, correction-vs-horizon, and success-vs-`K` figures
 - on `dynamic_slalom @ K=1024`, the correction is strongly front-loaded, with early-horizon correction `0.018 -> 0.025` for Diff-MPPI versus late-horizon correction `0.001`
 
-That partially addresses the empirical-only criticism, because it shows where the extra compute is going. But it is still a lightweight empirical mechanism check, not a deeper theoretical account.
+That partially addresses the empirical-only criticism, because it shows where the extra compute is going.
+
+Additionally, Fazlyab et al. (2026) now provide a theoretical lens: MPPI is a preconditioned gradient descent step. Our autodiff refinement can be interpreted as adding explicit gradient steps after this implicit step, which is a standard optimization strategy (e.g., combining coarse and fine gradient methods). The front-loaded correction profile is consistent with this interpretation: the sampling-based preconditioner provides a good global direction, while the local gradient sharpens the near-term controls.
+
+This partially upgrades the contribution from "purely empirical" to "empirical with theoretical motivation".
 
 ## What Would Make This ICRA/IROS-Plausible
 
