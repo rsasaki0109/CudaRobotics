@@ -281,9 +281,10 @@
       <div class="eyebrow">CUDA robotics algorithms and research extensions</div>
       <h1>CudaRobotics Results Snapshot</h1>
       <p>
-        GPU implementations of classic robotics algorithms plus newer research-style additions:
-        Diff-MPPI, neural SDF navigation, GPU neuroevolution, MiniIsaacGym, point-cloud processing,
-        and large-scale swarm optimization.
+        CUDA C++ implementations of classic and research-style robotics algorithms.
+        Includes differentiable MPPI with matched-time evaluation, neural SDF navigation,
+        GPU neuroevolution, parallel CartPole simulation, point-cloud processing, and swarm optimization.
+        All benchmarks run on a single consumer GPU.
       </p>
       <div class="hero-links">
         <a class="button alt" href="https://github.com/rsasaki0109/CudaRobotics">GitHub Repository</a>
@@ -291,24 +292,24 @@
       </div>
       <div class="stats">
         <div class="stat">
-          <div class="eyebrow">Dynamic slalom at 1.0 ms</div>
-          <strong>1.95</strong>
-          <div>Diff-MPPI final distance</div>
+          <div class="eyebrow">dynamic_slalom @ 1.0 ms</div>
+          <strong>1.91</strong>
+          <div>Diff-MPPI dist (6 baselines fail)</div>
         </div>
         <div class="stat">
-          <div class="eyebrow">Manipulator shelf at K=256</div>
-          <strong>1.00</strong>
-          <div><code>feedback_mppi_ref</code> success</div>
+          <div class="eyebrow">7-DOF K=512</div>
+          <strong>0.84 ms</strong>
+          <div>Diff-MPPI success=1.00</div>
         </div>
         <div class="stat">
-          <div class="eyebrow">MiniIsaac RL</div>
-          <strong>82.6 -> 180.4</strong>
-          <div>Average CartPole survival</div>
+          <div class="eyebrow">Gradient speedup</div>
+          <strong>17x</strong>
+          <div>Analytical Jacobian + parallel FD</div>
         </div>
         <div class="stat">
-          <div class="eyebrow">Point-cloud speedup</div>
-          <strong>599x</strong>
-          <div>Normal estimation peak speedup</div>
+          <div class="eyebrow">Evaluation GPU</div>
+          <strong>Single GPU</strong>
+          <div>Consumer desktop, no multi-GPU</div>
         </div>
       </div>
     </header>
@@ -453,8 +454,8 @@
           <figure>
             <img src="mini_isaac_rl.gif" alt="MiniIsaac RL training">
           </figure>
-          <h3>MiniIsaacGym RL</h3>
-          <p>GPU REINFORCE improves average survival from about <code>82.6</code> to <code>180.4</code> steps.</p>
+          <h3>Parallel CartPole RL</h3>
+          <p>Custom GPU-parallel CartPole environment with REINFORCE. Survival improves from <code>82.6</code> to <code>180.4</code> steps in 160 generations.</p>
         </div>
         <div class="card">
           <figure>
@@ -486,7 +487,7 @@
           <div class="kicker">Point-cloud snapshot</div>
           <h2>CudaPointCloud</h2>
         </div>
-        <p>Representative numbers from the current synthetic-room benchmark.</p>
+        <p>Synthetic-room benchmark. CPU baselines use brute-force O(n&sup2;) neighborhood search; large speedups at small point counts reflect this baseline choice. GPU times include kernel execution only (not host-device transfer).</p>
       </div>
       <table>
         <thead>
@@ -504,28 +505,35 @@
             <td>Statistical Filter</td>
             <td>388.79 ms</td>
             <td>0.79 ms</td>
-            <td><strong>492.3x</strong></td>
+            <td><strong>492x</strong></td>
           </tr>
           <tr>
             <td>2,000</td>
             <td>Normal Estimation</td>
             <td>574.33 ms</td>
             <td>0.96 ms</td>
-            <td><strong>599.0x</strong></td>
+            <td><strong>599x</strong></td>
+          </tr>
+          <tr>
+            <td>20,000</td>
+            <td>Voxel Grid</td>
+            <td>10.83 ms</td>
+            <td>2.31 ms</td>
+            <td><strong>4.7x</strong></td>
           </tr>
           <tr>
             <td>20,000</td>
             <td>RANSAC Plane</td>
             <td>142.38 ms</td>
             <td>1.04 ms</td>
-            <td><strong>136.3x</strong></td>
+            <td><strong>136x</strong></td>
           </tr>
         </tbody>
       </table>
     </section>
 
     <p class="footer">
-      Last updated: 2026-04-03 JST. For build instructions, binaries, and the full experiment workflow,
+      Last updated: 2026-04-05 JST. For build instructions, binaries, and the full experiment workflow,
       see the repository README on GitHub.
     </p>
   </div>
