@@ -9,6 +9,7 @@
  ************************************************************************/
 
 #include "cuda_pointcloud.cuh"
+#include "ply_loader.h"
 #include <iostream>
 #include <vector>
 #include <random>
@@ -343,11 +344,26 @@ struct Timer {
 // Main
 // =====================================================================
 
-int main() {
+int main(int argc, char** argv) {
     setvbuf(stdout, nullptr, _IONBF, 0);
     printf("=============================================================\n");
     printf("  CudaPointCloud Benchmark: CPU vs GPU\n");
     printf("=============================================================\n\n");
+
+    // Parse optional file inputs: --ply path.ply or --kitti path.bin
+    std::vector<std::pair<std::string, std::vector<PointXYZ>>> file_clouds;
+    for (int i = 1; i < argc; i++) {
+        std::string arg = argv[i];
+        if ((arg == "--ply" || arg == "--kitti" || arg == "--xyz") && i + 1 < argc) {
+            std::string path = argv[++i];
+            std::vector<PointXYZ> pts;
+            bool ok = false;
+            if (arg == "--ply") ok = load_ply(path, pts);
+            else if (arg == "--kitti") ok = load_kitti_bin(path, pts);
+            else if (arg == "--xyz") ok = load_xyz(path, pts);
+            if (ok && !pts.empty()) file_clouds.push_back({path, std::move(pts)});
+        }
+    }
 
     std::vector<int> sizes = {2000, 5000, 10000, 20000};
     std::mt19937 rng(12345);
@@ -485,6 +501,73 @@ int main() {
             printf("             |       [%6.3f %6.3f %6.3f]\n", gpu_R[3], gpu_R[4], gpu_R[5]);
             printf("             |       [%6.3f %6.3f %6.3f]\n", gpu_R[6], gpu_R[7], gpu_R[8]);
             printf("             |   t = [%6.3f %6.3f %6.3f]\n", gpu_t[0], gpu_t[1], gpu_t[2]);
+        }
+
+        printf("-------------|--------------------|--------------|--------------|---------\n");
+    }
+
+    // =====================================================================
+    // External file benchmarks (PLY, KITTI, XYZ)
+    // =====================================================================
+    for (size_t fi = 0; fi < file_clouds.size(); fi++) {
+        const std::string& fpath = file_clouds[fi].first;
+        const std::vector<PointXYZ>& cloud = file_clouds[fi].second;
+        int N = (int)cloud.size();
+        printf("\n=== External: %s (%d points) ===\n", fpath.c_str(), N);
+        printf("%-12s | %-18s | %12s | %12s | %8s\n",
+               "Points", "Operation", "CPU (ms)", "GPU (ms)", "Speedup");
+        printf("-------------|--------------------|--------------|--------------|---------\n");
+
+        CudaPointCloud gpu_cloud;
+        gpu_cloud.upload(cloud);
+        Timer timer;
+        double cpu_ms, gpu_ms;
+
+        // Voxel Grid
+        {
+            std::vector<PointXYZ> cpu_out;
+            timer.start();
+            cpu_voxel_grid_filter(cloud, cpu_out, 0.1f);
+            cpu_ms = timer.elapsed_ms();
+            auto tmp = voxel_grid_filter(gpu_cloud, 0.1f);
+            timer.start();
+            auto gpu_out = voxel_grid_filter(gpu_cloud, 0.1f);
+            gpu_ms = timer.elapsed_ms();
+            printf("%-12d | %-18s | %12.2f | %12.2f | %7.1fx\n", N, "VoxelGrid", cpu_ms, gpu_ms, cpu_ms / gpu_ms);
+        }
+
+        // Normal Estimation (limit to 20K for CPU brute-force k-NN)
+        if (N <= 20000) {
+            int k = 20;
+            std::vector<float> cpu_nx, cpu_ny, cpu_nz;
+            timer.start();
+            cpu_estimate_normals(cloud, cpu_nx, cpu_ny, cpu_nz, k);
+            cpu_ms = timer.elapsed_ms();
+            float *d_nx, *d_ny, *d_nz;
+            CUDA_CHECK(cudaMalloc(&d_nx, N * sizeof(float)));
+            CUDA_CHECK(cudaMalloc(&d_ny, N * sizeof(float)));
+            CUDA_CHECK(cudaMalloc(&d_nz, N * sizeof(float)));
+            estimate_normals(gpu_cloud, d_nx, d_ny, d_nz, k);  // warmup
+            timer.start();
+            estimate_normals(gpu_cloud, d_nx, d_ny, d_nz, k);
+            gpu_ms = timer.elapsed_ms();
+            CUDA_CHECK(cudaFree(d_nx)); CUDA_CHECK(cudaFree(d_ny)); CUDA_CHECK(cudaFree(d_nz));
+            printf("%-12d | %-18s | %12.2f | %12.2f | %7.1fx\n", N, "NormalEstimation", cpu_ms, gpu_ms, cpu_ms / gpu_ms);
+        }
+
+        // RANSAC Plane
+        {
+            int iters = std::min(2000, std::max(500, N / 10));
+            float cpu_plane[4];
+            timer.start();
+            cpu_ransac_plane(cloud, cpu_plane, 0.05f, iters);
+            cpu_ms = timer.elapsed_ms();
+            float plane[4];
+            ransac_plane(gpu_cloud, plane, 0.05f, iters);  // warmup
+            timer.start();
+            ransac_plane(gpu_cloud, plane, 0.05f, iters);
+            gpu_ms = timer.elapsed_ms();
+            printf("%-12d | %-18s | %12.2f | %12.2f | %7.1fx\n", N, "RANSAC Plane", cpu_ms, gpu_ms, cpu_ms / gpu_ms);
         }
 
         printf("-------------|--------------------|--------------|--------------|---------\n");
