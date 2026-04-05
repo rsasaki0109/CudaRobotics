@@ -205,17 +205,20 @@ This follow-up adds a Panda-like 7-DOF serial-arm benchmark with 14-dimensional 
 
 ### Point-cloud benchmark snapshot
 
-`bin/benchmark_pointcloud` generates a synthetic room cloud and compares CPU vs GPU implementations of voxel-grid filtering, statistical outlier removal, normal estimation, RANSAC plane fitting, and GICP registration.
+`bin/benchmark_pointcloud` compares CPU vs GPU implementations of voxel-grid filtering, statistical outlier removal, normal estimation, RANSAC plane fitting, and GICP registration. Both CPU and GPU use the same brute-force algorithms (no KD-trees). Supports `--ply`, `--kitti`, `--xyz` flags for external point cloud files.
 
-Representative results from the current benchmark:
+Multi-scale results (synthetic room, both CPU and GPU use same brute-force algorithms):
 
 | Points | Operation | CPU | GPU | Speedup |
 |---|---|---:|---:|---:|
-| 2,000 | Statistical Filter | 388.79 ms | 0.79 ms | **492.3x** |
-| 2,000 | Normal Estimation | 574.33 ms | 0.96 ms | **599.0x** |
-| 2,000 | RANSAC Plane | 14.97 ms | 0.18 ms | **82.9x** |
-| 20,000 | Voxel Grid | 10.83 ms | 2.31 ms | **4.7x** |
-| 20,000 | RANSAC Plane | 142.38 ms | 1.04 ms | **136.3x** |
+| 1,000 | Voxel Grid | 0.67 ms | 1.76 ms | 0.4x (GPU loses) |
+| 2,000 | Statistical Filter | 339 ms | 0.82 ms | **412x** |
+| 5,000 | Normal Estimation | 4,024 ms | 2.08 ms | **1,933x** |
+| 10,000 | Normal Estimation | 15,487 ms | 4.88 ms | **3,171x** |
+| 50,000 | RANSAC Plane | 1,518 ms | 2.78 ms | **546x** |
+| 100,000 | RANSAC Plane | 3,077 ms | 5.62 ms | **547x** |
+
+Speedups scale with point count because the CPU baseline is O(n^2) for k-NN operations. At small n (<2K), GPU kernel launch overhead exceeds the computation, so CPU wins on simple operations like voxel grid.
 
 ## Requirements
 - CMake >= 3.18
