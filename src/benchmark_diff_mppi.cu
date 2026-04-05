@@ -83,6 +83,7 @@ struct PlannerVariant {
     int replan_stride = 1;
     int grad_steps = 0;
     float alpha = 0.0f;
+    float grad_skip_threshold = 0.0f;  // skip gradient step if norm < threshold (0 = never skip)
     float sampling_lambda = DEFAULT_LAMBDA;
     float feedback_gain_scale = 1.0f;
     float feedback_noise_accel = 0.9f;
@@ -950,6 +951,18 @@ __global__ void backward_nav_adjoint_kernel(
     }
 }
 
+// Compute total gradient norm across all timesteps (for adaptive skip).
+__global__ void gradient_norm_kernel(const float* d_grad, float* d_grad_norm, int T) {
+    if (blockIdx.x != 0 || threadIdx.x != 0) return;
+    float norm_sq = 0.0f;
+    for (int t = 0; t < T; t++) {
+        float a = d_grad[t * 2 + 0];
+        float s = d_grad[t * 2 + 1];
+        norm_sq += a * a + s * s;
+    }
+    d_grad_norm[0] = sqrtf(norm_sq);
+}
+
 __global__ void gradient_step_kernel(float* d_nominal, const float* d_grad, int T, float alpha, float max_steer) {
     int t = blockIdx.x * blockDim.x + threadIdx.x;
     if (t >= T) return;
@@ -1043,6 +1056,7 @@ public:
         CUDA_CHECK(cudaMalloc(&d_grad_, h_grad_.size() * sizeof(float)));
         CUDA_CHECK(cudaMalloc(&d_nav_stage_grads_, t_horizon_ * 6 * sizeof(float)));
         CUDA_CHECK(cudaMalloc(&d_nav_jacobians_, t_horizon_ * 24 * sizeof(float)));
+        CUDA_CHECK(cudaMalloc(&d_grad_norm_, sizeof(float)));
         CUDA_CHECK(cudaMalloc(&d_feedback_gains_, t_horizon_ * 2 * 4 * sizeof(float)));
         CUDA_CHECK(cudaMalloc(&d_feedback_gains_aux_, t_horizon_ * 2 * 4 * sizeof(float)));
         CUDA_CHECK(cudaMalloc(&d_rng_, k_samples_ * sizeof(curandState)));
@@ -1061,6 +1075,7 @@ public:
         CUDA_CHECK(cudaFree(d_grad_));
         CUDA_CHECK(cudaFree(d_nav_stage_grads_));
         CUDA_CHECK(cudaFree(d_nav_jacobians_));
+        CUDA_CHECK(cudaFree(d_grad_norm_));
         CUDA_CHECK(cudaFree(d_feedback_gains_));
         CUDA_CHECK(cudaFree(d_feedback_gains_aux_));
         CUDA_CHECK(cudaFree(d_rng_));
@@ -1401,6 +1416,15 @@ private:
                 backward_nav_adjoint_kernel<<<1, 1>>>(
                     d_states_, d_nav_stage_grads_, d_nav_jacobians_, d_grad_,
                     planning_scenario_.cost_params, t_horizon_);
+                // Adaptive skip: check gradient norm and skip if below threshold
+                if (variant_.grad_skip_threshold > 0.0f) {
+                    gradient_norm_kernel<<<1, 1>>>(d_grad_, d_grad_norm_, t_horizon_);
+                    CUDA_CHECK(cudaMemcpy(&h_grad_norm_, d_grad_norm_, sizeof(float), cudaMemcpyDeviceToHost));
+                    if (h_grad_norm_ < variant_.grad_skip_threshold) {
+                        grad_steps_skipped_++;
+                        continue;
+                    }
+                }
                 gradient_step_kernel<<<(t_horizon_ + block - 1) / block, block>>>(
                     d_nominal_, d_grad_, t_horizon_,
                     variant_.alpha * planning_scenario_.grad_alpha_scale, planning_scenario_.params.max_steer);
@@ -1499,6 +1523,9 @@ private:
     float* d_grad_ = nullptr;
     float* d_nav_stage_grads_ = nullptr;
     float* d_nav_jacobians_ = nullptr;
+    float* d_grad_norm_ = nullptr;
+    float h_grad_norm_ = 0.0f;
+    int grad_steps_skipped_ = 0;
     float* d_feedback_gains_ = nullptr;
     float* d_feedback_gains_aux_ = nullptr;
     curandState* d_rng_ = nullptr;
@@ -2043,6 +2070,15 @@ int main(int argc, char** argv) {
         v.use_gradient = true;
         v.grad_steps = 3;
         v.alpha = 0.006f;
+        variants.push_back(v);
+    }
+    {
+        PlannerVariant v;
+        v.name = "diff_mppi_adaptive";
+        v.use_gradient = true;
+        v.grad_steps = 3;
+        v.alpha = 0.006f;
+        v.grad_skip_threshold = 8.0f;
         variants.push_back(v);
     }
 
