@@ -24,6 +24,8 @@ Primary references:
 - `One-Step CDF-MPPI (2025)`: https://arxiv.org/abs/2509.00836
 - `MPPI-IPDDP (hybrid MPPI+DDP, IEEE TRO 2025)`: https://arxiv.org/abs/2208.02439
 - `CEM-GD / sampling+gradient hybrid (L4DC 2020)`: https://arxiv.org/abs/2004.08763
+- `Biased-MPPI / ancillary controller fusion (RA-L 2024)`: https://arxiv.org/abs/2401.09241
+- `Diffusion/Flow-MPPI / generative prior + MPPI (2025)`: https://arxiv.org/html/2508.01192
 - `DiffMPC / GPU differentiable MPC (Toyota Research, 2025)`: https://arxiv.org/abs/2510.06179
 - `cuNRTO / GPU robust trajectory optimization (2026)`: https://arxiv.org/abs/2603.02642
 - `MPPI as Preconditioned Gradient Descent (2026)`: https://arxiv.org/abs/2603.24489

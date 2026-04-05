@@ -107,16 +107,31 @@ We study whether a very short local refinement stage can improve the control seq
 
 ### Positioning
 
-Recent work by Fazlyab et al. (2026) shows that classical MPPI is exactly a preconditioned gradient descent step with unit step size on a KL-regularized distribution objective. Our autodiff refinement adds explicit local gradient steps after this implicit gradient update, sharpening the solution in regions where the sampling-based preconditioner is coarse — particularly around dynamic obstacles where the cost landscape changes rapidly between timesteps.
+### Landscape: the growing family of MPPI + refinement hybrids
+
+There is now a clear trend of augmenting MPPI with some form of post-sampling refinement:
+- CEM-GD (Bharadhwaj et al., 2020): CEM sampling → gradient descent
+- MPPI-IPDDP (2022/2025): MPPI sampling → DDP smoothing in convex corridor
+- Biased-MPPI (Trevisan & Alonso-Mora, RA-L 2024): ancillary controllers → biased MPPI sampling
+- Diffusion-MPPI / Generation-Refinement (2025): learned generative prior ↔ MPPI bidirectional
+- Step-MPPI (Le et al., 2026): neural sampling distribution → single-step MPPI
+- Feedback-MPPI (Belvedere et al., RA-L 2026): MPPI → sensitivity-derived feedback gains
+
+Recent theory by Fazlyab et al. (2026) shows that MPPI is exactly a preconditioned gradient descent step. Our autodiff refinement adds explicit local gradient steps after this implicit step.
+
+### Our positioning: minimal refinement
+
+Within this landscape, our specific niche is the **minimal, training-free, compute-competitive** refinement. While recent work proposes increasingly sophisticated mechanisms (learned sampling distributions, diffusion models, DDP with convex corridors), we show that 3 autodiff gradient steps on the post-MPPI control sequence — with no learned components, no additional data structures, and parallelized to retain 85% of the sampling budget at matched time — suffices to cross the success boundary on hard dynamic-obstacle tasks where all non-hybrid approaches fail.
 
 The paper should not claim:
 - "differentiable MPPI is new"
 - "gradient information in sampling-based control is new"
 - "dynamic-obstacle MPPI is new"
+- "hybrid sampling + gradient is new" (CEM-GD, MPPI-IPDDP exist)
 
 The paper should claim:
 
-> a minimal CUDA hybrid controller, built on top of a plain MPPI update and a short local autodiff refinement, improves trajectory quality under matched compute budgets beyond strong non-hybrid feedback MPPI baselines on hard dynamic-obstacle tasks, including a 7-DOF manipulator benchmark.
+> a minimal, training-free hybrid controller — just 3 gradient steps after a standard MPPI update — is the only method that solves hard dynamic-obstacle tasks under matched compute budgets across 6 strong non-hybrid baselines, on both 2D navigation and a 7-DOF manipulation benchmark. The gradient parallelization makes the refinement nearly free in wall-clock time.
 
 ### Key related work to cite
 
@@ -127,7 +142,9 @@ The paper should claim:
 - **CEM-GD** (Bharadhwaj et al., arXiv:2004.08763, L4DC 2020): combines cross-entropy method with gradient descent for model-based RL planning. This is the closest methodological precedent. Key differences: (1) we use MPPI not CEM, (2) our parallelized gradient retains 85% of the sampling budget within the same wall-clock time (CEM-GD does not evaluate under matched compute), (3) we include a 7-DOF manipulation evaluation.
 - **MPPI-IPDDP** (hybrid MPPI + gradient-based DDP, IEEE TRO 2025): uses MPPI for coarse trajectory + IPDDP for smoothing inside a convex corridor. Our approach is simpler — pure autodiff refinement without corridor construction.
 
-**Feedback-based MPPI extensions:**
+**Informed sampling and feedback extensions:**
+- **Biased-MPPI** (Trevisan & Alonso-Mora, arXiv:2401.09241, RA-L 2024): uses importance sampling with ancillary controllers to bias the MPPI sampling distribution. Modifies the sampling step; our approach leaves sampling untouched and refines afterward.
+- **Diffusion/Flow-MPPI** (2025): uses learned generative models as trajectory priors for MPPI. Requires training; our approach is training-free.
 - **Feedback-MPPI** (Belvedere et al., arXiv:2506.14855, RA-L 2026): rollout-differentiation feedback gains. Our `feedback_mppi_ref` baseline follows their gain computation. We additionally test a two-rate variant (`feedback_mppi_faithful`) and show current-action-only gains fail on dynamic tasks.
 - **Step-MPPI** (Le et al., arXiv:2604.01539, April 2026): learns a neural sampling distribution for single-step lookahead. Complementary: training-free post-MPPI refinement vs learned sampling modification.
 
