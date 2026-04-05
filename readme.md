@@ -50,7 +50,7 @@ Recent additions push the repository beyond direct CUDA ports of classic robotic
 | Neural SDF Navigation | `neural_sdf`, `sdf_potential_field`, `sdf_mppi`, `comparison_sdf_nav` | Learns 2D signed distance fields with a GPU MLP, then uses them for potential-field planning and MPPI on non-circular obstacle layouts. |
 | Neuroevolution for Cart-Pole | `neuroevo`, `comparison_neuroevo` | Evolves 4096 neural policies in parallel on GPU and compares them against a CPU baseline with side-by-side learning curves. |
 | MiniIsaacGym | `mini_isaac`, `mini_isaac_rl` | Runs thousands of CartPole environments in parallel on GPU and trains a compact policy with GPU-side REINFORCE updates. |
-| CudaPointCloud | `voxel_grid_filter`, `statistical_filter`, `normal_estimation`, `gicp`, `ransac_plane`, `benchmark_pointcloud` | GPU voxel filtering, outlier removal, PCA normals, plane extraction, and GICP registration for synthetic indoor point clouds. |
+| CudaPointCloud | `voxel_grid_filter`, `statistical_filter`, `normal_estimation`, `gicp`, `ransac_plane`, `benchmark_pointcloud` | GPU voxel filtering, outlier removal, PCA normals, plane extraction, and GICP registration. Supports PLY/KITTI/XYZ file input. Normal estimation reaches 3,171x speedup at 10K points. |
 | Swarm Optimization | `pso_cuda`, `differential_evolution`, `cma_es`, `aco_tsp`, `comparison_swarm` | Large-scale PSO, DE, CMA-ES, and ACO implementations with animated convergence comparisons. |
 
 | | |
@@ -86,7 +86,7 @@ Concise highlights:
 | Diff-MPPI, faithful baseline | A two-rate `feedback_mppi_faithful` variant with current-action-only gains fails even at `K=8192` (`2.1 ms`), confirming that per-step replanning or hybrid refinement is necessary for dynamic-obstacle tasks. |
 | Neural SDF navigation | Learned 2D SDFs with potential-field planning and MPPI rollouts on non-circular obstacle layouts. |
 | MiniIsaacGym RL | GPU REINFORCE CartPole: average survival `82.6` to `180.4` steps in `160` generations. |
-| CudaPointCloud | Up to `599x` speedup (normal estimation) and `492x` (statistical filtering) on `2,000` points. |
+| CudaPointCloud | Normal estimation reaches **3,171x** speedup at 10K points, RANSAC plane **547x** at 100K. Supports `--ply`/`--kitti`/`--xyz` file input. |
 | Swarm / neuroevolution | GPU PSO, DE, CMA-ES, ACO, and `4096`-way neuroevolution with animated comparisons. |
 
 ### Diff-MPPI experiment workflow
