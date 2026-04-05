@@ -46,7 +46,7 @@ Recent additions push the repository beyond direct CUDA ports of classic robotic
 | Project | Binaries | Highlights |
 |---|---|---|
 | Autodiff + GPU MLP foundation | `test_autodiff`, `test_gpu_mlp` | Dual-number forward-mode autodiff and a compact GPU MLP training/inference engine used as the base for later research-style experiments. |
-| Differentiable MPPI | `diff_mppi`, `comparison_diff_mppi`, `benchmark_diff_mppi`, `benchmark_diff_mppi_cartpole`, `benchmark_diff_mppi_dynamic_bicycle`, `benchmark_diff_mppi_manipulator`, `benchmark_diff_mppi_manipulator_7dof` | Extends MPPI with a dual-number backward pass, side-by-side comparisons, dynamic-obstacle suites, nominal-linearization / rollout-sensitivity / covariance-regression / fused-feedback / high-frequency-feedback / faithful-two-rate baselines, a `grad_only_3` ablation, a trace-based mechanism analysis, an uncertainty follow-up with nominal-vs-actual obstacle mismatch, a pilot CartPole benchmark, a higher-order dynamic-bicycle mobile-navigation follow-up, a planar manipulator obstacle-avoidance pilot, and a Panda-like 7-DOF serial-arm benchmark with 3D workspace obstacles and analytical Jacobians. |
+| Differentiable MPPI | `diff_mppi`, `comparison_diff_mppi`, `benchmark_diff_mppi`, `benchmark_diff_mppi_cartpole`, `benchmark_diff_mppi_dynamic_bicycle`, `benchmark_diff_mppi_manipulator`, `benchmark_diff_mppi_manipulator_7dof` | Augments MPPI with a short autodiff refinement stage. Evaluated on 2D dynamic-obstacle navigation, CartPole, dynamic-bicycle, 2-link planar arm, and 7-DOF serial arm. Includes 8 feedback baselines, matched-time tuning, mechanism analysis, and uncertainty follow-ups. On the hard `dynamic_slalom` task, the hybrid controller is the only method that succeeds under matched compute budgets across 6 non-hybrid baselines. |
 | Neural SDF Navigation | `neural_sdf`, `sdf_potential_field`, `sdf_mppi`, `comparison_sdf_nav` | Learns 2D signed distance fields with a GPU MLP, then uses them for potential-field planning and MPPI on non-circular obstacle layouts. |
 | Neuroevolution for Cart-Pole | `neuroevo`, `comparison_neuroevo` | Evolves 4096 neural policies in parallel on GPU and compares them against a CPU baseline with side-by-side learning curves. |
 | MiniIsaacGym | `mini_isaac`, `mini_isaac_rl` | Runs thousands of CartPole environments in parallel on GPU and trains a compact policy with GPU-side REINFORCE updates. |
@@ -78,17 +78,21 @@ Recent research-style additions are summarized on the GitHub Pages gallery:
 
 Concise highlights:
 
-| Area | Current takeaway |
+| Area | Key result |
 |---|---|
-| Diff-MPPI, dynamic navigation | Under a matched `1.0 ms` controller budget, `mppi` stays unsuccessful on `dynamic_slalom` at about `14.12` final distance, `feedback_mppi_ref` reduces that to about `11.90`, and `diff_mppi_3` reaches success with about `1.95` final distance. |
-| Diff-MPPI, manipulator pilot | On `arm_static_shelf` with `K=256`, vanilla `mppi` stays at `success=0.00` and `0.23` final distance, while `feedback_mppi_ref` and `feedback_mppi_cov` both reach `success=1.00` at about `0.15`. |
-| Diff-MPPI, 7-DOF manipulator | On `7dof_dynamic_avoid` with `K=512`, `diff_mppi_3` reaches `success=1.00` at `0.090` final distance in `0.84 ms`, while `feedback_mppi_ref` reaches `success=0.75` in `4.01 ms`. After gradient parallelization (17x cumulative speedup), the hybrid controller is both more reliable and 4.8x faster at this budget. A `feedback_mppi_faithful` two-rate variant fails even at `K=8192`, confirming that current-action-only feedback gains are insufficient for dynamic tasks. |
-| Neural SDF navigation | The repo now includes learned 2D SDFs, potential-field planning, and MPPI rollouts on non-circular obstacle layouts, with side-by-side GIF comparisons against circle-based approximations. |
-| MiniIsaacGym RL | The GPU REINFORCE CartPole run currently improves average survival from about `82.6` to `180.4` steps within `160` generations. |
-| CudaPointCloud | The current synthetic-room benchmark reaches up to about `599x` speedup for normal estimation and `492x` for statistical filtering on `2,000` points. |
-| Swarm / neuroevolution | The repo now includes GPU PSO, DE, CMA-ES, ACO, and `4096`-way neuroevolution with GIF-based convergence comparisons. |
+| **Diff-MPPI, dynamic navigation** | At matched `1.0 ms` budget on `dynamic_slalom`: **diff_mppi_3 is the only successful controller** (dist `1.91`) across 6 non-hybrid baselines (best non-hybrid: `feedback_mppi_fused` at `10.30`). |
+| **Diff-MPPI, 7-DOF manipulator** | At `K=512` on `7dof_dynamic_avoid`: `diff_mppi_3` reaches **success=1.00 at 0.84 ms**, while `feedback_mppi_ref` reaches 0.75 at 4.01 ms. The hybrid controller is 4.8x faster and more reliable. |
+| Diff-MPPI, 2-link manipulator | On `arm_static_shelf` at `K=256`: `feedback_mppi_ref` and `feedback_mppi_cov` both reach `success=1.00` at `0.15` final distance, while vanilla MPPI stays at `0.00`. |
+| Diff-MPPI, faithful baseline | A two-rate `feedback_mppi_faithful` variant with current-action-only gains fails even at `K=8192` (`2.1 ms`), confirming that per-step replanning or hybrid refinement is necessary for dynamic-obstacle tasks. |
+| Neural SDF navigation | Learned 2D SDFs with potential-field planning and MPPI rollouts on non-circular obstacle layouts. |
+| MiniIsaacGym RL | GPU REINFORCE CartPole: average survival `82.6` to `180.4` steps in `160` generations. |
+| CudaPointCloud | Up to `599x` speedup (normal estimation) and `492x` (statistical filtering) on `2,000` points. |
+| Swarm / neuroevolution | GPU PSO, DE, CMA-ES, ACO, and `4096`-way neuroevolution with animated comparisons. |
 
 ### Diff-MPPI experiment workflow
+
+<details>
+<summary>Full experiment commands and detailed results (click to expand)</summary>
 
 Fixed rollout budget:
 
@@ -196,6 +200,8 @@ python3 scripts/tune_diff_mppi_time_targets.py --preset 7dof_manipulator
 ```
 
 This follow-up adds a Panda-like 7-DOF serial-arm benchmark with 14-dimensional state (7 joint angles + 7 velocities), 7-dimensional torque control, 3D workspace obstacles, and parallelized gradient computation (analytical dynamics Jacobian + parallel stage cost gradients across T threads). It includes two scenarios: `7dof_shelf_reach` (static obstacle avoidance while reaching) and `7dof_dynamic_avoid` (reaching while avoiding a moving 3D obstacle). On `7dof_dynamic_avoid` at `K=512`, `diff_mppi_3` reaches `success=1.00` at `final_distance=0.090` using `0.84 ms` per step, while `feedback_mppi_ref` reaches `success=0.75` at `0.283` using `4.01 ms`. An additional `feedback_mppi_faithful` variant combining the released current-action gain computation with a two-rate controller architecture (replan every other step) was tested on the base dynamic navigation suite and found to fail even at `K=8192` and `2.1 ms` per step, confirming that current-action-only feedback gains lose temporal coverage between replans. The current note is in `paper/diff_mppi_7dof_followup.md`.
+
+</details>
 
 ### Point-cloud benchmark snapshot
 
