@@ -6,7 +6,7 @@ Each algorithm leverages GPU parallelism for significant speedup over CPU-only i
 
 ## Why CUDA? — Visual Quality Difference
 
-GPU enables orders-of-magnitude more particles/samples, resulting in visually better results:
+GPU enables orders-of-magnitude more particles/samples, resulting in visually better results. All comparisons below use the **same algorithm** on CPU and GPU — the only difference is sample/particle count enabled by GPU parallelism:
 
 | | |
 |---|---|

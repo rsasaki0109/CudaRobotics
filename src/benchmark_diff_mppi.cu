@@ -881,9 +881,43 @@ __device__ void stage_cost_grad(
     }
 }
 
-__global__ void compute_gradient_kernel(
-    const float* d_states, const float* d_nominal, float* d_grad,
-    BicycleParams params, CostParams cost_params, int n_obs, int n_dyn_obs, int start_step, int T)
+// Phase 1: Parallel cost gradient + Jacobian computation (T threads)
+__global__ void precompute_nav_gradients_kernel(
+    const float* d_states, const float* d_nominal,
+    float* d_stage_grads,   // T * 6
+    float* d_jacobians,     // T * 4 * 6
+    BicycleParams params, CostParams cost_params,
+    int n_obs, int n_dyn_obs, int start_step, int T)
+{
+    int t = blockIdx.x * blockDim.x + threadIdx.x;
+    if (t >= T) return;
+
+    float x = d_states[t * 4 + 0];
+    float y = d_states[t * 4 + 1];
+    float theta = d_states[t * 4 + 2];
+    float v = d_states[t * 4 + 3];
+    float accel = d_nominal[t * 2 + 0];
+    float steer = d_nominal[t * 2 + 1];
+    float tau = (start_step + t) * params.dt;
+
+    float sg[6];
+    stage_cost_grad(x, y, theta, v, accel, steer, cost_params, n_obs, n_dyn_obs, tau, sg);
+    for (int i = 0; i < 6; i++) d_stage_grads[t * 6 + i] = sg[i];
+
+    float J[4][6];
+    bicycle_jacobian(x, y, theta, v, accel, steer, params, J);
+    for (int r = 0; r < 4; r++)
+        for (int c = 0; c < 6; c++)
+            d_jacobians[t * 24 + r * 6 + c] = J[r][c];
+}
+
+// Phase 2: Sequential backward adjoint pass (1 thread, matrix ops only)
+__global__ void backward_nav_adjoint_kernel(
+    const float* d_states,
+    const float* d_stage_grads,
+    const float* d_jacobians,
+    float* d_grad,
+    CostParams cost_params, int T)
 {
     if (blockIdx.x != 0 || threadIdx.x != 0) return;
 
@@ -891,31 +925,20 @@ __global__ void compute_gradient_kernel(
     terminal_grad(d_states[T * 4 + 0], d_states[T * 4 + 1], cost_params, adj);
 
     for (int t = T - 1; t >= 0; t--) {
-        float x = d_states[t * 4 + 0];
-        float y = d_states[t * 4 + 1];
-        float theta = d_states[t * 4 + 2];
-        float v = d_states[t * 4 + 3];
-        float accel = d_nominal[t * 2 + 0];
-        float steer = d_nominal[t * 2 + 1];
+        const float* sg = &d_stage_grads[t * 6];
+        const float* Jf = &d_jacobians[t * 24];
 
-        float J[4][6];
-        float stage_grad[6];
-        float next_adj[4];
-        float tau = (start_step + t) * params.dt;
-
-        bicycle_jacobian(x, y, theta, v, accel, steer, params, J);
-        stage_cost_grad(x, y, theta, v, accel, steer, cost_params, n_obs, n_dyn_obs, tau, stage_grad);
-
-        d_grad[t * 2 + 0] = stage_grad[4];
-        d_grad[t * 2 + 1] = stage_grad[5];
+        d_grad[t * 2 + 0] = sg[4];
+        d_grad[t * 2 + 1] = sg[5];
         for (int row = 0; row < 4; row++) {
-            d_grad[t * 2 + 0] += J[row][4] * adj[row];
-            d_grad[t * 2 + 1] += J[row][5] * adj[row];
+            d_grad[t * 2 + 0] += Jf[row * 6 + 4] * adj[row];
+            d_grad[t * 2 + 1] += Jf[row * 6 + 5] * adj[row];
         }
 
+        float next_adj[4];
         for (int col = 0; col < 4; col++) {
-            next_adj[col] = stage_grad[col];
-            for (int row = 0; row < 4; row++) next_adj[col] += J[row][col] * adj[row];
+            next_adj[col] = sg[col];
+            for (int row = 0; row < 4; row++) next_adj[col] += Jf[row * 6 + col] * adj[row];
         }
         for (int i = 0; i < 4; i++) adj[i] = next_adj[i];
     }
@@ -1012,6 +1035,8 @@ public:
         CUDA_CHECK(cudaMalloc(&d_rollout_init_grads_, k_samples_ * 4 * sizeof(float)));
         CUDA_CHECK(cudaMalloc(&d_states_, h_states_.size() * sizeof(float)));
         CUDA_CHECK(cudaMalloc(&d_grad_, h_grad_.size() * sizeof(float)));
+        CUDA_CHECK(cudaMalloc(&d_nav_stage_grads_, t_horizon_ * 6 * sizeof(float)));
+        CUDA_CHECK(cudaMalloc(&d_nav_jacobians_, t_horizon_ * 24 * sizeof(float)));
         CUDA_CHECK(cudaMalloc(&d_feedback_gains_, t_horizon_ * 2 * 4 * sizeof(float)));
         CUDA_CHECK(cudaMalloc(&d_feedback_gains_aux_, t_horizon_ * 2 * 4 * sizeof(float)));
         CUDA_CHECK(cudaMalloc(&d_rng_, k_samples_ * sizeof(curandState)));
@@ -1028,6 +1053,8 @@ public:
         CUDA_CHECK(cudaFree(d_rollout_init_grads_));
         CUDA_CHECK(cudaFree(d_states_));
         CUDA_CHECK(cudaFree(d_grad_));
+        CUDA_CHECK(cudaFree(d_nav_stage_grads_));
+        CUDA_CHECK(cudaFree(d_nav_jacobians_));
         CUDA_CHECK(cudaFree(d_feedback_gains_));
         CUDA_CHECK(cudaFree(d_feedback_gains_aux_));
         CUDA_CHECK(cudaFree(d_rng_));
@@ -1361,8 +1388,13 @@ private:
         if (variant_.use_gradient) {
             for (int gs = 0; gs < variant_.grad_steps; gs++) {
                 rollout_nominal_kernel<<<1, 1>>>(sx, sy, stheta, sv, d_nominal_, d_states_, planning_scenario_.params, t_horizon_);
-                compute_gradient_kernel<<<1, 1>>>(d_states_, d_nominal_, d_grad_, planning_scenario_.params, planning_scenario_.cost_params,
-                                                  planning_scenario_.n_obs, planning_scenario_.n_dyn_obs, start_step, t_horizon_);
+                precompute_nav_gradients_kernel<<<(t_horizon_ + block - 1) / block, block>>>(
+                    d_states_, d_nominal_, d_nav_stage_grads_, d_nav_jacobians_,
+                    planning_scenario_.params, planning_scenario_.cost_params,
+                    planning_scenario_.n_obs, planning_scenario_.n_dyn_obs, start_step, t_horizon_);
+                backward_nav_adjoint_kernel<<<1, 1>>>(
+                    d_states_, d_nav_stage_grads_, d_nav_jacobians_, d_grad_,
+                    planning_scenario_.cost_params, t_horizon_);
                 gradient_step_kernel<<<(t_horizon_ + block - 1) / block, block>>>(
                     d_nominal_, d_grad_, t_horizon_,
                     variant_.alpha * planning_scenario_.grad_alpha_scale, planning_scenario_.params.max_steer);
@@ -1459,6 +1491,8 @@ private:
     float* d_rollout_init_grads_ = nullptr;
     float* d_states_ = nullptr;
     float* d_grad_ = nullptr;
+    float* d_nav_stage_grads_ = nullptr;
+    float* d_nav_jacobians_ = nullptr;
     float* d_feedback_gains_ = nullptr;
     float* d_feedback_gains_aux_ = nullptr;
     curandState* d_rng_ = nullptr;
