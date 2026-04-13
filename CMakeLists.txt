@@ -1,5 +1,6 @@
 cmake_minimum_required(VERSION 3.18)
 project(CPP_ROBOTICS LANGUAGES CXX CUDA)
+enable_testing()
 
 set(CMAKE_CXX_STANDARD 14)
 set(CMAKE_CUDA_STANDARD 14)
@@ -341,3 +342,38 @@ add_executable(cuda_streams_demo src/cuda_streams_demo.cu)
 ##############################
 add_executable(test_autodiff src/test_autodiff.cu)
 add_executable(test_gpu_mlp src/test_gpu_mlp.cu)
+
+add_executable(test_host_math src/test_host_math.cpp)
+target_link_libraries(test_host_math ${OpenCV_LIBS})
+
+##############################
+# CTest Registration
+##############################
+
+# GPU tests (require NVIDIA GPU)
+add_test(NAME test_autodiff COMMAND ${PROJECT_SOURCE_DIR}/bin/test_autodiff)
+add_test(NAME test_gpu_mlp COMMAND ${PROJECT_SOURCE_DIR}/bin/test_gpu_mlp)
+set_tests_properties(test_autodiff test_gpu_mlp PROPERTIES
+  TIMEOUT 60
+  LABELS "gpu")
+
+# Python validation tests (no GPU required)
+add_test(NAME validate_design_workflow
+  COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/validate_design_workflow.py
+  WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+add_test(NAME check_design_regressions
+  COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/check_design_regressions.py
+  WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+add_test(NAME check_scaffold
+  COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/check_scaffold_design_problem.py
+  WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+set_tests_properties(validate_design_workflow check_design_regressions check_scaffold
+  PROPERTIES
+  TIMEOUT 30
+  LABELS "python")
+
+# CPU tests (no GPU required)
+add_test(NAME test_host_math COMMAND ${PROJECT_SOURCE_DIR}/bin/test_host_math)
+set_tests_properties(test_host_math PROPERTIES
+  TIMEOUT 10
+  LABELS "cpu")

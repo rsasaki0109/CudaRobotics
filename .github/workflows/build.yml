@@ -31,14 +31,10 @@ jobs:
       - name: Build
         run: cmake --build build -j$(nproc)
 
-      - name: Validate design workflow
-        run: |
-          python3 scripts/validate_design_workflow.py
+      # GPU tests (label "gpu") require NVIDIA GPU and cannot run in CI
 
-      - name: Check design regressions
-        run: |
-          python3 scripts/check_design_regressions.py
+      - name: Run Python tests
+        run: cd build && ctest --output-on-failure --label-regex python -j$(nproc)
 
-      - name: Check scaffold workflow
-        run: |
-          python3 scripts/check_scaffold_design_problem.py
+      - name: Run CPU tests
+        run: cd build && ctest --output-on-failure --label-regex cpu -j$(nproc)
