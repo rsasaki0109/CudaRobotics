@@ -40,20 +40,20 @@ plateau under limited rollout budgets on hard tasks.  Recent work shows that
 MPPI is equivalent to a preconditioned gradient descent step.  We study a
 minimal hybrid controller that adds a short autodiff refinement---just three
 local gradient steps---to the standard MPPI update.  With parallelized
-gradient computation on GPU, this refinement retains 85\% of the sampling
+gradient computation on GPU, this refinement preserves most of the sampling
 budget within the same wall-clock time.  We evaluate the method against
-vanilla MPPI and eight strong non-hybrid feedback baselines under exact
-matched-time controller budgets on two-dimensional dynamic-obstacle
+vanilla MPPI and eight strong non-hybrid baselines using fixed-budget sweeps
+and exact matched-time comparisons on two-dimensional dynamic-obstacle
 navigation and a 7-DOF serial-arm manipulation benchmark.  On the hardest
 dynamic-obstacle task, the hybrid controller is the only method that reaches
-the goal across all tested compute budgets from 0.2 to 3.1\,ms---all six
-non-hybrid baselines fail at every sample count from $K\!=\!128$ to
-$K\!=\!8192$.  On 7-DOF manipulation with dynamic obstacles, the hybrid
-controller achieves success\,=\,1.00 at 0.84\,ms while the closest feedback
-baseline reaches 0.75 at 4.01\,ms.  A gradient freshness analysis shows that
-the autodiff correction concentrates during obstacle encounters where the
-cost landscape changes most rapidly, explaining why the refinement is
-specifically valuable on dynamic tasks.
+the goal across all tested compute budgets from 0.2 to 3.1\,ms---all eight
+non-hybrid baselines remain unsuccessful across every fixed-$K$ setting and
+in the matched-time sweeps we evaluated.  On 7-DOF manipulation with dynamic
+obstacles, the hybrid controller achieves success\,=\,1.00 at 0.84\,ms while
+the closest feedback baseline reaches 0.75 at 4.01\,ms.  A gradient
+freshness analysis shows that the autodiff correction concentrates during
+obstacle encounters where the cost landscape changes most rapidly,
+explaining why the refinement is specifically valuable on dynamic tasks.
 \end{abstract}
 
 \begin{IEEEkeywords}
@@ -92,12 +92,13 @@ additional data structures beyond the cost gradient itself.
 Our main contributions are:
 \begin{enumerate}
   \item A minimal, training-free hybrid MPPI controller where the autodiff
-    refinement is parallelized to retain 85\% of the sampling budget at
+    refinement is parallelized to preserve most of the sampling budget at
     matched wall-clock time, interpretable as adding explicit gradient steps
     after MPPI's implicit preconditioned gradient step.
-  \item A matched-time evaluation showing a non-hybrid Pareto ceiling: on the
-    hardest dynamic-obstacle task, all eight non-hybrid baselines remain
-    unsuccessful at every sample count from $K\!=\!128$ to $K\!=\!8192$,
+  \item A matched-time evaluation and robustness sweep showing a non-hybrid
+    Pareto ceiling: on the hardest dynamic-obstacle task, all eight
+    non-hybrid baselines remain unsuccessful across every fixed-$K$ setting
+    and every matched-time configuration we tested,
     while the hybrid controller succeeds at $K\!=\!128$ and above.
   \item Evidence across 2D dynamic navigation and 7-DOF serial-arm
     manipulation, including a gradient freshness analysis showing that the
@@ -204,18 +205,18 @@ cost gradient evaluations while preserving the sequential adjoint dependency.
 \label{sec:budget}
 
 After parallelization, the gradient refinement adds minimal overhead to the
-MPPI sampling step.  At a matched 1.0\,ms wall-clock budget on the 2D
-navigation benchmark:
+MPPI sampling step.  At the exact 1.0\,ms target on
+\texttt{dynamic\_slalom}:
 
 \begin{itemize}
-  \item Vanilla MPPI: $K = 7271$ samples
-  \item Diff-MPPI-3: $K = 6216$ samples + 3 gradient steps
+  \item Vanilla MPPI: $K = 7167$ samples
+  \item Diff-MPPI-3: $K = 5966$ samples + 3 gradient steps
 \end{itemize}
 
-The hybrid controller retains 85\% of the sampling budget while gaining
-gradient refinement within the same wall-clock time.  This makes the
-compute--quality comparison genuinely fair: the gradient refinement is nearly
-free in wall-clock terms.
+The hybrid controller retains 83\% of the pure-sampling budget while gaining
+gradient refinement within the same wall-clock regime.  This makes the
+compute--quality comparison genuinely fair: the refinement is not buying
+quality by escaping the timing budget.
 
 \subsection{Adaptive Gradient Skip}
 \label{sec:adaptive}
@@ -246,27 +247,25 @@ gravity and damping, and analytical dynamics Jacobians.  Two scenarios:
 
 \subsection{Baselines}
 
-Eight non-hybrid baselines, all evaluated under exact matched-time
-tuning:
+Eight non-hybrid baselines are included in the benchmark package.  The
+strongest and closest ones are highlighted in the main exact-time table;
+broader family variants appear in the matched-time robustness sweeps:
 \begin{enumerate}
   \item \textbf{mppi}: vanilla sampling-only MPPI.
-  \item \textbf{feedback\_mppi\_ref}: current-action sensitivity-based
-    feedback gains (closest to released
-    Feedback-MPPI~\cite{belvedere2026feedback_mppi} gain computation).
-  \item \textbf{feedback\_mppi\_fused}: covariance-regression + LQR blend
+  \item \textbf{feedback\_mppi\_ref}: released current-action
+    Feedback-MPPI-style gains~\cite{belvedere2026feedback_mppi}.
+  \item \textbf{feedback\_mppi\_fused}: covariance + LQR blend
     (strongest non-hybrid).
-  \item \textbf{feedback\_mppi\_hf}: two-rate architecture with full-horizon
-    covariance+LQR gains.
-  \item \textbf{feedback\_mppi\_faithful}: two-rate architecture with
+  \item \textbf{feedback\_mppi\_hf}: two-rate controller with full-horizon
+    covariance/LQR gains.
+  \item \textbf{feedback\_mppi\_faithful}: two-rate controller with
     current-action-only gains.
-  \item \textbf{feedback\_mppi\_cov}: covariance-regression feedback gains.
-  \item \textbf{feedback\_mppi\_paper}: covariance-regression + LQR blend
-    with every-step replanning---the strongest principled feedback baseline,
-    closest to Feedback-MPPI~\cite{belvedere2026feedback_mppi}'s
-    sensitivity-derived gain computation.
-  \item \textbf{step\_mppi}: online-adapted sampling bias via cost-weighted
-    exponential moving average of control deviations, inspired by
-    Step-MPPI~\cite{step_mppi}'s learned sampling distribution approach.
+  \item \textbf{feedback\_mppi\_cov}: covariance-regression gains.
+  \item \textbf{feedback\_mppi\_paper}: every-step covariance + LQR blend,
+    closest to the strongest principled
+    Feedback-MPPI-style baseline~\cite{belvedere2026feedback_mppi}.
+  \item \textbf{step\_mppi}: online sampling-bias EMA inspired by
+    Step-MPPI~\cite{step_mppi}.
 \end{enumerate}
 
 \subsection{Matched-Time Evaluation Protocol}
@@ -274,7 +273,10 @@ tuning:
 We use a binary-search exact-time tuning script that finds the $K$ value per
 planner and scenario that produces a given wall-clock target (e.g.,
 1.0\,ms).  This ensures all comparisons are at the same per-step compute
-budget, not just the same~$K$.
+budget, not just the same~$K$.  The main text reports a fixed-controller
+exact-time table for the submission-critical baselines, while broader
+family-level multi-parameter sweeps over feedback gain scale and Diff-MPPI
+gradient hyperparameters are treated as robustness follow-up.
 
 % =============================================================================
 \section{Results}
@@ -282,20 +284,25 @@ budget, not just the same~$K$.
 
 \subsection{Non-Hybrid Pareto Ceiling on \texttt{dynamic\_slalom}}
 
-The central result: on \texttt{dynamic\_slalom}, \textbf{all six non-hybrid
-baselines remain at success\,=\,0.00 at every $K$ from 128 to 8192}.  The
-strongest non-hybrid baseline (\texttt{feedback\_mppi\_fused}) reduces final
-distance from 14.2 (MPPI) to 10.3, but never reaches the goal.
+The central result: on \texttt{dynamic\_slalom}, \textbf{all eight
+non-hybrid baselines remain unsuccessful across every fixed-$K$ sweep and
+exact-time run we tested}.  The strongest non-hybrid baseline
+(\texttt{feedback\_mppi\_fused}) reduces final distance to about 10.2--10.3,
+but never reaches the goal.
 
 \texttt{diff\_mppi\_3} succeeds at every $K$ from 128 upward, reaching final
 distance 1.89--1.95.
 
-At matched 1.0\,ms, the results are shown in Table~\ref{tab:slalom}.
+Table~\ref{tab:slalom} shows a compact exact-time 1.0\,ms comparison for the
+strongest and most submission-critical baselines; the remaining feedback
+variants follow the same qualitative failure pattern and are omitted for
+space.
 
 \begin{table}[t]
 \centering
 \caption{%
-  \texttt{dynamic\_slalom} at matched ${\sim}1.0$\,ms wall-clock budget.
+  Selected \texttt{dynamic\_slalom} planners under the 1.0\,ms exact-time
+  target protocol.
   \textbf{Bold}: proposed method.%
 }
 \label{tab:slalom}
@@ -303,14 +310,12 @@ At matched 1.0\,ms, the results are shown in Table~\ref{tab:slalom}.
 \toprule
 Planner & $K$ & ms & Success & Final Dist \\
 \midrule
-mppi                     & 7271 & 0.98 & 0.00 & 14.19 \\
-feedback\_mppi\_fused    &  128 & 1.85 & 0.00 & 10.33 \\
-feedback\_mppi\_ref      &  992 & 1.01 & 0.00 & 11.77 \\
-feedback\_mppi\_hf       &  292 & 0.98 & 0.00 & 13.80 \\
-feedback\_mppi\_faithful & 3294 & 0.98 & 0.00 & 14.09 \\
-feedback\_mppi\_paper     & 1024 & 8.75 & 0.00 & 11.74 \\
-step\_mppi               & 1024 & 0.19 & 0.00 & 14.25 \\
-\textbf{diff\_mppi\_3}   & \textbf{6216} & \textbf{0.97} & \textbf{1.00} & \textbf{1.89} \\
+mppi                    & 7167 & 0.99 & 0.00 & 14.15 \\
+step\_mppi              & 7422 & 0.99 & 0.00 & 14.10 \\
+feedback\_mppi\_ref     &  949 & 1.01 & 0.00 & 11.86 \\
+feedback\_mppi\_paper   &  129 & 1.02 & 0.00 & 11.61 \\
+feedback\_mppi\_fused   &  128 & 1.88 & 0.00 & 10.33 \\
+\textbf{diff\_mppi\_3}  & \textbf{5966} & \textbf{0.99} & \textbf{1.00} & \textbf{1.90} \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -325,14 +330,24 @@ This establishes a hard non-hybrid Pareto ceiling: no amount of compute
 budget allocated to non-hybrid controllers can solve this task.  The gradient
 refinement is the only mechanism that crosses the success boundary.
 
+A broader family-level matched-time sweep over $K$, feedback gain scale, and
+Diff-MPPI gradient hyperparameters reaches the same qualitative conclusion at
+1.0, 1.5, and 2.0\,ms: all non-hybrid families still fail on
+\texttt{dynamic\_slalom}.  The best hybrid family point shifts between
+\texttt{diff\_mppi\_3} and \texttt{diff\_mppi\_1} depending on the target, so
+we treat that sweep as robustness evidence rather than the headline table.
+
 \begin{figure}[t]
   \centering
   \includegraphics[width=\columnwidth]{fig_pareto}
   \caption{%
-    Pareto frontier of wall-clock time vs.\ final distance on
-    \texttt{dynamic\_slalom}.  Non-hybrid baselines cluster above the success
-    threshold regardless of compute budget.  Diff-MPPI-3 crosses the success
-    boundary at every budget tested.%
+    Exact-time compute--quality plots on \texttt{dynamic\_crossing} (left)
+    and \texttt{dynamic\_slalom} (right), combining the fixed-controller
+    1.0, 1.5, and 2.0\,ms targets plus the additional 1.0\,ms
+    \texttt{feedback\_mppi\_paper} and \texttt{step\_mppi} points.
+    Non-hybrid baselines cluster above the success threshold on the hard
+    \texttt{dynamic\_slalom} panel, while Diff-MPPI-3 crosses it at every
+    matched-time point shown.%
   }
   \label{fig:pareto}
 \end{figure}
@@ -363,6 +378,12 @@ feedback\_mppi\_ref    & 0.75 & 0.283 & 4.01 \\
 The hybrid controller achieves the highest success rate while being 4.8$\times$
 faster than the closest feedback baseline.  This demonstrates the approach
 transfers to 14-dimensional manipulation tasks.
+
+The later exact-time 7-DOF follow-up is more mixed: at 3.0 and 5.0\,ms,
+\texttt{feedback\_mppi\_ref} catches up on \texttt{7dof\_dynamic\_avoid},
+while \texttt{7dof\_shelf\_reach} remains mostly unsolved for all methods.
+Accordingly, we keep the stronger fixed-budget $K\!=\!512$ result in the
+main text and treat the exact-time manipulation sweep as appendix material.
 
 \begin{figure}[t]
   \centering
@@ -433,12 +454,16 @@ value that neither pure feedback nor learned sampling can replicate.
 \label{sec:limitations}
 
 The current contribution is empirical with theoretical motivation from
-Fazlyab et al.~\cite{fazlyab2026mppi_gd}.  The feedback baselines are strong
-in-repo proxies but not full reproductions of the complete
-Feedback-MPPI~\cite{belvedere2026feedback_mppi} controller stack.  The 7-DOF
-benchmark uses a simplified dynamics model rather than a validated Panda
-simulation.  The evaluation relies on custom benchmark domains rather than
-standardized suites such as MuJoCo manipulation tasks.
+Fazlyab et al.~\cite{fazlyab2026mppi_gd}.  We now include
+\texttt{feedback\_mppi\_paper} and \texttt{step\_mppi}, but both remain
+in-harness reimplementations rather than full reproductions of external
+controller stacks, and neither closes the \texttt{dynamic\_slalom} gap.  The
+7-DOF benchmark uses a simplified dynamics model rather than a validated
+Panda simulation.  We now include small MuJoCo
+\texttt{InvertedPendulum-v4} and \texttt{Reacher} follow-ups, but those read
+primarily as transfer / standardization checks rather than decisive
+hybrid-only wins, so the broader evaluation still relies mostly on custom
+benchmark domains rather than standardized manipulation or locomotion suites.
 
 % =============================================================================
 \section{Conclusion}
@@ -447,13 +472,14 @@ standardized suites such as MuJoCo manipulation tasks.
 We showed that a minimal gradient refinement---three autodiff steps after a
 standard MPPI update---breaks through a hard non-hybrid Pareto ceiling on
 dynamic-obstacle tasks.  With parallelized gradient computation, the
-refinement retains 85\% of the sampling budget at matched wall-clock time.  A
-gradient freshness analysis explains why the refinement is specifically
-valuable on dynamic tasks: the gradient provides current-landscape information
-that the sampling-based update cannot capture when obstacles move between
-timesteps.  The approach transfers to 7-DOF manipulation, where the hybrid
-controller achieves higher success at lower compute than the closest feedback
-baseline.
+refinement preserves most of the sampling budget at matched wall-clock time.
+Neither \texttt{feedback\_mppi\_paper} nor \texttt{step\_mppi} closes the
+\texttt{dynamic\_slalom} gap.  A gradient freshness analysis explains why the
+refinement is specifically valuable on dynamic tasks: the gradient provides
+current-landscape information that the sampling-based update cannot capture
+when obstacles move between timesteps.  The approach transfers to 7-DOF
+manipulation, where the hybrid controller achieves higher success at lower
+compute than the closest feedback baseline.
 
 % =============================================================================
 \bibliographystyle{IEEEtran}

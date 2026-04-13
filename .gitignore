@@ -1,9 +1,12 @@
 build
 bin
 lib
+CMakeFiles/
+CMakeCache.txt
 .vscode
 code-server
 .claude
+.venv-mujoco/
 deploy.sh
 __pycache__/
 *.pyc

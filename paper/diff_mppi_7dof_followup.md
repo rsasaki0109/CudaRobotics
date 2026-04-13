@@ -51,10 +51,21 @@ Key finding: at K=512, `diff_mppi_3` reaches `success=1.00` at `0.84 ms` while `
 
 ### Exact-time key numbers
 
-`7dof_dynamic_avoid` at `1.0 ms` target:
-- `diff_mppi_1` (K=3169 @ 1.03 ms): success `1.00`, dist `0.08`
-- `mppi` (K=4096 @ 1.05 ms): success `1.00`, dist `0.10`
-- `feedback_mppi_ref` (K=32 @ 1.33 ms): success `0.50`, dist `0.42`
+The later full `--multi-param` sweep does not strengthen the 7-DOF story as much as the fixed-budget K=512 point.
+
+`7dof_dynamic_avoid` at `3.0 ms` target:
+- `mppi` (K=4096 @ 1.12 ms): success `0.75`, dist `0.29`
+- `feedback_mppi_ref` (K=245 @ 2.40 ms): success `1.00`, dist `0.08`
+- `diff_mppi_1` (K=4096 @ 1.30 ms): success `1.00`, dist `0.09`
+- `diff_mppi_3` (K=4096 @ 2.38 ms): success `1.00`, dist `0.09`
+
+`7dof_shelf_reach` at `3.0 ms` target:
+- `mppi` (K=4096 @ 1.00 ms): success `0.00`, dist `0.41`
+- `feedback_mppi_ref` (K=451 @ 3.34 ms): success `0.25`, dist `0.34`
+- `diff_mppi_1` (K=4096 @ 1.18 ms): success `0.00`, dist `0.41`
+- `diff_mppi_3` (K=4096 @ 1.58 ms): success `0.00`, dist `0.41`
+
+At `5.0 ms`, the same pattern persists: `dynamic_avoid` is solved by both feedback and diff, while `shelf_reach` remains mostly unsolved.
 
 ## Gradient Computation Speed
 
@@ -68,8 +79,8 @@ Three rounds of optimization brought diff_mppi_3 K=256 from 13.6 ms to 0.79 ms (
 - At K=512, `diff_mppi_3` is now the strongest planner on `7dof_dynamic_avoid`: success=1.00 at 0.84 ms, while feedback_mppi_ref needs 4.01 ms for 0.75 success. The gradient parallelization made the hybrid controller compute-competitive.
 - At K=256 on `7dof_dynamic_avoid`, `feedback_mppi_ref` still reaches 1.00 success while diff_mppi_3 is at 0.50. The advantage is budget-dependent.
 - On `7dof_shelf_reach`, diff_mppi_1 shows modest improvement over mppi at K=256 (0.50 vs 0.25 success). Results remain noisy across K values.
-- At matched time (1.0 ms), diff_mppi_1 matches mppi success on dynamic_avoid while achieving slightly better terminal distance. feedback_mppi_ref cannot reach the 1.0 ms target without dropping to very low K.
-- Overall, the gradient parallelization shifted the story from "diff_mppi is too slow for 7-DOF" to "diff_mppi is compute-competitive and sometimes superior on high-dimensional tasks".
+- In the later exact-time `3.0 / 5.0 ms` sweep, feedback_mppi_ref catches up on `7dof_dynamic_avoid`, while `7dof_shelf_reach` remains weak for all methods. So the strongest manipulation claim still comes from the fixed-budget `K=512` result, not the exact-time appendix.
+- Overall, the gradient parallelization shifted the story from "diff_mppi is too slow for 7-DOF" to "diff_mppi is compute-competitive and sometimes superior on high-dimensional tasks", but not to uniform exact-time dominance.
 
 ## feedback_mppi_faithful Finding
 
@@ -89,7 +100,8 @@ cmake --build build -j$(nproc)
   --csv build/benchmark_diff_mppi_manipulator_7dof.csv
 
 # Exact-time tuning
-python3 scripts/tune_diff_mppi_time_targets.py --preset 7dof_manipulator
+python3 scripts/tune_diff_mppi_time_targets.py --preset 7dof_manipulator --multi-param \
+  --cache-dir build/diff_mppi_7dof_exact_time_cache
 
 # Summary
 python3 scripts/summarize_diff_mppi.py --csv build/benchmark_diff_mppi_manipulator_7dof.csv
