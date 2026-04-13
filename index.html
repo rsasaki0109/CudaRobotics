@@ -572,6 +572,25 @@
         </div>
         <p>Multi-scale benchmark (1K–100K points). Both CPU and GPU use the same brute-force algorithms (no KD-trees). GPU times include device sync. Supports <code>--ply</code>, <code>--kitti</code>, <code>--xyz</code> file input.</p>
       </div>
+      <div class="gallery" style="margin-bottom: 16px;">
+        <figure class="card">
+          <img src="pointcloud_processing.gif" alt="CudaPointCloud processing pipeline">
+          <figcaption>Same benchmark room cloud, shown as raw input, filtered cloud, dominant plane extraction, and local PCA normals.</figcaption>
+        </figure>
+        <div class="card">
+          <h3>What the GIF shows</h3>
+          <p>
+            The synthetic room scene used by <code>benchmark_pointcloud</code> is rotated through the same four views
+            that matter for the pipeline: raw input with outliers, statistical filtering, dominant-plane extraction,
+            and normal estimation.
+          </p>
+          <p>
+            The table below keeps the throughput story, but the GIF makes the processing stages concrete instead of
+            leaving CudaPointCloud as numbers only.
+          </p>
+          <span class="metric">Visual pipeline: input -> filter -> plane -> normals</span>
+        </div>
+      </div>
       <table>
         <thead>
           <tr>
