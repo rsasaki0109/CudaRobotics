@@ -294,7 +294,7 @@
         <div class="stat">
           <div class="eyebrow">dynamic_slalom @ 1.0 ms</div>
           <strong>1.91</strong>
-          <div>Diff-MPPI dist (6 baselines fail)</div>
+          <div>Diff-MPPI dist (7 baselines fail)</div>
         </div>
         <div class="stat">
           <div class="eyebrow">7-DOF K=512</div>
@@ -320,7 +320,7 @@
           <div class="kicker">At a glance</div>
           <h2>Current takeaways</h2>
         </div>
-        <p>Updated from the repository state on 2026-04-05.</p>
+        <p>Updated from the repository state on 2026-04-13.</p>
       </div>
       <div class="summary-grid">
         <div class="card">
@@ -328,10 +328,11 @@
           <p>
             At matched <code>1.0 ms</code> budget on <code>dynamic_slalom</code>,
             <strong>diff_mppi_3 is the only successful controller</strong> (dist <code>1.91</code>)
-            across 6 non-hybrid baselines. The strongest non-hybrid baseline
-            <code>feedback_mppi_fused</code> reaches <code>10.30</code>, while vanilla MPPI stays at <code>14.16</code>.
+            across 7 non-hybrid baselines including <code>step_mppi</code>. The strongest non-hybrid baseline
+            <code>feedback_mppi_fused</code> reaches <code>10.30</code>, while vanilla MPPI stays at <code>14.16</code>
+            and <code>step_mppi</code> at <code>14.20</code>.
           </p>
-          <span class="metric">Main evidence: matched-time dynamic obstacle suite with 6 baselines</span>
+          <span class="metric">Main evidence: matched-time dynamic obstacle suite with 7 baselines</span>
         </div>
         <div class="card">
           <h3>7-DOF manipulator</h3>
@@ -390,8 +391,8 @@
         <tbody>
           <tr>
             <td><code>dynamic_slalom</code>, matched <code>1.0 ms</code></td>
-            <td><code>mppi</code> vs 5 feedback baselines vs <code>diff_mppi_3</code></td>
-            <td><strong>Only diff_mppi_3 succeeds</strong> (<code>1.91</code>). Best non-hybrid: <code>feedback_mppi_fused</code> at <code>10.30</code>.</td>
+            <td><code>mppi</code> vs 5 feedback baselines + <code>step_mppi</code> vs <code>diff_mppi_3</code></td>
+            <td><strong>Only diff_mppi_3 succeeds</strong> (<code>1.91</code>). Best non-hybrid: <code>feedback_mppi_fused</code> at <code>10.30</code>. <code>step_mppi</code>: <code>14.20</code>.</td>
           </tr>
           <tr>
             <td><code>7dof_dynamic_avoid</code>, <code>K=512</code></td>
@@ -424,6 +425,70 @@
           <img src="diff_mppi.gif" alt="Differentiable MPPI trajectory rollouts">
           <figcaption>Trajectory rollouts from the differentiable refinement controller.</figcaption>
         </figure>
+      </div>
+    </section>
+
+    <section>
+      <div class="section-head">
+        <div>
+          <div class="kicker">Ablation study</div>
+          <h2>Ablation: Sampling vs Gradient</h2>
+        </div>
+        <p>Isolating the contribution of sampling and gradient refinement on <code>dynamic_slalom</code> at K=1024. Neither component alone crosses the success boundary.</p>
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th>Controller</th>
+            <th>Mechanism</th>
+            <th>Success</th>
+            <th>Final dist</th>
+            <th>Interpretation</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>mppi</code></td>
+            <td>Sampling only</td>
+            <td>0.00</td>
+            <td><code>14.15</code></td>
+            <td>Vanilla MPPI cannot solve dynamic obstacles at 1 ms budget</td>
+          </tr>
+          <tr>
+            <td><code>step_mppi</code></td>
+            <td>Better sampling (learned bias)</td>
+            <td>0.00</td>
+            <td><code>14.20</code></td>
+            <td>Online-adapted sampling distribution performs at vanilla MPPI level</td>
+          </tr>
+          <tr>
+            <td><code>grad_only_3</code></td>
+            <td>Gradient only (no sampling)</td>
+            <td>0.00</td>
+            <td><code>44.77</code></td>
+            <td>Gradient descent without a good initial trajectory diverges</td>
+          </tr>
+          <tr>
+            <td><strong><code>diff_mppi_3</code></strong></td>
+            <td><strong>Sampling + gradient</strong></td>
+            <td><strong>1.00</strong></td>
+            <td><strong><code>1.91</code></strong></td>
+            <td><strong>Only the hybrid succeeds: MPPI provides the basin, gradients refine it</strong></td>
+          </tr>
+        </tbody>
+      </table>
+      <div class="card" style="margin-top: 16px;">
+        <h3>Step-MPPI baseline note</h3>
+        <p>
+          <code>step_mppi</code> (online-adapted sampling bias, inspired by
+          <a href="https://arxiv.org/abs/2604.01539">Step-MPPI, arXiv:2604.01539</a>) performs at vanilla MPPI level
+          on dynamic obstacle tasks (final dist <code>14.20</code> vs <code>14.15</code>).
+          This confirms that learned sampling alone cannot solve dynamic obstacle tasks where the cost landscape
+          changes faster than the sampling distribution can adapt. The gradient refinement in <code>diff_mppi_3</code>
+          provides a fundamentally different mechanism: explicit cost minimization that can track rapid cost changes
+          within a single planning cycle.
+        </p>
+        <span class="metric">New baseline: 7th non-hybrid controller confirms non-hybrid Pareto ceiling</span>
       </div>
     </section>
 
@@ -540,7 +605,7 @@
     </section>
 
     <p class="footer">
-      Last updated: 2026-04-05 JST. For build instructions, binaries, and the full experiment workflow,
+      Last updated: 2026-04-13 JST. For build instructions, binaries, and the full experiment workflow,
       see the repository README on GitHub.
     </p>
   </div>
