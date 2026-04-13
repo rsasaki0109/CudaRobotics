@@ -102,6 +102,10 @@ struct PlannerVariant {
     float feedback_cov_regularization = 0.0f;
     float feedback_cov_blend = 1.0f;
     float feedback_lqr_blend = 0.0f;
+    // Step-MPPI: learned sampling distribution
+    bool use_learned_sampling = false;
+    int mlp_hidden_size = 32;   // unused in lightweight mode; kept for API compat
+    float mlp_lr = 0.001f;      // EMA learning rate for sampling bias
 };
 
 struct EpisodeMetrics {
@@ -807,6 +811,58 @@ __global__ void update_controls_kernel(float* d_nominal, const float* d_perturbe
     d_nominal[t * 2 + 1] = steer;
 }
 
+// ---- Step-MPPI kernels: learned sampling bias ----
+
+// Apply per-timestep bias shifts to d_nominal before sampling.
+// d_bias has T*2 elements: [bias_accel_0, bias_steer_0, bias_accel_1, ...]
+__global__ void apply_sampling_bias_kernel(float* d_nominal, const float* d_bias, int T) {
+    int t = blockIdx.x * blockDim.x + threadIdx.x;
+    if (t >= T) return;
+    d_nominal[t * 2 + 0] += d_bias[t * 2 + 0];
+    d_nominal[t * 2 + 1] += d_bias[t * 2 + 1];
+}
+
+// Remove per-timestep bias shifts from d_nominal after sampling (restore original).
+__global__ void remove_sampling_bias_kernel(float* d_nominal, const float* d_bias, int T) {
+    int t = blockIdx.x * blockDim.x + threadIdx.x;
+    if (t >= T) return;
+    d_nominal[t * 2 + 0] -= d_bias[t * 2 + 0];
+    d_nominal[t * 2 + 1] -= d_bias[t * 2 + 1];
+}
+
+// Update the sampling bias using cost-weighted EMA of control deviations.
+// After the MPPI update, d_nominal holds the new weighted-average controls.
+// d_nominal_pre holds the pre-bias nominal (original before bias was added).
+// The "target shift" is: (new_nominal - nominal_pre), i.e. what MPPI wanted to shift toward.
+// We update: bias <- (1-lr)*bias + lr*(new_nominal - nominal_pre)
+// with a decay to prevent unbounded drift.
+__global__ void update_sampling_bias_kernel(
+    float* d_bias,
+    const float* d_nominal_new,    // post-MPPI-update nominal
+    const float* d_nominal_pre,    // pre-bias nominal (before apply_sampling_bias)
+    int T, float lr, float decay)
+{
+    int t = blockIdx.x * blockDim.x + threadIdx.x;
+    if (t >= T) return;
+    float target_accel = d_nominal_new[t * 2 + 0] - d_nominal_pre[t * 2 + 0];
+    float target_steer = d_nominal_new[t * 2 + 1] - d_nominal_pre[t * 2 + 1];
+    d_bias[t * 2 + 0] = decay * ((1.0f - lr) * d_bias[t * 2 + 0] + lr * target_accel);
+    d_bias[t * 2 + 1] = decay * ((1.0f - lr) * d_bias[t * 2 + 1] + lr * target_steer);
+}
+
+// Shift the sampling bias by one timestep (called when the horizon shifts).
+__global__ void shift_sampling_bias_kernel(float* d_bias, int T) {
+    if (blockIdx.x != 0 || threadIdx.x != 0) return;
+    for (int t = 0; t < T - 1; t++) {
+        d_bias[t * 2 + 0] = d_bias[(t + 1) * 2 + 0];
+        d_bias[t * 2 + 1] = d_bias[(t + 1) * 2 + 1];
+    }
+    d_bias[(T - 1) * 2 + 0] = 0.0f;
+    d_bias[(T - 1) * 2 + 1] = 0.0f;
+}
+
+// ---- End Step-MPPI kernels ----
+
 // Single-thread kernel: sequential forward rollout (each state depends on the previous).
 __global__ void rollout_nominal_kernel(
     float sx, float sy, float stheta, float sv,
@@ -1061,6 +1117,13 @@ public:
         CUDA_CHECK(cudaMalloc(&d_feedback_gains_aux_, t_horizon_ * 2 * 4 * sizeof(float)));
         CUDA_CHECK(cudaMalloc(&d_rng_, k_samples_ * sizeof(curandState)));
 
+        // Step-MPPI: allocate sampling bias buffers
+        if (variant_.use_learned_sampling) {
+            CUDA_CHECK(cudaMalloc(&d_sampling_bias_, t_horizon_ * 2 * sizeof(float)));
+            CUDA_CHECK(cudaMemset(d_sampling_bias_, 0, t_horizon_ * 2 * sizeof(float)));
+            CUDA_CHECK(cudaMalloc(&d_nominal_pre_bias_, t_horizon_ * 2 * sizeof(float)));
+        }
+
         reset_rng();
     }
 
@@ -1079,6 +1142,8 @@ public:
         CUDA_CHECK(cudaFree(d_feedback_gains_));
         CUDA_CHECK(cudaFree(d_feedback_gains_aux_));
         CUDA_CHECK(cudaFree(d_rng_));
+        if (d_sampling_bias_) CUDA_CHECK(cudaFree(d_sampling_bias_));
+        if (d_nominal_pre_bias_) CUDA_CHECK(cudaFree(d_nominal_pre_bias_));
     }
 
     EpisodeMetrics run() {
@@ -1252,6 +1317,12 @@ private:
         h_nominal_[(t_horizon_ - 1) * 2 + 0] = 0.0f;
         h_nominal_[(t_horizon_ - 1) * 2 + 1] = 0.0f;
 
+        // Step-MPPI: shift the sampling bias to match the shifted horizon
+        if (variant_.use_learned_sampling) {
+            shift_sampling_bias_kernel<<<1, 1>>>(d_sampling_bias_, t_horizon_);
+            CUDA_CHECK(cudaDeviceSynchronize());
+        }
+
         if (!uses_feedback_local_action()) return;
 
         for (int t = 0; t < t_horizon_; t++) {
@@ -1279,6 +1350,13 @@ private:
         CUDA_CHECK(cudaMemcpy(d_nominal_, h_nominal_.data(), h_nominal_.size() * sizeof(float), cudaMemcpyHostToDevice));
         int block = 256;
         if (variant_.use_sampling) {
+            // Step-MPPI: save pre-bias nominal and apply learned bias before sampling
+            if (variant_.use_learned_sampling) {
+                CUDA_CHECK(cudaMemcpy(d_nominal_pre_bias_, d_nominal_, t_horizon_ * 2 * sizeof(float), cudaMemcpyDeviceToDevice));
+                apply_sampling_bias_kernel<<<(t_horizon_ + block - 1) / block, block>>>(
+                    d_nominal_, d_sampling_bias_, t_horizon_);
+            }
+
             int open_loop_passes = 1;
             if (variant_.use_feedback && (variant_.feedback_mode == 1 || variant_.feedback_mode == 3 || variant_.feedback_mode == 4 || variant_.feedback_mode == 6)) {
                 open_loop_passes = 2;
@@ -1291,6 +1369,13 @@ private:
                 compute_weights_kernel<<<1, 1>>>(d_costs_, d_weights_, k_samples_, variant_.sampling_lambda);
                 update_controls_kernel<<<(t_horizon_ + block - 1) / block, block>>>(
                     d_nominal_, d_perturbed_, d_weights_, k_samples_, t_horizon_);
+            }
+
+            // Step-MPPI: update the learned bias from cost-weighted control deviations
+            if (variant_.use_learned_sampling) {
+                update_sampling_bias_kernel<<<(t_horizon_ + block - 1) / block, block>>>(
+                    d_sampling_bias_, d_nominal_, d_nominal_pre_bias_,
+                    t_horizon_, variant_.mlp_lr, 0.995f);
             }
 
             if (variant_.use_feedback) {
@@ -1529,6 +1614,9 @@ private:
     float* d_feedback_gains_ = nullptr;
     float* d_feedback_gains_aux_ = nullptr;
     curandState* d_rng_ = nullptr;
+    // Step-MPPI state
+    float* d_sampling_bias_ = nullptr;
+    float* d_nominal_pre_bias_ = nullptr;
     vector<TraceRow>* trace_rows_ = nullptr;
     int trace_max_steps_ = 0;
 };
@@ -2079,6 +2167,13 @@ int main(int argc, char** argv) {
         v.grad_steps = 3;
         v.alpha = 0.006f;
         v.grad_skip_threshold = 8.0f;
+        variants.push_back(v);
+    }
+    {
+        PlannerVariant v;
+        v.name = "step_mppi";
+        v.use_learned_sampling = true;
+        v.mlp_lr = 0.001f;
         variants.push_back(v);
     }
 
