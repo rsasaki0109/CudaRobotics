@@ -9,3 +9,4 @@ __pycache__/
 *.pyc
 *.avi
 videos/
+docker-compose.override.yml
