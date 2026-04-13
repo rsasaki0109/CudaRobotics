@@ -512,12 +512,16 @@
       </div>
       <div class="project-grid">
         <div class="card">
+          <figure>
+            <img src="autodiff_gpu_mlp_summary.png" alt="Autodiff and GPU MLP summary">
+          </figure>
           <h3>Autodiff + GPU MLP Foundation</h3>
           <p>
-            No public GIF yet. Forward-mode autodiff and a compact GPU MLP provide reusable differentiable
-            building blocks for both Diff-MPPI and Neural SDF experiments.
+            The summary figure is generated directly from <code>bin/test_autodiff</code> and <code>bin/test_gpu_mlp</code>.
+            It packages XOR learning, circle-SDF fitting, million-sample inference throughput, and Jacobian checks
+            into one reader-facing artifact.
           </p>
-          <span class="metric">Shared core module reused across the current research line</span>
+          <span class="metric">Shared differentiable core reused by Diff-MPPI and Neural SDF</span>
         </div>
         <div class="card">
           <figure>
