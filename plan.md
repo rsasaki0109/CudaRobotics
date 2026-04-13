@@ -1,753 +1,399 @@
 # CudaRobotics 引き継ぎドキュメント
 
-最終更新: 2026-04-04 JST
+最終更新: 2026-04-14 JST
 
-このファイルは、Claude あるいは別のコーディングエージェントにそのまま渡すための、現状整理と次アクションの handoff です。
-前の `plan.md` はかなり古く、未実装扱いだったものがすでに大量に実装・push 済みなので、内容を全面更新しています。
+このファイルは、Claude / Codex / 別のコーディングエージェントにそのまま渡すための handoff ドキュメントです。
+前回の plan.md (2026-04-04) から大幅に進展しているため全面更新しています。
 
 ---
 
 ## 0. まず結論
 
-この repo はもう「未完成の実装集」ではなく、かなり大きく 3 本の流れに分かれています。
+このリポジトリは 3 本の流れで構成されています。
 
-1. **CudaRobotics 本体**
-   - 既存の CUDA robotics 実装群
-   - CPU vs CUDA の多数の GIF
-   - README / GitHub Pages で外向けに見せられる状態
+1. **CudaRobotics 本体** — 87+ CUDA ロボティクスアルゴリズム（完成済）
+2. **Diff-MPPI 研究ライン** — 論文投稿準備がかなり進んだ状態
+3. **experiment-first 開発プロセス** — 基盤完成済（improvement track）
 
-2. **Diff-MPPI 研究ライン**
-   - いま一番論文の核になりうるライン
-   - dynamic navigation / uncertainty / CartPole / dynamic bicycle / planar manipulator まで follow-up あり
-   - baseline gap はかなり縮まったが、まだ「paper-faithful reproduction」までは行っていない
-
-3. **experiment-first 開発プロセス**
-   - `core/` と `experiments/` を分けた「experiment -> convergence」型の開発フロー
-   - docs / history / regression / convergence / next-actions / helper-promotion まで一通り回る
-   - これは repo の開発方法そのものを支える基盤で、もう独立した成果物になっている
-
-現時点での方針は次の通りです。
-
-- **論文本文を今すぐ詰めるのは最優先ではない**
-- **README と GitHub Pages には成果サマリが反映済み**
-- **次に大きく効くのは、Diff-MPPI の stronger benchmark か paper-faithful baseline reproduction**
-- **experiment-first 側は主要目標を達成済みで、今は improvement track**
+**現在の最重要タスク**: Diff-MPPI 論文の ICRA/IROS 投稿準備の最終仕上げ
 
 ---
 
-## 1. 現在の Git / リポジトリ状態
+## 1. Git / リポジトリ状態
 
-- リポジトリパス: `.`
+- パス: `.`
 - 主要ブランチ: `master`
-- 公開用ブランチ: `gh-pages`
-- 現在の `master` HEAD: `4d596e5` `Summarize research results in README`
-- 直前の主要 commit:
-  - `16128df` `Add Diff-MPPI submission draft`
-  - `3c090db` `Add manipulator feedback baseline follow-up`
-  - `461c172` `Add release-weighting Diff-MPPI baseline`
-  - `d121598` `Add covariance exact-time baseline for Diff-MPPI`
-  - `11aac81` `Add exact-time gap-closure presets for Diff-MPPI`
-- `gh-pages` 側の最新:
-  - `9a3d948` `Add research results landing page`
+- 公開ブランチ: `gh-pages`
+- HEAD: `f653952` `Update README and paper with 8-baseline benchmark results`
+- clean 状態で push 済み
 
-この handoff を書いている時点で:
+### 直近のコミット履歴（2026-04-13〜14 セッション）
 
-- `git status --short` は clean
-- `master` / `gh-pages` とも push 済み
-
----
-
-## 2. 今この repo で「終わっていること」
-
-### 2.1 既存 CUDA robotics 群
-
-古典ロボティクスの CUDA 実装群は repo の元々の中核で、README 冒頭の CPU vs CUDA 比較 GIF 群もこの系統です。
-
-主なカテゴリ:
-
-- Localization:
-  - EKF, PF, FastSLAM, AMCL, emcl2, PFoE
-- Path planning / navigation:
-  - A*, Dijkstra, RRT, RRT*, DWA, Frenet, Voronoi, Potential Field, MPPI など
-- Mapping / tracking / multi-agent:
-  - Occupancy Grid, LQR, multi-robot planner など
-
-この部分は「未実装」ではありません。README と GitHub Pages の既存 GIF 群で外向けに見せられる状態です。
-
-### 2.2 研究拡張ライン
-
-README の `Novel Research Extensions` に出ている以下は、すでに実装済みです。
-
-- autodiff + GPU MLP 基盤
-- Diff-MPPI
-- Neural SDF Navigation
-- GPU neuroevolution
-- MiniIsaacGym
-- CudaPointCloud
-- Swarm optimization
-
-### 2.3 公開面
-
-外向けの成果サマリは、もう最低限できています。
-
-- README:
-  - `Research Results Snapshot` を追加済み
-  - 論文ドラフトではなく「今 repo に何があって何が出ているか」を先に見せる形
-- GitHub Pages:
-  - `https://rsasaki0109.github.io/CudaRobotics/`
-  - `index.html` を新設済み
-  - Diff-MPPI, SDF, MiniIsaac, PointCloud, swarm の結果サマリと GIF を表示
-
-つまり、次の担当者は「まず repo の成果を表に出す」作業から始める必要はありません。
-
----
-
-## 3. 研究ラインの現状整理
-
-### 3.1 最重要ライン: Diff-MPPI
-
-これが現在もっとも論文主題に近いラインです。
-
-中身は「vanilla MPPI の sampling update の後に、短い autodiff refinement を足す lightweight hybrid controller」です。
-
-広く言って「Diff-MPPI 全体が新しい」と主張するのは厳しいですが、次の狭い主張はかなり defend しやすくなっています。
-
-> lightweight CUDA MPPI + short autodiff refinement は、
-> strong non-hybrid feedback baselines と比べても、
-> hard dynamic-obstacle tasks において、
-> matched-time budget 下で better compute-quality tradeoff を示す
-
-### 3.2 Diff-MPPI で今ある benchmark 群
-
-#### 主 benchmark
-
-- `src/benchmark_diff_mppi.cu`
-  - main dynamic navigation suite
-  - fixed-budget
-  - cap-based wall-clock
-  - equal-time target
-  - exact matched-time tuning と接続
-
-#### follow-up 群
-
-- `src/benchmark_diff_mppi_cartpole.cu`
-  - CartPole outside-domain pilot
-- `src/benchmark_diff_mppi_dynamic_bicycle.cu`
-  - steering lag / drag を入れた higher-order mobile dynamics
-- `src/benchmark_diff_mppi_manipulator.cu`
-  - planar 2-link manipulator obstacle-avoidance pilot
-
-### 3.3 Diff-MPPI で今ある baseline 群
-
-現時点では baseline はかなり増えています。README の記述もこの状態に合わせて更新済みです。
-
-main suite には少なくとも以下があります。
-
-- `mppi`
-- `feedback_mppi`
-  - nominal-linearization 系の強化 baseline
-- `feedback_mppi_ref`
-  - released gain に寄せた current-action feedback proxy
-- `feedback_mppi_release`
-  - released weighting まで寄せた proxy
-- `feedback_mppi_sens`
-  - rollout-sensitivity 系
-- `feedback_mppi_cov`
-  - covariance-regression 系
-- `feedback_mppi_hf`
-  - low-rate replan / high-frequency feedback 実行系
-- `feedback_mppi_fused`
-  - heavier fused feedback baseline
-- `grad_only_3`
-  - hybrid の中の gradient-only ablation
-- `diff_mppi_1`
-- `diff_mppi_3`
-
-重要なのは、
-
-- baseline gap は前よりかなり狭い
-- ただし **paper-faithful reproduction ではまだない**
-
-という点です。
-
-### 3.4 Diff-MPPI の現在の strongest talking points
-
-README と Pages で今押している数字はこのあたりです。
-
-#### dynamic navigation
-
-README の現在値:
-
-- `dynamic_slalom` matched `1.0 ms`
-  - `mppi`: unsuccessful, final distance 約 `14.12`
-  - `feedback_mppi_ref`: 約 `11.90`
-  - `diff_mppi_3`: successful, 約 `1.95`
-
-この task がいちばん diagnostic です。
-easy task の `dynamic_crossing` は strong feedback baseline でもかなり詰められる一方、hard task の `dynamic_slalom` は hybrid がまだ一番強い、という構図になっています。
-
-#### manipulator pilot
-
-README の現在値:
-
-- `arm_static_shelf`, `K=256`
-  - `mppi`: `success=0.00`, final distance `0.23`
-  - `feedback_mppi_ref`: `success=1.00`, `0.15`
-  - `feedback_mppi_cov`: `success=1.00`, `0.15`
-
-manipulator では「hybrid が圧勝」というより、「vanilla MPPI を強い feedback baseline が明確に上回る outside-domain pilot がある」という位置づけです。
-これは reviewer の「2D kinematic nav だけ」という批判を弱める材料にはなりますが、main result の核は still dynamic navigation 側です。
-
-### 3.5 mechanism analysis
-
-trace ベースの mechanism 分析も入っています。
-
-- `scripts/plot_diff_mppi_mechanism.py`
-- trace 出力は `benchmark_diff_mppi` の `--trace-csv`
-
-現在の重要ポイント:
-
-- `dynamic_slalom @ K=1024`
-- `diff_mppi_1` と `diff_mppi_3` は early-horizon 側の correction が強い
-- late-horizon 側はほぼ小さい
-
-つまり、
-
-> autodiff stage は sampled plan 全体を大きく置き換えるのではなく、
-> 実際に直近で実行される control を前寄りに sharpen している
-
-という説明を支える材料になっています。
-
-### 3.6 uncertainty follow-up
-
-`paper/diff_mppi_uncertainty_followup.md` にまとまっています。
-
-これは nominal obstacle model のまま plan して、実行側だけ obstacle の time offset / speed scale / lateral offset を seed ごとにずらす mild mismatch study です。
-
-現状の読み方:
-
-- `uncertain_crossing`
-  - feedback baseline でもかなり回復する
-- `uncertain_slalom`
-  - hybrid の優位が残る
-
-これは rebuttal や limitations 対応には効きますが、ここを main story にしすぎる必要はありません。
-
-### 3.7 outside-domain pilots
-
-現在の outside-domain 系:
-
-- CartPole
-- dynamic bicycle
-- planar manipulator
-
-この順に価値があります。
-
-- CartPole:
-  - 一番弱い pilot
-  - 「完全に 2D nav しかない」ではない、程度
-- dynamic bicycle:
-  - higher-order mobile dynamics として useful
-  - strong feedback baseline が efficiency competitor になる点が面白い
-- planar manipulator:
-  - 一番 reviewer に返しやすい outside-domain pilot
-  - ただし standardized benchmark ではない
-
-結論としては:
-
-- outside-domain evidence は **ある**
-- しかし venue-level の strongest gap を fully close はしていない
-
----
-
-## 4. Diff-MPPI の文書群マップ
-
-Diff-MPPI の文書は散らばっているので、次の担当者はまずこれを見ればよいです。
-
-### 主な文書
-
-- `paper/diff_mppi_results.md`
-  - 初期の results draft
-- `paper/diff_mppi_novelty_followup.md`
-  - baseline 強化と exact-time の follow-up をまとめた主ノート
-- `paper/diff_mppi_uncertainty_followup.md`
-  - uncertainty follow-up
-- `paper/diff_mppi_cartpole_followup.md`
-  - CartPole pilot
-- `paper/diff_mppi_dynamic_bicycle_followup.md`
-  - dynamic bicycle pilot
-- `paper/diff_mppi_manipulator_followup.md`
-  - planar manipulator pilot
-- `paper/icra_iros_gap_list.md`
-  - venue-level の gap analysis
-- `paper/diff_mppi_submission_draft.md`
-  - submission 向けに主張を細くした draft
-
-### 実務的な読み順
-
-もし Claude が `Diff-MPPI` ラインを続けるなら、この順がよいです。
-
-1. `readme.md`
-2. `paper/diff_mppi_submission_draft.md`
-3. `paper/diff_mppi_novelty_followup.md`
-4. `paper/icra_iros_gap_list.md`
-5. `paper/diff_mppi_manipulator_followup.md`
-
-理由:
-
-- README で現状の outward-facing summary を掴む
-- submission draft で「今どこを主張として切っているか」を掴む
-- novelty follow-up で raw evidence を把握する
-- gap list で reviewer 目線の弱点を確認する
-- manipulator follow-up で outside-domain の strongest pilot を確認する
-
----
-
-## 5. いま論文を書かなくてよい、という前提での優先順位
-
-ユーザー意向として、今は「まず paper を完成させる」より、成果整理・引き継ぎ・将来の continuation をしやすくすることが重要です。
-
-その前提だと、優先度は次の順です。
-
-### 優先度 A
-
-- README / Pages / handoff docs の整合
-- 再現コマンドと生成物の整理
-- 次の担当者が迷わない状態にする
-
-これは今回の `plan.md` 更新もその一部です。
-
-### 優先度 B
-
-Diff-MPPI を続けるなら:
-
-- paper-faithful に近い baseline reproduction
-- stronger public benchmark
-- main figure / main table の固定
-
-### 優先度 C
-
-experiment-first workflow の extension
-
-- 4つ目の problem を足す
-- helper promotion を進める
-- history / convergence をさらに使う
-
-このラインは「完成済みの基盤の improvement」です。すぐやらなくてもよいです。
-
----
-
-## 6. experiment-first 開発フローの現状
-
-これはユーザーから明確に要求されて導入したプロセスで、今はかなり整っています。
-
-### 6.1 目的
-
-設計先行ではなく、
-
-> experiment -> convergence
-
-で進めること。
-
-つまり、
-
-- 最初から完璧な抽象を置かない
-- まず concrete variants を複数作る
-- 同一 interface / 同一 input / 同一 metrics で比べる
-- 共通部分が見えたら最小抽象だけ残す
-
-という方針です。
-
-### 6.2 今ある problem 群
-
-現在は少なくとも 3 つの concrete problem が回っています。
-
-1. `planner_selection`
-2. `time_budget_selection`
-3. `fixture_promotion`
-
-各 problem に対して、3 variants あります。
-
-典型的には:
-
-- functional
-- oop
-- pipeline
-
-### 6.3 重要ディレクトリ
-
-- `core/`
-  - 最小 interface だけを置く
-- `experiments/`
-  - discardable concrete variants
-- `docs/experiments.md`
-  - 現在の比較結果
-- `docs/decisions.md`
-  - 採用 / 保留 / 不採用の理由
-- `docs/interfaces.md`
-  - 現在の最小 interface
-- `docs/experiments_history.md`
-  - snapshot 履歴
-- `docs/convergence.md`
-  - leader streak / convergence signal
-- `docs/next_actions.md`
-  - 現時点での action recommendation
-- `docs/helper_promotion.md`
-  - shared helper の watchlist
-
-### 6.4 主要スクリプト
-
-- `scripts/run_design_experiments.py`
-  - comparison 実行
-- `scripts/refresh_design_docs.py`
-  - docs 更新
-- `scripts/snapshot_design_experiments.py`
-  - history snapshot 生成
-- `scripts/compare_design_snapshots.py`
-  - snapshot delta 比較
-- `scripts/check_design_regressions.py`
-  - regression guard
-- `scripts/render_design_convergence.py`
-  - convergence doc 生成
-- `scripts/render_design_actions.py`
-  - next-actions doc 生成
-- `scripts/render_helper_promotion.py`
-  - helper promotion watchlist 生成
-- `scripts/design_doctor.py`
-  - 入口 1 本にまとめた maintenance command
-- `scripts/validate_design_workflow.py`
-  - whole workflow validation
-- `scripts/scaffold_design_problem.py`
-  - 新 problem scaffold
-- `scripts/check_scaffold_design_problem.py`
-  - scaffold self-check
-
-### 6.5 外部化された policy
-
-- `experiments/history/policy.json`
-  - regression policy
-- `experiments/history/actions_policy.json`
-  - action recommendation policy
-- `experiments/history/helper_policy.json`
-  - helper promotion policy
-- `experiments/data/manifest.json`
-  - tracked fixture set
-
-### 6.6 現状の評価
-
-このラインは「まだ作り途中」ではなく、主要目標を達成しています。
-
-今の状態:
-
-- 3 problems で回る
-- docs 自動生成される
-- history が残る
-- regression が見られる
-- convergence / next_actions / helper promotion まで出る
-- design doctor で一括更新できる
-
-つまり、
-
-> “設計が進化し続ける場所”
-
-という目標に対して、かなり近い状態です。
-
-### 6.7 これ以上このラインでやるなら
-
-優先度は下がりますが、やるとしたら:
-
-- 4つ目の concrete problem
-- helper promotion の実際の昇格
-- history 可視化の強化
-
-ただし、Diff-MPPI の論文価値に直結するのはこのラインではありません。
-
----
-
-## 7. README / GitHub Pages の現状
-
-### 7.1 README
-
-`readme.md` は最近整理済みです。
-
-重要箇所:
-
-- `Research Results Snapshot`
-  - 主な成果の短いまとめ
-- `Diff-MPPI experiment workflow`
-  - benchmark / summarize / plot / exact-time tuning / mechanism / uncertainty / outside-domain follow-up の導線
-- `Experiment-First Development`
-  - process 側の導線
-
-つまり README は今、
-
-- repo の顔
-- 再現導線
-- 成果サマリ
-
-を兼ねています。
-
-### 7.2 GitHub Pages
-
-`gh-pages` には `index.html` を追加済みで、結果サマリ landing page があります。
-
-URL:
-
-- `https://rsasaki0109.github.io/CudaRobotics/`
-
-載せている内容:
-
-- hero summary
-- Diff-MPPI の current takeaways
-- manipulator / dynamic nav の数字
-- Neural SDF, MiniIsaac, neuroevolution, swarm
-- point-cloud speedup table
-
-いま Pages 側で直す必要がある urgent issue はありません。
-
----
-
-## 8. 今後 Claude が最初に見るべきソース / 生成物
-
-### 8.1 Diff-MPPI のコード
-
-- `src/benchmark_diff_mppi.cu`
-- `src/benchmark_diff_mppi_manipulator.cu`
-- `src/benchmark_diff_mppi_dynamic_bicycle.cu`
-- `src/diff_mppi.cu`
-- `src/comparison_diff_mppi.cu`
-
-### 8.2 Diff-MPPI のスクリプト
-
-- `scripts/summarize_diff_mppi.py`
-- `scripts/plot_diff_mppi.py`
-- `scripts/plot_diff_mppi_mechanism.py`
-- `scripts/tune_diff_mppi_time_targets.py`
-
-### 8.3 主な build 生成物
-
-代表的な summary 類:
-
-- `build/benchmark_diff_mppi_exact_time_summary.md`
-- `build/benchmark_diff_mppi_exact_time_ref_summary.md`
-- `build/benchmark_diff_mppi_exact_time_cov_summary.md`
-- `build/benchmark_diff_mppi_exact_time_hf_summary.md`
-- `build/benchmark_diff_mppi_exact_time_fused_summary.md`
-- `build/benchmark_diff_mppi_manipulator_summary.md`
-- `build/benchmark_diff_mppi_manipulator_exact_time_summary.md`
-
-代表的な plot:
-
-- `build/plots/diff_mppi_final_distance_vs_time_cap.png`
-- `build/plots/diff_mppi_final_distance_vs_equal_time.png`
-- `build/plots_mechanism/dynamic_slalom_correction_vs_horizon.png`
-
-これらは README や paper notes の記述と対応しています。
-
-### 8.4 experiment-first 側
-
-- `scripts/design_doctor.py`
-- `scripts/validate_design_workflow.py`
-- `docs/experiments.md`
-- `docs/experiments_history.md`
-- `docs/convergence.md`
-- `docs/next_actions.md`
-- `docs/helper_promotion.md`
-
----
-
-## 9. 現時点での「新規性」と「論文性」の判断
-
-これは repo 内でかなり議論してきたので、判断を固定しておきます。
-
-### 9.1 repo / artifact として
-
-かなり強いです。
-
-理由:
-
-- CUDA robotics 実装の量
-- GPU learning / point-cloud / swarm まで広い
-- GIF / README / Pages が整っている
-- experiment-first process 自体も成果物になっている
-
-### 9.2 Diff-MPPI 論文として
-
-**strong accept ではない**
-
-現時点の評価は概ね:
-
-- workshop / demo / artifact / tech report:
-  - 強い
-- main-track:
-  - `weak accept` から `borderline accept` くらい
-
-### 9.3 strong accept に届いていない理由
-
-主な gap:
-
-1. baseline はかなり近づいたが、まだ paper-faithful reproduction ではない
-2. outside-domain は増えたが、public standardized benchmark / high-fidelity robotics domain ではない
-3. 原理的新規性は狭く、systems / control empirical contribution として読むのが自然
-
-### 9.4 ただし以前よりかなり良くなった点
-
-- exact matched-time tuning がある
-- strong non-hybrid baselines が多い
-- mechanism analysis がある
-- uncertainty がある
-- outside-domain pilots が複数ある
-- manipulator pilot まである
-
-つまり、今は
-
-> reject 級ではないが、still strong accept 級でもない
-
-という位置です。
-
----
-
-## 10. もし Claude がこの後続けるなら、何をやるべきか
-
-### 10.1 パターン A: 論文性を本当に上げに行く場合
-
-優先順位:
-
-1. **paper-faithful baseline reproduction**
-   - 近い proxy を増やすのではなく、closest baseline を 1 本本気で再現する
-2. **stronger public benchmark**
-   - 7-DOF / Isaac / MuJoCo / public manipulation benchmark 系
-3. **main table / main figure 固定**
-   - dynamic nav
-   - one stronger domain
-   - one mechanism figure
-
-この 3 つが main-track 的には一番効きます。
-
-### 10.2 パターン B: repo をさらに見せやすくする場合
-
-優先順位:
-
-1. README の表現調整
-2. Pages のスクリーンショット / 図追加
-3. benchmark summary から HTML を自動生成
-
-ただし、ここは論文の acceptability を劇的には上げません。
-
-### 10.3 パターン C: experiment-first をさらに伸ばす場合
-
-優先順位:
-
-1. 4つ目の concrete problem
-2. helper promotion の実行
-3. richer history visualization
-
-これは process 研究としては面白いですが、Diff-MPPI 本体の venue-level gap を埋める話ではありません。
-
----
-
-## 11. 今この repo で「やらなくていいこと」
-
-次の担当者が無駄に時間を使わないために明記します。
-
-- もう一度「全部未実装扱い」から見直すこと
-  - 古い `plan.md` がそういう状態だっただけで、今は違う
-- README / Pages をゼロから作り直すこと
-  - もう成果サマリは入っている
-- experiment-first workflow を「まだ未完成」と誤認して土台ばかり触ること
-  - 今は improvement track
-- baseline proxy をさらに無限に増やすこと
-  - 価値は逓減している
-- paper draft を無理に main task にすること
-  - ユーザーは現時点でそこを最優先にしていない
-
----
-
-## 12. 再現コマンド集
-
-### 12.1 基本ビルド
-
-```bash
-cmake -S . -B build
-cmake --build build -j$(nproc)
 ```
-
-### 12.2 Diff-MPPI main benchmark
-
-```bash
-./bin/benchmark_diff_mppi --quick
-python3 scripts/summarize_diff_mppi.py --csv build/benchmark_diff_mppi.csv
-python3 scripts/plot_diff_mppi.py --csv build/benchmark_diff_mppi.csv --out-dir build/plots
-```
-
-### 12.3 exact matched-time
-
-```bash
-python3 scripts/tune_diff_mppi_time_targets.py --preset dynamic_nav
-```
-
-### 12.4 uncertainty follow-up
-
-```bash
-python3 scripts/tune_diff_mppi_time_targets.py --preset uncertain_dynamic_nav
-```
-
-### 12.5 dynamic bicycle
-
-```bash
-./bin/benchmark_diff_mppi_dynamic_bicycle --csv build/benchmark_diff_mppi_dynamic_bicycle.csv
-python3 scripts/tune_diff_mppi_time_targets.py --preset dynamic_bicycle
-```
-
-### 12.6 manipulator pilot
-
-```bash
-./bin/benchmark_diff_mppi_manipulator --seed-count 4 --k-values 256,512 --csv build/benchmark_diff_mppi_manipulator.csv
-python3 scripts/tune_diff_mppi_time_targets.py --preset manipulator_pilot
-```
-
-### 12.7 design workflow maintenance
-
-```bash
-python3 scripts/design_doctor.py
-python3 scripts/validate_design_workflow.py
-python3 scripts/check_design_regressions.py
+f653952 Update README and paper with 8-baseline benchmark results
+3faf840 Tune feedback_mppi_paper baseline and update paper with full results
+dcc30fd Add paper-faithful Feedback-MPPI baseline and multi-param time tuning
+f10ea37 Add Step-MPPI baseline results to paper
+0779ad7 Add paper toolchain, CTest, Step-MPPI baseline, and Docker improvements
 ```
 
 ---
 
-## 13. handoff 用の短い一言まとめ
+## 2. このセッションで完了したこと
 
-Claude 向けに一言で言うと、今の repo はこうです。
+### 2.1 論文基盤
 
-> CudaRobotics はすでにかなり完成している。
-> 今の主戦場は Diff-MPPI の narrow-but-defensible research line で、
-> README / GitHub Pages で成果公開は済み、
-> experiment-first 開発フローも基盤として完成済み。
-> 次に本当に価値があるのは、
-> 「もっと paper-faithful な baseline」か
-> 「もっと強い benchmark」
-> のどちらかを 1 本きちんと入れること。
+- **LaTeX 論文**: `paper/latex/diff_mppi.tex` (IEEE RA-L 形式, 4ページ PDF)
+  - IEEEtran.cls / .bst はローカルダウンロード済（.gitignore 対象）
+  - 図5枚: fig_pareto, fig_mechanism, fig_7dof, fig_ablation, fig_scenarios
+  - 参考文献: `references.bib` (11本)
+  - ビルド: `cd paper/latex && make`
+
+- **図表自動生成**: `scripts/generate_paper_figures.py` (715行)
+  - 全5図を論文品質 PDF で出力
+  - `python3 scripts/generate_paper_figures.py --csv build/benchmark_full_final.csv`
+
+### 2.2 新ベースライン
+
+- **step_mppi** (Step-MPPI inspired)
+  - cost-weighted EMA で sampling bias をオンライン学習
+  - 結果: dynamic_slalom で dist=14.25, success=0.00 — vanilla MPPI と同等
+  - 「learned sampling だけでは dynamic obstacle は解けない」ことを実証
+
+- **feedback_mppi_paper** (Paper-faithful Feedback-MPPI)
+  - feedback_mode=9: covariance-regression + LQR blend, replan_stride=1
+  - regularization=0.15, cov_blend=0.80, lqr_blend=0.35
+  - 結果: dynamic_slalom で dist=11.74, success=0.00
+  - feedback_mppi_fused(10.28) より若干悪いが、同じく fail
+
+### 2.3 インフラ
+
+- **CTest 統合**: `enable_testing()`, gpu/python/cpu 3ラベル
+  - `ctest --label-regex python` (CI), `ctest --label-regex gpu` (ローカル)
+  - 新テスト: `src/test_host_math.cpp` (CPU-only)
+
+- **Docker 改善**: `Dockerfile` + `docker-entrypoint.sh` + `docker-compose.yml`
+  - `docker compose run cudarobotics benchmark`
+  - `docker compose run cudarobotics test`
+
+- **multi-param time tuning**: `scripts/tune_diff_mppi_time_targets.py --multi-param`
+  - K だけでなく feedback_gain_scale, grad_steps, alpha, mlp_lr も探索
+  - CLI override flags を全5ベンチマークバイナリに追加
+
+- **CLAUDE.md**: プロジェクト説明書（Claude Code 用）
+- **CI 更新**: `.github/workflows/build.yml` を CTest ベースに移行
+
+### 2.4 GitHub Pages
+
+- `gh-pages` ブランチに Step-MPPI + ablation セクション追加 (`782c93a`)
+- baseline count を 7 → 8 に更新
 
 ---
 
-## 14. もし最初の 30 分でやるなら
+## 3. Diff-MPPI 最新ベンチマーク結果
 
-本当に次担当がすぐ入るなら、この順がよいです。
+### 3.1 dynamic_slalom（全 baseline 比較, K=1024, 4-seed 平均）
 
-1. `git log --oneline -n 20`
-2. `sed -n '1,260p' readme.md`
-3. `sed -n '1,260p' paper/diff_mppi_submission_draft.md`
-4. `sed -n '1,260p' paper/icra_iros_gap_list.md`
-5. `sed -n '1,260p' paper/diff_mppi_novelty_followup.md`
-6. 必要なら `./bin/benchmark_diff_mppi --quick`
+| プランナー | success | final_dist | avg_ms | 種別 |
+|---|---|---|---|---|
+| **diff_mppi_3** | **1.00** | **1.91** | **0.29** | hybrid |
+| feedback_mppi_fused | 0.00 | 10.28 | 17.45 | feedback (strongest) |
+| feedback_mppi_paper | 0.00 | 11.74 | 8.75 | feedback (faithful) |
+| feedback_mppi_ref | 0.00 | 11.87 | 0.92 | feedback |
+| step_mppi | 0.00 | 14.25 | 0.19 | learned sampling |
+| mppi | 0.00 | 14.23 | 0.18 | vanilla |
 
-これで、
+### 3.2 exact matched-time @ 1.0ms
 
-- 何があるか
-- 何を主張しているか
-- 何が弱点か
-- 次にどこを埋めるか
+| プランナー | K (tuned) | actual_ms | success | final_dist |
+|---|---|---|---|---|
+| **diff_mppi_3** | 6156 | 0.99 | 1.00 | 1.91 |
+| feedback_mppi_fused | 128 | 1.90 | 0.50 | 6.11 |
+| feedback_mppi_paper | 128 | 1.00 | 0.50 | 6.78 |
+| feedback_mppi_ref | 1067 | 1.00 | 0.50 | 6.89 |
+| step_mppi | 7467 | 0.99 | 0.00 | 8.54 |
+| mppi | 6834 | 1.00 | 0.00 | 8.56 |
 
-まで一通り把握できます。
+注: success=0.50 は dynamic_crossing で成功, dynamic_slalom で失敗の平均
 
+### 3.3 dynamic_slalom @ 1.0ms
+
+| プランナー | K | ms | final_dist |
+|---|---|---|---|
+| diff_mppi_3 | 5966 | 0.988 | 1.90 |
+| mppi | 7167 | 0.991 | 14.15 |
+| feedback_mppi_fused | 128 | 1.882 | 10.33 |
+
+### 3.4 7-DOF manipulator (7dof_dynamic_avoid, K=512)
+
+| プランナー | success | final_dist | avg_ms |
+|---|---|---|---|
+| diff_mppi_3 | 1.00 | 0.090 | 0.84 |
+| feedback_mppi_ref | 0.75 | 0.283 | 4.01 |
+| mppi | 0.25 | 0.635 | 0.39 |
+
+### 3.5 中心的主張
+
+> dynamic_slalom で **8 つの non-hybrid baseline が全て success=0.00**（K=128〜8192 の全域で）。
+> diff_mppi_3 だけが success=1.00。
+> gradient refinement は sampling 改善（step_mppi）でも feedback 強化（8 variants）でも代替不可能。
+
+---
+
+## 4. 論文の現状
+
+### 4.1 ファイル構成
+
+- `paper/diff_mppi_paper.md` — Markdown 版（source of truth）
+- `paper/latex/diff_mppi.tex` — LaTeX 版（IEEE RA-L 形式）
+- `paper/latex/references.bib` — 参考文献 11 本
+- `paper/figures/` — 図 5 枚（PDF）
+- `paper/diff_mppi_submission_draft.md` — 初期 submission draft（参考用）
+- `paper/icra_iros_gap_list.md` — venue 向け gap 分析
+- `paper/cudarobotics_systems_paper.md` — CudaRobotics systems paper draft
+
+### 4.2 ICRA/IROS gap list 対応状況
+
+| Gap | 状態 | 備考 |
+|---|---|---|
+| Tier 1 #1: Literature-faithful baseline | **done** | feedback_mppi_paper (mode 9), step_mppi |
+| Tier 1 #2: Higher-fidelity domain | **done** | 7-DOF manipulator benchmark |
+| Tier 1 #3: Time-tuning protocol | **done** | exact-time + multi-param tuning |
+| Tier 2 #4: Uncertainty | 既存 | uncertain_crossing/slalom follow-up |
+| Tier 2 #5: Mechanism analysis | 既存 | gradient freshness analysis |
+| Tier 3 #6: Hardware demo | 未着手 | — |
+| Tier 3 #7: Standardized benchmark | 未着手 | MuJoCo 未導入 |
+
+### 4.3 Minimum Submission Bar チェック
+
+gap list の "Minimum Submission Bar" に対して:
+
+1. ✅ Current static benchmark
+2. ✅ Current two dynamic tasks (dynamic_crossing, dynamic_slalom)
+3. ✅ grad_only_3 ablation
+4. ✅ literature-faithful baseline（feedback_mppi_paper + step_mppi 追加）
+5. ✅ exact matched-time tuning（1.0ms target 実行済）
+6. ✅ one higher-fidelity experiment（7-DOF manipulator）
+
+**6/6 全項目を満たしている。**
+
+### 4.4 論文の推定評価
+
+- workshop / demo / tech report: **strong**
+- ICRA/IROS full paper: **borderline accept** → **weak accept** に改善
+  - 8 baseline（previously 6）
+  - faithful baseline 追加
+  - step_mppi ablation でメカニズム解明
+  - exact-time tuning 実施済み
+
+---
+
+## 5. 次にやるべきこと（優先順）
+
+### 5.1 論文を本当に submit するなら
+
+#### 優先度 A: すぐやれる
+
+1. **論文テキスト最終推敲**
+   - LaTeX の Introduction, Related Work を最新の baseline 数に合わせて最終調整
+   - Limitations セクションを更新（step_mppi, feedback_mppi_paper の結果を反映）
+   - Conclusion を更新
+
+2. **main figure / main table の最終固定**
+   - fig_pareto を matched-time データ（build/exact_time_1ms.csv）で再生成
+   - Table I を exact-time 結果に更新
+
+3. **Abstract の数字を最終確認**
+   - "eight strong non-hybrid baselines" に合わせる
+   - 7-DOF の数字を最新に
+
+#### 優先度 B: 価値は高いが工数がかかる
+
+4. **MuJoCo 標準ベンチマーク**
+   - Codex 用プロンプトが `codex_tasks.md` Task 1 にある
+   - まず `pip3 install mujoco` でインストール
+   - Reacher か InvertedPendulum で 1 ドメイン追加
+   - reviewer の "custom benchmark only" 批判に直接対処
+
+5. **multi-param time tuning 完全実行**
+   - `--multi-param` フラグで feedback_gain_scale, grad_steps, alpha も探索
+   - 現在は K-only tuning だけ実行済み
+
+#### 優先度 C: nice-to-have
+
+6. **GitHub Pages の図追加**
+   - fig_pareto 等の PDF → PNG 変換して gh-pages に配置
+7. **systems paper (cudarobotics_systems_paper.md) の LaTeX 化**
+8. **video / animation 生成** — comparison_diff_mppi で AVI 出力
+
+---
+
+## 6. 重要ファイルマップ
+
+### ベンチマーク
+
+| ファイル | 内容 |
+|---|---|
+| `src/benchmark_diff_mppi.cu` | 2D 動的ナビゲーション（main suite, ~2200行） |
+| `src/benchmark_diff_mppi_manipulator_7dof.cu` | 7-DOF アーム |
+| `src/benchmark_diff_mppi_dynamic_bicycle.cu` | dynamic bicycle |
+| `src/benchmark_diff_mppi_manipulator.cu` | 2-link planar arm |
+| `src/benchmark_diff_mppi_cartpole.cu` | CartPole |
+
+### スクリプト
+
+| ファイル | 内容 |
+|---|---|
+| `scripts/tune_diff_mppi_time_targets.py` | exact-time tuning（binary search） |
+| `scripts/generate_paper_figures.py` | 論文図5枚一括生成 |
+| `scripts/summarize_diff_mppi.py` | CSV → テキストサマリ |
+| `scripts/plot_diff_mppi.py` | 基本プロット |
+| `scripts/plot_diff_mppi_mechanism.py` | gradient freshness |
+| `scripts/plot_pareto_frontier.py` | Pareto frontier |
+
+### 論文
+
+| ファイル | 内容 |
+|---|---|
+| `paper/latex/diff_mppi.tex` | IEEE RA-L LaTeX (4ページ) |
+| `paper/latex/references.bib` | BibTeX 11本 |
+| `paper/diff_mppi_paper.md` | Markdown source of truth |
+| `paper/icra_iros_gap_list.md` | Gap 分析 |
+
+### 生成物（build/）
+
+| ファイル | 内容 |
+|---|---|
+| `build/benchmark_full_final.csv` | 全 baseline × 全シナリオ最新結果 |
+| `build/exact_time_1ms.csv` | matched-time @ 1.0ms 結果 |
+| `build/exact_time_1ms_summary.md` | 同サマリ |
+| `paper/figures/fig_*.pdf` | 論文用図 |
+
+---
+
+## 7. ベースライン一覧
+
+現在 benchmark_diff_mppi.cu に登録されている全 planner variant:
+
+| 名前 | 種別 | 特徴 |
+|---|---|---|
+| mppi | vanilla | sampling-only |
+| feedback_mppi | feedback | nominal linearization |
+| feedback_mppi_ref | feedback | released current-action gain |
+| feedback_mppi_release | feedback | released weighting |
+| feedback_mppi_sens | feedback | rollout sensitivity |
+| feedback_mppi_cov | feedback | covariance regression |
+| feedback_mppi_fused | feedback | cov + LQR blend (strongest non-hybrid) |
+| feedback_mppi_hf | feedback | two-rate, full-horizon cov+LQR |
+| feedback_mppi_faithful | feedback | two-rate, current-action-only |
+| feedback_mppi_paper | feedback | mode 9, cov+LQR, replan_stride=1 |
+| step_mppi | learned | cost-weighted EMA sampling bias |
+| grad_only_3 | gradient | gradient-only ablation |
+| diff_mppi_1 | hybrid | MPPI + 1 grad step |
+| diff_mppi_3 | hybrid | MPPI + 3 grad steps (proposed) |
+| diff_mppi_adaptive | hybrid | adaptive gradient skip |
+
+---
+
+## 8. 再現コマンド集
+
+### ビルド
+
+```bash
+cmake -B build && cmake --build build -j$(nproc)
+```
+
+### テスト
+
+```bash
+cd build && ctest --output-on-failure  # 全テスト
+ctest --label-regex python             # Python のみ
+ctest --label-regex gpu                # GPU テスト
+```
+
+### ベンチマーク（フル比較）
+
+```bash
+./bin/benchmark_diff_mppi \
+  --planners mppi,feedback_mppi_fused,feedback_mppi_paper,feedback_mppi_ref,diff_mppi_3,step_mppi \
+  --scenarios dynamic_slalom,dynamic_crossing \
+  --k-values 256,1024,4096 --seed-count 4 \
+  --csv build/benchmark_full_final.csv
+```
+
+### exact-time tuning
+
+```bash
+python3 scripts/tune_diff_mppi_time_targets.py \
+  --preset dynamic_nav \
+  --planners mppi,diff_mppi_3,feedback_mppi_fused,feedback_mppi_ref,step_mppi \
+  --time-targets 1.0 --seed-count 4 \
+  --csv-out build/exact_time_1ms.csv \
+  --summary-out build/exact_time_1ms_summary.md
+```
+
+### multi-param tuning（新機能）
+
+```bash
+python3 scripts/tune_diff_mppi_time_targets.py \
+  --preset dynamic_nav --multi-param \
+  --time-targets 1.0 --seed-count 2
+```
+
+### 図表生成
+
+```bash
+python3 scripts/generate_paper_figures.py \
+  --csv build/benchmark_full_final.csv --out-dir paper/figures/
+```
+
+### LaTeX ビルド
+
+```bash
+cd paper/latex && make
+```
+
+### Docker
+
+```bash
+docker compose build
+docker compose run cudarobotics benchmark
+docker compose run cudarobotics test
+```
+
+---
+
+## 9. Codex への引き継ぎ用プロンプト集
+
+`codex_tasks.md` に 6 タスクの Codex プロンプトがある。残りは:
+
+- Task 1 (MuJoCo): 未実装、プロンプトあり
+- Task 2 (Step-MPPI): **実装済み**
+- Task 3 (LaTeX): **実装済み**
+- Task 4 (CTest): **実装済み**
+- Task 5 (Dockerfile): **実装済み**
+- Task 6 (図表生成): **実装済み**
+
+---
+
+## 10. やらなくていいこと
+
+- README / Pages をゼロから作り直すこと（成果サマリは入っている）
+- baseline proxy をさらに増やすこと（8 baseline で十分）
+- experiment-first workflow の大幅拡張（基盤完成済み）
+- paper draft を無理に main task にすること（コード側の準備は完了）
+- 古い plan.md の「未実装」扱いの項目を追いかけること（全て実装済み）
+
+---
+
+## 11. もし最初の 30 分でやるなら
+
+```bash
+git log --oneline -n 10
+cat paper/icra_iros_gap_list.md | head -50
+cat build/exact_time_1ms_summary.md
+python3 scripts/generate_paper_figures.py --csv build/benchmark_full_final.csv
+cd paper/latex && make && open diff_mppi.pdf
+```
+
+これで論文の全体像と最新データが把握できる。
