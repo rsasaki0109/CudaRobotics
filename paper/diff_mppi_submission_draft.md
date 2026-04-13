@@ -131,7 +131,7 @@ The paper should not claim:
 
 The paper should claim:
 
-> a minimal, training-free hybrid controller — just 3 gradient steps after a standard MPPI update — is the only method that solves hard dynamic-obstacle tasks under matched compute budgets across 6 strong non-hybrid baselines, on both 2D navigation and a 7-DOF manipulation benchmark. The gradient parallelization makes the refinement nearly free in wall-clock time.
+> a minimal, training-free hybrid controller — just 3 gradient steps after a standard MPPI update — is the only method that solves hard dynamic-obstacle tasks under matched compute budgets across 8 strong non-hybrid baselines, while also transferring to a 7-DOF manipulation benchmark and a small MuJoCo pilot. The gradient parallelization keeps the refinement compute-competitive in wall-clock time.
 
 ### Key related work to cite
 
@@ -157,7 +157,7 @@ The paper should claim:
 
 CEM-GD (2020) established that combining sampling and gradient steps improves MPC planning. Our contribution is:
 
-1. **Compute-competitive parallelization**: with parallelized gradient computation, the hybrid controller uses K=6216 samples at 1.0 ms — 85% of MPPI's K=7271 — plus 3 gradient steps. The gradient refinement comes at minimal cost to the sampling budget. CEM-GD does not evaluate under matched wall-clock time.
+1. **Compute-competitive parallelization**: in the fixed-controller 1.0 ms comparison, the hybrid controller uses K=5966 samples — 83% of MPPI's K=7167 — plus 3 gradient steps. The gradient refinement comes at minimal cost to the sampling budget. CEM-GD does not evaluate under matched wall-clock time.
 
 2. **Empirical evidence on hard dynamic-obstacle tasks**: `dynamic_slalom` is a task where no non-hybrid feedback variant succeeds at any compute budget. This goes beyond CEM-GD's model-based RL benchmarks.
 
@@ -171,7 +171,7 @@ Use only three contributions in the paper:
 
 1. A minimal hybrid MPPI controller with a short local autodiff refinement stage that preserves the standard MPPI sampling update, interpretable as adding explicit gradient steps to MPPI's implicit preconditioned gradient descent (Fazlyab et al., 2026). With parallelized gradient computation, the refinement retains 85% of the sampling budget within the same wall-clock time.
 2. A matched-time evaluation protocol comparing the hybrid controller against vanilla MPPI and strong non-hybrid feedback baselines (including a Feedback-MPPI-style two-rate variant) under shared per-step controller budgets, on both 2D dynamic-obstacle navigation and a 7-DOF serial-arm manipulation benchmark.
-3. Evidence that the hybrid controller is the only method family that solves the hardest dynamic-obstacle task across 6 non-hybrid baselines, and that a two-rate feedback architecture with current-action-only gains cannot replicate this result.
+3. Evidence that the hybrid controller is the only method family that solves the hardest dynamic-obstacle task across 8 non-hybrid baselines, and that a two-rate feedback architecture with current-action-only gains cannot replicate this result.
 
 ## Method Draft
 
@@ -275,23 +275,28 @@ The main sentence should be:
 
 ### Dynamic navigation, exact time
 
-From the latest exact-time tuning (after gradient parallelization):
+From the latest full matched-time robustness sweep (`--multi-param` over `K`, feedback gain scale, and Diff-MPPI gradient hyperparameters):
 
 - `1.00 ms`, `dynamic_slalom`
-  - `mppi`: `K=7271 @ 0.982 ms`, success `0.00`, dist `14.19`
-  - `feedback_mppi_ref`: `K=992 @ 1.009 ms`, success `0.00`, dist `11.77`
-  - `feedback_mppi_fused`: `K=128 @ 1.854 ms`, success `0.00`, dist `10.33`
-  - `diff_mppi_3`: `K=6216 @ 0.965 ms`, success `1.00`, dist `1.89`
+  - `mppi`: `K=1322 @ 0.576 ms`, success `0.00`, dist `14.18`
+  - `feedback_mppi_ref`: `K=914 @ 0.986 ms`, success `0.00`, dist `11.86`
+  - `feedback_mppi_cov`: `K=128 @ 0.991 ms`, success `0.00`, dist `11.53`
+  - best Diff-MPPI family point: `diff_mppi_3 K=1906 @ 0.993 ms`, success `1.00`, dist `1.84` (`grad_steps=5`, `alpha=0.012`)
+
+- `1.50 ms`, `dynamic_slalom`
+  - `mppi`: `K=10402 @ 1.342 ms`, success `0.00`, dist `14.17`
+  - `feedback_mppi_cov`: `K=157 @ 1.486 ms`, success `0.00`, dist `11.80`
+  - best Diff-MPPI family point: `diff_mppi_3 K=6790 @ 1.516 ms`, success `1.00`, dist `1.84` (`grad_steps=5`, `alpha=0.003`)
 
 - `2.00 ms`, `dynamic_slalom`
-  - `mppi`: `K=14010 @ 1.901 ms`, success `0.00`, dist `14.18`
-  - `feedback_mppi_fused`: `K=136 @ 1.968 ms`, success `0.00`, dist `10.36`
-  - `diff_mppi_3`: `K=13467 @ 1.982 ms`, success `1.00`, dist `1.89`
+  - `mppi`: `K=12957 @ 1.750 ms`, success `0.00`, dist `14.16`
+  - best feedback point: `feedback_mppi K=4631 @ 1.993 ms`, success `0.00`, dist `11.66`
+  - best Diff-MPPI family point: `diff_mppi_1 K=13538 @ 1.993 ms`, success `1.00`, dist `1.88`
 
-After gradient parallelization, `diff_mppi_3` now uses `K=6216` at 1.0 ms (previously K=455) — nearly as many samples as vanilla MPPI plus the autodiff refinement, all within the same time budget. Key observations:
-- `diff_mppi_3` is the only planner family that solves `dynamic_slalom` at any matched-time budget
-- The gradient parallelization makes the hybrid controller genuinely compute-competitive: at 1.0 ms, diff_mppi_3 uses K=6216 vs mppi K=7271 (85% as many samples plus 3 gradient steps)
-- All non-hybrid feedback baselines fail on `dynamic_slalom` regardless of compute budget
+Key observations:
+- the full multi-param matched-time robustness sweep still leaves `dynamic_slalom` unsolved by every non-hybrid family at `1.0`, `1.5`, and `2.0 ms`
+- at `1.0` and `1.5 ms`, the best hybrid point comes from the `diff_mppi_3` family; at `2.0 ms`, the best family member is `diff_mppi_1`
+- because this sweep can change the winning hyperparameters, and because some baseline timings still drift from the nominal target, the main paper table should keep the fixed 3-step controller separate from this family-level appendix result
 
 ### Outside-domain manipulator
 
@@ -336,30 +341,36 @@ A Panda-like 7-DOF serial-arm benchmark with 14D state, 7D control, 3D workspace
 
 ### Exact-time key numbers
 
-`7dof_dynamic_avoid` at `1.0 ms` target:
-- `mppi` (K=4096 @ 1.05 ms): success `1.00`, final distance `0.10`
-- `diff_mppi_1` (K=3169 @ 1.03 ms): success `1.00`, final distance `0.08`
-- `feedback_mppi_ref` (K=32 @ 1.33 ms): success `0.50`, final distance `0.42`
+The full exact-time 7-DOF sweep is weaker than the fixed-budget `K=512` story and should be treated as appendix material.
 
-`7dof_shelf_reach` at `1.0 ms` target:
-- `mppi` (K=4096 @ 0.94 ms): success `0.00`, final distance `0.41`
-- `feedback_mppi_ref` (K=54 @ 0.92 ms): success `1.00`, final distance `0.14`
-- `diff_mppi_3` (K=2215 @ 1.05 ms): success `0.00`, final distance `0.42`
+`7dof_dynamic_avoid` at `3.0 ms` target:
+- `mppi` (K=4096 @ 1.12 ms): success `0.75`, final distance `0.29`
+- `feedback_mppi_ref` (K=245 @ 2.40 ms): success `1.00`, final distance `0.08`
+- `diff_mppi_1` (K=4096 @ 1.30 ms): success `1.00`, final distance `0.09`
+- `diff_mppi_3` (K=4096 @ 2.38 ms): success `1.00`, final distance `0.09`
+
+`7dof_shelf_reach` at `3.0 ms` target:
+- `mppi` (K=4096 @ 1.00 ms): success `0.00`, final distance `0.41`
+- `feedback_mppi_ref` (K=451 @ 3.34 ms): success `0.25`, final distance `0.34`
+- `diff_mppi_1` (K=4096 @ 1.18 ms): success `0.00`, final distance `0.41`
+- `diff_mppi_3` (K=4096 @ 1.58 ms): success `0.00`, final distance `0.41`
+
+At `5.0 ms`, the same pattern persists: `dynamic_avoid` is solved by both feedback and diff, while `shelf_reach` remains mostly unsolved.
 
 ### Strongest 7-DOF talking point
 
-On `7dof_dynamic_avoid` at K=512, `diff_mppi_3` reaches `success=1.00` at `0.84 ms` while `feedback_mppi_ref` reaches `0.75` at `4.01 ms` — the hybrid controller is both more reliable and **4.8x faster** at this sample budget. This is a genuine compute-quality win on a 14D manipulation task.
+On `7dof_dynamic_avoid` at K=512, `diff_mppi_3` reaches `success=1.00` at `0.84 ms` while `feedback_mppi_ref` reaches `0.75` at `4.01 ms` — the hybrid controller is both more reliable and **4.8x faster** at this sample budget. This fixed-budget medium-compute point remains the strongest 7-DOF evidence. The full exact-time sweep does not sharpen the claim beyond this because `feedback_mppi_ref` catches up on `dynamic_avoid` and Diff-MPPI does not recover `shelf_reach`.
 
 ### Narrative for main text
 
 The 7-DOF result complements the 2D dynamic navigation story:
-- On dynamic navigation, diff_mppi_3 is the **only** method that solves the hard task
-- On 7-DOF manipulation, diff_mppi_3 achieves **better success at lower compute** than the closest feedback baseline
-- Both results support the same claim: a short autodiff refinement stage improves the compute-quality tradeoff
+- On dynamic navigation, the hybrid family remains the **only** one that solves the hard task under both fixed-budget and full matched-time robustness sweeps
+- On 7-DOF manipulation, the strongest evidence is a fixed-budget medium-compute win; the full exact-time sweep is mixed and belongs in appendix
+- Together these support a narrow compute-quality tradeoff claim rather than universal dominance
 
 ### What not to say
 
-Do not claim Diff-MPPI dominates on all 7-DOF configurations. At K=256 on `7dof_dynamic_avoid`, `feedback_mppi_ref` reaches 1.00 success while diff_mppi_3 is at 0.50. The advantage is clearest at medium budgets (K=512) where the gradient helps enough to cross the success threshold.
+Do not claim exact-time Diff-MPPI dominance on 7-DOF. At `3.0` and `5.0 ms` on `7dof_dynamic_avoid`, `feedback_mppi_ref` already reaches `1.00` success, and on `7dof_shelf_reach` the exact-time sweep remains weak for all methods. The advantage is clearest at medium fixed budgets (K=512) where the gradient helps enough to cross the success threshold.
 
 ## feedback_mppi_faithful Finding (New)
 
@@ -405,6 +416,7 @@ Appendix B:
 - feedback_mppi_faithful two-rate architecture analysis
 - uncertainty follow-up
 - dynamic-bicycle pilot
+- MuJoCo `InvertedPendulum-v4` exact-time pilot
 - CartPole pilot
 
 Appendix C:
@@ -420,7 +432,7 @@ Keep limitations short and direct.
 
 Recommended limitations paragraph:
 
-The current contribution is empirical and intentionally narrow. The closest feedback baselines in the repository are strong in-repo proxies, including a two-rate variant tested under the released gain computation, but they are not a full paper-faithful reproduction of the complete sensitivity-aware MPPI controller stack. The outside-domain evaluation now spans a 7-DOF manipulator with 3D workspace obstacles, but it still relies on custom benchmark domains rather than standardized suites like MuJoCo manipulation tasks or Isaac Gym environments. Accordingly, we position the paper as a compute-quality tradeoff study of a lightweight hybrid controller, not as a definitive replacement for MPPI.
+The current contribution is empirical and intentionally narrow. The closest feedback baselines in the repository are strong in-repo proxies, including a two-rate variant tested under the released gain computation, but they are not a full paper-faithful reproduction of the complete sensitivity-aware MPPI controller stack. The outside-domain evaluation now spans a 7-DOF manipulator with 3D workspace obstacles plus a small MuJoCo `InvertedPendulum-v4` pilot, but the broader evidence still relies mostly on custom benchmark domains rather than standardized manipulation or locomotion suites. Accordingly, we position the paper as a compute-quality tradeoff study of a lightweight hybrid controller, not as a definitive replacement for MPPI.
 
 ## Reviewer-Facing Framing
 
@@ -435,7 +447,7 @@ If the paper is written from the current evidence, the intended reviewer reactio
 - the hard dynamic task split is interesting
 
 That is the path to `accept`.
-The path to `strong accept` still needs one stronger standardized benchmark or one truly literature-faithful full-stack baseline reproduction.
+The path to `strong accept` still needs one stronger standardized benchmark beyond the current small MuJoCo pilot, or one truly literature-faithful full-stack baseline reproduction.
 
 ## Immediate Next Writing Step
 

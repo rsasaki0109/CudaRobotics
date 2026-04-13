@@ -377,3 +377,44 @@ add_test(NAME test_host_math COMMAND ${PROJECT_SOURCE_DIR}/bin/test_host_math)
 set_tests_properties(test_host_math PROPERTIES
   TIMEOUT 10
   LABELS "cpu")
+
+##############################
+# MuJoCo Benchmarks
+##############################
+
+list(APPEND CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake")
+find_package(mujoco QUIET)
+
+if(mujoco_FOUND)
+  add_executable(benchmark_diff_mppi_mujoco src/benchmark_diff_mppi_mujoco.cu)
+  target_link_libraries(benchmark_diff_mppi_mujoco ${OpenCV_LIBS} mujoco::mujoco)
+  target_compile_options(benchmark_diff_mppi_mujoco PRIVATE
+    $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
+  set_target_properties(benchmark_diff_mppi_mujoco PROPERTIES
+    CXX_STANDARD 17
+    CUDA_STANDARD 17
+    CXX_STANDARD_REQUIRED YES
+    CUDA_STANDARD_REQUIRED YES)
+  target_compile_definitions(benchmark_diff_mppi_mujoco PRIVATE
+    CUDAROBOTICS_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
+  if(DEFINED mujoco_LIBRARY_DIR)
+    set_target_properties(benchmark_diff_mppi_mujoco PROPERTIES
+      BUILD_RPATH "${mujoco_LIBRARY_DIR}")
+  endif()
+
+  add_executable(benchmark_diff_mppi_mujoco_reacher src/benchmark_diff_mppi_mujoco_reacher.cu)
+  target_link_libraries(benchmark_diff_mppi_mujoco_reacher ${OpenCV_LIBS} mujoco::mujoco)
+  target_compile_options(benchmark_diff_mppi_mujoco_reacher PRIVATE
+    $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
+  set_target_properties(benchmark_diff_mppi_mujoco_reacher PROPERTIES
+    CXX_STANDARD 17
+    CUDA_STANDARD 17
+    CXX_STANDARD_REQUIRED YES
+    CUDA_STANDARD_REQUIRED YES)
+  target_compile_definitions(benchmark_diff_mppi_mujoco_reacher PRIVATE
+    CUDAROBOTICS_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
+  if(DEFINED mujoco_LIBRARY_DIR)
+    set_target_properties(benchmark_diff_mppi_mujoco_reacher PROPERTIES
+      BUILD_RPATH "${mujoco_LIBRARY_DIR}")
+  endif()
+endif()
