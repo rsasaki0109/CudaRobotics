@@ -80,10 +80,11 @@ Concise highlights:
 
 | Area | Key result |
 |---|---|
-| **Diff-MPPI, dynamic navigation** | At matched `1.0 ms` budget on `dynamic_slalom`: **diff_mppi_3 is the only successful controller** (dist `1.91`) across 6 non-hybrid baselines (best non-hybrid: `feedback_mppi_fused` at `10.30`). |
+| **Diff-MPPI, dynamic navigation** | On `dynamic_slalom`: **diff_mppi_3 is the only successful controller** (dist `1.91`, 0.29 ms) across 8 non-hybrid baselines including `feedback_mppi_paper` (covariance-regression, dist `11.74`), `feedback_mppi_fused` (dist `10.28`), and `step_mppi` (learned sampling, dist `14.25`). All 8 baselines remain at success=0.00 from K=128 to K=8192. |
 | **Diff-MPPI, 7-DOF manipulator** | At `K=512` on `7dof_dynamic_avoid`: `diff_mppi_3` reaches **success=1.00 at 0.84 ms**, while `feedback_mppi_ref` reaches 0.75 at 4.01 ms. The hybrid controller is 4.8x faster and more reliable. |
 | Diff-MPPI, 2-link manipulator | On `arm_static_shelf` at `K=256`: `feedback_mppi_ref` and `feedback_mppi_cov` both reach `success=1.00` at `0.15` final distance, while vanilla MPPI stays at `0.00`. |
-| Diff-MPPI, faithful baseline | A two-rate `feedback_mppi_faithful` variant with current-action-only gains fails even at `K=8192` (`2.1 ms`), confirming that per-step replanning or hybrid refinement is necessary for dynamic-obstacle tasks. |
+| Diff-MPPI, faithful baseline | Both `feedback_mppi_paper` (covariance-regression + LQR, every-step) and `feedback_mppi_faithful` (two-rate, current-action-only) fail on dynamic tasks, confirming that gradient refinement provides complementary value no feedback architecture can replicate. |
+| Diff-MPPI, ablation | `step_mppi` (learned sampling bias) performs at vanilla MPPI level (dist `14.25` vs `14.23`), showing that improved sampling alone cannot solve dynamic obstacle tasks—gradient refinement is the key mechanism. |
 | Neural SDF navigation | Learned 2D SDFs with potential-field planning and MPPI rollouts on non-circular obstacle layouts. |
 | MiniIsaacGym RL | GPU REINFORCE CartPole: average survival `82.6` to `180.4` steps in `160` generations. |
 | CudaPointCloud | Normal estimation reaches **3,171x** speedup at 10K points, RANSAC plane **547x** at 100K. Supports `--ply`/`--kitti`/`--xyz` file input. |

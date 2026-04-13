@@ -69,7 +69,7 @@ Panda-like 7-DOF arm with 14D state (7 joint angles + 7 velocities), 7D torque c
 
 ### C. Baselines
 
-Seven non-hybrid baselines, all evaluated under exact matched-time tuning:
+Eight non-hybrid baselines, all evaluated under exact matched-time tuning:
 
 1. **mppi**: vanilla sampling-only MPPI
 2. **feedback_mppi_ref**: current-action sensitivity-based feedback gains (closest to released Feedback-MPPI [5] gain computation)
@@ -77,7 +77,8 @@ Seven non-hybrid baselines, all evaluated under exact matched-time tuning:
 4. **feedback_mppi_hf**: two-rate architecture with full-horizon covariance+LQR gains
 5. **feedback_mppi_faithful**: two-rate architecture with current-action-only gains
 6. **feedback_mppi_cov**: covariance-regression feedback gains
-7. **step_mppi**: online-adapted sampling bias via cost-weighted EMA of control deviations, inspired by Step-MPPI [4]
+7. **feedback_mppi_paper**: covariance-regression + LQR blend with every-step replanning—closest to Feedback-MPPI [5]'s sensitivity-derived gain computation
+8. **step_mppi**: online-adapted sampling bias via cost-weighted EMA of control deviations, inspired by Step-MPPI [4]
 
 ### D. Matched-Time Evaluation Protocol
 
@@ -100,7 +101,8 @@ At matched 1.0 ms:
 | feedback_mppi_ref | 992 | 1.01 | 0.00 | 11.77 |
 | feedback_mppi_hf | 292 | 0.98 | 0.00 | 13.80 |
 | feedback_mppi_faithful | 3294 | 0.98 | 0.00 | 14.09 |
-| step_mppi | 1024 | 0.21 | 0.00 | 14.20 |
+| feedback_mppi_paper | 1024 | 8.75 | 0.00 | 11.74 |
+| step_mppi | 1024 | 0.19 | 0.00 | 14.25 |
 | **diff_mppi_3** | **6216** | **0.97** | **1.00** | **1.89** |
 
 This establishes a hard non-hybrid Pareto ceiling: no amount of compute budget allocated to non-hybrid controllers can solve this task. The gradient refinement is the only mechanism that crosses the success boundary.
