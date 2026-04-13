@@ -74,9 +74,18 @@ Text-first highlights for modules without public GIFs yet:
 
 | Module | Why it matters |
 |---|---|
-| Autodiff + GPU MLP foundation | Shared differentiable core reused by Diff-MPPI and Neural SDF experiments. |
 | CudaPointCloud | Large benchmarked speedups without approximation-heavy CPU baselines: normal estimation reaches **3,171x** at 10K points and RANSAC plane reaches **547x** at 100K. |
 | MuJoCo transfer checks | `InvertedPendulum-v4` and `Reacher` pilots show the Diff-MPPI stack ports to standardized tasks, even though they are not the main win condition. |
+
+Autodiff + GPU MLP foundation snapshot:
+
+<img src="https://rsasaki0109.github.io/CudaRobotics/autodiff_gpu_mlp_summary.png" alt="autodiff_gpu_mlp_summary" width="900"/>
+
+Generated from the existing test binaries with:
+
+```bash
+python3 scripts/render_autodiff_gpu_mlp_summary.py
+```
 
 ## Research Results Snapshot
 
