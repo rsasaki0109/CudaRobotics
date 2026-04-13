@@ -1131,6 +1131,9 @@ int main(int argc, char** argv) {
     vector<string> scenario_names;
     vector<string> planner_names;
     int seed_count = -1;
+    float override_feedback_gain_scale = -1.0f;
+    int override_grad_steps = -1;
+    float override_alpha = -1.0f;
     for (int i = 1; i < argc; i++) {
         string arg = argv[i];
         if (arg == "--quick") quick = true;
@@ -1139,10 +1142,9 @@ int main(int argc, char** argv) {
         else if (arg == "--seed-count" && i + 1 < argc) seed_count = max(1, atoi(argv[++i]));
         else if (arg == "--scenarios" && i + 1 < argc) scenario_names = parse_string_list(argv[++i]);
         else if (arg == "--planners" && i + 1 < argc) planner_names = parse_string_list(argv[++i]);
-        else {
-            cerr << "Unknown arg: " << arg << endl;
-            return 1;
-        }
+        else if (arg == "--override-feedback-gain-scale" && i + 1 < argc) override_feedback_gain_scale = atof(argv[++i]);
+        else if (arg == "--override-grad-steps" && i + 1 < argc) override_grad_steps = atoi(argv[++i]);
+        else if (arg == "--override-alpha" && i + 1 < argc) override_alpha = atof(argv[++i]);
     }
 
     ensure_build_dir();
@@ -1217,6 +1219,16 @@ int main(int argc, char** argv) {
     if (variants.empty()) {
         cerr << "No planners selected." << endl;
         return 1;
+    }
+
+    // Apply parameter overrides (used by multi-param tuning script)
+    for (auto& v : variants) {
+        if (override_feedback_gain_scale >= 0.0f && v.use_feedback)
+            v.feedback_gain_scale = override_feedback_gain_scale;
+        if (override_grad_steps >= 0 && v.grad_steps > 0)
+            v.grad_steps = override_grad_steps;
+        if (override_alpha >= 0.0f && v.grad_steps > 0)
+            v.alpha = override_alpha;
     }
 
     if (k_values.empty()) k_values = quick ? vector<int>{32, 64, 128} : vector<int>{32, 64, 128, 256};

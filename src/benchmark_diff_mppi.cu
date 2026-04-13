@@ -1238,7 +1238,7 @@ private:
     }
 
     bool uses_feedback_local_action() const {
-        return variant_.use_feedback && (variant_.feedback_mode == 5 || variant_.feedback_mode == 6 || variant_.feedback_mode == 7 || variant_.feedback_mode == 8);
+        return variant_.use_feedback && (variant_.feedback_mode == 5 || variant_.feedback_mode == 6 || variant_.feedback_mode == 7 || variant_.feedback_mode == 8 || variant_.feedback_mode == 9);
     }
 
     bool should_replan(int step) const {
@@ -1358,7 +1358,7 @@ private:
             }
 
             int open_loop_passes = 1;
-            if (variant_.use_feedback && (variant_.feedback_mode == 1 || variant_.feedback_mode == 3 || variant_.feedback_mode == 4 || variant_.feedback_mode == 6)) {
+            if (variant_.use_feedback && (variant_.feedback_mode == 1 || variant_.feedback_mode == 3 || variant_.feedback_mode == 4 || variant_.feedback_mode == 6 || variant_.feedback_mode == 9)) {
                 open_loop_passes = 2;
             }
             for (int pass = 0; pass < open_loop_passes; pass++) {
@@ -1395,7 +1395,7 @@ private:
                         compute_sensitivity_feedback_gains_kernel<<<1, 1>>>(
                             d_nominal_, d_perturbed_, d_weights_, d_rollout_init_grads_, d_feedback_gains_,
                             variant_.sampling_lambda, k_samples_, t_horizon_);
-                    } else if (variant_.feedback_mode == 6) {
+                    } else if (variant_.feedback_mode == 6 || variant_.feedback_mode == 9) {
                         rollout_kernel<<<(k_samples_ + block - 1) / block, block>>>(
                             sx, sy, stheta, sv, d_nominal_, d_costs_, d_perturbed_, d_rollout_states_, d_rng_,
                             planning_scenario_.params, planning_scenario_.cost_params,
@@ -1935,6 +1935,10 @@ int main(int argc, char** argv) {
     vector<string> planner_names;
     int seed_count = -1;
     int trace_max_steps = 0;
+    float override_feedback_gain_scale = -1.0f;
+    int override_grad_steps = -1;
+    float override_alpha = -1.0f;
+    float override_mlp_lr = -1.0f;
     for (int i = 1; i < argc; i++) {
         string arg = argv[i];
         if (arg == "--quick") quick = true;
@@ -1945,6 +1949,10 @@ int main(int argc, char** argv) {
         else if (arg == "--seed-count" && i + 1 < argc) seed_count = std::max(1, atoi(argv[++i]));
         else if (arg == "--scenarios" && i + 1 < argc) scenario_names = parse_string_list(argv[++i]);
         else if (arg == "--planners" && i + 1 < argc) planner_names = parse_string_list(argv[++i]);
+        else if (arg == "--override-feedback-gain-scale" && i + 1 < argc) override_feedback_gain_scale = atof(argv[++i]);
+        else if (arg == "--override-grad-steps" && i + 1 < argc) override_grad_steps = atoi(argv[++i]);
+        else if (arg == "--override-alpha" && i + 1 < argc) override_alpha = atof(argv[++i]);
+        else if (arg == "--override-mlp-lr" && i + 1 < argc) override_mlp_lr = atof(argv[++i]);
     }
 
     ensure_build_dir();
@@ -2137,6 +2145,31 @@ int main(int argc, char** argv) {
     }
     {
         PlannerVariant v;
+        v.name = "feedback_mppi_paper";
+        v.use_feedback = true;
+        v.feedback_mode = 9;
+        v.replan_stride = 1;
+        v.feedback_gain_scale = 1.0f;
+        v.feedback_noise_accel = 0.0f;
+        v.feedback_noise_steer = 0.0f;
+        v.feedback_longitudinal_gain = 0.0f;
+        v.feedback_speed_gain = 0.0f;
+        v.feedback_lateral_gain = 0.0f;
+        v.feedback_heading_gain = 0.0f;
+        v.feedback_setpoint_blend = 0.20f;
+        v.feedback_q_position = 1.6f;
+        v.feedback_q_heading = 1.1f;
+        v.feedback_q_speed = 0.9f;
+        v.feedback_r_accel = 1.3f;
+        v.feedback_r_steer = 1.0f;
+        v.feedback_terminal_scale = 3.5f;
+        v.feedback_cov_regularization = 0.001f;
+        v.feedback_cov_blend = 1.0f;
+        v.feedback_lqr_blend = 0.5f;
+        variants.push_back(v);
+    }
+    {
+        PlannerVariant v;
         v.name = "grad_only_3";
         v.use_sampling = false;
         v.use_gradient = true;
@@ -2189,6 +2222,18 @@ int main(int argc, char** argv) {
             filtered.push_back(*it);
         }
         variants.swap(filtered);
+    }
+
+    // Apply parameter overrides (used by multi-param tuning script)
+    for (auto& v : variants) {
+        if (override_feedback_gain_scale >= 0.0f && v.use_feedback)
+            v.feedback_gain_scale = override_feedback_gain_scale;
+        if (override_grad_steps >= 0 && v.use_gradient)
+            v.grad_steps = override_grad_steps;
+        if (override_alpha >= 0.0f && v.use_gradient)
+            v.alpha = override_alpha;
+        if (override_mlp_lr >= 0.0f && v.use_learned_sampling)
+            v.mlp_lr = override_mlp_lr;
     }
 
     if (k_values.empty()) k_values = quick ? vector<int>{1024, 4096} : vector<int>{1024, 2048, 4096};
