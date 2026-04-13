@@ -154,7 +154,19 @@ PRESETS = {
 
 
 def parse_args():
-    parser = argparse.ArgumentParser(description="Tune exact wall-clock-matched K values for benchmark_diff_mppi.")
+    parser = argparse.ArgumentParser(
+        description="Tune exact wall-clock-matched K values for benchmark_diff_mppi.",
+        epilog=(
+            "Multi-param mode (--multi-param) searches over additional controller "
+            "parameters beyond K.  For each planner family, it tries a grid of "
+            "hyperparameters and picks the combination with the best final_distance "
+            "at the matched time budget.  Expected runtime: roughly "
+            "N_param_combos x single-param runtime.  For the default grids this is "
+            "~3x for feedback baselines, ~9x for diff_mppi variants, and ~3x for "
+            "step_mppi.  A full dynamic_nav preset with --multi-param may take "
+            "30-60 minutes on a modern GPU."
+        ),
+    )
     parser.add_argument("--preset", choices=sorted(PRESETS), default="dynamic_nav",
                         help="Named benchmark preset for defaults")
     parser.add_argument("--bin", help="Path to benchmark binary")
@@ -171,6 +183,12 @@ def parse_args():
     parser.add_argument("--search-csv-out", help="Optional CSV of all search evaluations")
     parser.add_argument("--summary-out", help="Markdown summary output path")
     parser.add_argument("--summary-title", help="Markdown summary title")
+    parser.add_argument("--multi-param", action="store_true", default=False,
+                        help="Enable multi-parameter search beyond K. "
+                             "Searches over feedback_gain_scale, grad_steps/alpha, "
+                             "and mlp_lr grids per planner family. "
+                             "Runtime scales by the number of parameter combinations "
+                             "(~3-9x slower depending on planner family).")
     return parser.parse_args()
 
 
@@ -211,18 +229,23 @@ def exact_time_rank(summary, target_ms):
 
 
 class BenchmarkCache:
-    def __init__(self, bin_path, seed_count, workdir):
+    def __init__(self, bin_path, seed_count, workdir, override_args=None):
         self.bin_path = Path(bin_path)
         self.seed_count = seed_count
         self.workdir = Path(workdir)
+        self.override_args = tuple(override_args) if override_args else ()
         self.cache = {}
 
     def evaluate(self, scenario, planner, k_samples, temp_dir):
-        key = (scenario, planner, int(k_samples), self.seed_count)
+        key = (scenario, planner, int(k_samples), self.seed_count, self.override_args)
         if key in self.cache:
             return self.cache[key]
 
-        csv_path = Path(temp_dir) / f"{scenario}__{planner}__k{int(k_samples)}__s{self.seed_count}.csv"
+        override_tag = "_".join(self.override_args).replace("--", "").replace(" ", "_") if self.override_args else ""
+        csv_name = f"{scenario}__{planner}__k{int(k_samples)}__s{self.seed_count}"
+        if override_tag:
+            csv_name += f"__{override_tag}"
+        csv_path = Path(temp_dir) / f"{csv_name}.csv"
         cmd = [
             str(self.bin_path),
             "--scenarios", scenario,
@@ -231,6 +254,7 @@ class BenchmarkCache:
             "--k-values", str(int(k_samples)),
             "--csv", str(csv_path),
         ]
+        cmd.extend(self.override_args)
         subprocess.run(
             cmd,
             cwd=self.workdir,
@@ -306,6 +330,48 @@ def tune_exact_target(cache, scenario, planner, target_ms, k_min, k_max, toleran
 
     best_summary = min((record["summary"] for record in evaluated.values()), key=lambda row: exact_time_rank(row, target_ms))
     return best_summary, list(evaluated.values())
+
+
+FEEDBACK_GAIN_SCALE_GRID = [0.5, 1.0, 2.0]
+DIFF_GRAD_STEPS_GRID = [1, 3, 5]
+DIFF_ALPHA_GRID = [0.003, 0.006, 0.012]
+STEP_MLP_LR_GRID = [0.0005, 0.001, 0.002]
+
+
+def param_combos_for_planner(planner):
+    """Return list of (override_args, param_dict) for multi-param search."""
+    family = planner_family(planner)
+    if family == "feedback":
+        combos = []
+        for fgs in FEEDBACK_GAIN_SCALE_GRID:
+            override_args = ["--override-feedback-gain-scale", str(fgs)]
+            params = {"feedback_gain_scale": fgs, "grad_steps": "", "alpha": "", "mlp_lr": ""}
+            combos.append((override_args, params))
+        return combos
+    if family == "diff":
+        combos = []
+        for gs in DIFF_GRAD_STEPS_GRID:
+            for alpha in DIFF_ALPHA_GRID:
+                override_args = [
+                    "--override-grad-steps", str(gs),
+                    "--override-alpha", str(alpha),
+                ]
+                params = {"feedback_gain_scale": "", "grad_steps": gs, "alpha": alpha, "mlp_lr": ""}
+                combos.append((override_args, params))
+        return combos
+    if planner == "step_mppi":
+        combos = []
+        for lr in STEP_MLP_LR_GRID:
+            override_args = ["--override-mlp-lr", str(lr)]
+            params = {"feedback_gain_scale": "", "grad_steps": "", "alpha": "", "mlp_lr": lr}
+            combos.append((override_args, params))
+        return combos
+    # mppi or other: no extra params to tune
+    return [([], {"feedback_gain_scale": "", "grad_steps": "", "alpha": "", "mlp_lr": ""})]
+
+
+def default_param_dict():
+    return {"feedback_gain_scale": "", "grad_steps": "", "alpha": "", "mlp_lr": ""}
 
 
 def aggregate_selected(selected_rows):
@@ -385,9 +451,13 @@ def write_selected_csv(rows, path):
         "sample_budget",
         "time_target_ms",
         "time_gap_ms",
+        "feedback_gain_scale",
+        "tuned_grad_steps",
+        "tuned_alpha",
+        "mlp_lr",
     ]
     with open(path, "w", newline="") as f:
-        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer = csv.DictWriter(f, fieldnames=fieldnames, extrasaction="ignore")
         writer.writeheader()
         for row in rows:
             writer.writerow(row)
@@ -407,9 +477,13 @@ def write_search_csv(rows, path):
         "cumulative_cost_mean",
         "avg_control_ms_mean",
         "time_gap_ms",
+        "feedback_gain_scale",
+        "tuned_grad_steps",
+        "tuned_alpha",
+        "mlp_lr",
     ]
     with open(path, "w", newline="") as f:
-        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer = csv.DictWriter(f, fieldnames=fieldnames, extrasaction="ignore")
         writer.writeheader()
         for row in rows:
             writer.writerow(row)
@@ -480,6 +554,51 @@ def build_markdown(selected_rows, aggregate_rows, diff_rows, feedback_rows, sear
     return "\n".join(lines)
 
 
+def _tune_single_param(search_cache, final_cache, scenario, planner, target_ms,
+                       k_min, k_max, tolerance_ms, max_evals, temp_dir, param_dict):
+    """Run K binary search and collect results for one parameter combination.
+
+    Returns (best_summary, final_record, search_trace, param_dict) where
+    best_summary is the search-phase winner and final_record is re-evaluated
+    at the selected K with final_seed_count.
+    """
+    best_summary, evaluated_records = tune_exact_target(
+        search_cache, scenario, planner, target_ms,
+        k_min, k_max, tolerance_ms, max_evals, temp_dir,
+    )
+    final_record = final_cache.evaluate(scenario, planner, best_summary["k_samples"], temp_dir)
+
+    trace = []
+    for record in sorted(evaluated_records, key=lambda item: item["k_samples"]):
+        summary = record["summary"]
+        row = {
+            "scenario": scenario,
+            "planner": planner,
+            "time_target_ms": target_ms,
+            "k_samples": summary["k_samples"],
+            "success_mean": summary["success_mean"],
+            "steps_mean": summary["steps_mean"],
+            "final_distance_mean": summary["final_distance_mean"],
+            "cumulative_cost_mean": summary["cumulative_cost_mean"],
+            "avg_control_ms_mean": summary["avg_control_ms_mean"],
+            "time_gap_ms": summary["avg_control_ms_mean"] - target_ms,
+        }
+        row.update(_tuned_param_columns(param_dict))
+        trace.append(row)
+
+    return best_summary, final_record, trace, param_dict
+
+
+def _tuned_param_columns(param_dict):
+    """Map multi-param dict keys to CSV column names."""
+    return {
+        "feedback_gain_scale": param_dict.get("feedback_gain_scale", ""),
+        "tuned_grad_steps": param_dict.get("grad_steps", ""),
+        "tuned_alpha": param_dict.get("alpha", ""),
+        "mlp_lr": param_dict.get("mlp_lr", ""),
+    }
+
+
 def main():
     args = parse_args()
     preset = PRESETS[args.preset]
@@ -500,56 +619,87 @@ def main():
     tolerance_ms = args.tolerance_ms if args.tolerance_ms is not None else preset["tolerance_ms"]
     max_evals = args.max_evals if args.max_evals is not None else preset["max_evals"]
     summary_title = args.summary_title if args.summary_title else preset["summary_title"]
+    multi_param = args.multi_param
 
-    search_cache = BenchmarkCache(bin_path, search_seed_count, workdir)
-    final_cache = BenchmarkCache(bin_path, final_seed_count, workdir)
     selected_summary_rows = []
     selected_episode_rows = []
     search_trace_rows = []
+
+    # Build a cache per override_args tuple so evaluations with the same
+    # overrides are shared across scenarios/targets (preserving the original
+    # cross-scenario caching when multi-param is off).
+    search_cache_map = {}  # override_args tuple -> BenchmarkCache
+    final_cache_map = {}
+
+    def get_search_cache(override_args):
+        key = tuple(override_args) if override_args else ()
+        if key not in search_cache_map:
+            search_cache_map[key] = BenchmarkCache(bin_path, search_seed_count, workdir, override_args=override_args)
+        return search_cache_map[key]
+
+    def get_final_cache(override_args):
+        key = tuple(override_args) if override_args else ()
+        if key not in final_cache_map:
+            final_cache_map[key] = BenchmarkCache(bin_path, final_seed_count, workdir, override_args=override_args)
+        return final_cache_map[key]
 
     with tempfile.TemporaryDirectory(prefix="diff_mppi_exact_time_", dir=str(workdir / "build")) as temp_dir:
         for target_ms in time_targets:
             for scenario in scenarios:
                 for planner in planners:
-                    best_summary, evaluated_records = tune_exact_target(
-                        search_cache,
-                        scenario,
-                        planner,
-                        target_ms,
-                        k_min,
-                        k_max,
-                        tolerance_ms,
-                        max_evals,
-                        temp_dir,
-                    )
-                    final_record = final_cache.evaluate(scenario, planner, best_summary["k_samples"], temp_dir)
+                    if multi_param:
+                        combos = param_combos_for_planner(planner)
+                    else:
+                        combos = [([], default_param_dict())]
+
+                    best_candidate = None  # (rank_tuple, summary, final_record, param_dict)
+
+                    for override_args, param_dict in combos:
+                        search_cache = get_search_cache(override_args)
+                        final_cache = get_final_cache(override_args)
+
+                        best_summary, final_record, trace, pd = _tune_single_param(
+                            search_cache, final_cache, scenario, planner, target_ms,
+                            k_min, k_max, tolerance_ms, max_evals, temp_dir, param_dict,
+                        )
+
+                        # Always record search trace for all combos
+                        search_trace_rows.extend(trace)
+
+                        final_dist = final_record["summary"]["final_distance_mean"]
+                        final_success = final_record["summary"]["success_mean"]
+                        candidate_rank = (-final_success, final_dist)
+
+                        if best_candidate is None or candidate_rank < best_candidate[0]:
+                            best_candidate = (candidate_rank, best_summary, final_record, pd)
+
+                        if multi_param and len(combos) > 1:
+                            combo_label = ", ".join(f"{k}={v}" for k, v in param_dict.items() if v != "")
+                            print(f"  [{scenario}/{planner}@{target_ms}ms] combo ({combo_label}): "
+                                  f"K={final_record['summary']['k_samples']} "
+                                  f"dist={final_dist:.2f} success={final_success:.2f}")
+
+                    _, best_summary, final_record, winning_params = best_candidate
+
                     selected_row = dict(final_record["summary"])
                     selected_row["scenario"] = scenario
                     selected_row["planner"] = planner
                     selected_row["time_target_ms"] = target_ms
                     selected_row["time_gap_ms"] = final_record["summary"]["avg_control_ms_mean"] - target_ms
+                    selected_row.update(_tuned_param_columns(winning_params))
                     selected_summary_rows.append(selected_row)
-
-                    for record in sorted(evaluated_records, key=lambda item: item["k_samples"]):
-                        summary = record["summary"]
-                        search_trace_rows.append({
-                            "scenario": scenario,
-                            "planner": planner,
-                            "time_target_ms": target_ms,
-                            "k_samples": summary["k_samples"],
-                            "success_mean": summary["success_mean"],
-                            "steps_mean": summary["steps_mean"],
-                            "final_distance_mean": summary["final_distance_mean"],
-                            "cumulative_cost_mean": summary["cumulative_cost_mean"],
-                            "avg_control_ms_mean": summary["avg_control_ms_mean"],
-                            "time_gap_ms": summary["avg_control_ms_mean"] - target_ms,
-                        })
 
                     for row in final_record["rows"]:
                         episode_row = dict(row)
                         episode_row["time_target_ms"] = target_ms
                         episode_row["time_gap_ms"] = final_record["summary"]["avg_control_ms_mean"] - target_ms
+                        episode_row.update(_tuned_param_columns(winning_params))
                         selected_episode_rows.append(episode_row)
+
+                    if multi_param and len(param_combos_for_planner(planner)) > 1:
+                        combo_label = ", ".join(f"{k}={v}" for k, v in winning_params.items() if v != "")
+                        print(f"  -> BEST [{scenario}/{planner}@{target_ms}ms]: ({combo_label}) "
+                              f"K={final_record['summary']['k_samples']}")
 
     csv_out = Path(args.csv_out if args.csv_out else preset["csv_out"])
     summary_out = Path(args.summary_out) if args.summary_out else csv_out.with_name(f"{csv_out.stem}_summary.md")

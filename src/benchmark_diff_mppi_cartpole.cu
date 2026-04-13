@@ -705,6 +705,8 @@ int main(int argc, char** argv) {
     vector<string> scenario_names;
     vector<string> planner_names;
     int seed_count = -1;
+    int override_grad_steps = -1;
+    float override_alpha = -1.0f;
 
     for (int i = 1; i < argc; i++) {
         string arg = argv[i];
@@ -714,10 +716,8 @@ int main(int argc, char** argv) {
         else if (arg == "--seed-count" && i + 1 < argc) seed_count = max(1, atoi(argv[++i]));
         else if (arg == "--scenarios" && i + 1 < argc) scenario_names = parse_string_list(argv[++i]);
         else if (arg == "--planners" && i + 1 < argc) planner_names = parse_string_list(argv[++i]);
-        else {
-            cerr << "Unknown arg: " << arg << endl;
-            return 1;
-        }
+        else if (arg == "--override-grad-steps" && i + 1 < argc) override_grad_steps = atoi(argv[++i]);
+        else if (arg == "--override-alpha" && i + 1 < argc) override_alpha = atof(argv[++i]);
     }
 
     if (k_values.empty()) k_values = quick ? vector<int>{256, 512} : vector<int>{256, 512, 1024, 2048};
@@ -755,6 +755,14 @@ int main(int argc, char** argv) {
     if (variants.empty()) {
         cerr << "No planners selected." << endl;
         return 1;
+    }
+
+    // Apply parameter overrides (used by multi-param tuning script)
+    for (auto& v : variants) {
+        if (override_grad_steps >= 0 && v.use_gradient)
+            v.grad_steps = override_grad_steps;
+        if (override_alpha >= 0.0f && v.use_gradient)
+            v.alpha = override_alpha;
     }
 
     vector<EpisodeMetrics> rows;
