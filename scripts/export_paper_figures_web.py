@@ -14,6 +14,7 @@ DEFAULT_EXPORTS = {
     "paper/figures/fig_mechanism.pdf": "gif/diff_mppi_mechanism.png",
     "paper/figures/fig_7dof.pdf": "gif/diff_mppi_7dof.png",
     "paper/figures/fig_ablation.pdf": "gif/diff_mppi_ablation.png",
+    "paper/figures/fig_scenarios.pdf": "gif/diff_mppi_scenarios.png",
 }
 
 
