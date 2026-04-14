@@ -494,6 +494,17 @@ Uses the Jump Flooding Algorithm (JFA) on GPU to construct a Voronoi diagram in 
 #### GICP
 Generalized ICP uses GPU nearest-neighbor search and point-to-plane system accumulation, then solves the 6x6 update on the host. The same infrastructure is reused by `bin/benchmark_pointcloud` to report CPU vs GPU registration throughput.
 
+#### CudaPointCloud Snapshot
+The benchmark room cloud now has a rotating visual summary that shows the same synthetic scene as raw input, after statistical filtering, with the dominant plane highlighted, and with local PCA normals:
+
+<img src="https://rsasaki0109.github.io/CudaRobotics/pointcloud_processing.gif" alt="pointcloud_processing" width="720"/>
+
+Generated from the local benchmark dataset with:
+
+```bash
+python3 scripts/render_pointcloud_processing_gif.py
+```
+
 ### Learning / Optimization
 
 | Algorithm | Binary | CUDA Parallelization |
