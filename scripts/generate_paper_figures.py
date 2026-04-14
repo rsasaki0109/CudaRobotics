@@ -2,10 +2,12 @@
 """Generate all paper figures for Diff-MPPI submission.
 
 Usage:
-    python3 scripts/generate_paper_figures.py [--csv PATH] [--trace-dir PATH] [--out-dir PATH]
+    python3 scripts/generate_paper_figures.py [--csv PATH] [--pareto-csv PATH]
+                                            [--trace-dir PATH] [--out-dir PATH]
 
 Defaults:
     --csv       build/benchmark_diff_mppi_exact_time_full.csv
+    --pareto-csv  (unset; falls back to --csv data)
     --trace-dir build/
     --out-dir   paper/figures/
 """
@@ -48,6 +50,7 @@ COLORS = {
     "feedback_mppi_fused": "#d62728",
     "feedback_mppi_hf": "#8c564b",
     "feedback_mppi_faithful": "#e377c2",
+    "feedback_mppi_paper": "#ff9896",
     "diff_mppi_1": "#9467bd",
     "diff_mppi_3": "#17becf",
     "grad_only_3": "#7f7f7f",
@@ -61,6 +64,7 @@ MARKERS = {
     "feedback_mppi_fused": "D",
     "feedback_mppi_hf": "p",
     "feedback_mppi_faithful": "h",
+    "feedback_mppi_paper": "<",
     "diff_mppi_1": "P",
     "diff_mppi_3": "*",
     "grad_only_3": "x",
@@ -75,6 +79,7 @@ LABELS = {
     "feedback_mppi_fused": "Feedback-MPPI (fused)",
     "feedback_mppi_hf": "Feedback-MPPI (HF)",
     "feedback_mppi_faithful": "Feedback-MPPI (faithful)",
+    "feedback_mppi_paper": "Feedback-MPPI (paper)",
     "diff_mppi_1": "Diff-MPPI-1",
     "diff_mppi_3": "Diff-MPPI-3",
     "grad_only_3": "Grad-only-3",
@@ -243,10 +248,10 @@ def fig_pareto(data, out_dir):
     # Build unified legend
     legend_elements = []
     all_planners_in_data = {r["planner"] for r in data}
-    for p in ["mppi", "feedback_mppi_ref", "feedback_mppi_cov",
-              "feedback_mppi_fused", "feedback_mppi_hf",
-              "feedback_mppi_faithful", "diff_mppi_1", "diff_mppi_3",
-              "grad_only_3", "step_mppi"]:
+    for p in ["mppi", "feedback_mppi_ref", "feedback_mppi_paper",
+              "feedback_mppi_cov", "feedback_mppi_fused",
+              "feedback_mppi_hf", "feedback_mppi_faithful",
+              "diff_mppi_1", "diff_mppi_3", "grad_only_3", "step_mppi"]:
         if p in all_planners_in_data:
             legend_elements.append(
                 Line2D([0], [0], marker=MARKERS.get(p, "o"), color="w",
@@ -631,6 +636,10 @@ def main():
         help="Main benchmark CSV path (default: build/benchmark_diff_mppi_exact_time_full.csv)",
     )
     parser.add_argument(
+        "--pareto-csv", default="",
+        help="Optional CSV path used only for fig_pareto (default: reuse --csv data)",
+    )
+    parser.add_argument(
         "--trace-dir", default="build/",
         help="Directory containing trace CSV files (default: build/)",
     )
@@ -676,9 +685,19 @@ def main():
         all_raw.extend(extra_rows)
         data = aggregate(all_raw)
 
+    pareto_data = data
+    if args.pareto_csv:
+        if os.path.exists(args.pareto_csv):
+            print("Loading pareto CSV: " + args.pareto_csv)
+            pareto_data = aggregate(load_csv(args.pareto_csv))
+            print("  Pareto entries: " + str(len(pareto_data)))
+        else:
+            print("WARNING: Pareto CSV not found: " + args.pareto_csv)
+            print("  Falling back to main benchmark data for fig_pareto.")
+
     # --- Generate each figure ---
     figure_funcs = [
-        ("fig_pareto", lambda: fig_pareto(data, args.out_dir)),
+        ("fig_pareto", lambda: fig_pareto(pareto_data, args.out_dir)),
         ("fig_mechanism", lambda: fig_mechanism(args.trace_dir, args.out_dir)),
         ("fig_7dof", lambda: fig_7dof(data, args.out_dir)),
         ("fig_ablation", lambda: fig_ablation(data, args.out_dir)),
