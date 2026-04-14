@@ -24,17 +24,18 @@
 - パス: `.`
 - 主要ブランチ: `master`
 - 公開ブランチ: `gh-pages`
-- HEAD: `f653952` `Update README and paper with 8-baseline benchmark results`
-- clean 状態で push 済み
+- HEAD: `9ec4b81` `Add MuJoCo pilots and refresh Diff-MPPI paper package`
+- `origin/master` まで push 済み
+- ただし現ワークツリーには `submission_checklist` / `rebuttal_note` 追加などの未commit変更あり
 
 ### 直近のコミット履歴（2026-04-13〜14 セッション）
 
 ```
+9ec4b81 Add MuJoCo pilots and refresh Diff-MPPI paper package
 f653952 Update README and paper with 8-baseline benchmark results
 3faf840 Tune feedback_mppi_paper baseline and update paper with full results
 dcc30fd Add paper-faithful Feedback-MPPI baseline and multi-param time tuning
 f10ea37 Add Step-MPPI baseline results to paper
-0779ad7 Add paper toolchain, CTest, Step-MPPI baseline, and Docker improvements
 ```
 
 ---
@@ -43,7 +44,7 @@ f10ea37 Add Step-MPPI baseline results to paper
 
 ### 2.1 論文基盤
 
-- **LaTeX 論文**: `paper/latex/diff_mppi.tex` (IEEE RA-L 形式, 4ページ PDF)
+- **LaTeX 論文**: `paper/latex/diff_mppi.tex` (IEEE RA-L 形式, 5ページ PDF)
   - IEEEtran.cls / .bst はローカルダウンロード済（.gitignore 対象）
   - 図5枚: fig_pareto, fig_mechanism, fig_7dof, fig_ablation, fig_scenarios
   - 参考文献: `references.bib` (11本)
@@ -229,17 +230,17 @@ gap list の "Minimum Submission Bar" に対して:
 #### 優先度 A: すぐやれる
 
 1. **論文テキスト最終推敲**
-   - LaTeX の Introduction, Related Work を最新の baseline 数に合わせて最終調整
-   - Limitations セクションを更新（step_mppi, feedback_mppi_paper の結果を反映）
-   - Conclusion を更新
+   - Abstract / Introduction を reviewer-safe にさらに圧縮
+   - wording を「main exact-time table」と「robustness sweep」で混線しないよう最終確認
+   - Underfull `\hbox` は fatal ではないが、identifier-heavy な行を必要なら軽く整理
 
 2. **main figure / main table の最終固定**
    - fig_pareto を matched-time データ（build/exact_time_1ms.csv）で再生成
    - Table I を exact-time 結果に更新
 
-3. **Abstract の数字を最終確認**
-   - "eight strong non-hybrid baselines" に合わせる
-   - 7-DOF の数字を最新に
+3. **submission 補助資料の固定**
+   - `paper/diff_mppi_submission_checklist.md` を埋める
+   - `paper/diff_mppi_rebuttal_note.md` を reviewer 想定問答として固定
 
 #### 優先度 B: 価値は高いが工数がかかる
 
@@ -272,6 +273,8 @@ gap list の "Minimum Submission Bar" に対して:
 | `src/benchmark_diff_mppi_dynamic_bicycle.cu` | dynamic bicycle |
 | `src/benchmark_diff_mppi_manipulator.cu` | 2-link planar arm |
 | `src/benchmark_diff_mppi_cartpole.cu` | CartPole |
+| `src/benchmark_diff_mppi_mujoco.cu` | MuJoCo `InvertedPendulum-v4` pilot |
+| `src/benchmark_diff_mppi_mujoco_reacher.cu` | MuJoCo `Reacher` pilot |
 
 ### スクリプト
 
@@ -288,10 +291,12 @@ gap list の "Minimum Submission Bar" に対して:
 
 | ファイル | 内容 |
 |---|---|
-| `paper/latex/diff_mppi.tex` | IEEE RA-L LaTeX (4ページ) |
+| `paper/latex/diff_mppi.tex` | IEEE RA-L LaTeX (5ページ) |
 | `paper/latex/references.bib` | BibTeX 11本 |
 | `paper/diff_mppi_paper.md` | Markdown source of truth |
 | `paper/icra_iros_gap_list.md` | Gap 分析 |
+| `paper/diff_mppi_submission_checklist.md` | pre-submit checklist |
+| `paper/diff_mppi_rebuttal_note.md` | reviewer 想定問答 |
 
 ### 生成物（build/）
 
