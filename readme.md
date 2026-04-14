@@ -61,6 +61,8 @@ Recent additions push the repository beyond direct CUDA ports of classic robotic
 | <img src="https://rsasaki0109.github.io/CudaRobotics/diff_mppi_pareto.png" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/diff_mppi_mechanism.png" width="400"/> |
 | **Diff-MPPI 7-DOF benchmark** | **Diff-MPPI ablation figure** |
 | <img src="https://rsasaki0109.github.io/CudaRobotics/diff_mppi_7dof.png" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/diff_mppi_ablation.png" width="400"/> |
+| **Diff-MPPI task scenarios** | |
+| <img src="https://rsasaki0109.github.io/CudaRobotics/diff_mppi_scenarios.png" width="400"/> | |
 | **Neural SDF vs true field** | **Neural SDF MPPI vs circle approximation** |
 | <img src="https://rsasaki0109.github.io/CudaRobotics/neural_sdf.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/comparison_sdf_nav.gif" width="400"/> |
 | **Neural SDF potential-field navigation** | **Neural SDF MPPI rollout** |
