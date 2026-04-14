@@ -46,7 +46,7 @@ Recent additions push the repository beyond direct CUDA ports of classic robotic
 | Project | Binaries | Highlights |
 |---|---|---|
 | Autodiff + GPU MLP foundation | `test_autodiff`, `test_gpu_mlp` | Dual-number forward-mode autodiff and a compact GPU MLP training/inference engine used as the base for later research-style experiments. |
-| Differentiable MPPI | `diff_mppi`, `comparison_diff_mppi`, `benchmark_diff_mppi`, `benchmark_diff_mppi_cartpole`, `benchmark_diff_mppi_dynamic_bicycle`, `benchmark_diff_mppi_manipulator`, `benchmark_diff_mppi_manipulator_7dof` | Augments MPPI with a short autodiff refinement stage. Evaluated on 2D dynamic-obstacle navigation, CartPole, dynamic-bicycle, 2-link planar arm, and 7-DOF serial arm. Includes 8 feedback baselines, matched-time tuning, mechanism analysis, and uncertainty follow-ups. On the hard `dynamic_slalom` task, the hybrid controller is the only method that succeeds under matched compute budgets across 6 non-hybrid baselines. |
+| Differentiable MPPI | `diff_mppi`, `comparison_diff_mppi`, `benchmark_diff_mppi`, `benchmark_diff_mppi_cartpole`, `benchmark_diff_mppi_dynamic_bicycle`, `benchmark_diff_mppi_manipulator`, `benchmark_diff_mppi_manipulator_7dof` | Augments MPPI with a short autodiff refinement stage. Evaluated on 2D dynamic-obstacle navigation, CartPole, dynamic-bicycle, 2-link planar arm, and 7-DOF serial arm. Includes strong in-repo feedback baselines, matched-time tuning, mechanism analysis, MuJoCo transfer checks, and uncertainty follow-ups. On the hard `dynamic_slalom` task, the hybrid controller is the only method that succeeds in the submission-critical `1.0 ms` exact-time table, and the gap survives broader matched-time robustness sweeps. |
 | Neural SDF Navigation | `neural_sdf`, `sdf_potential_field`, `sdf_mppi`, `comparison_sdf_nav` | Learns 2D signed distance fields with a GPU MLP, then uses them for potential-field planning and MPPI on non-circular obstacle layouts. |
 | Neuroevolution for Cart-Pole | `neuroevo`, `comparison_neuroevo` | Evolves 4096 neural policies in parallel on GPU and compares them against a CPU baseline with side-by-side learning curves. |
 | MiniIsaacGym | `mini_isaac`, `mini_isaac_rl` | Runs thousands of CartPole environments in parallel on GPU and trains a compact policy with GPU-side REINFORCE updates. |
@@ -70,6 +70,14 @@ Recent additions push the repository beyond direct CUDA ports of classic robotic
 | **Ant Colony Optimization for TSP** | |
 | <img src="https://rsasaki0109.github.io/CudaRobotics/aco_tsp.gif" width="400"/> | |
 
+Text-first highlights for modules without public GIFs yet:
+
+| Module | Why it matters |
+|---|---|
+| Autodiff + GPU MLP foundation | Shared differentiable core reused by Diff-MPPI and Neural SDF experiments. |
+| CudaPointCloud | Large benchmarked speedups without approximation-heavy CPU baselines: normal estimation reaches **3,171x** at 10K points and RANSAC plane reaches **547x** at 100K. |
+| MuJoCo transfer checks | `InvertedPendulum-v4` and `Reacher` pilots show the Diff-MPPI stack ports to standardized tasks, even though they are not the main win condition. |
+
 ## Research Results Snapshot
 
 Recent research-style additions are summarized on the GitHub Pages gallery:
@@ -80,7 +88,7 @@ Concise highlights:
 
 | Area | Key result |
 |---|---|
-| **Diff-MPPI, dynamic navigation** | On `dynamic_slalom`: **diff_mppi_3 is the only successful controller** (dist `1.91`, 0.29 ms) across 8 non-hybrid baselines including `feedback_mppi_paper` (covariance-regression, dist `11.74`), `feedback_mppi_fused` (dist `10.28`), and `step_mppi` (learned sampling, dist `14.25`). All 8 baselines remain at success=0.00 from K=128 to K=8192. |
+| **Diff-MPPI, dynamic navigation** | On `dynamic_slalom`, the submission-critical exact-time table at `1.0 ms` still has **diff_mppi_3 as the only successful controller** (dist `1.90`), while `feedback_mppi_fused` reaches `10.33`, `feedback_mppi_paper` `11.61`, and `mppi` `14.15`. The harder family-level matched-time sweep keeps the same qualitative split: the best non-hybrid family still fails while the best Diff family succeeds. |
 | **Diff-MPPI, 7-DOF manipulator** | At `K=512` on `7dof_dynamic_avoid`: `diff_mppi_3` reaches **success=1.00 at 0.84 ms**, while `feedback_mppi_ref` reaches 0.75 at 4.01 ms. The hybrid controller is 4.8x faster and more reliable. |
 | Diff-MPPI, 2-link manipulator | On `arm_static_shelf` at `K=256`: `feedback_mppi_ref` and `feedback_mppi_cov` both reach `success=1.00` at `0.15` final distance, while vanilla MPPI stays at `0.00`. |
 | Diff-MPPI, faithful baseline | Both `feedback_mppi_paper` (covariance-regression + LQR, every-step) and `feedback_mppi_faithful` (two-rate, current-action-only) fail on dynamic tasks, confirming that gradient refinement provides complementary value no feedback architecture can replicate. |
