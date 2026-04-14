@@ -1,6 +1,6 @@
 # Diff-MPPI ICRA/IROS Gap List
 
-Date: 2026-04-05 (updated)
+Date: 2026-04-14 (updated)
 
 This note is a submission-oriented gap analysis for the current `Diff-MPPI` line.
 It is written for an `ICRA/IROS full paper` decision, not for a workshop, demo, or repository release.
@@ -162,7 +162,7 @@ Current evaluation is still:
 - mostly kinematic
 - hand-designed environments
 - no hardware
-- no standard public robotics benchmark
+- only a small MuJoCo `InvertedPendulum-v4` pilot, not yet a standard manipulation or locomotion benchmark
 
 That does not make the work invalid.
 It does make it harder to justify a main-track acceptance when nearby papers evaluate on:
@@ -171,32 +171,35 @@ It does make it harder to justify a main-track acceptance when nearby papers eva
 - 7-DOF manipulators
 - uncertain dynamic environments with perception noise
 
-There are now three partial exceptions:
+There are now four partial exceptions:
 - a pilot nonlinear CartPole benchmark outside the 2D navigation suite
 - a dynamic-bicycle mobile-navigation pilot with steering lag and drag
 - a planar-manipulator obstacle-avoidance pilot with second-order joint dynamics and workspace collisions
+- a small MuJoCo `InvertedPendulum-v4` pilot using the public Gymnasium / MuJoCo model and termination protocol
 
 That helps because the project is no longer purely a 2D kinematic story.
 The dynamic-bicycle and planar-manipulator results are the more useful of the three for reviewer defense, because they stay in obstacle-avoidance planning while adding richer vehicle or manipulator dynamics.
 The manipulator pilot is especially helpful because it produces a real success-rate split on `arm_static_shelf`: vanilla `mppi` remains unsuccessful while `diff_mppi_1` reaches `0.75`, `feedback_mppi_cov` reaches `1.00`, and the newer `feedback_mppi_ref` baseline also reaches `1.00`.
-But none of these pilots yet counts as the kind of stronger robotics-domain evaluation that fully closes this gap.
+The MuJoCo pilot helps against the "custom benchmark only" criticism, and it now also has matched-time multi-parameter tuning on a standard and a wider-reset variant. A newer MuJoCo `Reacher` extension adds a harder terminal-heavy variant and a more stable seed protocol, so the project is no longer limited to pendulum-style stabilization on the public-benchmark side. However, the MuJoCo results still read as transfer / standardization checks rather than decisive hybrid-only wins: the Reacher variant can produce a hybrid-over-plain-MPPI split, but a tuned feedback baseline still catches up. So none of these pilots yet counts as the kind of stronger robotics-domain evaluation that fully closes this gap.
 
 ### 4. The matched-time story is much better, and now has direct tuning, but is still not complete
 
 The project now has:
 - cap-based comparisons
 - equal-time nearest-match comparisons
-- exact matched-time tuning on the current dynamic two-task suite
+- exact matched-time tuning on the current dynamic two-task suite with multi-parameter search
 - exact matched-time tuning on the dynamic-bicycle follow-up pilot
+- exact matched-time tuning on the 7-DOF manipulation benchmark
+- exact matched-time tuning on the MuJoCo `InvertedPendulum-v4` pilot
 
 That is already much better than most quick research repos.
 
 But a skeptical reviewer can still say:
-- the exact-time tuning currently searches `K` only, not the full controller design space
-- the exact-time result is currently concentrated on the dynamic two-task suite, not the full benchmark portfolio
-- the newer `feedback_mppi_ref` and `feedback_mppi_release` baselines narrow the released-gain and released-weighting gaps and now have targeted exact-time sweeps, but they still remain in-repo proxies rather than a paper-faithful controller reproduction
-- the newer `feedback_mppi_cov`, `feedback_mppi_hf`, and `feedback_mppi_fused` baselines now also have targeted exact-time sweeps, but those still cover only selected targets rather than a broad matched-time study
-- outside the base suite, the time-matched claim currently reaches only custom pilot domains, and the cleanest matched-time result is still the dynamic-obstacle base suite rather than the pilots
+- the exact-time tuning no longer searches `K` only; it now also searches feedback gain scale and Diff-MPPI gradient hyperparameters, but it still does not cover the full controller architecture / design space
+- the cleanest matched-time separation is still concentrated on the dynamic two-task suite: on `dynamic_slalom`, every non-hybrid family still fails at `1.0`, `1.5`, and `2.0 ms`, while the full 7-DOF exact-time sweep is mixed and the MuJoCo pilots still read mostly as transfer checks
+- the newer `feedback_mppi_ref`, `feedback_mppi_release`, `feedback_mppi_cov`, `feedback_mppi_hf`, and `feedback_mppi_fused` baselines now have broader exact-time coverage, but they still remain in-repo proxies rather than a paper-faithful reproduction of the full external controller stack
+- the family-level multi-parameter sweep and the fixed-controller headline table now need to be separated explicitly in the paper, because the best Diff-MPPI family point can shift between `diff_mppi_3` and `diff_mppi_1` depending on the target, and some exact-time points still drift due to timing noise
+- outside the base suite, the time-matched claim now also reaches the 7-DOF benchmark, a small MuJoCo `InvertedPendulum-v4` pilot with multi-parameter tuning, and a MuJoCo `Reacher` follow-up that is stronger under fixed budget than under exact matched time, but the cleanest hybrid-only separation is still the dynamic-obstacle base suite rather than the pilots
 
 The dynamic-bicycle exact-time result is still useful, but it currently reads as a conservative compute-matched spot check:
 - `mppi`, `feedback_mppi_sens`, and `diff_mppi_1` are all competitive on terminal distance at `1.80 ms`
@@ -263,7 +266,7 @@ Current status:
 3. Extend the direct time-tuning protocol
 
 Needed change:
-- keep the new exact matched-time search in the final experimental package and extend it beyond `K`-only tuning on the current dynamic suite
+- keep the new exact matched-time search in the final experimental package, preserve the multi-parameter sweep, and clearly separate fixed-controller headline results from family-level robustness sweeps
 
 Why this matters:
 - it makes the compute-quality claim much harder to dismiss
@@ -314,6 +317,10 @@ Examples:
 
 This does not need to be huge.
 Even a small, reusable public benchmark protocol helps the paper look less bespoke.
+
+Current status:
+- partially done via `benchmark_diff_mppi_mujoco` on MuJoCo `InvertedPendulum-v4`, including exact-time multi-parameter tuning
+- still missing a more representative public manipulation or locomotion benchmark and paper-integrated multi-task results
 
 ## Minimum Submission Bar
 

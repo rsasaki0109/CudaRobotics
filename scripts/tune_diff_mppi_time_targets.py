@@ -150,6 +150,20 @@ PRESETS = {
         "csv_out": "build/benchmark_diff_mppi_uncertain_exact_time.csv",
         "summary_title": "Diff-MPPI Uncertain Dynamic Exact-Time Tuning Summary",
     },
+    "mujoco_pendulum": {
+        "bin": "./bin/benchmark_diff_mppi_mujoco",
+        "scenarios": "inverted_pendulum_v4,inverted_pendulum_wide_reset",
+        "planners": "mppi,feedback_mppi_ref,diff_mppi_3",
+        "time_targets": "1.0,1.5",
+        "search_seed_count": 2,
+        "final_seed_count": 5,
+        "k_min": 128,
+        "k_max": 16384,
+        "tolerance_ms": 0.06,
+        "max_evals": 8,
+        "csv_out": "build/benchmark_diff_mppi_mujoco_exact_time.csv",
+        "summary_title": "Diff-MPPI MuJoCo Exact-Time Tuning Summary",
+    },
 }
 
 
@@ -159,8 +173,9 @@ def parse_args():
         epilog=(
             "Multi-param mode (--multi-param) searches over additional controller "
             "parameters beyond K.  For each planner family, it tries a grid of "
-            "hyperparameters and picks the combination with the best final_distance "
-            "at the matched time budget.  Expected runtime: roughly "
+            "hyperparameters and picks the combination with the best exact-time "
+            "rank (timing gap first, then success/final distance).  Expected "
+            "runtime: roughly "
             "N_param_combos x single-param runtime.  For the default grids this is "
             "~3x for feedback baselines, ~9x for diff_mppi variants, and ~3x for "
             "step_mppi.  A full dynamic_nav preset with --multi-param may take "
@@ -183,6 +198,7 @@ def parse_args():
     parser.add_argument("--search-csv-out", help="Optional CSV of all search evaluations")
     parser.add_argument("--summary-out", help="Markdown summary output path")
     parser.add_argument("--summary-title", help="Markdown summary title")
+    parser.add_argument("--cache-dir", help="Optional persistent directory for per-K benchmark CSV cache")
     parser.add_argument("--multi-param", action="store_true", default=False,
                         help="Enable multi-parameter search beyond K. "
                              "Searches over feedback_gain_scale, grad_steps/alpha, "
@@ -229,11 +245,12 @@ def exact_time_rank(summary, target_ms):
 
 
 class BenchmarkCache:
-    def __init__(self, bin_path, seed_count, workdir, override_args=None):
+    def __init__(self, bin_path, seed_count, workdir, override_args=None, cache_dir=None):
         self.bin_path = Path(bin_path)
         self.seed_count = seed_count
         self.workdir = Path(workdir)
         self.override_args = tuple(override_args) if override_args else ()
+        self.cache_dir = Path(cache_dir) if cache_dir else None
         self.cache = {}
 
     def evaluate(self, scenario, planner, k_samples, temp_dir):
@@ -245,24 +262,27 @@ class BenchmarkCache:
         csv_name = f"{scenario}__{planner}__k{int(k_samples)}__s{self.seed_count}"
         if override_tag:
             csv_name += f"__{override_tag}"
-        csv_path = Path(temp_dir) / f"{csv_name}.csv"
-        cmd = [
-            str(self.bin_path),
-            "--scenarios", scenario,
-            "--planners", planner,
-            "--seed-count", str(self.seed_count),
-            "--k-values", str(int(k_samples)),
-            "--csv", str(csv_path),
-        ]
-        cmd.extend(self.override_args)
-        subprocess.run(
-            cmd,
-            cwd=self.workdir,
-            check=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True,
-        )
+        base_dir = self.cache_dir if self.cache_dir else Path(temp_dir)
+        base_dir.mkdir(parents=True, exist_ok=True)
+        csv_path = base_dir / f"{csv_name}.csv"
+        if not csv_path.exists():
+            cmd = [
+                str(self.bin_path),
+                "--scenarios", scenario,
+                "--planners", planner,
+                "--seed-count", str(self.seed_count),
+                "--k-values", str(int(k_samples)),
+                "--csv", str(csv_path),
+            ]
+            cmd.extend(self.override_args)
+            subprocess.run(
+                cmd,
+                cwd=self.workdir,
+                check=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+            )
         rows = load_rows(csv_path)
         summary_rows = summarize_groups(rows)
         if len(summary_rows) != 1:
@@ -620,6 +640,9 @@ def main():
     max_evals = args.max_evals if args.max_evals is not None else preset["max_evals"]
     summary_title = args.summary_title if args.summary_title else preset["summary_title"]
     multi_param = args.multi_param
+    cache_dir = Path(args.cache_dir) if args.cache_dir else None
+    if cache_dir and not cache_dir.is_absolute():
+        cache_dir = (workdir / cache_dir).resolve()
 
     selected_summary_rows = []
     selected_episode_rows = []
@@ -634,13 +657,19 @@ def main():
     def get_search_cache(override_args):
         key = tuple(override_args) if override_args else ()
         if key not in search_cache_map:
-            search_cache_map[key] = BenchmarkCache(bin_path, search_seed_count, workdir, override_args=override_args)
+            search_cache_map[key] = BenchmarkCache(
+                bin_path, search_seed_count, workdir,
+                override_args=override_args, cache_dir=cache_dir,
+            )
         return search_cache_map[key]
 
     def get_final_cache(override_args):
         key = tuple(override_args) if override_args else ()
         if key not in final_cache_map:
-            final_cache_map[key] = BenchmarkCache(bin_path, final_seed_count, workdir, override_args=override_args)
+            final_cache_map[key] = BenchmarkCache(
+                bin_path, final_seed_count, workdir,
+                override_args=override_args, cache_dir=cache_dir,
+            )
         return final_cache_map[key]
 
     with tempfile.TemporaryDirectory(prefix="diff_mppi_exact_time_", dir=str(workdir / "build")) as temp_dir:
@@ -666,9 +695,10 @@ def main():
                         # Always record search trace for all combos
                         search_trace_rows.extend(trace)
 
-                        final_dist = final_record["summary"]["final_distance_mean"]
-                        final_success = final_record["summary"]["success_mean"]
-                        candidate_rank = (-final_success, final_dist)
+                        final_summary = final_record["summary"]
+                        final_dist = final_summary["final_distance_mean"]
+                        final_success = final_summary["success_mean"]
+                        candidate_rank = exact_time_rank(final_summary, target_ms)
 
                         if best_candidate is None or candidate_rank < best_candidate[0]:
                             best_candidate = (candidate_rank, best_summary, final_record, pd)

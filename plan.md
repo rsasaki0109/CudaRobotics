@@ -78,6 +78,8 @@ f10ea37 Add Step-MPPI baseline results to paper
 
 - **multi-param time tuning**: `scripts/tune_diff_mppi_time_targets.py --multi-param`
   - K だけでなく feedback_gain_scale, grad_steps, alpha, mlp_lr も探索
+  - `dynamic_nav`, `7dof_manipulator`, `mujoco_pendulum` の full run 完了
+  - `--cache-dir` で途中結果を再利用可能、family-level exact-time ranking も修正済み
   - CLI override flags を全5ベンチマークバイナリに追加
 
 - **CLAUDE.md**: プロジェクト説明書（Claude Code 用）
@@ -103,28 +105,23 @@ f10ea37 Add Step-MPPI baseline results to paper
 | step_mppi | 0.00 | 14.25 | 0.19 | learned sampling |
 | mppi | 0.00 | 14.23 | 0.18 | vanilla |
 
-### 3.2 exact matched-time @ 1.0ms
+### 3.2 dynamic_nav exact-time robustness check（full `--multi-param`）
 
-| プランナー | K (tuned) | actual_ms | success | final_dist |
-|---|---|---|---|---|
-| **diff_mppi_3** | 6156 | 0.99 | 1.00 | 1.91 |
-| feedback_mppi_fused | 128 | 1.90 | 0.50 | 6.11 |
-| feedback_mppi_paper | 128 | 1.00 | 0.50 | 6.78 |
-| feedback_mppi_ref | 1067 | 1.00 | 0.50 | 6.89 |
-| step_mppi | 7467 | 0.99 | 0.00 | 8.54 |
-| mppi | 6834 | 1.00 | 0.00 | 8.56 |
+hard task `dynamic_slalom` の matched-time story は full multi-param sweep 後も維持。
 
-注: success=0.50 は dynamic_crossing で成功, dynamic_slalom で失敗の平均
-
-### 3.3 dynamic_slalom @ 1.0ms
-
-| プランナー | K | ms | final_dist |
+| target_ms | best diff family | best feedback | mppi |
 |---|---|---|---|
-| diff_mppi_3 | 5966 | 0.988 | 1.90 |
-| mppi | 7167 | 0.991 | 14.15 |
-| feedback_mppi_fused | 128 | 1.882 | 10.33 |
+| 1.0 | `diff_mppi_3`: `K=1906`, `0.993 ms`, success `1.00`, dist `1.84` | `feedback_mppi_cov`: `K=128`, `0.991 ms`, success `0.00`, dist `11.53` | `K=1322`, `0.576 ms`, success `0.00`, dist `14.18` |
+| 1.5 | `diff_mppi_3`: `K=6790`, `1.516 ms`, success `1.00`, dist `1.84` | `feedback_mppi_cov`: `K=157`, `1.486 ms`, success `0.00`, dist `11.80` | `K=10402`, `1.342 ms`, success `0.00`, dist `14.17` |
+| 2.0 | `diff_mppi_1`: `K=13538`, `1.993 ms`, success `1.00`, dist `1.88` | `feedback_mppi`: `K=4631`, `1.993 ms`, success `0.00`, dist `11.66` | `K=12957`, `1.750 ms`, success `0.00`, dist `14.16` |
 
-### 3.4 7-DOF manipulator (7dof_dynamic_avoid, K=512)
+補足:
+- `dynamic_crossing` は `feedback_mppi_ref`, `feedback_mppi`, `feedback_mppi_cov`, Diff family の複数が matched-time で成功。
+- hard split は依然として `dynamic_slalom` に集中している。
+- family-level sweep では best diff point が target によって `diff_mppi_3` / `diff_mppi_1` で入れ替わる。
+- 一部 planner では timing noise が残るため（例: `dynamic_slalom / mppi / 1.0 ms`）、この sweep は robustness appendix 向きで、main paper table は curated fixed-controller 結果を使う方が安全。
+
+### 3.3 7-DOF manipulator（strongest fixed-budget point, `7dof_dynamic_avoid @ K=512`）
 
 | プランナー | success | final_dist | avg_ms |
 |---|---|---|---|
@@ -132,10 +129,18 @@ f10ea37 Add Step-MPPI baseline results to paper
 | feedback_mppi_ref | 0.75 | 0.283 | 4.01 |
 | mppi | 0.25 | 0.635 | 0.39 |
 
+### 3.4 7-DOF exact-time follow-up（full `--multi-param`）
+
+- `7dof_dynamic_avoid @ 3.0 ms`: `feedback_mppi_ref = 1.00 / 0.084 / 2.40 ms`, `diff_mppi_1 = 1.00 / 0.088 / 1.30 ms`, `diff_mppi_3 = 1.00 / 0.088 / 2.38 ms`
+- `7dof_dynamic_avoid @ 5.0 ms`: 同傾向で、feedback と diff がどちらも success `1.00`
+- `7dof_shelf_reach @ 3.0 / 5.0 ms`: `feedback_mppi_ref` は success `0.25` まで、`diff_mppi_1`, `diff_mppi_3`, `mppi` は success `0.00`
+- 結論: 7-DOF の exact-time sweep は mixed で、paper の strongest point は引き続き fixed-budget `K=512`
+
 ### 3.5 中心的主張
 
 > dynamic_slalom で **8 つの non-hybrid baseline が全て success=0.00**（K=128〜8192 の全域で）。
-> diff_mppi_3 だけが success=1.00。
+> exact-time full multi-param sweep でも、non-hybrid family は `1.0 / 1.5 / 2.0 ms` の全 target で fail のまま。
+> Diff family だけが success boundary を跨ぐ。
 > gradient refinement は sampling 改善（step_mppi）でも feedback 強化（8 variants）でも代替不可能。
 
 ---
@@ -162,7 +167,7 @@ f10ea37 Add Step-MPPI baseline results to paper
 | Tier 2 #4: Uncertainty | 既存 | uncertain_crossing/slalom follow-up |
 | Tier 2 #5: Mechanism analysis | 既存 | gradient freshness analysis |
 | Tier 3 #6: Hardware demo | 未着手 | — |
-| Tier 3 #7: Standardized benchmark | 未着手 | MuJoCo 未導入 |
+| Tier 3 #7: Standardized benchmark | 部分達成 | MuJoCo `InvertedPendulum-v4` pilot 追加 |
 
 ### 4.3 Minimum Submission Bar チェック
 
@@ -172,7 +177,7 @@ gap list の "Minimum Submission Bar" に対して:
 2. ✅ Current two dynamic tasks (dynamic_crossing, dynamic_slalom)
 3. ✅ grad_only_3 ablation
 4. ✅ literature-faithful baseline（feedback_mppi_paper + step_mppi 追加）
-5. ✅ exact matched-time tuning（1.0ms target 実行済）
+5. ✅ exact matched-time tuning（`dynamic_nav`, `7dof_manipulator`, `mujoco_pendulum` まで multi-param 実行済）
 6. ✅ one higher-fidelity experiment（7-DOF manipulator）
 
 **6/6 全項目を満たしている。**
@@ -185,6 +190,35 @@ gap list の "Minimum Submission Bar" に対して:
   - faithful baseline 追加
   - step_mppi ablation でメカニズム解明
   - exact-time tuning 実施済み
+  - MuJoCo `InvertedPendulum-v4` pilot 追加で "custom benchmark only" 批判を少し弱めた
+
+### 4.5 MuJoCo pilot の現状
+
+- 新規 target: `benchmark_diff_mppi_mujoco`
+- モデル: `mujoco_models/inverted_pendulum.xml`（Gymnasium / MuJoCo の公開 XML ベース）
+- exact-time summary: `build/benchmark_diff_mppi_mujoco_exact_time_summary.md`
+- 標準シナリオ `inverted_pendulum_v4`, 5-seed summary:
+  - `diff_mppi_3`: success `0.8 @ K=512`, `1.0 @ K=1024`, `1.0 @ K=2048`
+  - `feedback_mppi_ref`: success `0.6 @ K=512`, `1.0 @ K=1024`, `1.0 @ K=2048`
+  - `mppi`: success `0.4 @ K=512`, `1.0 @ K=1024`, `1.0 @ K=2048`
+- 広い初期値 `inverted_pendulum_wide_reset` では 3 planner ともまだ不安定で、`K=1024/2048` 帯で `diff_mppi_3` と `feedback_mppi_ref` が `2/3` seed 成功。
+- `diff_mppi_3` は MuJoCo surrogate 上で多段 gradient step が壊れやすかったため、既定値を小さめの `alpha=1e-3` にし、accepted-cost のみ採用する conservative update に変更。
+- その後の exact-time + multi-param tuning では、`1.0 ms` / `1.5 ms` の両 target で 3 planner とも 2 シナリオ成功率 `1.0` を達成。
+  - `1.0 ms` aggregate final distance: `diff_mppi_3 = 0.02`, `feedback_mppi_ref = 0.03`, `mppi = 0.04`
+  - `1.5 ms` aggregate final distance: `diff_mppi_3 = 0.02`, `feedback_mppi_ref = 0.02`, `mppi = 0.03`
+- MuJoCo pilot は "custom benchmark only" 批判への防御にはなるが、dynamic base suite のような hybrid-only success split は出ていない。標準スタビライゼーション task では gap はかなり狭い。
+- tuned diff settings は scenario / target ごとに少し揺れるが、`alpha=0.012` と accepted-cost 更新の組み合わせが有効で、`wide_reset` では `grad_steps=5` が勝つケースが多い。
+- Reacher 拡張も追加済み: `benchmark_diff_mppi_mujoco_reacher`
+  - モデル: `mujoco_models/reacher.xml`（Gymnasium / MuJoCo の公開 XML ベース）
+  - シナリオ: `reacher_v5`, `reacher_edge_target`, `reacher_terminal_edge`
+  - `run_seed` は scenario / planner 名ベースの stable hash に変更し、planner filter の有無で seed が変わらないようにした
+  - `reacher_v5` / `reacher_edge_target` は dense static reaching なので、hybrid-only の強い split にはならなかった
+  - `reacher_terminal_edge` は terminal-heavy + 長め horizon (`T=32`) の harder variant で、stable-seed 5-run では:
+    - `mppi`: best tested success `0.8`（`K=128`, `512`, `8192`）
+    - `feedback_mppi_ref`: success `1.0 @ K=128`、`1.0 @ K=1024`
+    - default `diff_mppi_3`: success `1.0 @ K=1024`
+    - tuned `diff_mppi_3` (`grad_steps=5`, `alpha=0.012`): success `1.0 @ K=128` with `1.04 ms`, and `1.0 @ K=512` with `1.11 ms`
+  - ただし tuned feedback も `K=1024 @ 0.90 ms` で success `1.0` なので、Reacher もまだ "hybrid-only の決定打" ではない。sample-efficiency stress test としては前進だが、main claim を置くには弱い。
 
 ---
 
@@ -209,15 +243,14 @@ gap list の "Minimum Submission Bar" に対して:
 
 #### 優先度 B: 価値は高いが工数がかかる
 
-4. **MuJoCo 標準ベンチマーク**
-   - Codex 用プロンプトが `codex_tasks.md` Task 1 にある
-   - まず `pip3 install mujoco` でインストール
-   - Reacher か InvertedPendulum で 1 ドメイン追加
-   - reviewer の "custom benchmark only" 批判に直接対処
+4. **MuJoCo 標準ベンチマーク拡張**
+  - `InvertedPendulum-v4` pilot と exact-time tuning は追加済み
+  - Reacher pilot も追加済みだが、terminal-heavy variant でも tuned feedback が追いつくため、まだ代表例としては弱い
+  - 次にやるなら MuJoCo manipulator / obstacle 系の、feedback baseline まで含めて差が残る task へ進むべき
 
-5. **multi-param time tuning 完全実行**
-   - `--multi-param` フラグで feedback_gain_scale, grad_steps, alpha も探索
-   - 現在は K-only tuning だけ実行済み
+5. **exact-time narrative の paper 反映**
+   - `--multi-param` の full run 自体は `dynamic_nav`, `7dof_manipulator`, `mujoco_pendulum` で完了
+   - 残りは「main paper は fixed-controller 表、appendix / follow-up は family-level robustness」という書き分け
 
 #### 優先度 C: nice-to-have
 
@@ -367,7 +400,7 @@ docker compose run cudarobotics test
 
 `codex_tasks.md` に 6 タスクの Codex プロンプトがある。残りは:
 
-- Task 1 (MuJoCo): 未実装、プロンプトあり
+- Task 1 (MuJoCo): **実装済み**
 - Task 2 (Step-MPPI): **実装済み**
 - Task 3 (LaTeX): **実装済み**
 - Task 4 (CTest): **実装済み**
