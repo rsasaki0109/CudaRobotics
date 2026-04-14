@@ -42,7 +42,7 @@ minimal hybrid controller that adds a short autodiff refinement---just three
 local gradient steps---to the standard MPPI update.  With parallelized
 gradient computation on GPU, this refinement retains 85\% of the sampling
 budget within the same wall-clock time.  We evaluate the method against
-vanilla MPPI and seven strong non-hybrid feedback baselines under exact
+vanilla MPPI and eight strong non-hybrid feedback baselines under exact
 matched-time controller budgets on two-dimensional dynamic-obstacle
 navigation and a 7-DOF serial-arm manipulation benchmark.  On the hardest
 dynamic-obstacle task, the hybrid controller is the only method that reaches
@@ -96,7 +96,7 @@ Our main contributions are:
     matched wall-clock time, interpretable as adding explicit gradient steps
     after MPPI's implicit preconditioned gradient step.
   \item A matched-time evaluation showing a non-hybrid Pareto ceiling: on the
-    hardest dynamic-obstacle task, all seven non-hybrid baselines remain
+    hardest dynamic-obstacle task, all eight non-hybrid baselines remain
     unsuccessful at every sample count from $K\!=\!128$ to $K\!=\!8192$,
     while the hybrid controller succeeds at $K\!=\!128$ and above.
   \item Evidence across 2D dynamic navigation and 7-DOF serial-arm
@@ -246,7 +246,7 @@ gravity and damping, and analytical dynamics Jacobians.  Two scenarios:
 
 \subsection{Baselines}
 
-Seven non-hybrid baselines, all evaluated under exact matched-time
+Eight non-hybrid baselines, all evaluated under exact matched-time
 tuning:
 \begin{enumerate}
   \item \textbf{mppi}: vanilla sampling-only MPPI.
@@ -260,6 +260,10 @@ tuning:
   \item \textbf{feedback\_mppi\_faithful}: two-rate architecture with
     current-action-only gains.
   \item \textbf{feedback\_mppi\_cov}: covariance-regression feedback gains.
+  \item \textbf{feedback\_mppi\_paper}: covariance-regression + LQR blend
+    with every-step replanning---the strongest principled feedback baseline,
+    closest to Feedback-MPPI~\cite{belvedere2026feedback_mppi}'s
+    sensitivity-derived gain computation.
   \item \textbf{step\_mppi}: online-adapted sampling bias via cost-weighted
     exponential moving average of control deviations, inspired by
     Step-MPPI~\cite{step_mppi}'s learned sampling distribution approach.
@@ -304,7 +308,8 @@ feedback\_mppi\_fused    &  128 & 1.85 & 0.00 & 10.33 \\
 feedback\_mppi\_ref      &  992 & 1.01 & 0.00 & 11.77 \\
 feedback\_mppi\_hf       &  292 & 0.98 & 0.00 & 13.80 \\
 feedback\_mppi\_faithful & 3294 & 0.98 & 0.00 & 14.09 \\
-step\_mppi               & 1024 & 0.21 & 0.00 & 14.20 \\
+feedback\_mppi\_paper     & 1024 & 8.75 & 0.00 & 11.74 \\
+step\_mppi               & 1024 & 0.19 & 0.00 & 14.25 \\
 \textbf{diff\_mppi\_3}   & \textbf{6216} & \textbf{0.97} & \textbf{1.00} & \textbf{1.89} \\
 \bottomrule
 \end{tabular}

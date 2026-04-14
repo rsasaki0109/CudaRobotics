@@ -2149,23 +2149,23 @@ int main(int argc, char** argv) {
         v.use_feedback = true;
         v.feedback_mode = 9;
         v.replan_stride = 1;
-        v.feedback_gain_scale = 1.0f;
+        v.feedback_gain_scale = 0.80f;
         v.feedback_noise_accel = 0.0f;
         v.feedback_noise_steer = 0.0f;
         v.feedback_longitudinal_gain = 0.0f;
         v.feedback_speed_gain = 0.0f;
         v.feedback_lateral_gain = 0.0f;
         v.feedback_heading_gain = 0.0f;
-        v.feedback_setpoint_blend = 0.20f;
+        v.feedback_setpoint_blend = 0.15f;
         v.feedback_q_position = 1.6f;
         v.feedback_q_heading = 1.1f;
         v.feedback_q_speed = 0.9f;
         v.feedback_r_accel = 1.3f;
         v.feedback_r_steer = 1.0f;
         v.feedback_terminal_scale = 3.5f;
-        v.feedback_cov_regularization = 0.001f;
-        v.feedback_cov_blend = 1.0f;
-        v.feedback_lqr_blend = 0.5f;
+        v.feedback_cov_regularization = 0.15f;
+        v.feedback_cov_blend = 0.80f;
+        v.feedback_lqr_blend = 0.35f;
         variants.push_back(v);
     }
     {
