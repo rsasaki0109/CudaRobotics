@@ -12,6 +12,7 @@ from pathlib import Path
 DEFAULT_EXPORTS = {
     "paper/figures/fig_pareto.pdf": "gif/diff_mppi_pareto.png",
     "paper/figures/fig_mechanism.pdf": "gif/diff_mppi_mechanism.png",
+    "paper/figures/fig_7dof.pdf": "gif/diff_mppi_7dof.png",
 }
 
 
