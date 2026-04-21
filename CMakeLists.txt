@@ -367,7 +367,13 @@ add_test(NAME check_design_regressions
 add_test(NAME check_scaffold
   COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/check_scaffold_design_problem.py
   WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
-set_tests_properties(validate_design_workflow check_design_regressions check_scaffold
+add_test(NAME check_repro_suite_dry_run
+  COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/run_repro_suite.py
+    --dry-run
+    --suite smoke
+    --output-dir ${CMAKE_BINARY_DIR}/repro_suite_dry_run
+  WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+set_tests_properties(validate_design_workflow check_design_regressions check_scaffold check_repro_suite_dry_run
   PROPERTIES
   TIMEOUT 30
   LABELS "python")

@@ -8,12 +8,28 @@ This report watches shared helper extraction without auto-promoting helpers into
 
 | Helper | Problems | Variant Files | Min Problem Snapshots | Classification |
 |---|---:|---:|---:|---|
+| `best_scored_row` | 2 | 2 | 4 | `promotion_watch` |
 | `fastest_row` | 1 | 3 | 4 | `keep_in_experiments` |
 | `feasible_rows` | 1 | 3 | 4 | `keep_in_experiments` |
-| `normalize` | 2 | 2 | 4 | `promotion_watch` |
+| `normalized_row_values` | 2 | 2 | 4 | `promotion_watch` |
 | `rows_for_dataset_scenario` | 2 | 6 | 4 | `promotion_watch` |
 
 ## Details
+
+### `best_scored_row`
+
+Classification: `promotion_watch`
+
+shared across multiple problems and has survived enough snapshots to watch closely
+
+Problems: `planner_selection, time_budget_selection`
+
+Min snapshots across those problems: `4`
+
+Imported by:
+
+- `experiments/planner_selection/functional_selector.py`
+- `experiments/time_budget_selection/functional_budget_selector.py`
 
 ### `fastest_row`
 
@@ -47,7 +63,7 @@ Imported by:
 - `experiments/time_budget_selection/oop_budget_selector.py`
 - `experiments/time_budget_selection/pipeline_budget_selector.py`
 
-### `normalize`
+### `normalized_row_values`
 
 Classification: `promotion_watch`
 

@@ -99,6 +99,16 @@ Recent research-style additions are summarized on the GitHub Pages gallery:
 
 - https://rsasaki0109.github.io/CudaRobotics/
 
+Reproducible benchmark entry point:
+
+```bash
+python3 scripts/run_repro_suite.py --dry-run --suite smoke
+python3 scripts/run_repro_suite.py --build --suite diff-mppi
+```
+
+The runner records the exact benchmark, summary, and optional plotting commands in `build/repro_suite/manifest.json`.
+See `docs/reproducibility.md` for the suite catalog and output layout.
+
 Concise highlights:
 
 | Area | Key result |
