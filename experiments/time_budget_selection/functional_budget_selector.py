@@ -7,7 +7,13 @@ from core.time_budget_selector_interface import (
     TimeBudgetRequest,
     TimeBudgetSelector,
 )
-from experiments.support import fastest_row, feasible_rows, normalize, rows_for_dataset_scenario
+from experiments.support import (
+    best_scored_row,
+    fastest_row,
+    feasible_rows,
+    normalized_row_values,
+    rows_for_dataset_scenario,
+)
 
 
 @dataclass(frozen=True)
@@ -48,26 +54,23 @@ class FunctionalBudgetSelector(TimeBudgetSelector):
                 rationale="fallback to the fastest candidate because no row fits the requested budget",
             )
 
-        distance_norm = normalize([row.final_distance for row in feasible])
-        cost_norm = normalize([row.cumulative_cost for row in feasible])
-        steps_norm = normalize([row.steps for row in feasible])
-        headroom_norm = normalize([request.time_budget_ms - row.avg_control_ms for row in feasible])
+        distance_norm = normalized_row_values(feasible, lambda row: row.final_distance)
+        cost_norm = normalized_row_values(feasible, lambda row: row.cumulative_cost)
+        steps_norm = normalized_row_values(feasible, lambda row: row.steps)
+        headroom_norm = normalized_row_values(feasible, lambda row: request.time_budget_ms - row.avg_control_ms)
 
-        best_row = None
-        best_score = float("-inf")
-        for index, row in enumerate(feasible):
-            score = (
+        scores = [
+            (
                 self.weights.success * row.success
                 - self.weights.final_distance * distance_norm[index]
                 - self.weights.cumulative_cost * cost_norm[index]
                 - self.weights.steps * steps_norm[index]
                 + self.weights.headroom * headroom_norm[index]
             )
-            if best_row is None or score > best_score:
-                best_row = row
-                best_score = score
+            for index, row in enumerate(feasible)
+        ]
+        best_row, best_score = best_scored_row(feasible, scores)
 
-        assert best_row is not None
         return TimeBudgetRecommendation(
             variant=self.name,
             dataset=request.dataset,
