@@ -213,6 +213,18 @@ mkdir build && cd build && cmake .. && make -j$(nproc)
 
 Requires CMake ≥ 3.18, CUDA Toolkit ≥ 12.0, OpenCV ≥ 4.5, Eigen 3. Executables go to `bin/`.
 
+## Reproducibility
+
+```bash
+python3 scripts/run_repro_suite.py --dry-run --suite smoke
+python3 scripts/run_repro_suite.py --build --suite diff-mppi
+```
+
+The runner records the exact benchmark, summary, and optional plotting commands
+in `build/repro_suite/manifest.json` and writes a human-readable
+`build/repro_suite/report.md`. See `docs/reproducibility.md` for the suite
+catalog and output layout.
+
 Planner showdown target gate:
 
 ```bash
