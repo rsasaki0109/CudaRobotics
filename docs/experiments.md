@@ -29,9 +29,9 @@ Requests evaluated: `6` fixture-promotion requests
 
 | Variant | Paradigm | Avg Regret | Oracle Match | Requirement Hit | Runtime ms/request | Readability | Extensibility | Source |
 |---|---|---|---|---|---|---|---|---|
-| functional_fixture_weighted | functional | 0.000 | 1.00 | 1.00 | 0.0733 | 70.7 | 30.2 | `experiments/fixture_promotion/functional_fixture_promoter.py` |
-| oop_fixture_lexicographic | oop | 0.104 | 0.67 | 1.00 | 0.0799 | 55.4 | 36.4 | `experiments/fixture_promotion/oop_fixture_promoter.py` |
-| pipeline_fixture_staged | pipeline | 0.104 | 0.67 | 1.00 | 0.0777 | 56.7 | 10.4 | `experiments/fixture_promotion/pipeline_fixture_promoter.py` |
+| functional_fixture_weighted | functional | 0.000 | 1.00 | 1.00 | 0.4402 | 70.7 | 30.2 | `experiments/fixture_promotion/functional_fixture_promoter.py` |
+| oop_fixture_lexicographic | oop | 0.104 | 0.67 | 1.00 | 0.2149 | 55.4 | 36.4 | `experiments/fixture_promotion/oop_fixture_promoter.py` |
+| pipeline_fixture_staged | pipeline | 0.104 | 0.67 | 1.00 | 0.1493 | 56.7 | 10.4 | `experiments/fixture_promotion/pipeline_fixture_promoter.py` |
 
 Metric notes:
 - `Avg Regret`: utility gap from an external fixture-subset oracle; lower is better
@@ -88,9 +88,9 @@ Requests evaluated: `8` dataset/scenario pairs
 
 | Variant | Paradigm | Avg Regret | Oracle Match | Runtime ms/request | Readability | Extensibility | Source |
 |---|---|---|---|---|---|---|---|
-| functional_weighted | functional | 0.000 | 1.00 | 0.0140 | 54.2 | 24.2 | `experiments/planner_selection/functional_selector.py` |
-| oop_lexicographic | oop | 0.219 | 0.25 | 0.0212 | 50.0 | 42.8 | `experiments/planner_selection/oop_selector.py` |
-| pipeline_staged | pipeline | 0.136 | 0.38 | 0.0080 | 59.1 | 20.6 | `experiments/planner_selection/pipeline_selector.py` |
+| functional_weighted | functional | 0.000 | 1.00 | 0.0287 | 57.4 | 25.4 | `experiments/planner_selection/functional_selector.py` |
+| oop_lexicographic | oop | 0.219 | 0.25 | 0.0400 | 50.0 | 42.8 | `experiments/planner_selection/oop_selector.py` |
+| pipeline_staged | pipeline | 0.136 | 0.38 | 0.0203 | 59.1 | 20.6 | `experiments/planner_selection/pipeline_selector.py` |
 
 Metric notes:
 - `Avg Regret`: utility gap from an external oracle scorer; lower is better
@@ -153,9 +153,9 @@ Requests evaluated: `24` dataset/scenario/time-budget triples
 
 | Variant | Paradigm | Avg Regret | Oracle Match | Budget Hit | Runtime ms/request | Readability | Extensibility | Source |
 |---|---|---|---|---|---|---|---|---|
-| functional_budgeted | functional | 0.000 | 1.00 | 1.00 | 0.0104 | 48.8 | 19.8 | `experiments/time_budget_selection/functional_budget_selector.py` |
-| oop_budget_lexicographic | oop | 0.099 | 0.62 | 1.00 | 0.0170 | 41.5 | 56.0 | `experiments/time_budget_selection/oop_budget_selector.py` |
-| pipeline_budget_staged | pipeline | 2.099 | 0.42 | 1.00 | 0.0069 | 57.8 | 21.4 | `experiments/time_budget_selection/pipeline_budget_selector.py` |
+| functional_budgeted | functional | 0.000 | 1.00 | 1.00 | 0.0287 | 50.9 | 21.0 | `experiments/time_budget_selection/functional_budget_selector.py` |
+| oop_budget_lexicographic | oop | 0.099 | 0.62 | 1.00 | 0.0695 | 41.5 | 56.0 | `experiments/time_budget_selection/oop_budget_selector.py` |
+| pipeline_budget_staged | pipeline | 2.099 | 0.42 | 1.00 | 0.0888 | 57.8 | 21.4 | `experiments/time_budget_selection/pipeline_budget_selector.py` |
 
 Metric notes:
 - `Avg Regret`: utility gap from the best feasible row under the requested time budget; lower is better

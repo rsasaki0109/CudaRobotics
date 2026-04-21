@@ -5,7 +5,7 @@ import inspect
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Sequence
+from typing import Callable, Sequence
 
 from core.planner_selector_interface import AggregateBenchmarkRow
 
@@ -92,6 +92,26 @@ def normalize(values: Sequence[float]) -> list[float]:
     if high - low < 1.0e-9:
         return [0.0 for _ in values]
     return [(value - low) / (high - low) for value in values]
+
+
+def normalized_row_values(
+    rows: Sequence[AggregateBenchmarkRow],
+    value: Callable[[AggregateBenchmarkRow], float],
+) -> list[float]:
+    return normalize([value(row) for row in rows])
+
+
+def best_scored_row(
+    rows: Sequence[AggregateBenchmarkRow],
+    scores: Sequence[float],
+) -> tuple[AggregateBenchmarkRow, float]:
+    if not rows:
+        raise ValueError("Cannot select from an empty row set")
+    if len(rows) != len(scores):
+        raise ValueError("Rows and scores must have the same length")
+
+    best_index = max(range(len(rows)), key=lambda index: scores[index])
+    return rows[best_index], scores[best_index]
 
 
 def rows_for_dataset_scenario(
