@@ -2,7 +2,7 @@ from dataclasses import dataclass
 from typing import Sequence
 
 from core.planner_selector_interface import AggregateBenchmarkRow, PlannerSelector, Recommendation, SelectionRequest
-from experiments.support import normalize, rows_for_dataset_scenario
+from experiments.support import best_scored_row, normalized_row_values, rows_for_dataset_scenario
 
 
 @dataclass(frozen=True)
@@ -29,26 +29,23 @@ class FunctionalSelector(PlannerSelector):
         if not candidates:
             raise ValueError(f"No candidates for {request.dataset}/{request.scenario}")
 
-        final_norm = normalize([row.final_distance for row in candidates])
-        cost_norm = normalize([row.cumulative_cost for row in candidates])
-        time_norm = normalize([row.avg_control_ms for row in candidates])
-        step_norm = normalize([row.steps for row in candidates])
+        final_norm = normalized_row_values(candidates, lambda row: row.final_distance)
+        cost_norm = normalized_row_values(candidates, lambda row: row.cumulative_cost)
+        time_norm = normalized_row_values(candidates, lambda row: row.avg_control_ms)
+        step_norm = normalized_row_values(candidates, lambda row: row.steps)
 
-        best_row = None
-        best_score = float("-inf")
-        for index, row in enumerate(candidates):
-            score = (
+        scores = [
+            (
                 self.weights.success * row.success
                 - self.weights.final_distance * final_norm[index]
                 - self.weights.cumulative_cost * cost_norm[index]
                 - self.weights.avg_control_ms * time_norm[index]
                 - self.weights.steps * step_norm[index]
             )
-            if best_row is None or score > best_score:
-                best_row = row
-                best_score = score
+            for index, row in enumerate(candidates)
+        ]
+        best_row, best_score = best_scored_row(candidates, scores)
 
-        assert best_row is not None
         rationale = (
             "weighted utility over success/final_distance/cumulative_cost/"
             "avg_control_ms/steps"
