@@ -106,8 +106,9 @@ python3 scripts/run_repro_suite.py --dry-run --suite smoke
 python3 scripts/run_repro_suite.py --build --suite diff-mppi
 ```
 
-The runner records the exact benchmark, summary, and optional plotting commands in `build/repro_suite/manifest.json`.
-See `docs/reproducibility.md` for the suite catalog and output layout.
+The runner records the exact benchmark, summary, and optional plotting commands in `build/repro_suite/manifest.json`
+and writes a human-readable `build/repro_suite/report.md`. See `docs/reproducibility.md` for the suite catalog
+and output layout.
 
 Concise highlights:
 

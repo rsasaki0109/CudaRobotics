@@ -167,6 +167,7 @@ def parse_args() -> argparse.Namespace:
         help="Do not run summarize_diff_mppi.py after benchmarks.",
     )
     parser.add_argument("--plots", action="store_true", help="Also run plot_diff_mppi.py for each benchmark CSV.")
+    parser.add_argument("--skip-report", action="store_true", help="Do not render report.md from the final manifest.")
     parser.add_argument(
         "--continue-on-error",
         action="store_true",
@@ -381,6 +382,27 @@ def write_manifest(path: Path, manifest: dict[str, Any]) -> None:
     path.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n")
 
 
+def render_report(manifest_path: Path, report_path: Path) -> int:
+    command = [
+        sys.executable,
+        str(ROOT / "scripts" / "render_repro_report.py"),
+        "--manifest",
+        str(manifest_path),
+        "--output",
+        str(report_path),
+    ]
+    result = subprocess.run(
+        command,
+        cwd=ROOT,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+    )
+    if result.returncode != 0 and result.stdout:
+        print(result.stdout, end="")
+    return result.returncode
+
+
 def main() -> int:
     args = parse_args()
     if args.list:
@@ -403,11 +425,14 @@ def main() -> int:
         "build_enabled": bool(args.build),
         "plots_enabled": bool(args.plots),
         "summary_enabled": not bool(args.skip_summary),
+        "report_enabled": not bool(args.skip_report),
         "output_dir": rel(output_dir),
+        "report": rel(output_dir / "report.md"),
         "tasks": tasks,
     }
 
     manifest_path = output_dir / "manifest.json"
+    report_path = output_dir / "report.md"
     print(f"Repro suite: {args.suite}")
     print(f"Output: {rel(output_dir)}")
     if args.dry_run:
@@ -429,6 +454,10 @@ def main() -> int:
     manifest["finished_at"] = datetime.now(timezone.utc).isoformat()
     manifest["status"] = "passed" if all_ok else "failed"
     write_manifest(manifest_path, manifest)
+    if not args.skip_report:
+        report_ok = render_report(manifest_path, report_path) == 0
+        all_ok = all_ok and report_ok
+        print(f"Report: {rel(report_path)}")
     print(f"\nManifest: {rel(manifest_path)}")
     return 0 if all_ok else 1
 
