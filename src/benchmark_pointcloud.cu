@@ -11,6 +11,7 @@
 #include "cuda_pointcloud.cuh"
 #include "ply_loader.h"
 #include <iostream>
+#include <fstream>
 #include <vector>
 #include <random>
 #include <chrono>
@@ -19,6 +20,7 @@
 #include <algorithm>
 #include <cfloat>
 #include <unordered_map>
+#include <string>
 
 using namespace cudabot;
 
@@ -273,6 +275,223 @@ static void cpu_ransac_plane(const std::vector<PointXYZ>& in, float* coeffs,
     coeffs[0]=best[0]; coeffs[1]=best[1]; coeffs[2]=best[2]; coeffs[3]=best[3];
 }
 
+// =====================================================================
+// CLI helpers and artifact writers
+// =====================================================================
+
+struct InputSpec {
+    std::string flag;
+    std::string path;
+};
+
+struct FileCloud {
+    std::string path;
+    std::vector<PointXYZ> points;
+};
+
+struct CliOptions {
+    bool quick = false;
+    bool input_only = false;
+    std::string op = "all";
+    std::string out_path;
+    float leaf_size = 0.1f;
+    int k = 20;
+    float std_mul = 1.0f;
+    float plane_threshold = 0.05f;
+    int ransac_iters = -1;
+    int seed = 12345;
+    std::vector<int> sizes = {2000, 5000, 10000, 20000};
+};
+
+static bool valid_op(const std::string& op) {
+    return op == "all" || op == "voxel" || op == "statistical" ||
+           op == "normals" || op == "ransac" || op == "gicp";
+}
+
+static bool run_op(const CliOptions& opts, const std::string& op) {
+    return opts.op == "all" || opts.op == op;
+}
+
+static std::vector<int> parse_sizes(const std::string& text) {
+    std::vector<int> values;
+    size_t start = 0;
+    while (start < text.size()) {
+        size_t comma = text.find(',', start);
+        std::string token = text.substr(start, comma == std::string::npos ? std::string::npos : comma - start);
+        if (!token.empty()) values.push_back(std::max(1, std::atoi(token.c_str())));
+        if (comma == std::string::npos) break;
+        start = comma + 1;
+    }
+    return values;
+}
+
+static bool has_suffix(const std::string& text, const std::string& suffix) {
+    return text.size() >= suffix.size() &&
+           text.compare(text.size() - suffix.size(), suffix.size(), suffix) == 0;
+}
+
+static void print_usage(const char* argv0) {
+    printf("Usage: %s [options]\n", argv0);
+    printf("\nInputs:\n");
+    printf("  --ply PATH                 Load ASCII/binary PLY point cloud\n");
+    printf("  --xyz PATH                 Load text XYZ point cloud\n");
+    printf("  --kitti PATH               Load KITTI .bin point cloud\n");
+    printf("\nBenchmark/demo options:\n");
+    printf("  --quick                    Use smaller synthetic benchmark sizes\n");
+    printf("  --input-only               Skip synthetic benchmark and process only input files\n");
+    printf("  --sizes 1000,5000          Synthetic benchmark sizes\n");
+    printf("  --op all|voxel|statistical|normals|ransac|gicp\n");
+    printf("  --out PATH                 Write result for one input file and one --op\n");
+    printf("\nAlgorithm parameters:\n");
+    printf("  --leaf-size FLOAT          Voxel-grid leaf size (default: 0.1)\n");
+    printf("  --k INT                    k-NN count for statistical/normals (default: 20)\n");
+    printf("  --std-mul FLOAT            Statistical filter stddev multiplier (default: 1.0)\n");
+    printf("  --plane-threshold FLOAT    RANSAC plane distance threshold (default: 0.05)\n");
+    printf("  --ransac-iters INT         RANSAC iterations (default: size-dependent)\n");
+    printf("  --seed INT                 Synthetic cloud RNG seed (default: 12345)\n");
+}
+
+static bool parse_cli(int argc, char** argv, CliOptions& opts, std::vector<InputSpec>& inputs) {
+    for (int i = 1; i < argc; i++) {
+        std::string arg = argv[i];
+        if (arg == "--help" || arg == "-h") {
+            print_usage(argv[0]);
+            std::exit(0);
+        } else if (arg == "--quick") {
+            opts.quick = true;
+            opts.sizes = {1000, 2000, 5000};
+        } else if (arg == "--input-only") {
+            opts.input_only = true;
+        } else if ((arg == "--ply" || arg == "--kitti" || arg == "--xyz") && i + 1 < argc) {
+            inputs.push_back({arg, argv[++i]});
+        } else if (arg == "--sizes" && i + 1 < argc) {
+            opts.sizes = parse_sizes(argv[++i]);
+        } else if (arg == "--op" && i + 1 < argc) {
+            opts.op = argv[++i];
+        } else if (arg == "--out" && i + 1 < argc) {
+            opts.out_path = argv[++i];
+        } else if (arg == "--leaf-size" && i + 1 < argc) {
+            opts.leaf_size = std::atof(argv[++i]);
+        } else if (arg == "--k" && i + 1 < argc) {
+            opts.k = std::max(1, std::atoi(argv[++i]));
+        } else if (arg == "--std-mul" && i + 1 < argc) {
+            opts.std_mul = std::atof(argv[++i]);
+        } else if (arg == "--plane-threshold" && i + 1 < argc) {
+            opts.plane_threshold = std::atof(argv[++i]);
+        } else if (arg == "--ransac-iters" && i + 1 < argc) {
+            opts.ransac_iters = std::max(1, std::atoi(argv[++i]));
+        } else if (arg == "--seed" && i + 1 < argc) {
+            opts.seed = std::atoi(argv[++i]);
+        } else {
+            fprintf(stderr, "Unknown or incomplete argument: %s\n", arg.c_str());
+            return false;
+        }
+    }
+
+    if (!valid_op(opts.op)) {
+        fprintf(stderr, "Unsupported --op '%s'. Use --help for choices.\n", opts.op.c_str());
+        return false;
+    }
+    if (!opts.out_path.empty() && (opts.op == "all" || opts.op == "gicp")) {
+        fprintf(stderr, "--out requires one output-producing --op: voxel, statistical, normals, or ransac.\n");
+        return false;
+    }
+    if (!opts.out_path.empty() && inputs.size() != 1) {
+        fprintf(stderr, "--out requires exactly one --ply/--xyz/--kitti input.\n");
+        return false;
+    }
+    if (opts.input_only && inputs.empty()) {
+        fprintf(stderr, "--input-only requires at least one input file.\n");
+        return false;
+    }
+    return true;
+}
+
+static bool load_input_cloud(const InputSpec& spec, std::vector<PointXYZ>& points) {
+    if (spec.flag == "--ply") return load_ply(spec.path, points);
+    if (spec.flag == "--kitti") return load_kitti_bin(spec.path, points);
+    if (spec.flag == "--xyz") return load_xyz(spec.path, points);
+    return false;
+}
+
+static bool save_xyz_points(const std::string& path, const std::vector<PointXYZ>& points) {
+    std::ofstream out(path);
+    if (!out.is_open()) return false;
+    out.setf(std::ios::fixed);
+    out.precision(6);
+    for (const auto& p : points) out << p.x << " " << p.y << " " << p.z << "\n";
+    return true;
+}
+
+static bool save_ply_points(const std::string& path, const std::vector<PointXYZ>& points) {
+    std::ofstream out(path);
+    if (!out.is_open()) return false;
+    out << "ply\nformat ascii 1.0\n";
+    out << "element vertex " << points.size() << "\n";
+    out << "property float x\nproperty float y\nproperty float z\n";
+    out << "end_header\n";
+    out.setf(std::ios::fixed);
+    out.precision(6);
+    for (const auto& p : points) out << p.x << " " << p.y << " " << p.z << "\n";
+    return true;
+}
+
+static bool save_ply_normals(const std::string& path, const std::vector<PointXYZ>& points,
+                             const std::vector<float>& nx, const std::vector<float>& ny,
+                             const std::vector<float>& nz) {
+    std::ofstream out(path);
+    if (!out.is_open()) return false;
+    out << "ply\nformat ascii 1.0\n";
+    out << "element vertex " << points.size() << "\n";
+    out << "property float x\nproperty float y\nproperty float z\n";
+    out << "property float nx\nproperty float ny\nproperty float nz\n";
+    out << "end_header\n";
+    out.setf(std::ios::fixed);
+    out.precision(6);
+    for (size_t i = 0; i < points.size(); i++) {
+        out << points[i].x << " " << points[i].y << " " << points[i].z << " "
+            << nx[i] << " " << ny[i] << " " << nz[i] << "\n";
+    }
+    return true;
+}
+
+static bool save_xyz_normals(const std::string& path, const std::vector<PointXYZ>& points,
+                             const std::vector<float>& nx, const std::vector<float>& ny,
+                             const std::vector<float>& nz) {
+    std::ofstream out(path);
+    if (!out.is_open()) return false;
+    out.setf(std::ios::fixed);
+    out.precision(6);
+    for (size_t i = 0; i < points.size(); i++) {
+        out << points[i].x << " " << points[i].y << " " << points[i].z << " "
+            << nx[i] << " " << ny[i] << " " << nz[i] << "\n";
+    }
+    return true;
+}
+
+static bool save_points_auto(const std::string& path, const std::vector<PointXYZ>& points) {
+    return has_suffix(path, ".ply") ? save_ply_points(path, points) : save_xyz_points(path, points);
+}
+
+static bool save_normals_auto(const std::string& path, const std::vector<PointXYZ>& points,
+                              const std::vector<float>& nx, const std::vector<float>& ny,
+                              const std::vector<float>& nz) {
+    return has_suffix(path, ".ply") ? save_ply_normals(path, points, nx, ny, nz)
+                                    : save_xyz_normals(path, points, nx, ny, nz);
+}
+
+static std::vector<PointXYZ> plane_inliers(const std::vector<PointXYZ>& cloud,
+                                           const float plane[4],
+                                           float threshold) {
+    std::vector<PointXYZ> inliers;
+    inliers.reserve(cloud.size());
+    for (const auto& p : cloud) {
+        float dist = fabsf(plane[0] * p.x + plane[1] * p.y + plane[2] * p.z + plane[3]);
+        if (dist <= threshold) inliers.push_back(p);
+    }
+    return inliers;
+}
+
 // CPU ICP (point-to-point, simplified)
 static void cpu_icp(const std::vector<PointXYZ>& src, const std::vector<PointXYZ>& tgt,
                     float* R_out, float* t_out, int max_iter) {
@@ -350,38 +569,42 @@ int main(int argc, char** argv) {
     printf("  CudaPointCloud Benchmark: CPU vs GPU\n");
     printf("=============================================================\n\n");
 
-    // Parse optional file inputs: --ply path.ply or --kitti path.bin
-    std::vector<std::pair<std::string, std::vector<PointXYZ>>> file_clouds;
-    for (int i = 1; i < argc; i++) {
-        std::string arg = argv[i];
-        if ((arg == "--ply" || arg == "--kitti" || arg == "--xyz") && i + 1 < argc) {
-            std::string path = argv[++i];
-            std::vector<PointXYZ> pts;
-            bool ok = false;
-            if (arg == "--ply") ok = load_ply(path, pts);
-            else if (arg == "--kitti") ok = load_kitti_bin(path, pts);
-            else if (arg == "--xyz") ok = load_xyz(path, pts);
-            if (ok && !pts.empty()) file_clouds.push_back({path, std::move(pts)});
+    CliOptions opts;
+    std::vector<InputSpec> input_specs;
+    if (!parse_cli(argc, argv, opts, input_specs)) {
+        print_usage(argv[0]);
+        return 1;
+    }
+
+    std::vector<FileCloud> file_clouds;
+    for (const auto& spec : input_specs) {
+        std::vector<PointXYZ> pts;
+        if (load_input_cloud(spec, pts) && !pts.empty()) {
+            file_clouds.push_back({spec.path, std::move(pts)});
+        } else {
+            fprintf(stderr, "Failed to load input cloud: %s\n", spec.path.c_str());
+            return 1;
         }
     }
 
-    std::vector<int> sizes = {2000, 5000, 10000, 20000};
-    std::mt19937 rng(12345);
+    std::mt19937 rng(opts.seed);
 
     // Print header
-    printf("%-12s | %-18s | %12s | %12s | %8s\n",
-           "Points", "Operation", "CPU (ms)", "GPU (ms)", "Speedup");
-    printf("-------------|--------------------|--------------|--------------|---------\n");
+    if (!opts.input_only) {
+        printf("%-12s | %-18s | %12s | %12s | %8s\n",
+               "Points", "Operation", "CPU (ms)", "GPU (ms)", "Speedup");
+        printf("-------------|--------------------|--------------|--------------|---------\n");
+    }
 
-    for (int N : sizes) {
+    for (int N : opts.input_only ? std::vector<int>() : opts.sizes) {
         std::vector<PointXYZ> cloud;
         generate_room_pointcloud(cloud, N, 0.01f, 0.05f, rng);
 
         // Reduce k for large point clouds to keep runtime reasonable
-        int k_normal = 20;
-        int k_stat = 20;
-        int ransac_iters = 500;
-        int gicp_iters = 10;
+        int k_normal = opts.k;
+        int k_stat = opts.k;
+        int ransac_iters = opts.ransac_iters > 0 ? opts.ransac_iters : (opts.quick ? 200 : 500);
+        int gicp_iters = opts.quick ? 3 : 10;
 
         // Upload to GPU
         CudaPointCloud gpu_cloud;
@@ -391,17 +614,17 @@ int main(int argc, char** argv) {
         double cpu_ms, gpu_ms;
 
         // --- Voxel Grid Filter ---
-        {
+        if (run_op(opts, "voxel")) {
             std::vector<PointXYZ> cpu_out;
             timer.start();
-            cpu_voxel_grid_filter(cloud, cpu_out, 0.1f);
+            cpu_voxel_grid_filter(cloud, cpu_out, opts.leaf_size);
             cpu_ms = timer.elapsed_ms();
 
             // Warm up
-            auto tmp = voxel_grid_filter(gpu_cloud, 0.1f);
+            auto tmp = voxel_grid_filter(gpu_cloud, opts.leaf_size);
 
             timer.start();
-            auto gpu_out = voxel_grid_filter(gpu_cloud, 0.1f);
+            auto gpu_out = voxel_grid_filter(gpu_cloud, opts.leaf_size);
             gpu_ms = timer.elapsed_ms();
 
             printf("%-12d | %-18s | %12.2f | %12.2f | %7.1fx\n",
@@ -409,16 +632,16 @@ int main(int argc, char** argv) {
         }
 
         // --- Statistical Outlier Removal ---
-        if (N <= 5000) {
+        if (run_op(opts, "statistical") && N <= 5000) {
             std::vector<PointXYZ> cpu_out;
             timer.start();
-            cpu_statistical_outlier_removal(cloud, cpu_out, k_stat, 1.0f);
+            cpu_statistical_outlier_removal(cloud, cpu_out, k_stat, opts.std_mul);
             cpu_ms = timer.elapsed_ms();
 
-            auto tmp = statistical_outlier_removal(gpu_cloud, k_stat, 1.0f);
+            auto tmp = statistical_outlier_removal(gpu_cloud, k_stat, opts.std_mul);
 
             timer.start();
-            auto gpu_out = statistical_outlier_removal(gpu_cloud, k_stat, 1.0f);
+            auto gpu_out = statistical_outlier_removal(gpu_cloud, k_stat, opts.std_mul);
             gpu_ms = timer.elapsed_ms();
 
             printf("%-12d | %-18s | %12.2f | %12.2f | %7.1fx\n",
@@ -426,7 +649,7 @@ int main(int argc, char** argv) {
         }
 
         // --- Normal Estimation ---
-        if (N <= 5000) {
+        if (run_op(opts, "normals") && N <= 5000) {
             std::vector<float> cpu_nx, cpu_ny, cpu_nz;
             timer.start();
             cpu_estimate_normals(cloud, cpu_nx, cpu_ny, cpu_nz, k_normal);
@@ -450,16 +673,16 @@ int main(int argc, char** argv) {
         }
 
         // --- RANSAC Plane ---
-        {
+        if (run_op(opts, "ransac")) {
             float cpu_coeffs[4], gpu_coeffs[4];
             timer.start();
-            cpu_ransac_plane(cloud, cpu_coeffs, 0.05f, ransac_iters);
+            cpu_ransac_plane(cloud, cpu_coeffs, opts.plane_threshold, ransac_iters);
             cpu_ms = timer.elapsed_ms();
 
-            ransac_plane(gpu_cloud, gpu_coeffs, 0.05f, ransac_iters);
+            ransac_plane(gpu_cloud, gpu_coeffs, opts.plane_threshold, ransac_iters);
 
             timer.start();
-            ransac_plane(gpu_cloud, gpu_coeffs, 0.05f, ransac_iters);
+            ransac_plane(gpu_cloud, gpu_coeffs, opts.plane_threshold, ransac_iters);
             gpu_ms = timer.elapsed_ms();
 
             printf("%-12d | %-18s | %12.2f | %12.2f | %7.1fx\n",
@@ -467,7 +690,7 @@ int main(int argc, char** argv) {
         }
 
         // --- GICP ---
-        if (N <= 10000) {
+        if (run_op(opts, "gicp") && N <= 10000) {
             std::vector<PointXYZ> src_cloud;
             transform_pointcloud(cloud, src_cloud, 30.0f, 1.0f, 0.5f, 0.2f);
 
@@ -510,8 +733,8 @@ int main(int argc, char** argv) {
     // External file benchmarks (PLY, KITTI, XYZ)
     // =====================================================================
     for (size_t fi = 0; fi < file_clouds.size(); fi++) {
-        const std::string& fpath = file_clouds[fi].first;
-        const std::vector<PointXYZ>& cloud = file_clouds[fi].second;
+        const std::string& fpath = file_clouds[fi].path;
+        const std::vector<PointXYZ>& cloud = file_clouds[fi].points;
         int N = (int)cloud.size();
         printf("\n=== External: %s (%d points) ===\n", fpath.c_str(), N);
         printf("%-12s | %-18s | %12s | %12s | %8s\n",
@@ -524,21 +747,51 @@ int main(int argc, char** argv) {
         double cpu_ms, gpu_ms;
 
         // Voxel Grid
-        {
+        if (run_op(opts, "voxel")) {
             std::vector<PointXYZ> cpu_out;
             timer.start();
-            cpu_voxel_grid_filter(cloud, cpu_out, 0.1f);
+            cpu_voxel_grid_filter(cloud, cpu_out, opts.leaf_size);
             cpu_ms = timer.elapsed_ms();
-            auto tmp = voxel_grid_filter(gpu_cloud, 0.1f);
+            auto tmp = voxel_grid_filter(gpu_cloud, opts.leaf_size);
             timer.start();
-            auto gpu_out = voxel_grid_filter(gpu_cloud, 0.1f);
+            auto gpu_out = voxel_grid_filter(gpu_cloud, opts.leaf_size);
             gpu_ms = timer.elapsed_ms();
             printf("%-12d | %-18s | %12.2f | %12.2f | %7.1fx\n", N, "VoxelGrid", cpu_ms, gpu_ms, cpu_ms / gpu_ms);
+            if (!opts.out_path.empty() && opts.op == "voxel") {
+                std::vector<PointXYZ> out_points;
+                gpu_out.download(out_points);
+                bool ok = save_points_auto(opts.out_path, out_points);
+                printf("             |   wrote %d points to %s (%s)\n",
+                       (int)out_points.size(), opts.out_path.c_str(), ok ? "ok" : "failed");
+                if (!ok) return 1;
+            }
+        }
+
+        // Statistical Outlier Removal
+        if (run_op(opts, "statistical") && N > 1) {
+            int k = std::min(opts.k, N - 1);
+            std::vector<PointXYZ> cpu_out;
+            timer.start();
+            cpu_statistical_outlier_removal(cloud, cpu_out, k, opts.std_mul);
+            cpu_ms = timer.elapsed_ms();
+            auto tmp = statistical_outlier_removal(gpu_cloud, k, opts.std_mul);
+            timer.start();
+            auto gpu_out = statistical_outlier_removal(gpu_cloud, k, opts.std_mul);
+            gpu_ms = timer.elapsed_ms();
+            printf("%-12d | %-18s | %12.2f | %12.2f | %7.1fx\n", N, "StatisticalFilter", cpu_ms, gpu_ms, cpu_ms / gpu_ms);
+            if (!opts.out_path.empty() && opts.op == "statistical") {
+                std::vector<PointXYZ> out_points;
+                gpu_out.download(out_points);
+                bool ok = save_points_auto(opts.out_path, out_points);
+                printf("             |   wrote %d points to %s (%s)\n",
+                       (int)out_points.size(), opts.out_path.c_str(), ok ? "ok" : "failed");
+                if (!ok) return 1;
+            }
         }
 
         // Normal Estimation (limit to 20K for CPU brute-force k-NN)
-        if (N <= 20000) {
-            int k = 20;
+        if (run_op(opts, "normals") && N > 1 && N <= 20000) {
+            int k = std::min(opts.k, N - 1);
             std::vector<float> cpu_nx, cpu_ny, cpu_nz;
             timer.start();
             cpu_estimate_normals(cloud, cpu_nx, cpu_ny, cpu_nz, k);
@@ -551,23 +804,46 @@ int main(int argc, char** argv) {
             timer.start();
             estimate_normals(gpu_cloud, d_nx, d_ny, d_nz, k);
             gpu_ms = timer.elapsed_ms();
+            std::vector<float> h_nx(N), h_ny(N), h_nz(N);
+            CUDA_CHECK(cudaMemcpy(h_nx.data(), d_nx, N * sizeof(float), cudaMemcpyDeviceToHost));
+            CUDA_CHECK(cudaMemcpy(h_ny.data(), d_ny, N * sizeof(float), cudaMemcpyDeviceToHost));
+            CUDA_CHECK(cudaMemcpy(h_nz.data(), d_nz, N * sizeof(float), cudaMemcpyDeviceToHost));
             CUDA_CHECK(cudaFree(d_nx)); CUDA_CHECK(cudaFree(d_ny)); CUDA_CHECK(cudaFree(d_nz));
             printf("%-12d | %-18s | %12.2f | %12.2f | %7.1fx\n", N, "NormalEstimation", cpu_ms, gpu_ms, cpu_ms / gpu_ms);
+            if (!opts.out_path.empty() && opts.op == "normals") {
+                bool ok = save_normals_auto(opts.out_path, cloud, h_nx, h_ny, h_nz);
+                printf("             |   wrote normals to %s (%s)\n",
+                       opts.out_path.c_str(), ok ? "ok" : "failed");
+                if (!ok) return 1;
+            }
         }
 
         // RANSAC Plane
-        {
-            int iters = std::min(2000, std::max(500, N / 10));
+        if (run_op(opts, "ransac")) {
+            int iters = opts.ransac_iters > 0 ? opts.ransac_iters : std::min(2000, std::max(500, N / 10));
             float cpu_plane[4];
             timer.start();
-            cpu_ransac_plane(cloud, cpu_plane, 0.05f, iters);
+            cpu_ransac_plane(cloud, cpu_plane, opts.plane_threshold, iters);
             cpu_ms = timer.elapsed_ms();
             float plane[4];
-            ransac_plane(gpu_cloud, plane, 0.05f, iters);  // warmup
+            ransac_plane(gpu_cloud, plane, opts.plane_threshold, iters);  // warmup
             timer.start();
-            ransac_plane(gpu_cloud, plane, 0.05f, iters);
+            ransac_plane(gpu_cloud, plane, opts.plane_threshold, iters);
             gpu_ms = timer.elapsed_ms();
             printf("%-12d | %-18s | %12.2f | %12.2f | %7.1fx\n", N, "RANSAC Plane", cpu_ms, gpu_ms, cpu_ms / gpu_ms);
+            printf("             |   plane = [%7.4f %7.4f %7.4f %7.4f]\n",
+                   plane[0], plane[1], plane[2], plane[3]);
+            if (!opts.out_path.empty() && opts.op == "ransac") {
+                auto inliers = plane_inliers(cloud, plane, opts.plane_threshold);
+                bool ok = save_points_auto(opts.out_path, inliers);
+                printf("             |   wrote %d inliers to %s (%s)\n",
+                       (int)inliers.size(), opts.out_path.c_str(), ok ? "ok" : "failed");
+                if (!ok) return 1;
+            }
+        }
+
+        if (opts.op == "gicp") {
+            printf("             |   external GICP demo is not available; synthetic benchmark creates its own target cloud.\n");
         }
 
         printf("-------------|--------------------|--------------|--------------|---------\n");
