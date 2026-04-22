@@ -241,6 +241,17 @@ This follow-up adds a Panda-like 7-DOF serial-arm benchmark with 14-dimensional 
 
 `bin/benchmark_pointcloud` compares CPU vs GPU implementations of voxel-grid filtering, statistical outlier removal, normal estimation, RANSAC plane fitting, and GICP registration. Both CPU and GPU use the same brute-force algorithms (no KD-trees). Supports `--ply`, `--kitti`, `--xyz` flags for external point cloud files.
 
+Use it as a small point-cloud CLI demo:
+
+```bash
+./bin/benchmark_pointcloud --quick
+./bin/benchmark_pointcloud --xyz examples/pointcloud/sample_room.xyz --input-only --op voxel --leaf-size 0.8 --out build/sample_room_voxel.ply
+./bin/benchmark_pointcloud --xyz examples/pointcloud/sample_room.xyz --input-only --op ransac --plane-threshold 0.05 --out build/sample_room_plane.ply
+./bin/benchmark_pointcloud --xyz examples/pointcloud/sample_room.xyz --input-only --op normals --k 12 --out build/sample_room_normals.ply
+```
+
+`--op` can select `voxel`, `statistical`, `normals`, `ransac`, `gicp`, or `all`. `--out` writes the selected external-input result as `.ply` or `.xyz`; the `ransac` output contains plane inliers, and normals `.xyz` output uses `x y z nx ny nz` rows.
+
 Multi-scale results (synthetic room, both CPU and GPU use same brute-force algorithms):
 
 | Points | Operation | CPU | GPU | Speedup |
