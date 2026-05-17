@@ -1977,6 +1977,8 @@ int main(int argc, char** argv) {
     int override_grad_update_horizon = -1;
     float override_alpha = -1.0f;
     float override_mlp_lr = -1.0f;
+    float override_dyn_speed_scale = -1.0f;
+    float override_dyn_radius_scale = -1.0f;
     for (int i = 1; i < argc; i++) {
         string arg = argv[i];
         if (arg == "--quick") quick = true;
@@ -1997,6 +1999,8 @@ int main(int argc, char** argv) {
         else if (arg == "--override-grad-update-horizon" && i + 1 < argc) override_grad_update_horizon = atoi(argv[++i]);
         else if (arg == "--override-alpha" && i + 1 < argc) override_alpha = atof(argv[++i]);
         else if (arg == "--override-mlp-lr" && i + 1 < argc) override_mlp_lr = atof(argv[++i]);
+        else if (arg == "--override-dyn-speed-scale" && i + 1 < argc) override_dyn_speed_scale = atof(argv[++i]);
+        else if (arg == "--override-dyn-radius-scale" && i + 1 < argc) override_dyn_radius_scale = atof(argv[++i]);
     }
 
     ensure_build_dir();
@@ -2361,6 +2365,20 @@ int main(int argc, char** argv) {
             v.alpha = override_alpha;
         if (override_mlp_lr >= 0.0f && v.use_learned_sampling)
             v.mlp_lr = override_mlp_lr;
+    }
+
+    if (override_dyn_speed_scale >= 0.0f || override_dyn_radius_scale >= 0.0f) {
+        for (auto& sc : scenarios) {
+            for (int i = 0; i < sc.n_dyn_obs; i++) {
+                if (override_dyn_speed_scale >= 0.0f) {
+                    sc.dynamic_obstacles[i].vx *= override_dyn_speed_scale;
+                    sc.dynamic_obstacles[i].vy *= override_dyn_speed_scale;
+                }
+                if (override_dyn_radius_scale >= 0.0f) {
+                    sc.dynamic_obstacles[i].r *= override_dyn_radius_scale;
+                }
+            }
+        }
     }
 
     if (k_values.empty()) k_values = quick ? vector<int>{1024, 4096} : vector<int>{1024, 2048, 4096};
