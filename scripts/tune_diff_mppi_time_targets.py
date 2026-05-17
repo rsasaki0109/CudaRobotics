@@ -2,6 +2,7 @@
 
 import argparse
 import csv
+import hashlib
 import subprocess
 import tempfile
 from collections import defaultdict
@@ -37,6 +38,34 @@ PRESETS = {
         "max_evals": 8,
         "csv_out": "build/benchmark_diff_mppi_exact_time.csv",
         "summary_title": "Diff-MPPI Exact-Time Tuning Summary",
+    },
+    "dynamic_nav_early_horizon": {
+        "bin": "./bin/benchmark_diff_mppi",
+        "scenarios": "dynamic_crossing,dynamic_slalom",
+        "planners": "mppi,diff_mppi_3,diff_mppi_3_early4,diff_mppi_3_early8",
+        "time_targets": "0.5,1.0,2.0",
+        "search_seed_count": 4,
+        "final_seed_count": 4,
+        "k_min": 128,
+        "k_max": 16384,
+        "tolerance_ms": 0.03,
+        "max_evals": 8,
+        "csv_out": "build/benchmark_diff_mppi_early_horizon_exact_time.csv",
+        "summary_title": "Early-horizon Diff-MPPI Exact-Time Summary",
+    },
+    "dynamic_nav_grad_horizon": {
+        "bin": "./bin/benchmark_diff_mppi",
+        "scenarios": "dynamic_crossing,dynamic_slalom",
+        "planners": "mppi,diff_mppi_3_early1,diff_mppi_3_early2,diff_mppi_3_early4,diff_mppi_3_early8,diff_mppi_3_early16,diff_mppi_3",
+        "time_targets": "0.5,1.0",
+        "search_seed_count": 4,
+        "final_seed_count": 4,
+        "k_min": 128,
+        "k_max": 16384,
+        "tolerance_ms": 0.03,
+        "max_evals": 8,
+        "csv_out": "build/benchmark_diff_mppi_grad_horizon_exact_time.csv",
+        "summary_title": "Diff-MPPI Gradient-Horizon Exact-Time Summary",
     },
     "dynamic_nav_architecture": {
         "bin": "./bin/benchmark_diff_mppi",
@@ -93,6 +122,20 @@ PRESETS = {
         "max_evals": 8,
         "csv_out": "build/benchmark_diff_mppi_exact_time_cov.csv",
         "summary_title": "Diff-MPPI Exact-Time Summary (covariance baseline)",
+    },
+    "dynamic_nav_strong_feedback": {
+        "bin": "./bin/benchmark_diff_mppi",
+        "scenarios": "dynamic_crossing,dynamic_slalom",
+        "planners": "mppi,step_mppi,feedback_mppi_ref,feedback_mppi_paper,feedback_mppi_fused,feedback_mppi_strong,diff_mppi_1,diff_mppi_3",
+        "time_targets": "1.0,2.0",
+        "search_seed_count": 4,
+        "final_seed_count": 4,
+        "k_min": 16,
+        "k_max": 16384,
+        "tolerance_ms": 0.04,
+        "max_evals": 8,
+        "csv_out": "build/benchmark_diff_mppi_strong_feedback_exact_time.csv",
+        "summary_title": "Diff-MPPI Exact-Time Summary (strong local-feedback baseline)",
     },
     "dynamic_bicycle": {
         "bin": "./bin/benchmark_diff_mppi_dynamic_bicycle",
@@ -174,7 +217,8 @@ def parse_args():
             "Multi-param mode (--multi-param) searches over additional controller "
             "parameters beyond K.  For each planner family, it tries a grid of "
             "hyperparameters and picks the combination with the best exact-time "
-            "rank (timing gap first, then success/final distance).  Expected "
+            "rank (performance first inside a small timing window, then timing "
+            "gap).  Expected "
             "runtime: roughly "
             "N_param_combos x single-param runtime.  For the default grids this is "
             "~3x for feedback baselines, ~9x for diff_mppi variants, and ~3x for "
@@ -234,12 +278,15 @@ def rank_summary(summary):
 
 
 def exact_time_rank(summary, target_ms):
+    gap = abs(summary["avg_control_ms_mean"] - target_ms)
+    timing_window = max(0.03, 0.03 * target_ms)
     return (
-        abs(summary["avg_control_ms_mean"] - target_ms),
+        0 if gap <= timing_window else 1,
         -summary["success_mean"],
         summary["final_distance_mean"],
         summary["cumulative_cost_mean"],
         summary["steps_mean"],
+        gap,
         summary["k_samples"],
     )
 
@@ -258,7 +305,10 @@ class BenchmarkCache:
         if key in self.cache:
             return self.cache[key]
 
-        override_tag = "_".join(self.override_args).replace("--", "").replace(" ", "_") if self.override_args else ""
+        override_tag = ""
+        if self.override_args:
+            override_text = " ".join(self.override_args)
+            override_tag = hashlib.sha1(override_text.encode("utf-8")).hexdigest()[:12]
         csv_name = f"{scenario}__{planner}__k{int(k_samples)}__s{self.seed_count}"
         if override_tag:
             csv_name += f"__{override_tag}"
@@ -352,7 +402,62 @@ def tune_exact_target(cache, scenario, planner, target_ms, k_min, k_max, toleran
     return best_summary, list(evaluated.values())
 
 
+def planner_search_bounds(planner, k_min, k_max):
+    """Avoid infeasible high-K probes for feedback variants with large fixed work."""
+    heavy_feedback_caps = {
+        "feedback_mppi_paper": 512,
+        "feedback_mppi_fused": 512,
+        "feedback_mppi_strong": 512,
+        "feedback_mppi_cov": 1024,
+        "feedback_mppi_hf": 1024,
+    }
+    medium_feedback_caps = {
+        "feedback_mppi_ref": 4096,
+        "feedback_mppi_release": 4096,
+        "feedback_mppi_faithful": 4096,
+    }
+    if planner in heavy_feedback_caps:
+        return max(16, min(k_min, heavy_feedback_caps[planner])), min(k_max, heavy_feedback_caps[planner])
+    if planner in medium_feedback_caps:
+        return k_min, min(k_max, medium_feedback_caps[planner])
+    return k_min, k_max
+
+
 FEEDBACK_GAIN_SCALE_GRID = [0.5, 1.0, 2.0]
+STRONG_FEEDBACK_GRID = [
+    {
+        "feedback_gain_scale": 0.55,
+        "feedback_ref_blend": 1.00,
+        "feedback_cov_blend": 0.35,
+        "feedback_lqr_blend": 0.20,
+        "feedback_setpoint_blend": 0.00,
+        "feedback_cov_regularization": 0.20,
+    },
+    {
+        "feedback_gain_scale": 0.85,
+        "feedback_ref_blend": 0.75,
+        "feedback_cov_blend": 0.55,
+        "feedback_lqr_blend": 0.30,
+        "feedback_setpoint_blend": 0.15,
+        "feedback_cov_regularization": 0.15,
+    },
+    {
+        "feedback_gain_scale": 1.20,
+        "feedback_ref_blend": 0.50,
+        "feedback_cov_blend": 0.80,
+        "feedback_lqr_blend": 0.35,
+        "feedback_setpoint_blend": 0.25,
+        "feedback_cov_regularization": 0.10,
+    },
+    {
+        "feedback_gain_scale": 0.85,
+        "feedback_ref_blend": 1.00,
+        "feedback_cov_blend": 0.80,
+        "feedback_lqr_blend": 0.50,
+        "feedback_setpoint_blend": 0.15,
+        "feedback_cov_regularization": 0.15,
+    },
+]
 DIFF_GRAD_STEPS_GRID = [1, 3, 5]
 DIFF_ALPHA_GRID = [0.003, 0.006, 0.012]
 STEP_MLP_LR_GRID = [0.0005, 0.001, 0.002]
@@ -361,11 +466,27 @@ STEP_MLP_LR_GRID = [0.0005, 0.001, 0.002]
 def param_combos_for_planner(planner):
     """Return list of (override_args, param_dict) for multi-param search."""
     family = planner_family(planner)
+    if planner == "feedback_mppi_strong":
+        combos = []
+        for params in STRONG_FEEDBACK_GRID:
+            override_args = [
+                "--override-feedback-gain-scale", str(params["feedback_gain_scale"]),
+                "--override-feedback-ref-blend", str(params["feedback_ref_blend"]),
+                "--override-feedback-cov-blend", str(params["feedback_cov_blend"]),
+                "--override-feedback-lqr-blend", str(params["feedback_lqr_blend"]),
+                "--override-feedback-setpoint-blend", str(params["feedback_setpoint_blend"]),
+                "--override-feedback-cov-regularization", str(params["feedback_cov_regularization"]),
+            ]
+            param_dict = default_param_dict()
+            param_dict.update(params)
+            combos.append((override_args, param_dict))
+        return combos
     if family == "feedback":
         combos = []
         for fgs in FEEDBACK_GAIN_SCALE_GRID:
             override_args = ["--override-feedback-gain-scale", str(fgs)]
-            params = {"feedback_gain_scale": fgs, "grad_steps": "", "alpha": "", "mlp_lr": ""}
+            params = default_param_dict()
+            params["feedback_gain_scale"] = fgs
             combos.append((override_args, params))
         return combos
     if family == "diff":
@@ -376,22 +497,34 @@ def param_combos_for_planner(planner):
                     "--override-grad-steps", str(gs),
                     "--override-alpha", str(alpha),
                 ]
-                params = {"feedback_gain_scale": "", "grad_steps": gs, "alpha": alpha, "mlp_lr": ""}
+                params = default_param_dict()
+                params.update({"grad_steps": gs, "alpha": alpha})
                 combos.append((override_args, params))
         return combos
     if planner == "step_mppi":
         combos = []
         for lr in STEP_MLP_LR_GRID:
             override_args = ["--override-mlp-lr", str(lr)]
-            params = {"feedback_gain_scale": "", "grad_steps": "", "alpha": "", "mlp_lr": lr}
+            params = default_param_dict()
+            params["mlp_lr"] = lr
             combos.append((override_args, params))
         return combos
     # mppi or other: no extra params to tune
-    return [([], {"feedback_gain_scale": "", "grad_steps": "", "alpha": "", "mlp_lr": ""})]
+    return [([], default_param_dict())]
 
 
 def default_param_dict():
-    return {"feedback_gain_scale": "", "grad_steps": "", "alpha": "", "mlp_lr": ""}
+    return {
+        "feedback_gain_scale": "",
+        "feedback_ref_blend": "",
+        "feedback_cov_blend": "",
+        "feedback_lqr_blend": "",
+        "feedback_setpoint_blend": "",
+        "feedback_cov_regularization": "",
+        "grad_steps": "",
+        "alpha": "",
+        "mlp_lr": "",
+    }
 
 
 def aggregate_selected(selected_rows):
@@ -472,6 +605,11 @@ def write_selected_csv(rows, path):
         "time_target_ms",
         "time_gap_ms",
         "feedback_gain_scale",
+        "feedback_ref_blend",
+        "feedback_cov_blend",
+        "feedback_lqr_blend",
+        "feedback_setpoint_blend",
+        "feedback_cov_regularization",
         "tuned_grad_steps",
         "tuned_alpha",
         "mlp_lr",
@@ -498,6 +636,11 @@ def write_search_csv(rows, path):
         "avg_control_ms_mean",
         "time_gap_ms",
         "feedback_gain_scale",
+        "feedback_ref_blend",
+        "feedback_cov_blend",
+        "feedback_lqr_blend",
+        "feedback_setpoint_blend",
+        "feedback_cov_regularization",
         "tuned_grad_steps",
         "tuned_alpha",
         "mlp_lr",
@@ -613,6 +756,11 @@ def _tuned_param_columns(param_dict):
     """Map multi-param dict keys to CSV column names."""
     return {
         "feedback_gain_scale": param_dict.get("feedback_gain_scale", ""),
+        "feedback_ref_blend": param_dict.get("feedback_ref_blend", ""),
+        "feedback_cov_blend": param_dict.get("feedback_cov_blend", ""),
+        "feedback_lqr_blend": param_dict.get("feedback_lqr_blend", ""),
+        "feedback_setpoint_blend": param_dict.get("feedback_setpoint_blend", ""),
+        "feedback_cov_regularization": param_dict.get("feedback_cov_regularization", ""),
         "tuned_grad_steps": param_dict.get("grad_steps", ""),
         "tuned_alpha": param_dict.get("alpha", ""),
         "mlp_lr": param_dict.get("mlp_lr", ""),
@@ -676,6 +824,7 @@ def main():
         for target_ms in time_targets:
             for scenario in scenarios:
                 for planner in planners:
+                    planner_k_min, planner_k_max = planner_search_bounds(planner, k_min, k_max)
                     if multi_param:
                         combos = param_combos_for_planner(planner)
                     else:
@@ -689,7 +838,7 @@ def main():
 
                         best_summary, final_record, trace, pd = _tune_single_param(
                             search_cache, final_cache, scenario, planner, target_ms,
-                            k_min, k_max, tolerance_ms, max_evals, temp_dir, param_dict,
+                            planner_k_min, planner_k_max, tolerance_ms, max_evals, temp_dir, param_dict,
                         )
 
                         # Always record search trace for all combos
