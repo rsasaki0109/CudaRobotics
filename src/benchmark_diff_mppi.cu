@@ -1832,6 +1832,40 @@ static Scenario make_uncertain_crossing_scene() {
     return s;
 }
 
+static Scenario make_dynamic_pincer_scene() {
+    Scenario s;
+    s.name = "dynamic_pincer";
+    s.start_x = 4.0f;
+    s.start_y = 6.0f;
+    s.cost_params.goal_x = 46.0f;
+    s.cost_params.goal_y = 44.0f;
+    s.max_steps = 260;
+    s.cost_params.target_speed = 3.2f;
+    s.cost_params.goal_weight = 5.2f;
+    s.cost_params.obs_weight = 11.5f;
+    s.cost_params.obs_influence = 5.2f;
+    s.cost_params.heading_weight = 0.40f;
+    s.grad_alpha_scale = 0.20f;
+    const Obstacle obs[] = {
+        {16.0f, 16.0f, 2.8f}, {16.0f, 34.0f, 2.8f},
+        {34.0f, 14.0f, 2.6f}, {34.0f, 36.0f, 2.6f}
+    };
+    // Three dyn obstacles whose trajectories converge near the agent's
+    // diagonal midpoint (~25,25): one descends from upper-left, one
+    // ascends from lower-right, one rises from below-centre. The agent
+    // must time its passage rather than dodge a single obstacle.
+    const DynamicObstacle dyn[] = {
+        { 8.0f, 30.0f,  1.30f, -0.60f, 2.2f},
+        {42.0f, 18.0f, -1.30f,  0.60f, 2.2f},
+        {25.0f,  4.0f,  0.00f,  1.40f, 2.2f},
+    };
+    s.n_obs = static_cast<int>(sizeof(obs) / sizeof(obs[0]));
+    for (int i = 0; i < s.n_obs; i++) s.obstacles[i] = obs[i];
+    s.n_dyn_obs = static_cast<int>(sizeof(dyn) / sizeof(dyn[0]));
+    for (int i = 0; i < s.n_dyn_obs; i++) s.dynamic_obstacles[i] = dyn[i];
+    return s;
+}
+
 static Scenario make_uncertain_slalom_scene() {
     Scenario s = make_dynamic_slalom_scene();
     s.name = "uncertain_slalom";
@@ -2014,6 +2048,7 @@ int main(int argc, char** argv) {
     all_scenarios.push_back(make_dynamic_slalom_scene());
     all_scenarios.push_back(make_uncertain_crossing_scene());
     all_scenarios.push_back(make_uncertain_slalom_scene());
+    all_scenarios.push_back(make_dynamic_pincer_scene());
 
     vector<Scenario> scenarios;
     if (!scenario_names.empty()) {
