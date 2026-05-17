@@ -33,8 +33,10 @@ PLANNER_LABEL = {
 
 def load_summary(path):
     by_cell = defaultdict(dict)
+    scenarios = set()
     with open(path) as f:
         for row in csv.DictReader(f):
+            scenarios.add(row["scenario"])
             cell = (float(row["dyn_speed_scale"]),
                     float(row["dyn_radius_scale"]))
             by_cell[cell][row["planner"]] = {
@@ -45,7 +47,7 @@ def load_summary(path):
                 "collisions": float(row["collisions"]),
                 "avg_control_ms": float(row["avg_control_ms"]),
             }
-    return by_cell
+    return by_cell, sorted(scenarios)
 
 
 def fmt_succ(rate):
@@ -60,13 +62,14 @@ def main():
                    default="build/sweep_grad_horizon_difficulty.md")
     args = p.parse_args()
 
-    by_cell = load_summary(args.summary_csv)
+    by_cell, scenarios = load_summary(args.summary_csv)
     cells = sorted(by_cell.keys())
 
     lines = []
     lines.append("# Gradient-horizon x dynamic-obstacle difficulty sweep")
     lines.append("")
-    lines.append("Scenario: dynamic_crossing. K=4096, 4 seeds per cell. "
+    scenario_text = ", ".join(scenarios) if scenarios else "(unknown)"
+    lines.append(f"Scenario: {scenario_text}. K=4096, 4 seeds per cell. "
                  "Difficulty axes: dyn-obstacle speed scale (vx/vy multiplier) "
                  "and radius scale.")
     lines.append("")
@@ -135,37 +138,54 @@ def main():
             f"| {PLANNER_LABEL[best[0]]} ({best[1]:.2f}) | {gap_e1:+.2f} |")
     lines.append("")
 
-    lines.append("## Take-aways")
+    lines.append("## Take-aways (data-driven)")
     lines.append("")
-    lines.append(
-        "- **early1 is never enough**: it never reaches the goal across all "
-        "18 cells, with a final-distance gap of ~+0.15-1.3 over the full "
-        "horizon. One step of gradient update is insufficient to bend the "
-        "nominal trajectory around the dynamic obstacle.")
-    lines.append(
-        "- **early2 covers the easy regime cleanly**: in every cell where "
-        "the full horizon succeeds (12 of 18), early2 also reaches the goal "
-        "with a final-distance gap within ~0.05 of full and a small "
-        "cumulative-cost penalty (~500 of ~44k).")
-    lines.append(
-        "- **In the hard regime (speed 1.5x) every planner fails to reach "
-        "the goal**, but the ordering by final_distance is "
-        "`early8 ~= early4 ~= full < early16 < early2 < early1 < mppi`. "
-        "early8 is consistently best or tied-best, suggesting ~8 horizon "
-        "steps is sufficient and longer windows do not pay off (and "
-        "occasionally hurt because of stale-gradient noise at the tail).")
-    lines.append(
-        "- **Radius scaling alone does little** within these cells; the "
-        "speed axis dominates difficulty. The right way to increase "
-        "difficulty further is probably to make obstacles converge with the "
-        "agent (negative speed at higher magnitude) or stack multiple dyn "
-        "obstacles, not just inflate radius.")
-    lines.append(
-        "- **speed=2.0 is paradoxically easier than 1.5x**: the obstacle "
-        "leaves the corridor too fast to matter. The mechanism question "
-        "(\"how far does the gradient need to look ahead?\") sees its "
-        "strongest signal in the speed=1.5x band where obstacle and agent "
-        "are still co-located by the time the agent crosses.")
+    succ_by_planner = {pl: 0 for pl in PLANNER_ORDER}
+    cells_full_success = 0
+    cells_e2_matches_full = 0
+    hard_regime_cells = []
+    for (sp, rad) in cells:
+        cell = by_cell[(sp, rad)]
+        for pl in PLANNER_ORDER:
+            if cell.get(pl, {}).get("success_rate", 0) >= 0.999:
+                succ_by_planner[pl] += 1
+        full = cell.get("diff_mppi_3", {})
+        e2 = cell.get("diff_mppi_3_early2", {})
+        if full.get("success_rate", 0) >= 0.999:
+            cells_full_success += 1
+            if e2.get("success_rate", 0) >= 0.999:
+                cells_e2_matches_full += 1
+        if all(cell.get(pl, {}).get("success_rate", 0) < 0.999
+               for pl in PLANNER_ORDER if pl != "mppi"):
+            hard_regime_cells.append((sp, rad))
+
+    total_cells = len(cells)
+    lines.append(f"- Out of {total_cells} cells, success counts by planner: " +
+                 ", ".join(f"{PLANNER_LABEL[pl]}={succ_by_planner[pl]}"
+                           for pl in PLANNER_ORDER) + ".")
+    if cells_full_success > 0:
+        lines.append(
+            f"- Full-horizon succeeds in {cells_full_success}/"
+            f"{total_cells} cells; early2 matches full in "
+            f"{cells_e2_matches_full}/{cells_full_success} of those.")
+    if hard_regime_cells:
+        # In the all-fail regime, who is closest to the goal on average?
+        from collections import Counter
+        best_counter = Counter()
+        for (sp, rad) in hard_regime_cells:
+            cell = by_cell[(sp, rad)]
+            cand = [(pl, cell[pl]["final_distance"])
+                    for pl in PLANNER_ORDER
+                    if pl != "mppi" and pl in cell]
+            best = min(cand, key=lambda x: x[1])[0]
+            best_counter[best] += 1
+        ranking = ", ".join(
+            f"{PLANNER_LABEL[pl]}={n}"
+            for pl, n in best_counter.most_common())
+        lines.append(
+            f"- Hard regime (all diff_mppi variants fail success): "
+            f"{len(hard_regime_cells)} cells. Best by final_distance: "
+            f"{ranking}.")
     lines.append("")
 
     output = "\n".join(lines)
