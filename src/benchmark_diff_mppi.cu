@@ -75,6 +75,32 @@ struct Scenario {
 
 struct PlannerVariant {
     string name;
+    // planner_kind: 0 = MPPI / gradient / feedback (legacy path),
+    //               1 = DWA (discrete dynamic-window grid search),
+    //               2 = STOMP (cost-weighted noise with smoothness projection).
+    // For kinds 1 and 2 the legacy MPPI flags (use_sampling/use_gradient/use_feedback)
+    // are ignored and a dedicated controller branch runs instead.
+    int planner_kind = 0;
+    // DWA parameters (only used when planner_kind == 1).
+    int dwa_n_accel = 9;
+    int dwa_n_steer = 13;
+    int dwa_predict_steps = 20;
+    float dwa_accel_min = -3.0f;
+    float dwa_accel_max = 3.0f;
+    // Weights are scaled to roughly match MPPI's cost_params so DWA's per-step
+    // contributions are comparable. Terminal goal-progress is strong so a 1-second
+    // lookahead has enough discriminative power to prefer goal-bound trajectories.
+    float dwa_w_goal = 5.0f;
+    float dwa_w_speed = 0.20f;
+    float dwa_w_obs = 11.5f;
+    float dwa_w_heading = 0.50f;
+    float dwa_w_terminal = 12.0f;
+    // STOMP parameters (only used when planner_kind == 2).
+    int stomp_iterations = 2;
+    int stomp_smoothing_passes = 1;
+    float stomp_h = 10.0f;        // STOMP weight sharpness
+    float stomp_sigma_accel = 1.5f;
+    float stomp_sigma_steer = 0.18f;
     bool use_sampling = true;
     bool use_feedback = false;
     bool use_gradient = false;
@@ -1028,6 +1054,145 @@ __global__ void gradient_step_kernel(float* d_nominal, const float* d_grad, int 
     d_nominal[t * 2 + 1] = clampf(d_nominal[t * 2 + 1] - alpha * d_grad[t * 2 + 1], -max_steer, max_steer);
 }
 
+// One thread = one (accel, steer) grid point. Each thread holds its (accel, steer)
+// constant over T_dwa steps and integrates the bicycle dynamics, returning the
+// trajectory cost. The host then takes the argmin and uses (accel, steer) as the
+// next control. Cost terms mirror the MPPI cost so DWA and MPPI are comparable.
+__global__ void dwa_grid_kernel(
+    float sx, float sy, float stheta, float sv,
+    float* d_grid_costs,
+    float* d_grid_accels,
+    float* d_grid_steers,
+    BicycleParams params,
+    CostParams cost_params,
+    int n_obs,
+    int n_dyn_obs,
+    int start_step,
+    int T_dwa,
+    int n_accel,
+    int n_steer,
+    float accel_min, float accel_max,
+    float w_goal, float w_speed, float w_obs, float w_heading,
+    float w_terminal)
+{
+    int tid = blockIdx.x * blockDim.x + threadIdx.x;
+    int total = n_accel * n_steer;
+    if (tid >= total) return;
+
+    int i_accel = tid / n_steer;
+    int i_steer = tid % n_steer;
+    float accel = (n_accel > 1)
+        ? accel_min + (accel_max - accel_min) * i_accel / (float)(n_accel - 1)
+        : 0.5f * (accel_min + accel_max);
+    float steer_range = 2.0f * params.max_steer;
+    float steer = (n_steer > 1)
+        ? -params.max_steer + steer_range * i_steer / (float)(n_steer - 1)
+        : 0.0f;
+
+    d_grid_accels[tid] = accel;
+    d_grid_steers[tid] = steer;
+
+    float x = sx, y = sy, theta = stheta, v = sv;
+    float cost = 0.0f;
+    bool collided = false;
+
+    for (int t = 0; t < T_dwa; t++) {
+        bicycle_step(x, y, theta, v, accel, steer, params);
+
+        float dxg = x - cost_params.goal_x;
+        float dyg = y - cost_params.goal_y;
+        cost += w_goal * sqrtf(dxg * dxg + dyg * dyg + 0.01f) * params.dt;
+
+        float desired_heading = atan2f(cost_params.goal_y - y, cost_params.goal_x - x);
+        float heading_err = theta - desired_heading;
+        cost += w_heading * heading_err * heading_err * params.dt;
+
+        float speed_err = v - cost_params.target_speed;
+        cost += w_speed * speed_err * speed_err * params.dt;
+
+        for (int i = 0; i < n_obs; i++) {
+            float dx = x - d_obstacles_bench[i].x;
+            float dy = y - d_obstacles_bench[i].y;
+            float margin = sqrtf(dx * dx + dy * dy + 1e-6f) - d_obstacles_bench[i].r;
+            if (margin <= 0.1f) { cost += w_obs * 100.0f; collided = true; }
+            else if (margin < cost_params.obs_influence) cost += w_obs / (margin * margin);
+        }
+
+        float tau = (start_step + t + 1) * params.dt;
+        for (int i = 0; i < n_dyn_obs; i++) {
+            float ox = d_dynamic_obstacles_bench[i].x + d_dynamic_obstacles_bench[i].vx * tau;
+            float oy = d_dynamic_obstacles_bench[i].y + d_dynamic_obstacles_bench[i].vy * tau;
+            float dx = x - ox;
+            float dy = y - oy;
+            float margin = sqrtf(dx * dx + dy * dy + 1e-6f) - d_dynamic_obstacles_bench[i].r;
+            if (margin <= 0.1f) { cost += w_obs * 100.0f; collided = true; }
+            else if (margin < cost_params.obs_influence) cost += w_obs / (margin * margin);
+        }
+
+        if (x < 0.0f || x > WORKSPACE || y < 0.0f || y > WORKSPACE) cost += 500.0f;
+        if (collided) break;
+    }
+
+    float dx = x - cost_params.goal_x;
+    float dy = y - cost_params.goal_y;
+    cost += w_terminal * sqrtf(dx * dx + dy * dy + 0.01f);
+
+    d_grid_costs[tid] = cost;
+}
+
+// STOMP weight kernel: P(k) ∝ exp(-h * (S(k) - S_min) / (S_max - S_min)).
+// This normalises into [0, 1] before the exponential, so the sharpness parameter
+// h has the same effect regardless of cost scale -- different from MPPI's λ.
+__global__ void compute_stomp_weights_kernel(const float* d_costs, float* d_weights, int K, float h) {
+    if (blockIdx.x != 0 || threadIdx.x != 0) return;
+    float min_cost = d_costs[0];
+    float max_cost = d_costs[0];
+    for (int k = 1; k < K; k++) {
+        float c = d_costs[k];
+        if (c < min_cost) min_cost = c;
+        if (c > max_cost) max_cost = c;
+    }
+    float range = max_cost - min_cost;
+    if (range < 1.0e-6f) {
+        float u = 1.0f / (float)K;
+        for (int k = 0; k < K; k++) d_weights[k] = u;
+        return;
+    }
+    float sum = 0.0f;
+    for (int k = 0; k < K; k++) {
+        float w = expf(-h * (d_costs[k] - min_cost) / range);
+        d_weights[k] = w;
+        sum += w;
+    }
+    float inv = 1.0f / sum;
+    for (int k = 0; k < K; k++) d_weights[k] *= inv;
+}
+
+// Smoothness projection by a 3-tap moving average over the horizon. This is a
+// lightweight stand-in for STOMP's M = (R^T R)^-1 projection -- both preserve
+// endpoints (approximately) and penalise high-frequency noise. Applied repeatedly
+// for sharper smoothing.
+__global__ void smooth_nominal_kernel(float* d_nominal, float* d_scratch, int T, float max_steer) {
+    int t = blockIdx.x * blockDim.x + threadIdx.x;
+    if (t >= T) return;
+    int t_prev = max(0, t - 1);
+    int t_next = min(T - 1, t + 1);
+    float a = (d_nominal[t_prev * 2 + 0]
+             + d_nominal[t * 2 + 0]
+             + d_nominal[t_next * 2 + 0]) / 3.0f;
+    float s = (d_nominal[t_prev * 2 + 1]
+             + d_nominal[t * 2 + 1]
+             + d_nominal[t_next * 2 + 1]) / 3.0f;
+    d_scratch[t * 2 + 0] = clampf(a, -4.0f, 4.0f);
+    d_scratch[t * 2 + 1] = clampf(s, -max_steer, max_steer);
+}
+
+__global__ void copy_kernel(float* dst, const float* src, int n) {
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i >= n) return;
+    dst[i] = src[i];
+}
+
 static float dynamic_obstacle_margin(float x, float y, const DynamicObstacle& obs, float tau) {
     float ox = obs.x + obs.vx * tau;
     float oy = obs.y + obs.vy * tau;
@@ -1126,6 +1291,19 @@ public:
             CUDA_CHECK(cudaMalloc(&d_nominal_pre_bias_, t_horizon_ * 2 * sizeof(float)));
         }
 
+        if (variant_.planner_kind == 1) {
+            dwa_grid_size_ = max(1, variant_.dwa_n_accel) * max(1, variant_.dwa_n_steer);
+            h_dwa_costs_.assign(dwa_grid_size_, 0.0f);
+            h_dwa_accels_.assign(dwa_grid_size_, 0.0f);
+            h_dwa_steers_.assign(dwa_grid_size_, 0.0f);
+            CUDA_CHECK(cudaMalloc(&d_dwa_costs_, dwa_grid_size_ * sizeof(float)));
+            CUDA_CHECK(cudaMalloc(&d_dwa_accels_, dwa_grid_size_ * sizeof(float)));
+            CUDA_CHECK(cudaMalloc(&d_dwa_steers_, dwa_grid_size_ * sizeof(float)));
+        }
+        if (variant_.planner_kind == 2) {
+            CUDA_CHECK(cudaMalloc(&d_stomp_scratch_, t_horizon_ * 2 * sizeof(float)));
+        }
+
         reset_rng();
     }
 
@@ -1146,6 +1324,10 @@ public:
         CUDA_CHECK(cudaFree(d_rng_));
         if (d_sampling_bias_) CUDA_CHECK(cudaFree(d_sampling_bias_));
         if (d_nominal_pre_bias_) CUDA_CHECK(cudaFree(d_nominal_pre_bias_));
+        if (d_dwa_costs_) CUDA_CHECK(cudaFree(d_dwa_costs_));
+        if (d_dwa_accels_) CUDA_CHECK(cudaFree(d_dwa_accels_));
+        if (d_dwa_steers_) CUDA_CHECK(cudaFree(d_dwa_steers_));
+        if (d_stomp_scratch_) CUDA_CHECK(cudaFree(d_stomp_scratch_));
     }
 
     EpisodeMetrics run() {
@@ -1349,6 +1531,14 @@ private:
     }
 
     void controller_update(float sx, float sy, float stheta, float sv, int start_step) {
+        if (variant_.planner_kind == 1) {
+            dwa_controller_update(sx, sy, stheta, sv, start_step);
+            return;
+        }
+        if (variant_.planner_kind == 2) {
+            stomp_controller_update(sx, sy, stheta, sv, start_step);
+            return;
+        }
         CUDA_CHECK(cudaMemcpy(d_nominal_, h_nominal_.data(), h_nominal_.size() * sizeof(float), cudaMemcpyHostToDevice));
         int block = 256;
         if (variant_.use_sampling) {
@@ -1591,6 +1781,78 @@ private:
         }
     }
 
+    void dwa_controller_update(float sx, float sy, float stheta, float sv, int start_step) {
+        int block = 64;
+        int total = dwa_grid_size_;
+        int T_dwa = max(1, variant_.dwa_predict_steps);
+        dwa_grid_kernel<<<(total + block - 1) / block, block>>>(
+            sx, sy, stheta, sv,
+            d_dwa_costs_, d_dwa_accels_, d_dwa_steers_,
+            planning_scenario_.params, planning_scenario_.cost_params,
+            planning_scenario_.n_obs, planning_scenario_.n_dyn_obs,
+            start_step, T_dwa,
+            variant_.dwa_n_accel, variant_.dwa_n_steer,
+            variant_.dwa_accel_min, variant_.dwa_accel_max,
+            variant_.dwa_w_goal, variant_.dwa_w_speed,
+            variant_.dwa_w_obs, variant_.dwa_w_heading,
+            variant_.dwa_w_terminal);
+        CUDA_CHECK(cudaMemcpy(h_dwa_costs_.data(), d_dwa_costs_,
+                              dwa_grid_size_ * sizeof(float), cudaMemcpyDeviceToHost));
+        CUDA_CHECK(cudaMemcpy(h_dwa_accels_.data(), d_dwa_accels_,
+                              dwa_grid_size_ * sizeof(float), cudaMemcpyDeviceToHost));
+        CUDA_CHECK(cudaMemcpy(h_dwa_steers_.data(), d_dwa_steers_,
+                              dwa_grid_size_ * sizeof(float), cudaMemcpyDeviceToHost));
+        int best = 0;
+        float best_cost = h_dwa_costs_[0];
+        for (int i = 1; i < dwa_grid_size_; i++) {
+            if (h_dwa_costs_[i] < best_cost) { best_cost = h_dwa_costs_[i]; best = i; }
+        }
+        // DWA writes only the first action; subsequent slots are unused (we replan
+        // every step). Mirror the result into d_nominal_ as well so that the
+        // sync_nominal_from_device() call in run() does not clobber the choice.
+        fill(h_nominal_.begin(), h_nominal_.end(), 0.0f);
+        h_nominal_[0] = h_dwa_accels_[best];
+        h_nominal_[1] = h_dwa_steers_[best];
+        CUDA_CHECK(cudaMemcpy(d_nominal_, h_nominal_.data(),
+                              h_nominal_.size() * sizeof(float), cudaMemcpyHostToDevice));
+        if (trace_rows_ != nullptr) {
+            h_sample_nominal_ = h_nominal_;
+            h_final_nominal_ = h_nominal_;
+            fill(h_grad_snapshot_.begin(), h_grad_snapshot_.end(), 0.0f);
+        }
+    }
+
+    void stomp_controller_update(float sx, float sy, float stheta, float sv, int start_step) {
+        CUDA_CHECK(cudaMemcpy(d_nominal_, h_nominal_.data(),
+                              h_nominal_.size() * sizeof(float), cudaMemcpyHostToDevice));
+        int block = 256;
+        int iters = max(1, variant_.stomp_iterations);
+        for (int it = 0; it < iters; it++) {
+            rollout_kernel<<<(k_samples_ + block - 1) / block, block>>>(
+                sx, sy, stheta, sv, d_nominal_, d_costs_, d_perturbed_, d_rollout_states_, d_rng_,
+                planning_scenario_.params, planning_scenario_.cost_params,
+                planning_scenario_.n_obs, planning_scenario_.n_dyn_obs,
+                start_step, k_samples_, t_horizon_);
+            compute_stomp_weights_kernel<<<1, 1>>>(d_costs_, d_weights_, k_samples_, variant_.stomp_h);
+            update_controls_kernel<<<(t_horizon_ + block - 1) / block, block>>>(
+                d_nominal_, d_perturbed_, d_weights_, k_samples_, t_horizon_);
+            int passes = max(0, variant_.stomp_smoothing_passes);
+            for (int sp = 0; sp < passes; sp++) {
+                smooth_nominal_kernel<<<(t_horizon_ + block - 1) / block, block>>>(
+                    d_nominal_, d_stomp_scratch_, t_horizon_, planning_scenario_.params.max_steer);
+                copy_kernel<<<(t_horizon_ * 2 + block - 1) / block, block>>>(
+                    d_nominal_, d_stomp_scratch_, t_horizon_ * 2);
+            }
+        }
+        CUDA_CHECK(cudaDeviceSynchronize());
+        if (trace_rows_ != nullptr) {
+            CUDA_CHECK(cudaMemcpy(h_sample_nominal_.data(), d_nominal_,
+                                  h_sample_nominal_.size() * sizeof(float), cudaMemcpyDeviceToHost));
+            h_final_nominal_ = h_sample_nominal_;
+            fill(h_grad_snapshot_.begin(), h_grad_snapshot_.end(), 0.0f);
+        }
+    }
+
     void reset_state() {
         rx_ = eval_scenario_.start_x;
         ry_ = eval_scenario_.start_y;
@@ -1649,6 +1911,17 @@ private:
     // Step-MPPI state
     float* d_sampling_bias_ = nullptr;
     float* d_nominal_pre_bias_ = nullptr;
+    // DWA state: host-side argmin over a small grid, so we hold the grid on device
+    // and a host mirror for argmin.
+    float* d_dwa_costs_ = nullptr;
+    float* d_dwa_accels_ = nullptr;
+    float* d_dwa_steers_ = nullptr;
+    vector<float> h_dwa_costs_;
+    vector<float> h_dwa_accels_;
+    vector<float> h_dwa_steers_;
+    int dwa_grid_size_ = 0;
+    // STOMP scratch for smoothness projection (same size as h_nominal_).
+    float* d_stomp_scratch_ = nullptr;
     vector<TraceRow>* trace_rows_ = nullptr;
     int trace_max_steps_ = 0;
 };
@@ -2361,6 +2634,73 @@ int main(int argc, char** argv) {
         v.name = "step_mppi";
         v.use_learned_sampling = true;
         v.mlp_lr = 0.001f;
+        variants.push_back(v);
+    }
+    // DWA variants: discrete dynamic-window search over (accel, steer). Costs are
+    // tuned to roughly match MPPI's cost weights so the comparison stays apples
+    // to apples. dwa_med is the headline variant; fast/fine bracket it on cost.
+    {
+        PlannerVariant v;
+        v.name = "dwa_fast";
+        v.use_sampling = false;
+        v.planner_kind = 1;
+        v.dwa_n_accel = 5;
+        v.dwa_n_steer = 9;
+        v.dwa_predict_steps = 12;
+        variants.push_back(v);
+    }
+    {
+        PlannerVariant v;
+        v.name = "dwa_med";
+        v.use_sampling = false;
+        v.planner_kind = 1;
+        v.dwa_n_accel = 9;
+        v.dwa_n_steer = 13;
+        v.dwa_predict_steps = 20;
+        variants.push_back(v);
+    }
+    {
+        PlannerVariant v;
+        v.name = "dwa_fine";
+        v.use_sampling = false;
+        v.planner_kind = 1;
+        v.dwa_n_accel = 13;
+        v.dwa_n_steer = 21;
+        v.dwa_predict_steps = 25;
+        variants.push_back(v);
+    }
+    // STOMP variants: same rollout kernel as MPPI but STOMP-style normalised
+    // weights and a smoothness projection (3-tap moving average) on the
+    // updated nominal. iters > 1 == multiple inner cost-weighted updates per
+    // controller call, smoothing_passes controls projection strength.
+    {
+        PlannerVariant v;
+        v.name = "stomp_1";
+        v.use_sampling = false;
+        v.planner_kind = 2;
+        v.stomp_iterations = 1;
+        v.stomp_smoothing_passes = 1;
+        v.stomp_h = 10.0f;
+        variants.push_back(v);
+    }
+    {
+        PlannerVariant v;
+        v.name = "stomp_2";
+        v.use_sampling = false;
+        v.planner_kind = 2;
+        v.stomp_iterations = 2;
+        v.stomp_smoothing_passes = 1;
+        v.stomp_h = 10.0f;
+        variants.push_back(v);
+    }
+    {
+        PlannerVariant v;
+        v.name = "stomp_3_smooth";
+        v.use_sampling = false;
+        v.planner_kind = 2;
+        v.stomp_iterations = 3;
+        v.stomp_smoothing_passes = 2;
+        v.stomp_h = 10.0f;
         variants.push_back(v);
     }
 
