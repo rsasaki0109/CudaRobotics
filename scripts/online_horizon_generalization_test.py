@@ -30,6 +30,7 @@ if str(ROOT) not in sys.path:
 from experiments.horizon_selection.difficulty_index import (
     load_indexed_rows,
     recommend_for_probe,
+    recommend_for_probe_robust,
 )
 from experiments.horizon_selection.minimal_sufficient_selector import (
     MinimalSufficientHorizonSelector,
@@ -120,13 +121,19 @@ def main() -> int:
     p.add_argument("--k-samples", type=int, default=4096)
     p.add_argument("--md-out",
                    default="build/online_horizon_generalization.md")
+    p.add_argument("--robust", action="store_true",
+                   help="Use k-NN max-horizon (conservative) recommender")
+    p.add_argument("--k", type=int, default=3,
+                   help="Number of nearest sweep cells for --robust mode")
     args = p.parse_args()
 
     selector = MinimalSufficientHorizonSelector()
+    mode_label = f"robust (k={args.k})" if args.robust else "minimal"
 
     md = [
         "# Online HorizonSelector generalization test",
         "",
+        f"Mode: **{mode_label}**. ",
         "Off-grid (speed, radius) probes are matched to the nearest cell"
         " in the sweep summary; the selector recommends a planner from"
         " that cell; we then run benchmark_diff_mppi at the probe and"
@@ -146,7 +153,12 @@ def main() -> int:
             continue
         rows = load_indexed_rows(summary_csv)
         for (sp, rad) in DEFAULT_PROBES[scenario]:
-            indexed = recommend_for_probe(selector, rows, scenario, sp, rad)
+            if args.robust:
+                indexed = recommend_for_probe_robust(
+                    selector, rows, scenario, sp, rad, k=args.k)
+            else:
+                indexed = recommend_for_probe(
+                    selector, rows, scenario, sp, rad)
             rec = indexed.recommendation
             planners = sorted({rec.planner, BASELINE_PLANNER})
             verified = run_bench(
