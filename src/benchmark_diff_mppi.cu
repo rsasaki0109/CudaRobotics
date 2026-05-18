@@ -82,6 +82,7 @@ struct PlannerVariant {
     int feedback_passes = 1;
     int replan_stride = 1;
     int grad_steps = 0;
+    int grad_update_horizon = 0;
     float alpha = 0.0f;
     float grad_skip_threshold = 0.0f;  // skip gradient step if norm < threshold (0 = never skip)
     float sampling_lambda = DEFAULT_LAMBDA;
@@ -99,6 +100,7 @@ struct PlannerVariant {
     float feedback_r_accel = 0.0f;
     float feedback_r_steer = 0.0f;
     float feedback_terminal_scale = 0.0f;
+    float feedback_ref_blend = 1.0f;
     float feedback_cov_regularization = 0.0f;
     float feedback_cov_blend = 1.0f;
     float feedback_lqr_blend = 0.0f;
@@ -1238,7 +1240,7 @@ private:
     }
 
     bool uses_feedback_local_action() const {
-        return variant_.use_feedback && (variant_.feedback_mode == 5 || variant_.feedback_mode == 6 || variant_.feedback_mode == 7 || variant_.feedback_mode == 8 || variant_.feedback_mode == 9);
+        return variant_.use_feedback && (variant_.feedback_mode == 5 || variant_.feedback_mode == 6 || variant_.feedback_mode == 7 || variant_.feedback_mode == 8 || variant_.feedback_mode == 9 || variant_.feedback_mode == 10);
     }
 
     bool should_replan(int step) const {
@@ -1411,6 +1413,33 @@ private:
                         blend_feedback_gains_kernel<<<(t_horizon_ * 8 + block - 1) / block, block>>>(
                             d_feedback_gains_, d_feedback_gains_aux_, t_horizon_,
                             variant_.feedback_cov_blend, variant_.feedback_lqr_blend);
+                    } else if (variant_.feedback_mode == 10) {
+                        rollout_kernel<<<(k_samples_ + block - 1) / block, block>>>(
+                            sx, sy, stheta, sv, d_nominal_, d_costs_, d_perturbed_, d_rollout_states_, d_rng_,
+                            planning_scenario_.params, planning_scenario_.cost_params,
+                            planning_scenario_.n_obs, planning_scenario_.n_dyn_obs, start_step, k_samples_, t_horizon_);
+                        compute_weights_kernel<<<1, 1>>>(d_costs_, d_weights_, k_samples_, variant_.sampling_lambda);
+                        compute_rollout_initial_gradients_kernel<<<(k_samples_ + block - 1) / block, block>>>(
+                            d_rollout_states_, d_perturbed_, d_rollout_init_grads_,
+                            planning_scenario_.params, planning_scenario_.cost_params,
+                            planning_scenario_.n_obs, planning_scenario_.n_dyn_obs,
+                            start_step, k_samples_, t_horizon_);
+                        compute_reference_feedback_gain_kernel<<<1, 1>>>(
+                            d_nominal_, d_perturbed_, d_weights_, d_rollout_init_grads_, d_feedback_gains_,
+                            variant_.sampling_lambda, k_samples_, t_horizon_);
+                        compute_covariance_feedback_gains_kernel<<<1, 1>>>(
+                            d_nominal_, d_states_, d_perturbed_, d_rollout_states_, d_weights_, d_feedback_gains_aux_,
+                            k_samples_, t_horizon_, variant_.feedback_cov_regularization);
+                        blend_feedback_gains_kernel<<<(t_horizon_ * 8 + block - 1) / block, block>>>(
+                            d_feedback_gains_, d_feedback_gains_aux_, t_horizon_,
+                            variant_.feedback_ref_blend, variant_.feedback_cov_blend);
+                        compute_feedback_gains_kernel<<<1, 1>>>(
+                            d_states_, d_nominal_, d_feedback_gains_aux_, planning_scenario_.params, planning_scenario_.cost_params, t_horizon_,
+                            variant_.feedback_q_position, variant_.feedback_q_heading, variant_.feedback_q_speed,
+                            variant_.feedback_r_accel, variant_.feedback_r_steer, variant_.feedback_terminal_scale);
+                        blend_feedback_gains_kernel<<<(t_horizon_ * 8 + block - 1) / block, block>>>(
+                            d_feedback_gains_, d_feedback_gains_aux_, t_horizon_,
+                            1.0f, variant_.feedback_lqr_blend);
                     } else {
                         rollout_kernel<<<(k_samples_ + block - 1) / block, block>>>(
                             sx, sy, stheta, sv, d_nominal_, d_costs_, d_perturbed_, d_rollout_states_, d_rng_,
@@ -1501,17 +1530,20 @@ private:
                 backward_nav_adjoint_kernel<<<1, 1>>>(
                     d_states_, d_nav_stage_grads_, d_nav_jacobians_, d_grad_,
                     planning_scenario_.cost_params, t_horizon_);
+                int grad_update_horizon = variant_.grad_update_horizon > 0
+                    ? min(variant_.grad_update_horizon, t_horizon_)
+                    : t_horizon_;
                 // Adaptive skip: check gradient norm and skip if below threshold
                 if (variant_.grad_skip_threshold > 0.0f) {
-                    gradient_norm_kernel<<<1, 1>>>(d_grad_, d_grad_norm_, t_horizon_);
+                    gradient_norm_kernel<<<1, 1>>>(d_grad_, d_grad_norm_, grad_update_horizon);
                     CUDA_CHECK(cudaMemcpy(&h_grad_norm_, d_grad_norm_, sizeof(float), cudaMemcpyDeviceToHost));
                     if (h_grad_norm_ < variant_.grad_skip_threshold) {
                         grad_steps_skipped_++;
                         continue;
                     }
                 }
-                gradient_step_kernel<<<(t_horizon_ + block - 1) / block, block>>>(
-                    d_nominal_, d_grad_, t_horizon_,
+                gradient_step_kernel<<<(grad_update_horizon + block - 1) / block, block>>>(
+                    d_nominal_, d_grad_, grad_update_horizon,
                     variant_.alpha * planning_scenario_.grad_alpha_scale, planning_scenario_.params.max_steer);
             }
         }
@@ -1800,6 +1832,40 @@ static Scenario make_uncertain_crossing_scene() {
     return s;
 }
 
+static Scenario make_dynamic_pincer_scene() {
+    Scenario s;
+    s.name = "dynamic_pincer";
+    s.start_x = 4.0f;
+    s.start_y = 6.0f;
+    s.cost_params.goal_x = 46.0f;
+    s.cost_params.goal_y = 44.0f;
+    s.max_steps = 260;
+    s.cost_params.target_speed = 3.2f;
+    s.cost_params.goal_weight = 5.2f;
+    s.cost_params.obs_weight = 11.5f;
+    s.cost_params.obs_influence = 5.2f;
+    s.cost_params.heading_weight = 0.40f;
+    s.grad_alpha_scale = 0.20f;
+    const Obstacle obs[] = {
+        {16.0f, 16.0f, 2.8f}, {16.0f, 34.0f, 2.8f},
+        {34.0f, 14.0f, 2.6f}, {34.0f, 36.0f, 2.6f}
+    };
+    // Three dyn obstacles whose trajectories converge near the agent's
+    // diagonal midpoint (~25,25): one descends from upper-left, one
+    // ascends from lower-right, one rises from below-centre. The agent
+    // must time its passage rather than dodge a single obstacle.
+    const DynamicObstacle dyn[] = {
+        { 8.0f, 30.0f,  1.30f, -0.60f, 2.2f},
+        {42.0f, 18.0f, -1.30f,  0.60f, 2.2f},
+        {25.0f,  4.0f,  0.00f,  1.40f, 2.2f},
+    };
+    s.n_obs = static_cast<int>(sizeof(obs) / sizeof(obs[0]));
+    for (int i = 0; i < s.n_obs; i++) s.obstacles[i] = obs[i];
+    s.n_dyn_obs = static_cast<int>(sizeof(dyn) / sizeof(dyn[0]));
+    for (int i = 0; i < s.n_dyn_obs; i++) s.dynamic_obstacles[i] = dyn[i];
+    return s;
+}
+
 static Scenario make_uncertain_slalom_scene() {
     Scenario s = make_dynamic_slalom_scene();
     s.name = "uncertain_slalom";
@@ -1936,9 +2002,17 @@ int main(int argc, char** argv) {
     int seed_count = -1;
     int trace_max_steps = 0;
     float override_feedback_gain_scale = -1.0f;
+    float override_feedback_ref_blend = -1.0f;
+    float override_feedback_cov_blend = -1.0f;
+    float override_feedback_lqr_blend = -1.0f;
+    float override_feedback_setpoint_blend = -1.0f;
+    float override_feedback_cov_regularization = -1.0f;
     int override_grad_steps = -1;
+    int override_grad_update_horizon = -1;
     float override_alpha = -1.0f;
     float override_mlp_lr = -1.0f;
+    float override_dyn_speed_scale = -1.0f;
+    float override_dyn_radius_scale = -1.0f;
     for (int i = 1; i < argc; i++) {
         string arg = argv[i];
         if (arg == "--quick") quick = true;
@@ -1950,9 +2024,17 @@ int main(int argc, char** argv) {
         else if (arg == "--scenarios" && i + 1 < argc) scenario_names = parse_string_list(argv[++i]);
         else if (arg == "--planners" && i + 1 < argc) planner_names = parse_string_list(argv[++i]);
         else if (arg == "--override-feedback-gain-scale" && i + 1 < argc) override_feedback_gain_scale = atof(argv[++i]);
+        else if (arg == "--override-feedback-ref-blend" && i + 1 < argc) override_feedback_ref_blend = atof(argv[++i]);
+        else if (arg == "--override-feedback-cov-blend" && i + 1 < argc) override_feedback_cov_blend = atof(argv[++i]);
+        else if (arg == "--override-feedback-lqr-blend" && i + 1 < argc) override_feedback_lqr_blend = atof(argv[++i]);
+        else if (arg == "--override-feedback-setpoint-blend" && i + 1 < argc) override_feedback_setpoint_blend = atof(argv[++i]);
+        else if (arg == "--override-feedback-cov-regularization" && i + 1 < argc) override_feedback_cov_regularization = atof(argv[++i]);
         else if (arg == "--override-grad-steps" && i + 1 < argc) override_grad_steps = atoi(argv[++i]);
+        else if (arg == "--override-grad-update-horizon" && i + 1 < argc) override_grad_update_horizon = atoi(argv[++i]);
         else if (arg == "--override-alpha" && i + 1 < argc) override_alpha = atof(argv[++i]);
         else if (arg == "--override-mlp-lr" && i + 1 < argc) override_mlp_lr = atof(argv[++i]);
+        else if (arg == "--override-dyn-speed-scale" && i + 1 < argc) override_dyn_speed_scale = atof(argv[++i]);
+        else if (arg == "--override-dyn-radius-scale" && i + 1 < argc) override_dyn_radius_scale = atof(argv[++i]);
     }
 
     ensure_build_dir();
@@ -1966,6 +2048,7 @@ int main(int argc, char** argv) {
     all_scenarios.push_back(make_dynamic_slalom_scene());
     all_scenarios.push_back(make_uncertain_crossing_scene());
     all_scenarios.push_back(make_uncertain_slalom_scene());
+    all_scenarios.push_back(make_dynamic_pincer_scene());
 
     vector<Scenario> scenarios;
     if (!scenario_names.empty()) {
@@ -2170,6 +2253,32 @@ int main(int argc, char** argv) {
     }
     {
         PlannerVariant v;
+        v.name = "feedback_mppi_strong";
+        v.use_feedback = true;
+        v.feedback_mode = 10;
+        v.replan_stride = 1;
+        v.feedback_gain_scale = 0.85f;
+        v.feedback_noise_accel = 0.0f;
+        v.feedback_noise_steer = 0.0f;
+        v.feedback_longitudinal_gain = 0.0f;
+        v.feedback_speed_gain = 0.0f;
+        v.feedback_lateral_gain = 0.0f;
+        v.feedback_heading_gain = 0.0f;
+        v.feedback_setpoint_blend = 0.15f;
+        v.feedback_q_position = 1.6f;
+        v.feedback_q_heading = 1.1f;
+        v.feedback_q_speed = 0.9f;
+        v.feedback_r_accel = 1.3f;
+        v.feedback_r_steer = 1.0f;
+        v.feedback_terminal_scale = 3.5f;
+        v.feedback_ref_blend = 0.75f;
+        v.feedback_cov_regularization = 0.15f;
+        v.feedback_cov_blend = 0.55f;
+        v.feedback_lqr_blend = 0.30f;
+        variants.push_back(v);
+    }
+    {
+        PlannerVariant v;
         v.name = "grad_only_3";
         v.use_sampling = false;
         v.use_gradient = true;
@@ -2190,6 +2299,51 @@ int main(int argc, char** argv) {
         v.name = "diff_mppi_3";
         v.use_gradient = true;
         v.grad_steps = 3;
+        v.alpha = 0.006f;
+        variants.push_back(v);
+    }
+    {
+        PlannerVariant v;
+        v.name = "diff_mppi_3_early1";
+        v.use_gradient = true;
+        v.grad_steps = 3;
+        v.grad_update_horizon = 1;
+        v.alpha = 0.006f;
+        variants.push_back(v);
+    }
+    {
+        PlannerVariant v;
+        v.name = "diff_mppi_3_early2";
+        v.use_gradient = true;
+        v.grad_steps = 3;
+        v.grad_update_horizon = 2;
+        v.alpha = 0.006f;
+        variants.push_back(v);
+    }
+    {
+        PlannerVariant v;
+        v.name = "diff_mppi_3_early4";
+        v.use_gradient = true;
+        v.grad_steps = 3;
+        v.grad_update_horizon = 4;
+        v.alpha = 0.006f;
+        variants.push_back(v);
+    }
+    {
+        PlannerVariant v;
+        v.name = "diff_mppi_3_early8";
+        v.use_gradient = true;
+        v.grad_steps = 3;
+        v.grad_update_horizon = 8;
+        v.alpha = 0.006f;
+        variants.push_back(v);
+    }
+    {
+        PlannerVariant v;
+        v.name = "diff_mppi_3_early16";
+        v.use_gradient = true;
+        v.grad_steps = 3;
+        v.grad_update_horizon = 16;
         v.alpha = 0.006f;
         variants.push_back(v);
     }
@@ -2228,12 +2382,38 @@ int main(int argc, char** argv) {
     for (auto& v : variants) {
         if (override_feedback_gain_scale >= 0.0f && v.use_feedback)
             v.feedback_gain_scale = override_feedback_gain_scale;
+        if (override_feedback_ref_blend >= 0.0f && v.use_feedback)
+            v.feedback_ref_blend = override_feedback_ref_blend;
+        if (override_feedback_cov_blend >= 0.0f && v.use_feedback)
+            v.feedback_cov_blend = override_feedback_cov_blend;
+        if (override_feedback_lqr_blend >= 0.0f && v.use_feedback)
+            v.feedback_lqr_blend = override_feedback_lqr_blend;
+        if (override_feedback_setpoint_blend >= 0.0f && v.use_feedback)
+            v.feedback_setpoint_blend = override_feedback_setpoint_blend;
+        if (override_feedback_cov_regularization >= 0.0f && v.use_feedback)
+            v.feedback_cov_regularization = override_feedback_cov_regularization;
         if (override_grad_steps >= 0 && v.use_gradient)
             v.grad_steps = override_grad_steps;
+        if (override_grad_update_horizon >= 0 && v.use_gradient)
+            v.grad_update_horizon = override_grad_update_horizon;
         if (override_alpha >= 0.0f && v.use_gradient)
             v.alpha = override_alpha;
         if (override_mlp_lr >= 0.0f && v.use_learned_sampling)
             v.mlp_lr = override_mlp_lr;
+    }
+
+    if (override_dyn_speed_scale >= 0.0f || override_dyn_radius_scale >= 0.0f) {
+        for (auto& sc : scenarios) {
+            for (int i = 0; i < sc.n_dyn_obs; i++) {
+                if (override_dyn_speed_scale >= 0.0f) {
+                    sc.dynamic_obstacles[i].vx *= override_dyn_speed_scale;
+                    sc.dynamic_obstacles[i].vy *= override_dyn_speed_scale;
+                }
+                if (override_dyn_radius_scale >= 0.0f) {
+                    sc.dynamic_obstacles[i].r *= override_dyn_radius_scale;
+                }
+            }
+        }
     }
 
     if (k_values.empty()) k_values = quick ? vector<int>{1024, 4096} : vector<int>{1024, 2048, 4096};
