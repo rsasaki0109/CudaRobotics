@@ -170,3 +170,33 @@ hard cells, 0 collisions) while keeping the global plan to fall back
 to. The runtime is dominated by the per-step DWA call; the one-shot
 Hybrid A* search at episode start is excluded from `mean ms`, the
 same convention used for `hybrid_astar_pp`.
+
+## Sampling paradigm: hybrid_astar_mppi (planner_kind=6)
+
+The third closure variant uses MPPI for the per-step local controller
+instead of DWA's discrete grid argmin. The Hybrid A* search and path-
+follow cost terms are the same as `hybrid_astar_dwa`; the only
+difference is that the per-step action comes from a K-sample MPPI
+rollout's cost-weighted average instead of the lowest-cost grid cell.
+`ham_w_terminal` is bumped to 50 (vs. dwa's 20) because the sampling
+average dilutes deterministic goal-pull -- without the larger terminal
+the robot drifts to within ~5 m of the goal and stops as samples
+cancel each other near the path end.
+
+| planner            | family    | cells | solved | mean succ | mean final_d | mean coll | mean ms |
+|--------------------|-----------|------:|-------:|----------:|-------------:|----------:|--------:|
+| hybrid_astar_dwa   | Hybrid-A* |    30 |     30 |      1.00 |         1.92 |      0.00 |    0.07 |
+| hybrid_astar_mppi  | Hybrid-A* |    30 |     29 |      0.97 |         1.94 |      0.00 |    0.56 |
+
+| planner            | hard cells | solved | mean succ | mean final_d | mean coll |
+|--------------------|-----------:|-------:|----------:|-------------:|----------:|
+| hybrid_astar_dwa   |         12 |     12 |      1.00 |         1.89 |      0.00 |
+| hybrid_astar_mppi  |         12 |     11 |      0.92 |         1.97 |      0.00 |
+
+The point of the variant is paradigm completion: both reactive local
+controllers close the gap once they consume the global path, so the
+hybrid pattern is paradigm-agnostic. DWA wins on this benchmark
+because its argmin commits to a single decisive action, but MPPI is
+competitive without per-cell hand-tuning. The 8x runtime overhead is
+the price of K=4096 samples over T=30 steps; lowering K would push
+mppi closer to dwa's latency at the cost of robustness.

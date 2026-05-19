@@ -141,6 +141,20 @@ struct PlannerVariant {
     float had_w_obs = 11.5f;
     float had_w_terminal = 20.0f;
     int had_lookahead_idx = 2;
+    // Hybrid A* + MPPI hybrid (planner_kind == 6). Same path-follow cost
+    // shape as the dwa hybrid but the per-step controller is the MPPI
+    // sampling pipeline; ham_w_* mirror had_w_* but stay separately
+    // tunable so the MPPI noise (which integrates over a longer horizon)
+    // can be balanced against the path-follow pull independently of DWA.
+    float ham_w_path = 5.0f;
+    float ham_w_heading = 0.5f;
+    float ham_w_speed = 0.20f;
+    float ham_w_obs = 11.5f;
+    // MPPI's noise dilutes deterministic goal-pull (vs. DWA's argmin), so
+    // a larger terminal weight is needed to keep samples coherent toward
+    // the goal in the last few metres.
+    float ham_w_terminal = 50.0f;
+    int ham_lookahead_idx = 2;
     bool use_sampling = true;
     bool use_feedback = false;
     bool use_gradient = false;
@@ -325,6 +339,109 @@ __global__ void rollout_kernel(
     float dx = x - cost_params.goal_x;
     float dy = y - cost_params.goal_y;
     total_cost += cost_params.terminal_weight * sqrtf(dx * dx + dy * dy + 0.01f);
+    d_costs[k] = total_cost;
+    d_rng[k] = local_rng;
+}
+
+// Hybrid A* + MPPI hybrid rollout: same sampling pipeline as rollout_kernel
+// but the cost replaces goal-distance / heading with path-follow terms
+// (nearest waypoint + lookahead heading) computed against a pre-planned
+// Hybrid A* path. Obstacle / speed / terminal terms are kept verbatim so
+// the dynamic obstacle reaction stays the same as vanilla MPPI.
+__global__ void hybrid_astar_mppi_rollout_kernel(
+    float sx, float sy, float stheta, float sv,
+    const float* d_nominal,
+    float* d_costs,
+    float* d_perturbed,
+    curandState* d_rng,
+    BicycleParams params,
+    CostParams cost_params,
+    int n_obs,
+    int n_dyn_obs,
+    int start_step,
+    int K,
+    int T,
+    float w_path, float w_speed, float w_obs, float w_heading,
+    float w_terminal,
+    const float* __restrict__ d_path,
+    int path_n,
+    int lookahead_idx)
+{
+    int k = blockIdx.x * blockDim.x + threadIdx.x;
+    if (k >= K) return;
+    curandState local_rng = d_rng[k];
+    float x = sx, y = sy, theta = stheta, v = sv;
+    float total_cost = 0.0f;
+
+    for (int t = 0; t < T; t++) {
+        float accel = d_nominal[t * 2 + 0] + curand_normal(&local_rng) * 1.5f;
+        float steer = d_nominal[t * 2 + 1] + curand_normal(&local_rng) * 0.18f;
+        accel = clampf(accel, -4.0f, 4.0f);
+        steer = clampf(steer, -params.max_steer, params.max_steer);
+        d_perturbed[k * T * 2 + t * 2 + 0] = accel;
+        d_perturbed[k * T * 2 + t * 2 + 1] = steer;
+
+        bicycle_step(x, y, theta, v, accel, steer, params);
+
+        if (path_n > 0) {
+            float best_d2 = 1.0e30f;
+            int best_idx = 0;
+            for (int p = 0; p < path_n; p++) {
+                float dxp = x - d_path[p * 3 + 0];
+                float dyp = y - d_path[p * 3 + 1];
+                float d2 = dxp * dxp + dyp * dyp;
+                if (d2 < best_d2) { best_d2 = d2; best_idx = p; }
+            }
+            total_cost += w_path * sqrtf(best_d2 + 0.01f) * params.dt;
+            int look = best_idx + lookahead_idx;
+            if (look >= path_n) look = path_n - 1;
+            float lx = d_path[look * 3 + 0];
+            float ly = d_path[look * 3 + 1];
+            float dxL = lx - x, dyL = ly - y;
+            float dL2 = dxL * dxL + dyL * dyL;
+            float desired = (dL2 > 0.25f)
+                ? atan2f(dyL, dxL)
+                : d_path[look * 3 + 2];
+            float herr = theta - desired;
+            while (herr >  3.14159265f) herr -= 6.28318531f;
+            while (herr < -3.14159265f) herr += 6.28318531f;
+            total_cost += w_heading * herr * herr * params.dt;
+        } else {
+            float dxg = x - cost_params.goal_x;
+            float dyg = y - cost_params.goal_y;
+            total_cost += w_path * sqrtf(dxg * dxg + dyg * dyg + 0.01f) * params.dt;
+            float desired = atan2f(cost_params.goal_y - y, cost_params.goal_x - x);
+            float herr = theta - desired;
+            total_cost += w_heading * herr * herr * params.dt;
+        }
+
+        total_cost += cost_params.control_weight * (accel * accel + steer * steer) * params.dt;
+        float speed_err = v - cost_params.target_speed;
+        total_cost += w_speed * speed_err * speed_err * params.dt;
+
+        for (int i = 0; i < n_obs; i++) {
+            float dx = x - d_obstacles_bench[i].x;
+            float dy = y - d_obstacles_bench[i].y;
+            float margin = sqrtf(dx * dx + dy * dy + 1e-6f) - d_obstacles_bench[i].r;
+            if (margin <= 0.1f) total_cost += w_obs * 100.0f;
+            else if (margin < cost_params.obs_influence) total_cost += w_obs / (margin * margin);
+        }
+        float tau = (start_step + t + 1) * params.dt;
+        for (int i = 0; i < n_dyn_obs; i++) {
+            float ox = d_dynamic_obstacles_bench[i].x + d_dynamic_obstacles_bench[i].vx * tau;
+            float oy = d_dynamic_obstacles_bench[i].y + d_dynamic_obstacles_bench[i].vy * tau;
+            float dx = x - ox;
+            float dy = y - oy;
+            float margin = sqrtf(dx * dx + dy * dy + 1e-6f) - d_dynamic_obstacles_bench[i].r;
+            if (margin <= 0.1f) total_cost += w_obs * 100.0f;
+            else if (margin < cost_params.obs_influence) total_cost += w_obs / (margin * margin);
+        }
+        if (x < 0.0f || x > WORKSPACE || y < 0.0f || y > WORKSPACE) total_cost += 500.0f;
+    }
+
+    float gdx = x - cost_params.goal_x;
+    float gdy = y - cost_params.goal_y;
+    total_cost += w_terminal * sqrtf(gdx * gdx + gdy * gdy + 0.01f);
     d_costs[k] = total_cost;
     d_rng[k] = local_rng;
 }
@@ -1820,6 +1937,10 @@ private:
             hybrid_astar_dyn_pp_controller_update(sx, sy, stheta, sv, start_step);
             return;
         }
+        if (variant_.planner_kind == 6) {
+            hybrid_astar_mppi_controller_update(sx, sy, stheta, sv, start_step);
+            return;
+        }
         CUDA_CHECK(cudaMemcpy(d_nominal_, h_nominal_.data(), h_nominal_.size() * sizeof(float), cudaMemcpyHostToDevice));
         int block = 256;
         if (variant_.use_sampling) {
@@ -2219,6 +2340,42 @@ private:
         hap_path_ = hybrid_astar_plan(
             start_pose, goal_pose, obs, hp, dyn, /*t_offset=*/0.0f);
         if (hap_path_.empty()) hap_planning_failed_ = true;
+    }
+
+    void hybrid_astar_mppi_controller_update(float sx, float sy, float stheta, float sv, int start_step) {
+        ensure_hap_path_planned(sx, sy, stheta);
+        if (!hap_path_.empty() && d_had_path_ == nullptr) {
+            int n = static_cast<int>(hap_path_.size());
+            std::vector<float> flat(static_cast<size_t>(n) * 3);
+            for (int i = 0; i < n; i++) {
+                flat[i * 3 + 0] = hap_path_[i].x;
+                flat[i * 3 + 1] = hap_path_[i].y;
+                flat[i * 3 + 2] = hap_path_[i].theta;
+            }
+            CUDA_CHECK(cudaMalloc(&d_had_path_, flat.size() * sizeof(float)));
+            CUDA_CHECK(cudaMemcpy(d_had_path_, flat.data(),
+                                  flat.size() * sizeof(float),
+                                  cudaMemcpyHostToDevice));
+            had_path_n_ = n;
+        }
+        CUDA_CHECK(cudaMemcpy(d_nominal_, h_nominal_.data(),
+                              h_nominal_.size() * sizeof(float),
+                              cudaMemcpyHostToDevice));
+        int block = 256;
+        hybrid_astar_mppi_rollout_kernel<<<(k_samples_ + block - 1) / block, block>>>(
+            sx, sy, stheta, sv,
+            d_nominal_, d_costs_, d_perturbed_, d_rng_,
+            eval_scenario_.params, eval_scenario_.cost_params,
+            eval_scenario_.n_obs, eval_scenario_.n_dyn_obs,
+            start_step, k_samples_, t_horizon_,
+            variant_.ham_w_path, variant_.ham_w_speed,
+            variant_.ham_w_obs, variant_.ham_w_heading,
+            variant_.ham_w_terminal,
+            d_had_path_, had_path_n_, variant_.ham_lookahead_idx);
+        compute_weights_kernel<<<1, 1>>>(
+            d_costs_, d_weights_, k_samples_, variant_.sampling_lambda);
+        update_controls_kernel<<<(t_horizon_ + block - 1) / block, block>>>(
+            d_nominal_, d_perturbed_, d_weights_, k_samples_, t_horizon_);
     }
 
     void hybrid_astar_dyn_pp_controller_update(float sx, float sy, float stheta, float sv, int start_step) {
@@ -3232,6 +3389,18 @@ int main(int argc, char** argv) {
         v.name = "hybrid_astar_dyn_pp";
         v.use_sampling = false;
         v.planner_kind = 5;
+        variants.push_back(v);
+    }
+    // Hybrid A* + MPPI hybrid: static-only global path + per-step MPPI
+    // sampling pipeline whose cost replaces goal-distance/heading with
+    // path-follow terms. Parallel to hybrid_astar_dwa; closes the same
+    // paradigm gap via cost-weighted noise rather than discrete grid
+    // search.
+    {
+        PlannerVariant v;
+        v.name = "hybrid_astar_mppi";
+        v.use_sampling = false;
+        v.planner_kind = 6;
         variants.push_back(v);
     }
 
