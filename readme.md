@@ -14,6 +14,8 @@ GPU enables orders-of-magnitude more particles/samples, resulting in visually be
 | <img src="https://rsasaki0109.github.io/CudaRobotics/comparison_multi_robot_visual.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/comparison_pf_visual.gif" width="400"/> |
 | **DWA: CPU 50 vs CUDA 50,000 samples** | **Lidar Simulator: CPU 1,024 vs CUDA 1,048,576 rays / scan** |
 | <img src="https://rsasaki0109.github.io/CudaRobotics/comparison_dwa_visual.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/comparison_lidar_sim.gif" width="400"/> |
+| **Reeds-Shepp Fan: CPU 1,024 vs CUDA 1,048,572 candidate paths** | |
+| <img src="https://rsasaki0109.github.io/CudaRobotics/comparison_reeds_shepp_fan.gif" width="400"/> | |
 
 <details>
 <summary>All CPU vs CUDA speed comparisons + algorithm-axis demos (click to expand)</summary>
@@ -244,6 +246,7 @@ Requires [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-nat
 | RRT | `rrt_cuda` | Nearest neighbor search + collision checking |
 | RRT* | `rrtstar_cuda` | Nearest neighbor + near nodes + rewiring + collision |
 | **RRT* Reeds-Shepp** | `rrtstar_rs_cuda` | **Batch RS path computation + collision check (nonholonomic)** |
+| **Massive Reeds-Shepp Fan** | `comparison_reeds_shepp_fan` | **1M 3-segment RS candidate paths from a parking-lot start pose per frame, with collision check and argmin reduction (5000x per-path throughput vs CPU)** |
 | **Informed RRT*** | `informed_rrtstar_cuda` | **Ellipsoidal sampling + parallel NN/rewiring** |
 | **3D RRT*** | `rrtstar_3d_cuda` | **3D nearest neighbor + 3D collision (drone/UAV)** |
 | Dynamic Window Approach | `dwa` | ~120K velocity samples evaluated in parallel |
