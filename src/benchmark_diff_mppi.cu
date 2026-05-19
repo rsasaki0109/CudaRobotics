@@ -124,6 +124,14 @@ struct PlannerVariant {
     float hap_target_speed = 5.0f;
     float hap_speed_gain = 1.5f;
     int hap_max_expansions = 100000;
+    // Safety inflation only used by the dyn-aware variant (planner_kind=5).
+    // ~1 m of buffer is the empirical sweet spot on the hard cells: enough
+    // to absorb the constant-speed-search vs. acceleration-from-rest timing
+    // mismatch while still letting the search find a path through the
+    // pincer convergence funnel. Larger values (2 m+) over-inflate and the
+    // search either degrades into the static path or fails entirely on
+    // pincer.
+    float hap_dyn_inflation = 1.0f;
     // Hybrid A* + DWA hybrid (planner_kind == 4). Reuses hap_* search params
     // and dwa_* grid params; DWA cost replaces goal-distance/heading with
     // path-follow terms (nearest path point + lookahead heading).
@@ -1808,6 +1816,10 @@ private:
             hybrid_astar_dwa_controller_update(sx, sy, stheta, sv, start_step);
             return;
         }
+        if (variant_.planner_kind == 5) {
+            hybrid_astar_dyn_pp_controller_update(sx, sy, stheta, sv, start_step);
+            return;
+        }
         CUDA_CHECK(cudaMemcpy(d_nominal_, h_nominal_.data(), h_nominal_.size() * sizeof(float), cudaMemcpyHostToDevice));
         int block = 256;
         if (variant_.use_sampling) {
@@ -2131,12 +2143,15 @@ private:
         }
     }
 
-    void ensure_hap_path_planned(float sx, float sy, float stheta) {
+    void ensure_hap_path_planned(float sx, float sy, float stheta,
+                                 bool include_dynamic = false) {
         // Plan lazily on the first call of the episode. The plan is held
         // for the rest of the episode -- planner variants that consume it
-        // (hybrid_astar_pp, hybrid_astar_dwa) decide how to track / react
-        // around dynamic obstacles. The search itself sees only the
-        // STATIC obstacles, by design.
+        // (hybrid_astar_pp, hybrid_astar_dwa, hybrid_astar_dyn_pp) decide
+        // how to track / react around dynamic obstacles. By default the
+        // search sees only the STATIC obstacles; the dyn variant flips
+        // ``include_dynamic`` so the search inflates predicted positions
+        // along each candidate's time stamp.
         if (!hap_path_.empty() || hap_planning_failed_) return;
         HybridAStarParams hp;
         hp.workspace = WORKSPACE;
@@ -2145,9 +2160,24 @@ private:
         hp.n_steer = variant_.hap_n_steer;
         hp.sub_steps = variant_.hap_sub_steps;
         hp.dt = variant_.hap_dt;
-        hp.v_search = variant_.hap_v_search;
+        // When predicting against moving obstacles, use the simulator's
+        // target speed so the search's t-stamps roughly match the time
+        // the robot will actually arrive at each pose. The static search
+        // continues to use the configured hap_v_search.
+        hp.v_search = include_dynamic
+            ? std::max(variant_.hap_v_search,
+                       eval_scenario_.cost_params.target_speed)
+            : variant_.hap_v_search;
         hp.steer_penalty = variant_.hap_steer_penalty;
-        hp.robot_radius = variant_.hap_robot_radius;
+        // Dyn-aware search adds an extra inflation buffer to the robot
+        // radius because the linearised obstacle prediction is brittle
+        // against (a) the simulator's accelerating-from-rest model that
+        // arrives at each pose later than the constant-speed search
+        // assumes, and (b) sub-cell timing rounding. ~2 m of buffer
+        // covers ~1 s of error against a 2 m/s obstacle.
+        hp.robot_radius = include_dynamic
+            ? variant_.hap_robot_radius + variant_.hap_dyn_inflation
+            : variant_.hap_robot_radius;
         hp.max_expansions = variant_.hap_max_expansions;
         std::vector<ObstacleCircle> obs;
         obs.reserve(planning_scenario_.n_obs);
@@ -2157,6 +2187,23 @@ private:
             o.y = planning_scenario_.obstacles[i].y;
             o.r = planning_scenario_.obstacles[i].r;
             obs.push_back(o);
+        }
+        std::vector<DynamicObstacleSpec> dyn;
+        if (include_dynamic) {
+            // We pass the *evaluation* scenario's dynamic obstacles so the
+            // search predicts the same trajectories the simulator will roll
+            // out -- not the nominal planning_scenario_ ones, which can
+            // diverge under use_dynamic_mismatch.
+            dyn.reserve(eval_scenario_.n_dyn_obs);
+            for (int i = 0; i < eval_scenario_.n_dyn_obs; i++) {
+                DynamicObstacleSpec d;
+                d.x0 = eval_scenario_.dynamic_obstacles[i].x;
+                d.y0 = eval_scenario_.dynamic_obstacles[i].y;
+                d.vx = eval_scenario_.dynamic_obstacles[i].vx;
+                d.vy = eval_scenario_.dynamic_obstacles[i].vy;
+                d.r  = eval_scenario_.dynamic_obstacles[i].r;
+                dyn.push_back(d);
+            }
         }
         Pose2D start_pose;
         start_pose.x = sx;
@@ -2169,8 +2216,39 @@ private:
         // position, and the goal_theta tolerance in the search is
         // generous so this rarely matters.
         goal_pose.theta = 0.0f;
-        hap_path_ = hybrid_astar_plan(start_pose, goal_pose, obs, hp);
+        hap_path_ = hybrid_astar_plan(
+            start_pose, goal_pose, obs, hp, dyn, /*t_offset=*/0.0f);
         if (hap_path_.empty()) hap_planning_failed_ = true;
+    }
+
+    void hybrid_astar_dyn_pp_controller_update(float sx, float sy, float stheta, float sv, int start_step) {
+        // Same as hybrid_astar_pp but the global search sees the dynamic
+        // obstacles' linearised trajectories. The path then no longer
+        // crosses where the obstacle will be when we arrive there.
+        ensure_hap_path_planned(sx, sy, stheta, /*include_dynamic=*/true);
+        hybrid_astar_pp_track(sx, sy, stheta, sv);
+        (void)start_step;
+    }
+
+    void hybrid_astar_pp_track(float sx, float sy, float stheta, float sv) {
+        PurePursuitParams pp;
+        pp.lookahead = variant_.hap_lookahead;
+        pp.wheelbase = planning_scenario_.params.L;
+        pp.target_speed = variant_.hap_target_speed;
+        pp.speed_gain = variant_.hap_speed_gain;
+        pp.max_accel = 3.0f;
+        pp.max_steer = planning_scenario_.params.max_steer;
+        PurePursuitCommand cmd = pure_pursuit_step(
+            sx, sy, stheta, sv, hap_path_, pp);
+        h_nominal_[0] = cmd.accel;
+        h_nominal_[1] = cmd.steer;
+        for (int t = 1; t < t_horizon_; t++) {
+            h_nominal_[t * 2 + 0] = 0.0f;
+            h_nominal_[t * 2 + 1] = 0.0f;
+        }
+        CUDA_CHECK(cudaMemcpy(d_nominal_, h_nominal_.data(),
+                              h_nominal_.size() * sizeof(float),
+                              cudaMemcpyHostToDevice));
     }
 
     void hybrid_astar_pp_controller_update(float sx, float sy, float stheta, float sv, int /*start_step*/) {
@@ -3144,6 +3222,16 @@ int main(int argc, char** argv) {
         v.name = "hybrid_astar_dwa";
         v.use_sampling = false;
         v.planner_kind = 4;
+        variants.push_back(v);
+    }
+    // Hybrid A* + Pure Pursuit with DYNAMIC OBSTACLES included in the
+    // search. Same tracker as hybrid_astar_pp; the difference is whether
+    // the global planner is blind to or aware of moving obstacles.
+    {
+        PlannerVariant v;
+        v.name = "hybrid_astar_dyn_pp";
+        v.use_sampling = false;
+        v.planner_kind = 5;
         variants.push_back(v);
     }
 
