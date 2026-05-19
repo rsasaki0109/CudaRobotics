@@ -1,8 +1,11 @@
 /*************************************************************************
-    emcl2 Comparison: Standard MCL (fails) vs emcl2 (recovers) after kidnap
+    Expansion Reset MCL Comparison: Standard MCL (fails) vs Expansion
+    Resetting MCL (recovers) after kidnap.
     Left: standard MCL, no expansion reset - loses track after kidnap
-    Right: emcl2 with expansion resetting - recovers
-    Same map, same kidnap event at t=10s
+    Right: Expansion Resetting MCL - recovers
+    Same map, same kidnap event at t=10s.
+    Independent reimplementation from Ueda (IROS 2004); not derived from
+    the upstream CIT-Autonomous-Robot-Lab/emcl2 ROS source (LGPL-3.0).
  ************************************************************************/
 
 #include <iostream>
@@ -282,7 +285,7 @@ struct GPUParticles {
 // Main
 // ---------------------------------------------------------------------------
 int main() {
-    std::cout << "Comparison: Standard MCL vs emcl2" << std::endl;
+    std::cout << "Comparison: Standard MCL vs Expansion Resetting MCL" << std::endl;
 
     float origin_x = 0, origin_y = 0;
     std::vector<int> h_occ;
@@ -303,9 +306,9 @@ int main() {
     const int blk = (np + thr - 1) / thr;
 
     // Two particle filters
-    GPUParticles std_pf, emcl_pf;
+    GPUParticles std_pf, exp_pf;
     std_pf.alloc(np, 42ULL);
-    emcl_pf.alloc(np, 84ULL);
+    exp_pf.alloc(np, 84ULL);
 
     std::mt19937 gen(12345);
     std::normal_distribution<float> gauss(0.0f, 1.0f);
@@ -326,7 +329,7 @@ int main() {
         CUDA_CHECK(cudaMemcpy(pf.d_pt, h_pt.data(), np * sizeof(float), cudaMemcpyHostToDevice));
         CUDA_CHECK(cudaMemcpy(pf.d_pw, h_pw.data(), np * sizeof(float), cudaMemcpyHostToDevice));
     };
-    upload(std_pf); upload(emcl_pf);
+    upload(std_pf); upload(exp_pf);
 
     // Pre-render map
     cv::Mat map_img(PANEL_H, PANEL_W, CV_8UC3, cv::Scalar(255, 255, 255));
@@ -337,7 +340,7 @@ int main() {
                 cv::rectangle(map_img, cv::Point(px, py), cv::Point(px + VIS_SCALE - 1, py + VIS_SCALE - 1), cv::Scalar(0, 0, 0), -1);
             }
 
-    cv::VideoWriter video("gif/comparison_emcl2.avi",
+    cv::VideoWriter video("gif/comparison_expansion_reset_mcl.avi",
         cv::VideoWriter::fourcc('X', 'V', 'I', 'D'), 30, cv::Size(PANEL_W * 2, PANEL_H));
 
     float h_beams[NUM_BEAMS];
@@ -441,12 +444,12 @@ int main() {
         CUDA_CHECK(cudaMemcpy(d_beams, h_beams, NUM_BEAMS * sizeof(float), cudaMemcpyHostToDevice));
 
         run_pf(std_pf, false);  // Standard MCL: NO expansion reset
-        run_pf(emcl_pf, true);  // emcl2: WITH expansion reset
+        run_pf(exp_pf, true);  // Expansion Resetting MCL: WITH expansion reset
 
         // Visualization
         cv::Mat left, right;
         draw_panel(left, std_pf, "Standard MCL (no reset)", gt_x, gt_y, gt_theta);
-        draw_panel(right, emcl_pf, "emcl2 (expansion reset)", gt_x, gt_y, gt_theta);
+        draw_panel(right, exp_pf, "Expansion Reset MCL", gt_x, gt_y, gt_theta);
 
         if (kidnapped) {
             cv::putText(left, "KIDNAPPED", cv::Point(PANEL_W / 2 - 60, PANEL_H - 15),
@@ -465,12 +468,12 @@ int main() {
     }
 
     video.release();
-    system("ffmpeg -y -i gif/comparison_emcl2.avi "
+    system("ffmpeg -y -i gif/comparison_expansion_reset_mcl.avi "
            "-vf 'fps=15,scale=800:-1:flags=lanczos' -loop 0 "
-           "gif/comparison_emcl2.gif 2>/dev/null");
-    printf("GIF saved to gif/comparison_emcl2.gif\n");
+           "gif/comparison_expansion_reset_mcl.gif 2>/dev/null");
+    printf("GIF saved to gif/comparison_expansion_reset_mcl.gif\n");
 
-    std_pf.free_all(); emcl_pf.free_all();
+    std_pf.free_all(); exp_pf.free_all();
     cudaFree(d_occ); cudaFree(d_lf); cudaFree(d_beams);
     return 0;
 }
