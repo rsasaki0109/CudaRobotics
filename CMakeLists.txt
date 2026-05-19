@@ -294,6 +294,10 @@ add_executable(comparison_expansion_reset_mcl src/comparison_expansion_reset_mcl
 target_link_libraries(comparison_expansion_reset_mcl ${OpenCV_LIBS})
 target_compile_options(comparison_expansion_reset_mcl PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
 
+add_executable(comparison_lidar_sim src/comparison_lidar_sim.cu)
+target_link_libraries(comparison_lidar_sim ${OpenCV_LIBS})
+target_compile_options(comparison_lidar_sim PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
+
 add_executable(comparison_dwa_visual src/comparison_dwa_visual.cu)
 target_link_libraries(comparison_dwa_visual ${OpenCV_LIBS})
 
