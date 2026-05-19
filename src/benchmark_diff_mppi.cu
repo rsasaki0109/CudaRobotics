@@ -27,6 +27,7 @@
 
 #include "diff_cost.cuh"
 #include "diff_dynamics.cuh"
+#include "hybrid_astar_pp.h"
 
 #define CUDA_CHECK(call) do { cudaError_t err = (call); if (err != cudaSuccess) { fprintf(stderr, "CUDA error at %s:%d: %s\n", __FILE__, __LINE__, cudaGetErrorString(err)); exit(EXIT_FAILURE); } } while (0)
 
@@ -104,6 +105,25 @@ struct PlannerVariant {
     float stomp_h = 10.0f;        // STOMP weight sharpness
     float stomp_sigma_accel = 1.5f;
     float stomp_sigma_steer = 0.18f;
+    // Hybrid A* + Pure Pursuit parameters (only used when planner_kind == 3).
+    // Hybrid A* plans once at episode start against the STATIC obstacles of
+    // the scenario; dynamic obstacles are deliberately ignored to make
+    // the global-planner-blind-to-dynamic-obstacles paradigm gap explicit.
+    // Pure pursuit then tracks the planned path with a fixed lookahead.
+    int hap_n_steer = 7;
+    // dt * v_search gives the metric step size per node expansion; we want
+    // it > cell_size = 1.0m so that children land in distinct (x,y,theta)
+    // cells. With v_search=2.5, dt=1.0 we move 2.5 m per expansion. sub_steps
+    // controls the integration fidelity inside the bicycle update.
+    int hap_sub_steps = 8;
+    float hap_dt = 1.0f;
+    float hap_v_search = 2.5f;
+    float hap_steer_penalty = 0.05f;
+    float hap_robot_radius = 0.6f;
+    float hap_lookahead = 4.0f;
+    float hap_target_speed = 5.0f;
+    float hap_speed_gain = 1.5f;
+    int hap_max_expansions = 100000;
     bool use_sampling = true;
     bool use_feedback = false;
     bool use_gradient = false;
@@ -1650,6 +1670,10 @@ private:
             stomp_controller_update(sx, sy, stheta, sv, start_step);
             return;
         }
+        if (variant_.planner_kind == 3) {
+            hybrid_astar_pp_controller_update(sx, sy, stheta, sv, start_step);
+            return;
+        }
         CUDA_CHECK(cudaMemcpy(d_nominal_, h_nominal_.data(), h_nominal_.size() * sizeof(float), cudaMemcpyHostToDevice));
         int block = 256;
         if (variant_.use_sampling) {
@@ -1973,6 +1997,66 @@ private:
         }
     }
 
+    void hybrid_astar_pp_controller_update(float sx, float sy, float stheta, float sv, int /*start_step*/) {
+        // Plan lazily on the first call of the episode. The plan is held
+        // for the rest of the episode and pure pursuit tracks it -- this
+        // is the static-global-planner baseline, blind to dynamic
+        // obstacles by design.
+        if (hap_path_.empty() && !hap_planning_failed_) {
+            HybridAStarParams hp;
+            hp.workspace = WORKSPACE;
+            hp.wheelbase = planning_scenario_.params.L;
+            hp.max_steer = planning_scenario_.params.max_steer;
+            hp.n_steer = variant_.hap_n_steer;
+            hp.sub_steps = variant_.hap_sub_steps;
+            hp.dt = variant_.hap_dt;
+            hp.v_search = variant_.hap_v_search;
+            hp.steer_penalty = variant_.hap_steer_penalty;
+            hp.robot_radius = variant_.hap_robot_radius;
+            hp.max_expansions = variant_.hap_max_expansions;
+            std::vector<ObstacleCircle> obs;
+            obs.reserve(planning_scenario_.n_obs);
+            for (int i = 0; i < planning_scenario_.n_obs; i++) {
+                ObstacleCircle o;
+                o.x = planning_scenario_.obstacles[i].x;
+                o.y = planning_scenario_.obstacles[i].y;
+                o.r = planning_scenario_.obstacles[i].r;
+                obs.push_back(o);
+            }
+            Pose2D start_pose;
+            start_pose.x = sx;
+            start_pose.y = sy;
+            start_pose.theta = stheta;
+            Pose2D goal_pose;
+            goal_pose.x = planning_scenario_.cost_params.goal_x;
+            goal_pose.y = planning_scenario_.cost_params.goal_y;
+            // Goal heading is left at zero: the cost only cares about
+            // position, and the goal_theta tolerance in the search is
+            // generous so this rarely matters.
+            goal_pose.theta = 0.0f;
+            hap_path_ = hybrid_astar_plan(start_pose, goal_pose, obs, hp);
+            if (hap_path_.empty()) hap_planning_failed_ = true;
+        }
+        PurePursuitParams pp;
+        pp.lookahead = variant_.hap_lookahead;
+        pp.wheelbase = planning_scenario_.params.L;
+        pp.target_speed = variant_.hap_target_speed;
+        pp.speed_gain = variant_.hap_speed_gain;
+        pp.max_accel = 3.0f;
+        pp.max_steer = planning_scenario_.params.max_steer;
+        PurePursuitCommand cmd = pure_pursuit_step(
+            sx, sy, stheta, sv, hap_path_, pp);
+        h_nominal_[0] = cmd.accel;
+        h_nominal_[1] = cmd.steer;
+        for (int t = 1; t < t_horizon_; t++) {
+            h_nominal_[t * 2 + 0] = 0.0f;
+            h_nominal_[t * 2 + 1] = 0.0f;
+        }
+        CUDA_CHECK(cudaMemcpy(d_nominal_, h_nominal_.data(),
+                              h_nominal_.size() * sizeof(float),
+                              cudaMemcpyHostToDevice));
+    }
+
     void reset_state() {
         rx_ = eval_scenario_.start_x;
         ry_ = eval_scenario_.start_y;
@@ -1984,6 +2068,8 @@ private:
         cumulative_cost_ = 0.0f;
         min_goal_distance_ = sqrtf((rx_ - eval_scenario_.cost_params.goal_x) * (rx_ - eval_scenario_.cost_params.goal_x)
                                  + (ry_ - eval_scenario_.cost_params.goal_y) * (ry_ - eval_scenario_.cost_params.goal_y));
+        hap_path_.clear();
+        hap_planning_failed_ = false;
     }
 
     PlannerVariant variant_;
@@ -2044,6 +2130,8 @@ private:
     float* d_stomp_scratch_ = nullptr;
     float* d_stomp_old_ = nullptr;
     float* d_stomp_M_ = nullptr;
+    std::vector<Pose2D> hap_path_;
+    bool hap_planning_failed_ = false;
     vector<TraceRow>* trace_rows_ = nullptr;
     int trace_max_steps_ = 0;
 };
@@ -2834,6 +2922,17 @@ int main(int argc, char** argv) {
         v.stomp_iterations = 3;
         v.stomp_smoothing_passes = 2;
         v.stomp_h = 10.0f;
+        variants.push_back(v);
+    }
+    // Hybrid A* + Pure Pursuit: plan once against static obstacles, track
+    // with pure pursuit. The "blind global planner" baseline -- dynamic
+    // obstacles are ignored in the search by design so the paradigm gap
+    // versus local replanners is visible.
+    {
+        PlannerVariant v;
+        v.name = "hybrid_astar_pp";
+        v.use_sampling = false;
+        v.planner_kind = 3;
         variants.push_back(v);
     }
 
