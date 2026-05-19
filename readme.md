@@ -144,26 +144,22 @@ python3 scripts/summarize_diff_mppi.py --csv build/benchmark_diff_mppi_wall_cloc
 python3 scripts/plot_diff_mppi.py --csv build/benchmark_diff_mppi_wall_clock.csv --out-dir build/plots --time-caps 1.1,1.5,2.0
 ```
 
-The benchmark writes per-episode CSV metrics, including the strengthened nominal-linearization `feedback_mppi` baseline, the release-style current-action `feedback_mppi_ref` baseline, the rollout-sensitivity `feedback_mppi_sens` baseline, the covariance-regression `feedback_mppi_cov` baseline, the heavier fused `feedback_mppi_fused` baseline, the lower-rate-replan `feedback_mppi_hf` baseline, and the `grad_only_3` ablation. The summarizer emits Markdown and LaTeX tables for fixed-budget, cap-based wall-clock, and equal-time target comparisons, and the plotter generates PNG/PDF figures in `build/plots/`, including `diff_mppi_final_distance_vs_time_cap.*` and `diff_mppi_final_distance_vs_equal_time.*`. A reader-facing summary now lives in the README section above and on GitHub Pages; detailed local working notes remain under `paper/`.
+The benchmark writes per-episode CSV metrics; the summarizer emits Markdown / LaTeX tables for fixed-budget, cap-based wall-clock, and equal-time target comparisons; the plotter writes PNG/PDF figures under `build/plots/`. Reader-facing summary is in the Highlights table above and on GitHub Pages; detailed working notes live under `paper/`.
 
-Exact matched-time tuning:
+Exact matched-time tuning (`K` per planner tuned to shared controller-time targets):
 
 ```bash
 python3 scripts/tune_diff_mppi_time_targets.py --preset dynamic_nav
 ```
 
-This search tunes `K` per planner and scenario to hit shared controller-time targets directly, instead of selecting the nearest value from a fixed sweep. The script writes tuned episode rows to `build/benchmark_diff_mppi_exact_time.csv`, a search trace to `build/benchmark_diff_mppi_exact_time_search.csv`, and a summary to `build/benchmark_diff_mppi_exact_time_summary.md`.
-
-Mechanism analysis:
+Mechanism analysis (records per-step sampled / refined controls and local gradients; current `dynamic_slalom` trace shows the autodiff stage front-loads corrections — mean early-horizon `0.025` vs. late-horizon `0.001` for `diff_mppi_3`):
 
 ```bash
 ./bin/benchmark_diff_mppi --scenarios dynamic_slalom --planners mppi,feedback_mppi,diff_mppi_1,diff_mppi_3 --seed-count 1 --k-values 1024 --csv build/benchmark_diff_mppi_mechanism.csv --trace-csv build/benchmark_diff_mppi_mechanism_trace.csv --trace-max-steps 80
 python3 scripts/plot_diff_mppi_mechanism.py --trace-csv build/benchmark_diff_mppi_mechanism_trace.csv --benchmark-csv build/benchmark_diff_mppi_feedback_dynamic_pair.csv --scenario dynamic_slalom --out-dir build/plots_mechanism
 ```
 
-This trace workflow records the sampled nominal controls, final refined controls, and local control gradients for each episode step and horizon step. In the current `dynamic_slalom` trace at `K=1024`, `diff_mppi_1` shows mean early-horizon correction `0.018` versus late-horizon correction `0.001`, and `diff_mppi_3` shows `0.025` versus `0.001`, with peak first-action corrections `0.032` and `0.047`. That front-loaded profile supports the intended interpretation: the autodiff stage mostly sharpens the near-term controls that are actually executed, rather than replacing the whole sampled plan.
-
-Dynamic-obstacle follow-up:
+Dynamic-obstacle follow-up (seven feedback baselines + Diff-MPPI on two moving-obstacle tasks; `dynamic_slalom` keeps the hard-task split where only Diff-MPPI succeeds). Full numbers and exact-time tuning notes: `paper/diff_mppi_novelty_followup.md`; ICRA/IROS gap list: `paper/icra_iros_gap_list.md`.
 
 ```bash
 ./bin/benchmark_diff_mppi --scenarios dynamic_crossing,dynamic_slalom --k-values 256,512,1024,2048,4096,6144,8192 --csv build/benchmark_diff_mppi_feedback_dynamic_pair.csv
@@ -171,71 +167,54 @@ python3 scripts/summarize_diff_mppi.py --csv build/benchmark_diff_mppi_feedback_
 python3 scripts/plot_diff_mppi.py --csv build/benchmark_diff_mppi_feedback_dynamic_pair.csv --out-dir build/plots_feedback_dynamic_pair --time-caps 1.0,1.5 --time-targets 1.0,1.5
 ```
 
-This follow-up now includes two moving-obstacle tasks, a strengthened nominal-linearization `feedback_mppi` baseline, a release-style current-action `feedback_mppi_ref` baseline, a release-weighting `feedback_mppi_release` baseline, a rollout-sensitivity `feedback_mppi_sens` baseline, a covariance-regression `feedback_mppi_cov` baseline, a heavier fused `feedback_mppi_fused` baseline, a closer low-rate-replan `feedback_mppi_hf` execution baseline, the earlier `grad_only_3` ablation, and exact-time tuning presets for the lighter, release-style, covariance, architecture-gap, and heavy-feedback comparisons. In the current fixed-budget benchmark, all seven feedback baselines improve over vanilla MPPI on `dynamic_crossing`; at `K=256`, `feedback_mppi_fused` is still the strongest current feedback row at `success=1.00` and `final_distance=1.87` versus `mppi` at `0.00 / 3.04`, while `feedback_mppi_ref` reaches `1.00 / 1.90` at `0.62 ms` and the newer `feedback_mppi_release` reaches `1.00 / 1.86` at `0.61 ms`. On the harder `dynamic_slalom`, none of the feedback baselines solve the task, and `feedback_mppi_release` shows why matching the released weighting alone is not enough: at `K=256` it drifts to `final_distance=19.12`, while `feedback_mppi_ref` reaches `11.87`, `feedback_mppi_cov` reaches `11.49`, `feedback_mppi_hf` reaches `13.62`, `feedback_mppi_fused` remains the strongest non-hybrid controller at `10.28`, and Diff-MPPI remains successful at `1.89`. The new `feedback_mppi_ref` line is useful because it is materially closer to the released `Feedback-MPPI` gain computation: it uses rollout initial-state sensitivities and a current-action covariance update rather than a full horizon tracker. The newer `feedback_mppi_release` line moves one step closer again by matching the released weight update shape, and it confirms that this closer proxy helps on the easier task without closing the hard-task gap. Under a `1.0 ms` cap, `feedback_mppi_release` lowers terminal distance from `3.04 -> 1.93` on `dynamic_crossing`, but on `dynamic_slalom` it remains at `19.11`; the same cap for `feedback_mppi_ref` gives `1.87` and `11.89`. A targeted exact-time sweep now shows the same qualitative behavior at shared controller times: `feedback_mppi_ref` tunes to `K=1263 @ 1.002 ms` and `K=2362 @ 1.482 ms` on `dynamic_crossing`, reaching final distances `1.95` and `1.89`, and to `K=1150 @ 1.023 ms` and `K=2190 @ 1.472 ms` on `dynamic_slalom`, reaching `11.89` in both cases; `feedback_mppi_release` tunes to `K=1062 @ 1.009 ms` and `K=2173 @ 1.530 ms` on `dynamic_crossing`, reaching `1.93` and `1.90`, but to `K=901 @ 1.007 ms` and `K=2033 @ 1.530 ms` on `dynamic_slalom`, where it stays near `19.11-19.13`. The `feedback_mppi_cov` line now has exact-time rows too: `K=219 @ 1.474 ms` and `K=292 @ 1.964 ms` on `dynamic_crossing` reach `1.92` and `1.91`, while `K=211 @ 1.490 ms` and `K=293 @ 1.971 ms` on `dynamic_slalom` reach `11.72` and `11.68`. The `feedback_mppi_hf` line is still useful because it narrows the controller-architecture gap by reusing local gains between replans instead of running the full solver every step; exact-time tuning now lands it near `K=285 @ 0.978 ms`, `K=368 @ 1.486 ms`, and `K=443 @ 1.989 ms` on `dynamic_crossing`, and `K=276 @ 0.989 ms`, `K=369 @ 1.498 ms`, and `K=441 @ 1.980 ms` on `dynamic_slalom`. The heavier `feedback_mppi_fused` line now also has a targeted `2.0 ms` exact-time spot check: `K=153 @ 1.968 ms` on `dynamic_crossing` gives `success=1.00, final_distance=1.94`, while `K=137 @ 1.993 ms` on `dynamic_slalom` gives `final_distance=10.51`. This is still intentionally described as "closer" rather than "faithful": `feedback_mppi_ref` narrows the released-gain gap, `feedback_mppi_release` narrows the released-weighting gap, `feedback_mppi_cov` narrows the covariance-gain gap, `feedback_mppi_hf` narrows the controller-architecture gap, and `feedback_mppi_fused` narrows the gain-estimation gap, but none reproduces the full controller stack of the recent literature. The current write-up is in `paper/diff_mppi_novelty_followup.md`, and the current `ICRA/IROS` submission-gap assessment is in `paper/icra_iros_gap_list.md`.
-
-Uncertainty follow-up:
+Uncertainty follow-up (seed-dependent perturbed obstacle trajectory under nominal-model planning; `mppi` fails both, `feedback_mppi` recovers crossing but fails slalom, Diff-MPPI succeeds on both). Write-up: `paper/diff_mppi_uncertainty_followup.md`.
 
 ```bash
 ./bin/benchmark_diff_mppi --scenarios uncertain_crossing,uncertain_slalom --planners mppi,feedback_mppi,diff_mppi_1,diff_mppi_3 --seed-count 4 --k-values 256,512,1024,2048,4096,6144,8192 --csv build/benchmark_diff_mppi_uncertain.csv
 python3 scripts/summarize_diff_mppi.py --csv build/benchmark_diff_mppi_uncertain.csv --markdown-out build/benchmark_diff_mppi_uncertain_summary.md --latex-out build/benchmark_diff_mppi_uncertain_summary.tex --time-caps 1.0,1.5 --time-targets 1.0,1.5
-python3 scripts/plot_diff_mppi.py --csv build/benchmark_diff_mppi_uncertain.csv --out-dir build/plots_uncertain --time-caps 1.0,1.5 --time-targets 1.0,1.5
 python3 scripts/tune_diff_mppi_time_targets.py --preset uncertain_dynamic_nav
 ```
 
-This follow-up keeps the planner on the nominal dynamic-obstacle model while executing each episode against a seed-dependent perturbed obstacle trajectory. The perturbation changes obstacle time offset, speed scale, and lateral offset, so the benchmark is a mild model-mismatch study rather than a full partial-observation benchmark. The current result is strong enough to be useful in rebuttal: at fixed budget and under exact matched-time tuning, `mppi` remains unsuccessful on both `uncertain_crossing` and `uncertain_slalom`, `feedback_mppi` recovers the easier uncertain crossing task but still fails uncertain slalom, and Diff-MPPI remains successful on both. Representative `1.00 ms` rows are `uncertain_crossing: mppi K=7584, dist=2.97; feedback_mppi K=2087, dist=1.87; diff_mppi_1 K=5457, dist=1.89` and `uncertain_slalom: mppi K=7524, dist=14.17; feedback_mppi K=2058, dist=11.82; diff_mppi_3 K=346, dist=1.92`. The current write-up is in `paper/diff_mppi_uncertainty_followup.md`.
-
-Hybrid-versus-gradient-only ablation:
+Hybrid-vs-gradient-only ablation (`grad_only_3` improves `corner_turn` slightly but fails `dynamic_crossing` — local gradients alone don't explain the gains):
 
 ```bash
 ./bin/benchmark_diff_mppi --scenarios corner_turn,dynamic_crossing --seed-count 4 --k-values 256,512,1024,2048,4096,6144,8192 --csv build/benchmark_diff_mppi_ablation.csv
 python3 scripts/summarize_diff_mppi.py --csv build/benchmark_diff_mppi_ablation.csv --time-caps 1.0,1.5 --time-targets 1.0,1.5
-python3 scripts/plot_diff_mppi.py --csv build/benchmark_diff_mppi_ablation.csv --out-dir build/plots_ablation --time-caps 1.0,1.5 --time-targets 1.0,1.5
 ```
 
-This ablation isolates whether local gradients alone explain the gains. In the current benchmark, `grad_only_3` improves `corner_turn` slightly over vanilla MPPI but fails the `dynamic_crossing` task completely, while the hybrid Diff-MPPI variants remain successful.
-
-Outside-domain CartPole follow-up:
+CartPole, dynamic-bicycle, planar-manipulator, and 7-DOF manipulator pilots — out-of-domain transfer checks. Detailed write-ups under `paper/diff_mppi_{cartpole,dynamic_bicycle,manipulator,7dof}_followup.md`.
 
 ```bash
 ./bin/benchmark_diff_mppi_cartpole --csv build/benchmark_diff_mppi_cartpole.csv
-python3 scripts/summarize_diff_mppi.py --csv build/benchmark_diff_mppi_cartpole.csv --markdown-out build/benchmark_diff_mppi_cartpole_summary.md --latex-out build/benchmark_diff_mppi_cartpole_summary.tex --time-caps 0.25,0.5,0.75 --time-targets 0.25,0.5
-python3 scripts/plot_diff_mppi.py --csv build/benchmark_diff_mppi_cartpole.csv --out-dir build/plots_cartpole --time-caps 0.25,0.5,0.75 --time-targets 0.25,0.5
-```
-
-This pilot benchmark reuses the repository's nonlinear CartPole dynamics to test Diff-MPPI outside the 2D kinematic navigation setting. The current result is mixed by design rather than oversold: on `cartpole_recover`, `diff_mppi_3` improves over vanilla MPPI at `K=256` and `K=2048`, while on `cartpole_large_angle` the best Diff-MPPI variant slightly lowers terminal stabilization error at `K=512` and `K=1024` but none of the planners fully solve the task. This partially addresses the "2D-only" reviewer concern, but it is still a pilot underactuated-dynamics benchmark rather than a full high-fidelity robotics evaluation. The current write-up is in `paper/diff_mppi_cartpole_followup.md`.
-
-Dynamic-bicycle mobile-navigation follow-up:
-
-```bash
 ./bin/benchmark_diff_mppi_dynamic_bicycle --csv build/benchmark_diff_mppi_dynamic_bicycle.csv
-python3 scripts/summarize_diff_mppi.py --csv build/benchmark_diff_mppi_dynamic_bicycle.csv --markdown-out build/benchmark_diff_mppi_dynamic_bicycle_summary.md --latex-out build/benchmark_diff_mppi_dynamic_bicycle_summary.tex --time-caps 0.1,0.7,1.8 --time-targets 0.1,0.7,1.8
-python3 scripts/plot_diff_mppi.py --csv build/benchmark_diff_mppi_dynamic_bicycle.csv --out-dir build/plots_dynamic_bicycle --time-caps 0.1,0.7,1.8 --time-targets 0.1,0.7,1.8
-python3 scripts/tune_diff_mppi_time_targets.py --preset dynamic_bicycle
-```
-
-This follow-up adds a higher-order mobile-navigation benchmark with steering lag, drag, static obstacles, and moving obstacles. The default sweep focuses on the low-budget regime `K={32,64,128,256}`, where transfer is most informative. It now includes the closer `feedback_mppi_sens` baseline as well as `mppi`, `diff_mppi_1`, and `diff_mppi_3`. The current fixed-budget result is intentionally narrow: at `dynbike_crossing`, `feedback_mppi_sens` is a real efficiency baseline, reducing `K=32` steps and cumulative cost from `196.0 / 2295.9` to `186.2 / 2099.2` with essentially unchanged terminal distance, while at `dynbike_slalom` the clearest low-budget rescue is still hybrid refinement, with `diff_mppi_1` lifting `K=32` from `success=0.75` and `final_distance=12.60` to `success=1.00` and `final_distance=2.24`. At `K=128` and `K=256` on `dynbike_slalom`, `feedback_mppi_sens` becomes a strong efficiency competitor too, reducing steps from `255.2 -> 230.8` and `253.2 -> 236.8` with near-identical terminal distance. A reviewer-facing exact-time spot check is also available via `python3 scripts/tune_diff_mppi_time_targets.py --preset dynamic_bicycle --time-targets 1.8`; in that compute-matched setting, `mppi`, `feedback_mppi_sens`, and `diff_mppi_1` are all competitive on terminal distance, and `feedback_mppi_sens` reaches `dynbike_slalom` with `K=248` instead of `K=12855` while using `17` fewer steps (`2.21 -> 2.25` final distance). This should be read as a stronger mobile-dynamics pilot rather than as a closed high-fidelity evaluation gap. The current write-up is in `paper/diff_mppi_dynamic_bicycle_followup.md`.
-
-Planar-manipulator follow-up:
-
-```bash
 ./bin/benchmark_diff_mppi_manipulator --seed-count 4 --k-values 256,512 --csv build/benchmark_diff_mppi_manipulator.csv
-python3 scripts/summarize_diff_mppi.py --csv build/benchmark_diff_mppi_manipulator.csv --markdown-out build/benchmark_diff_mppi_manipulator_summary.md --latex-out build/benchmark_diff_mppi_manipulator_summary.tex --time-caps 3.0,6.5,10.5 --time-targets 3.0
-python3 scripts/plot_diff_mppi.py --csv build/benchmark_diff_mppi_manipulator.csv --out-dir build/plots_manipulator --time-caps 3.0,6.5,10.5 --time-targets 3.0
-```
-
-This follow-up adds a custom 2-link planar arm benchmark with second-order joint dynamics, workspace obstacles, and one moving-obstacle reach task. It is still a pilot rather than a standardized manipulation benchmark, but it is a closer answer to the "2D kinematic navigation only" criticism than CartPole. The stronger current result is `arm_static_shelf`: at `K=256`, vanilla `mppi` stays at `success=0.00` and `final_distance=0.23`, while `diff_mppi_1` reaches `success=0.75` at `0.16`, `feedback_mppi_cov` reaches `success=1.00` at `0.15`, and the new `feedback_mppi_ref` also reaches `success=1.00` at `0.15` while using only `1.90 ms` per step instead of `2.65 ms`. At `K=512`, both feedback baselines stay at `1.00` success while `mppi` remains unsuccessful. The harder `arm_dynamic_sweep` task is intentionally not oversold: no planner fully solves it yet, but the best feedback and hybrid rows reduce final distance from roughly `0.33-0.36` for `mppi` to `0.29-0.30`. The matched-time spot-check is stronger now: `python3 scripts/tune_diff_mppi_time_targets.py --preset manipulator_pilot` produces shared `2.0 ms` and `3.0 ms` rows, where `feedback_mppi_cov` is best on the static shelf task and `feedback_mppi_ref` becomes the best feedback row on the dynamic sweep task at `3.0 ms`. The current note is in `paper/diff_mppi_manipulator_followup.md`.
-
-7-DOF manipulator follow-up:
-
-```bash
 ./bin/benchmark_diff_mppi_manipulator_7dof --seed-count 4 --k-values 256,512,1024 --csv build/benchmark_diff_mppi_manipulator_7dof.csv
-python3 scripts/summarize_diff_mppi.py --csv build/benchmark_diff_mppi_manipulator_7dof.csv --markdown-out build/benchmark_diff_mppi_manipulator_7dof_summary.md --time-targets 3.0,5.0
-python3 scripts/tune_diff_mppi_time_targets.py --preset 7dof_manipulator
 ```
 
-This follow-up adds a Panda-like 7-DOF serial-arm benchmark with 14-dimensional state (7 joint angles + 7 velocities), 7-dimensional torque control, 3D workspace obstacles, and parallelized gradient computation (analytical dynamics Jacobian + parallel stage cost gradients across T threads). It includes two scenarios: `7dof_shelf_reach` (static obstacle avoidance while reaching) and `7dof_dynamic_avoid` (reaching while avoiding a moving 3D obstacle). On `7dof_dynamic_avoid` at `K=512`, `diff_mppi_3` reaches `success=1.00` at `final_distance=0.090` using `0.84 ms` per step, while `feedback_mppi_ref` reaches `success=0.75` at `0.283` using `4.01 ms`. An additional `feedback_mppi_faithful` variant combining the released current-action gain computation with a two-rate controller architecture (replan every other step) was tested on the base dynamic navigation suite and found to fail even at `K=8192` and `2.1 ms` per step, confirming that current-action-only feedback gains lose temporal coverage between replans. The current note is in `paper/diff_mppi_7dof_followup.md`.
+Headline transfer results: `arm_static_shelf` K=256 — `feedback_mppi_cov`/`feedback_mppi_ref` reach `success=1.00` at `0.15` while `mppi` stays at `0.00 / 0.23`. `7dof_dynamic_avoid` K=512 — `diff_mppi_3` reaches `success=1.00 at 0.84 ms`, while `feedback_mppi_ref` reaches `0.75 at 4.01 ms`. `dynbike_slalom` K=32 — `diff_mppi_1` lifts `success=0.75 / 12.60` to `1.00 / 2.24`.
 
 </details>
+
+### Local planner cross-comparison
+
+`benchmark_diff_mppi` now hosts a 12-planner sweep across 3 dynamic scenarios x 5 speed-scales x 2 radius-scales x 4 seeds, surfacing where DWA, STOMP, Diff-MPPI, and the Hybrid A* family each win. Detailed report: `docs/local_planner_comparison.md`. Hybrid A* design notes: `docs/hybrid_astar_baseline.md`.
+
+Headline on the hard half (`dyn_speed_scale >= 1.5`):
+
+| planner             | family    | hard solved | mean coll | mean ms |
+|---------------------|-----------|------------:|----------:|--------:|
+| dwa_med / dwa_fine  | DWA       |       12/12 |      0.00 |    0.06 |
+| hybrid_astar_dwa    | Hybrid-A* |       12/12 |      0.00 |    0.07 |
+| hybrid_astar_mppi   | Hybrid-A* |       11/12 |      0.00 |    0.56 |
+| stomp_3_smooth      | STOMP     |        6/12 |      0.00 |    1.41 |
+| diff_mppi_3_early8  | Diff-MPPI |        5/12 |      1.40 |    0.66 |
+| hybrid_astar_pp     | Hybrid-A* |        3/12 |     15.58 |    0.02 |
+| hybrid_astar_dyn_pp | Hybrid-A* |        2/12 |     15.92 |    0.02 |
+
+Findings:
+- **DWA wins decisively** on this benchmark (argmin + tuned w_terminal=20).
+- **Global + local hybrid closes the paradigm gap** for both DWA and MPPI locals; the pattern is paradigm-agnostic.
+- **Dyn-aware global search alone is brittle** -- the constant-speed search vs. accelerate-from-rest sim timing mismatch makes linearised obstacle prediction worse than blind on hard cells.
 
 ### Point-cloud benchmark snapshot
 
@@ -386,6 +365,7 @@ Current concrete problems:
 - `planner_selection`: choose one planner configuration per dataset/scenario pair
 - `fixture_promotion`: choose which benchmark fixture datasets survive into the lightweight experiment corpus
 - `time_budget_selection`: choose one planner configuration per dataset/scenario/time-budget request
+- `horizon_selection`: choose one Diff-MPPI gradient-update horizon per dataset/scenario pair
 
 Each problem is implemented three different ways:
 - functional scoring
@@ -461,6 +441,7 @@ Combines particle filter (for robot pose) with per-particle EKF (for landmark po
 | Potential Field | `potential_field` | Grid-parallel potential computation (attractive + repulsive) |
 | **3D Potential Field** | `potential_field_3d` | **3D grid-parallel potential (216K+ cells, drone/UAV)** |
 | MPPI | `mppi` | 4096-sample path-integral control on GPU |
+| **Hybrid A* family** | `benchmark_diff_mppi --planners hybrid_astar_{pp,dwa,dyn_pp,mppi}` | **Forward-only Hybrid A* global path + four local controllers (pure pursuit, DWA, dyn-aware-search + pp, MPPI). Demonstrates the paradigm gap: blind global + pp solves 3/12 hard cells, global + DWA/MPPI local closes the gap to 11-12/12** |
 | Differentiable MPPI | `diff_mppi`, `comparison_diff_mppi`, `benchmark_diff_mppi`, `benchmark_diff_mppi_cartpole`, `benchmark_diff_mppi_dynamic_bicycle`, `benchmark_diff_mppi_manipulator` | MPPI sampling update + autodiff control-gradient refinement + multi-scenario CSV benchmarking under fixed sample and wall-clock caps, plus nominal-linearization / rollout-sensitivity / covariance-regression / fused-feedback / high-frequency-feedback baselines, uncertain-dynamic follow-up, CartPole, dynamic-bicycle, and planar-manipulator pilots outside the base kinematic suite |
 | Neural SDF Navigation | `neural_sdf`, `sdf_potential_field`, `sdf_mppi`, `comparison_sdf_nav` | Learned implicit obstacle fields for heatmap visualization, potential fields, and MPPI |
 | PRM | `prm_cuda` | Parallel collision check + k-NN + edge collision |
