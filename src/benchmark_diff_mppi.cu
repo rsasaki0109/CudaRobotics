@@ -124,6 +124,15 @@ struct PlannerVariant {
     float hap_target_speed = 5.0f;
     float hap_speed_gain = 1.5f;
     int hap_max_expansions = 100000;
+    // Hybrid A* + DWA hybrid (planner_kind == 4). Reuses hap_* search params
+    // and dwa_* grid params; DWA cost replaces goal-distance/heading with
+    // path-follow terms (nearest path point + lookahead heading).
+    float had_w_path = 5.0f;
+    float had_w_heading = 0.5f;
+    float had_w_speed = 0.20f;
+    float had_w_obs = 11.5f;
+    float had_w_terminal = 20.0f;
+    int had_lookahead_idx = 2;
     bool use_sampling = true;
     bool use_feedback = false;
     bool use_gradient = false;
@@ -1163,6 +1172,126 @@ __global__ void dwa_grid_kernel(
     d_grid_costs[tid] = cost;
 }
 
+// Hybrid A* + DWA hybrid: DWA grid search but cost is dominated by tracking a
+// pre-computed Hybrid A* path. Replaces goal-distance/heading with
+// (nearest-path-point lateral error) and (heading vs lookahead-point bearing).
+// Static obstacles are baked into the global path so the local term mostly
+// shapes around dynamic obstacles; obstacle and speed terms remain as in DWA.
+// If path_n == 0 (planning failed) the kernel falls back to vanilla DWA cost.
+__global__ void hybrid_astar_dwa_grid_kernel(
+    float sx, float sy, float stheta, float sv,
+    float* d_grid_costs,
+    float* d_grid_accels,
+    float* d_grid_steers,
+    BicycleParams params,
+    CostParams cost_params,
+    int n_obs,
+    int n_dyn_obs,
+    int start_step,
+    int T_dwa,
+    int n_accel,
+    int n_steer,
+    float accel_min, float accel_max,
+    float w_path, float w_speed, float w_obs, float w_heading,
+    float w_terminal,
+    const float* __restrict__ d_path,
+    int path_n,
+    int lookahead_idx)
+{
+    int tid = blockIdx.x * blockDim.x + threadIdx.x;
+    int total = n_accel * n_steer;
+    if (tid >= total) return;
+
+    int i_accel = tid / n_steer;
+    int i_steer = tid % n_steer;
+    float accel = (n_accel > 1)
+        ? accel_min + (accel_max - accel_min) * i_accel / (float)(n_accel - 1)
+        : 0.5f * (accel_min + accel_max);
+    float steer_range = 2.0f * params.max_steer;
+    float steer = (n_steer > 1)
+        ? -params.max_steer + steer_range * i_steer / (float)(n_steer - 1)
+        : 0.0f;
+
+    d_grid_accels[tid] = accel;
+    d_grid_steers[tid] = steer;
+
+    float x = sx, y = sy, theta = stheta, v = sv;
+    float cost = 0.0f;
+    bool collided = false;
+
+    for (int t = 0; t < T_dwa; t++) {
+        bicycle_step(x, y, theta, v, accel, steer, params);
+
+        if (path_n > 0) {
+            float best_d2 = 1.0e30f;
+            int best_idx = 0;
+            for (int p = 0; p < path_n; p++) {
+                float dxp = x - d_path[p * 3 + 0];
+                float dyp = y - d_path[p * 3 + 1];
+                float d2 = dxp * dxp + dyp * dyp;
+                if (d2 < best_d2) { best_d2 = d2; best_idx = p; }
+            }
+            cost += w_path * sqrtf(best_d2 + 0.01f) * params.dt;
+            int look = best_idx + lookahead_idx;
+            if (look >= path_n) look = path_n - 1;
+            float lx = d_path[look * 3 + 0];
+            float ly = d_path[look * 3 + 1];
+            float dxL = lx - x;
+            float dyL = ly - y;
+            float dL2 = dxL * dxL + dyL * dyL;
+            // Within ~0.5m of the lookahead point the bearing atan2(dyL,dxL)
+            // is numerically unstable and degenerates to 0 when robot sits on
+            // the path end — that traps the robot by penalizing any theta.
+            // Fall back to the path waypoint's stored tangent in that regime.
+            float desired = (dL2 > 0.25f)
+                ? atan2f(dyL, dxL)
+                : d_path[look * 3 + 2];
+            float herr = theta - desired;
+            while (herr >  3.14159265f) herr -= 6.28318531f;
+            while (herr < -3.14159265f) herr += 6.28318531f;
+            cost += w_heading * herr * herr * params.dt;
+        } else {
+            float dxg = x - cost_params.goal_x;
+            float dyg = y - cost_params.goal_y;
+            cost += w_path * sqrtf(dxg * dxg + dyg * dyg + 0.01f) * params.dt;
+            float desired = atan2f(cost_params.goal_y - y, cost_params.goal_x - x);
+            float herr = theta - desired;
+            cost += w_heading * herr * herr * params.dt;
+        }
+
+        float speed_err = v - cost_params.target_speed;
+        cost += w_speed * speed_err * speed_err * params.dt;
+
+        for (int i = 0; i < n_obs; i++) {
+            float dx = x - d_obstacles_bench[i].x;
+            float dy = y - d_obstacles_bench[i].y;
+            float margin = sqrtf(dx * dx + dy * dy + 1e-6f) - d_obstacles_bench[i].r;
+            if (margin <= 0.1f) { cost += w_obs * 100.0f; collided = true; }
+            else if (margin < cost_params.obs_influence) cost += w_obs / (margin * margin);
+        }
+
+        float tau = (start_step + t + 1) * params.dt;
+        for (int i = 0; i < n_dyn_obs; i++) {
+            float ox = d_dynamic_obstacles_bench[i].x + d_dynamic_obstacles_bench[i].vx * tau;
+            float oy = d_dynamic_obstacles_bench[i].y + d_dynamic_obstacles_bench[i].vy * tau;
+            float dx = x - ox;
+            float dy = y - oy;
+            float margin = sqrtf(dx * dx + dy * dy + 1e-6f) - d_dynamic_obstacles_bench[i].r;
+            if (margin <= 0.1f) { cost += w_obs * 100.0f; collided = true; }
+            else if (margin < cost_params.obs_influence) cost += w_obs / (margin * margin);
+        }
+
+        if (x < 0.0f || x > WORKSPACE || y < 0.0f || y > WORKSPACE) cost += 500.0f;
+        if (collided) break;
+    }
+
+    float gdx = x - cost_params.goal_x;
+    float gdy = y - cost_params.goal_y;
+    cost += w_terminal * sqrtf(gdx * gdx + gdy * gdy + 0.01f);
+
+    d_grid_costs[tid] = cost;
+}
+
 // STOMP weight kernel: P(k) ∝ exp(-h * (S(k) - S_min) / (S_max - S_min)).
 // This normalises into [0, 1] before the exponential, so the sharpness parameter
 // h has the same effect regardless of cost scale -- different from MPPI's λ.
@@ -1414,7 +1543,7 @@ public:
             CUDA_CHECK(cudaMalloc(&d_nominal_pre_bias_, t_horizon_ * 2 * sizeof(float)));
         }
 
-        if (variant_.planner_kind == 1) {
+        if (variant_.planner_kind == 1 || variant_.planner_kind == 4) {
             dwa_grid_size_ = max(1, variant_.dwa_n_accel) * max(1, variant_.dwa_n_steer);
             h_dwa_costs_.assign(dwa_grid_size_, 0.0f);
             h_dwa_accels_.assign(dwa_grid_size_, 0.0f);
@@ -1459,6 +1588,7 @@ public:
         if (d_stomp_scratch_) CUDA_CHECK(cudaFree(d_stomp_scratch_));
         if (d_stomp_old_) CUDA_CHECK(cudaFree(d_stomp_old_));
         if (d_stomp_M_) CUDA_CHECK(cudaFree(d_stomp_M_));
+        if (d_had_path_) CUDA_CHECK(cudaFree(d_had_path_));
     }
 
     EpisodeMetrics run() {
@@ -1672,6 +1802,10 @@ private:
         }
         if (variant_.planner_kind == 3) {
             hybrid_astar_pp_controller_update(sx, sy, stheta, sv, start_step);
+            return;
+        }
+        if (variant_.planner_kind == 4) {
+            hybrid_astar_dwa_controller_update(sx, sy, stheta, sv, start_step);
             return;
         }
         CUDA_CHECK(cudaMemcpy(d_nominal_, h_nominal_.data(), h_nominal_.size() * sizeof(float), cudaMemcpyHostToDevice));
@@ -1997,46 +2131,50 @@ private:
         }
     }
 
-    void hybrid_astar_pp_controller_update(float sx, float sy, float stheta, float sv, int /*start_step*/) {
+    void ensure_hap_path_planned(float sx, float sy, float stheta) {
         // Plan lazily on the first call of the episode. The plan is held
-        // for the rest of the episode and pure pursuit tracks it -- this
-        // is the static-global-planner baseline, blind to dynamic
-        // obstacles by design.
-        if (hap_path_.empty() && !hap_planning_failed_) {
-            HybridAStarParams hp;
-            hp.workspace = WORKSPACE;
-            hp.wheelbase = planning_scenario_.params.L;
-            hp.max_steer = planning_scenario_.params.max_steer;
-            hp.n_steer = variant_.hap_n_steer;
-            hp.sub_steps = variant_.hap_sub_steps;
-            hp.dt = variant_.hap_dt;
-            hp.v_search = variant_.hap_v_search;
-            hp.steer_penalty = variant_.hap_steer_penalty;
-            hp.robot_radius = variant_.hap_robot_radius;
-            hp.max_expansions = variant_.hap_max_expansions;
-            std::vector<ObstacleCircle> obs;
-            obs.reserve(planning_scenario_.n_obs);
-            for (int i = 0; i < planning_scenario_.n_obs; i++) {
-                ObstacleCircle o;
-                o.x = planning_scenario_.obstacles[i].x;
-                o.y = planning_scenario_.obstacles[i].y;
-                o.r = planning_scenario_.obstacles[i].r;
-                obs.push_back(o);
-            }
-            Pose2D start_pose;
-            start_pose.x = sx;
-            start_pose.y = sy;
-            start_pose.theta = stheta;
-            Pose2D goal_pose;
-            goal_pose.x = planning_scenario_.cost_params.goal_x;
-            goal_pose.y = planning_scenario_.cost_params.goal_y;
-            // Goal heading is left at zero: the cost only cares about
-            // position, and the goal_theta tolerance in the search is
-            // generous so this rarely matters.
-            goal_pose.theta = 0.0f;
-            hap_path_ = hybrid_astar_plan(start_pose, goal_pose, obs, hp);
-            if (hap_path_.empty()) hap_planning_failed_ = true;
+        // for the rest of the episode -- planner variants that consume it
+        // (hybrid_astar_pp, hybrid_astar_dwa) decide how to track / react
+        // around dynamic obstacles. The search itself sees only the
+        // STATIC obstacles, by design.
+        if (!hap_path_.empty() || hap_planning_failed_) return;
+        HybridAStarParams hp;
+        hp.workspace = WORKSPACE;
+        hp.wheelbase = planning_scenario_.params.L;
+        hp.max_steer = planning_scenario_.params.max_steer;
+        hp.n_steer = variant_.hap_n_steer;
+        hp.sub_steps = variant_.hap_sub_steps;
+        hp.dt = variant_.hap_dt;
+        hp.v_search = variant_.hap_v_search;
+        hp.steer_penalty = variant_.hap_steer_penalty;
+        hp.robot_radius = variant_.hap_robot_radius;
+        hp.max_expansions = variant_.hap_max_expansions;
+        std::vector<ObstacleCircle> obs;
+        obs.reserve(planning_scenario_.n_obs);
+        for (int i = 0; i < planning_scenario_.n_obs; i++) {
+            ObstacleCircle o;
+            o.x = planning_scenario_.obstacles[i].x;
+            o.y = planning_scenario_.obstacles[i].y;
+            o.r = planning_scenario_.obstacles[i].r;
+            obs.push_back(o);
         }
+        Pose2D start_pose;
+        start_pose.x = sx;
+        start_pose.y = sy;
+        start_pose.theta = stheta;
+        Pose2D goal_pose;
+        goal_pose.x = planning_scenario_.cost_params.goal_x;
+        goal_pose.y = planning_scenario_.cost_params.goal_y;
+        // Goal heading is left at zero: the cost only cares about
+        // position, and the goal_theta tolerance in the search is
+        // generous so this rarely matters.
+        goal_pose.theta = 0.0f;
+        hap_path_ = hybrid_astar_plan(start_pose, goal_pose, obs, hp);
+        if (hap_path_.empty()) hap_planning_failed_ = true;
+    }
+
+    void hybrid_astar_pp_controller_update(float sx, float sy, float stheta, float sv, int /*start_step*/) {
+        ensure_hap_path_planned(sx, sy, stheta);
         PurePursuitParams pp;
         pp.lookahead = variant_.hap_lookahead;
         pp.wheelbase = planning_scenario_.params.L;
@@ -2048,6 +2186,60 @@ private:
             sx, sy, stheta, sv, hap_path_, pp);
         h_nominal_[0] = cmd.accel;
         h_nominal_[1] = cmd.steer;
+        for (int t = 1; t < t_horizon_; t++) {
+            h_nominal_[t * 2 + 0] = 0.0f;
+            h_nominal_[t * 2 + 1] = 0.0f;
+        }
+        CUDA_CHECK(cudaMemcpy(d_nominal_, h_nominal_.data(),
+                              h_nominal_.size() * sizeof(float),
+                              cudaMemcpyHostToDevice));
+    }
+
+    void hybrid_astar_dwa_controller_update(float sx, float sy, float stheta, float sv, int start_step) {
+        ensure_hap_path_planned(sx, sy, stheta);
+        // Upload path to device on the first successful plan of the episode.
+        if (!hap_path_.empty() && d_had_path_ == nullptr) {
+            int n = static_cast<int>(hap_path_.size());
+            std::vector<float> flat(static_cast<size_t>(n) * 3);
+            for (int i = 0; i < n; i++) {
+                flat[i * 3 + 0] = hap_path_[i].x;
+                flat[i * 3 + 1] = hap_path_[i].y;
+                flat[i * 3 + 2] = hap_path_[i].theta;
+            }
+            CUDA_CHECK(cudaMalloc(&d_had_path_, flat.size() * sizeof(float)));
+            CUDA_CHECK(cudaMemcpy(d_had_path_, flat.data(),
+                                  flat.size() * sizeof(float),
+                                  cudaMemcpyHostToDevice));
+            had_path_n_ = n;
+        }
+        int total = dwa_grid_size_;
+        int block = 64;
+        int T_dwa = max(1, variant_.dwa_predict_steps);
+        hybrid_astar_dwa_grid_kernel<<<(total + block - 1) / block, block>>>(
+            sx, sy, stheta, sv,
+            d_dwa_costs_, d_dwa_accels_, d_dwa_steers_,
+            eval_scenario_.params, eval_scenario_.cost_params,
+            eval_scenario_.n_obs, eval_scenario_.n_dyn_obs,
+            start_step, T_dwa,
+            variant_.dwa_n_accel, variant_.dwa_n_steer,
+            variant_.dwa_accel_min, variant_.dwa_accel_max,
+            variant_.had_w_path, variant_.had_w_speed,
+            variant_.had_w_obs, variant_.had_w_heading,
+            variant_.had_w_terminal,
+            d_had_path_, had_path_n_, variant_.had_lookahead_idx);
+        CUDA_CHECK(cudaMemcpy(h_dwa_costs_.data(), d_dwa_costs_,
+                              total * sizeof(float), cudaMemcpyDeviceToHost));
+        CUDA_CHECK(cudaMemcpy(h_dwa_accels_.data(), d_dwa_accels_,
+                              total * sizeof(float), cudaMemcpyDeviceToHost));
+        CUDA_CHECK(cudaMemcpy(h_dwa_steers_.data(), d_dwa_steers_,
+                              total * sizeof(float), cudaMemcpyDeviceToHost));
+        int best = 0;
+        float best_cost = h_dwa_costs_[0];
+        for (int i = 1; i < total; i++) {
+            if (h_dwa_costs_[i] < best_cost) { best_cost = h_dwa_costs_[i]; best = i; }
+        }
+        h_nominal_[0] = h_dwa_accels_[best];
+        h_nominal_[1] = h_dwa_steers_[best];
         for (int t = 1; t < t_horizon_; t++) {
             h_nominal_[t * 2 + 0] = 0.0f;
             h_nominal_[t * 2 + 1] = 0.0f;
@@ -2070,6 +2262,11 @@ private:
                                  + (ry_ - eval_scenario_.cost_params.goal_y) * (ry_ - eval_scenario_.cost_params.goal_y));
         hap_path_.clear();
         hap_planning_failed_ = false;
+        if (d_had_path_) {
+            CUDA_CHECK(cudaFree(d_had_path_));
+            d_had_path_ = nullptr;
+        }
+        had_path_n_ = 0;
     }
 
     PlannerVariant variant_;
@@ -2132,6 +2329,9 @@ private:
     float* d_stomp_M_ = nullptr;
     std::vector<Pose2D> hap_path_;
     bool hap_planning_failed_ = false;
+    // Device-side Hybrid A* path (flat x,y,theta) used by hybrid_astar_dwa.
+    float* d_had_path_ = nullptr;
+    int had_path_n_ = 0;
     vector<TraceRow>* trace_rows_ = nullptr;
     int trace_max_steps_ = 0;
 };
@@ -2933,6 +3133,17 @@ int main(int argc, char** argv) {
         v.name = "hybrid_astar_pp";
         v.use_sampling = false;
         v.planner_kind = 3;
+        variants.push_back(v);
+    }
+    // Hybrid A* + DWA hybrid: global path (static-only) shapes the local DWA
+    // cost. Closes the paradigm gap of the pure_pursuit baseline because the
+    // DWA local cost can still react to dynamic obstacles while following the
+    // pre-planned static path.
+    {
+        PlannerVariant v;
+        v.name = "hybrid_astar_dwa";
+        v.use_sampling = false;
+        v.planner_kind = 4;
         variants.push_back(v);
     }
 
