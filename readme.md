@@ -8,17 +8,13 @@ Each algorithm leverages GPU parallelism for significant speedup over CPU-only i
 
 GPU enables orders-of-magnitude more particles/samples, resulting in visually better results. All comparisons below use the **same algorithm** on CPU and GPU — the only difference is sample/particle count enabled by GPU parallelism:
 
-| | |
-|---|---|
-| **Multi-Robot: CPU 5 robots vs CUDA 500 robots** | **Particle Filter: CPU 100 vs CUDA 10,000 particles** |
-| <img src="https://rsasaki0109.github.io/CudaRobotics/comparison_multi_robot_visual.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/comparison_pf_visual.gif" width="400"/> |
-| **DWA: CPU 50 vs CUDA 50,000 samples** | **emcl2: Standard MCL (fails) vs Expansion Reset (recovers)** |
-| <img src="https://rsasaki0109.github.io/CudaRobotics/comparison_dwa_visual.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/comparison_emcl2.gif" width="400"/> |
-| **Value Iteration: CPU vs CUDA convergence** | **Particle Filter on Episode (PFoE)** |
-| <img src="https://rsasaki0109.github.io/CudaRobotics/comparison_value_iteration.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/pf_on_episode.gif" width="400"/> |
+| | | |
+|---|---|---|
+| **Multi-Robot: CPU 5 vs CUDA 500 robots** | **Particle Filter: CPU 100 vs CUDA 10,000 particles** | **DWA: CPU 50 vs CUDA 50,000 samples** |
+| <img src="https://rsasaki0109.github.io/CudaRobotics/comparison_multi_robot_visual.gif" width="280"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/comparison_pf_visual.gif" width="280"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/comparison_dwa_visual.gif" width="280"/> |
 
 <details>
-<summary>All CPU vs CUDA speed comparisons (click to expand)</summary>
+<summary>All CPU vs CUDA speed comparisons + algorithm-axis demos (click to expand)</summary>
 
 | | |
 |---|---|
@@ -36,6 +32,10 @@ GPU enables orders-of-magnitude more particles/samples, resulting in visually be
 | <img src="https://rsasaki0109.github.io/CudaRobotics/comparison_rrt3d.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/comparison_occupancy_grid.gif" width="400"/> |
 | **FastSLAM 1.0** | **AMCL** |
 | <img src="https://rsasaki0109.github.io/CudaRobotics/comparison_fastslam.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/comparison_amcl.gif" width="400"/> |
+| **Value Iteration (CPU vs CUDA convergence)** | **Particle Filter on Episode (PFoE, demo)** |
+| <img src="https://rsasaki0109.github.io/CudaRobotics/comparison_value_iteration.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/pf_on_episode.gif" width="400"/> |
+| **Expansion Reset MCL — Standard MCL (fails) vs Expansion Reset (recovers), algorithm axis** | |
+| <img src="https://rsasaki0109.github.io/CudaRobotics/comparison_expansion_reset_mcl.gif" width="400"/> | |
 
 </details>
 
