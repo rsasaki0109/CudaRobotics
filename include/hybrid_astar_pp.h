@@ -33,6 +33,17 @@ struct ObstacleCircle {
     float r = 0.0f;
 };
 
+// Linearly-moving dynamic obstacle: position at time t is
+// (x0 + vx * t, y0 + vy * t), with radius r. ``t`` is measured from the
+// start of the search (i.e. the time stamp the search nodes carry).
+struct DynamicObstacleSpec {
+    float x0 = 0.0f;
+    float y0 = 0.0f;
+    float vx = 0.0f;
+    float vy = 0.0f;
+    float r = 0.0f;
+};
+
 struct HybridAStarParams {
     // Workspace extents (search is clipped to [0, workspace] in x and y).
     float workspace = 60.0f;
@@ -107,26 +118,58 @@ inline bool collides(float x, float y,
     return false;
 }
 
+// Predicts each dynamic obstacle's center at absolute time ``t`` (seconds
+// from the start of the search) and checks the inflated circle. Empty
+// list short-circuits — callers can pass an empty vector to skip.
+inline bool collides_dynamic(float x, float y, float t,
+                             const std::vector<DynamicObstacleSpec>& dyn,
+                             float robot_radius) {
+    for (const auto& o : dyn) {
+        float ox = o.x0 + o.vx * t;
+        float oy = o.y0 + o.vy * t;
+        float dx = x - ox;
+        float dy = y - oy;
+        float rad = o.r + robot_radius;
+        if (dx * dx + dy * dy <= rad * rad) {
+            return true;
+        }
+    }
+    return false;
+}
+
 struct Node {
     float x = 0.0f, y = 0.0f, theta = 0.0f;
     float g = 0.0f;
+    float t = 0.0f;   // absolute time stamp; only used by the dyn-aware path
     int parent = -1;
 };
 
 }  // namespace detail
 
 // Returns a forward-only path from `start` to `goal` avoiding the given
-// circular static obstacles, or an empty vector if no path was found
-// within the search budget. The first pose is `start`; the last is
-// within the configured goal tolerance.
+// circular static obstacles and (optionally) the given dynamic obstacles
+// at their predicted positions along the path's time stamps. Returns an
+// empty vector if no path was found within the search budget. The first
+// pose is `start`; the last is within the configured goal tolerance.
+//
+// ``t_offset`` is the wall time the planner is invoked at, relative to
+// the dynamic obstacles' x0/y0 origin -- pass 0 if the obstacles are
+// already specified at search start time.
 inline std::vector<Pose2D> hybrid_astar_plan(
     const Pose2D& start,
     const Pose2D& goal,
     const std::vector<ObstacleCircle>& obstacles,
-    const HybridAStarParams& p)
+    const HybridAStarParams& p,
+    const std::vector<DynamicObstacleSpec>& dynamic_obstacles = {},
+    float t_offset = 0.0f)
 {
     using namespace detail;
     if (collides(start.x, start.y, obstacles, p.robot_radius)) {
+        return {};
+    }
+    if (!dynamic_obstacles.empty() &&
+        collides_dynamic(start.x, start.y, t_offset,
+                         dynamic_obstacles, p.robot_radius)) {
         return {};
     }
     std::vector<Node> closed;
@@ -151,6 +194,7 @@ inline std::vector<Pose2D> hybrid_astar_plan(
     start_node.y = start.y;
     start_node.theta = start.theta;
     start_node.g = 0.0f;
+    start_node.t = t_offset;
     start_node.parent = -1;
     int64_t key0 = discretise(start.x, start.y, start.theta, p);
     if (key0 < 0) return {};
@@ -187,17 +231,25 @@ inline std::vector<Pose2D> hybrid_astar_plan(
                 : (-p.max_steer + 2.0f * p.max_steer
                    * static_cast<float>(s) / static_cast<float>(p.n_steer - 1));
             float nx = cur.x, ny = cur.y, nth = cur.theta;
+            float nt = cur.t;
             bool collided = false;
             for (int k = 0; k < p.sub_steps; k++) {
                 nx += p.v_search * std::cos(nth) * dt_sub;
                 ny += p.v_search * std::sin(nth) * dt_sub;
                 nth += (p.v_search / p.wheelbase) * std::tan(steer) * dt_sub;
+                nt += dt_sub;
                 if (nx < 0.0f || nx > p.workspace
                     || ny < 0.0f || ny > p.workspace) {
                     collided = true;
                     break;
                 }
                 if (collides(nx, ny, obstacles, p.robot_radius)) {
+                    collided = true;
+                    break;
+                }
+                if (!dynamic_obstacles.empty() &&
+                    collides_dynamic(nx, ny, nt,
+                                     dynamic_obstacles, p.robot_radius)) {
                     collided = true;
                     break;
                 }
@@ -217,6 +269,7 @@ inline std::vector<Pose2D> hybrid_astar_plan(
             child.y = ny;
             child.theta = nth;
             child.g = ng;
+            child.t = nt;
             child.parent = idx;
             int child_idx = static_cast<int>(closed.size());
             closed.push_back(child);
