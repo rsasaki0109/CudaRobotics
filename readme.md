@@ -8,10 +8,12 @@ Each algorithm leverages GPU parallelism for significant speedup over CPU-only i
 
 GPU enables orders-of-magnitude more particles/samples, resulting in visually better results. All comparisons below use the **same algorithm** on CPU and GPU — the only difference is sample/particle count enabled by GPU parallelism:
 
-| | | |
-|---|---|---|
-| **Multi-Robot: CPU 5 vs CUDA 500 robots** | **Particle Filter: CPU 100 vs CUDA 10,000 particles** | **DWA: CPU 50 vs CUDA 50,000 samples** |
-| <img src="https://rsasaki0109.github.io/CudaRobotics/comparison_multi_robot_visual.gif" width="280"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/comparison_pf_visual.gif" width="280"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/comparison_dwa_visual.gif" width="280"/> |
+| | |
+|---|---|
+| **Multi-Robot: CPU 5 vs CUDA 500 robots** | **Particle Filter: CPU 100 vs CUDA 10,000 particles** |
+| <img src="https://rsasaki0109.github.io/CudaRobotics/comparison_multi_robot_visual.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/comparison_pf_visual.gif" width="400"/> |
+| **DWA: CPU 50 vs CUDA 50,000 samples** | **Lidar Simulator: CPU 1,024 vs CUDA 1,048,576 rays / scan** |
+| <img src="https://rsasaki0109.github.io/CudaRobotics/comparison_dwa_visual.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/comparison_lidar_sim.gif" width="400"/> |
 
 <details>
 <summary>All CPU vs CUDA speed comparisons + algorithm-axis demos (click to expand)</summary>
@@ -291,11 +293,12 @@ Rotating visual summary of the benchmark room cloud (raw / statistical-filtered 
 | MiniIsaacGym CartPole | `mini_isaac` | 4096 environments stepped in parallel with GPU-side action generation |
 | MiniIsaacGym REINFORCE | `mini_isaac_rl` | GPU rollout buffer, return computation, policy-gradient construction, and MLP updates |
 
-### Mapping
+### Mapping / Sensor Simulation
 
 | Algorithm | Binary | CUDA Parallelization |
 |---|---|---|
 | Occupancy Grid | `occupancy_grid` | Ray-parallel lidar update (360 threads/scan) |
+| **Massive Lidar Simulator** | `comparison_lidar_sim` | **2D DDA raycast, 1 ray = 1 thread; 1M rays/scan in ~0.25 ms (1500x per-ray throughput vs CPU)** |
 
 ### Multi-Robot
 
