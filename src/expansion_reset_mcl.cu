@@ -1,7 +1,10 @@
 /*************************************************************************
-    > File Name: emcl2.cu
-    > CUDA-parallelized Expansion Resetting MCL (emcl2)
-    > Based on Ueda (IROS 2004) - Expansion Resetting for kidnapped robot
+    > File Name: expansion_reset_mcl.cu
+    > CUDA-parallelized Expansion Resetting MCL
+    > Independent reimplementation from Ueda (IROS 2004) — Expansion
+    > Resetting for kidnapped robot. Not derived from the upstream
+    > CIT-Autonomous-Robot-Lab/emcl2 ROS source (LGPL-3.0); algorithm
+    > follows the paper only.
     > CUDA kernels: predict, compute_likelihood, check_reset,
     >               expansion_reset, sensor_reset, resample
  ************************************************************************/
@@ -462,7 +465,7 @@ void draw_arrow(cv::Mat& img, cv::Point2i pt, float theta, cv::Scalar color, int
 // Main
 // ---------------------------------------------------------------------------
 int main() {
-    std::cout << "emcl2: Expansion Resetting MCL (Ueda IROS 2004)" << std::endl;
+    std::cout << "Expansion Resetting MCL (Ueda IROS 2004)" << std::endl;
 
     float origin_x = 0.0f, origin_y = 0.0f;
 
@@ -557,10 +560,10 @@ int main() {
             }
 
     // Visualization
-    cv::namedWindow("emcl2", cv::WINDOW_NORMAL);
-    cv::resizeWindow("emcl2", IMG_W, IMG_H);
+    cv::namedWindow("expansion_reset_mcl", cv::WINDOW_NORMAL);
+    cv::resizeWindow("expansion_reset_mcl", IMG_W, IMG_H);
     cv::VideoWriter video(
-        "gif/emcl2.avi",
+        "gif/expansion_reset_mcl.avi",
         cv::VideoWriter::fourcc('X', 'V', 'I', 'D'), 30, cv::Size(IMG_W, IMG_H));
 
     bool kidnapped = false;
@@ -754,16 +757,16 @@ int main() {
                 cv::FONT_HERSHEY_SIMPLEX, 1.2, cv::Scalar(0, 200, 0), 3);
         }
 
-        cv::imshow("emcl2", bg);
+        cv::imshow("expansion_reset_mcl", bg);
         video.write(bg);
         cv::waitKey(5);
     }
 
     video.release();
-    system("ffmpeg -y -i gif/emcl2.avi "
+    system("ffmpeg -y -i gif/expansion_reset_mcl.avi "
            "-vf 'fps=15,scale=800:-1:flags=lanczos' -loop 0 "
-           "gif/emcl2.gif 2>/dev/null");
-    std::cout << "GIF saved to gif/emcl2.gif" << std::endl;
+           "gif/expansion_reset_mcl.gif 2>/dev/null");
+    std::cout << "GIF saved to gif/expansion_reset_mcl.gif" << std::endl;
 
     cudaFree(d_px); cudaFree(d_py); cudaFree(d_ptheta); cudaFree(d_pw);
     cudaFree(d_px_tmp); cudaFree(d_py_tmp); cudaFree(d_ptheta_tmp);
