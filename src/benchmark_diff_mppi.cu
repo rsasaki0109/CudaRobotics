@@ -82,6 +82,13 @@ struct PlannerVariant {
     // For kinds 1 and 2 the legacy MPPI flags (use_sampling/use_gradient/use_feedback)
     // are ignored and a dedicated controller branch runs instead.
     int planner_kind = 0;
+    // Per-variant override for the MPPI / Diff-MPPI / STOMP / hybrid_astar_mppi
+    // rollout horizon. 0 means "use DEFAULT_T_HORIZON (or the --t-horizon CLI
+    // override if supplied)". A positive value pins this variant to a
+    // specific T so the default sweep uses the right horizon without the
+    // caller needing to know the flag. Mirrors the per-variant
+    // dwa_predict_steps mechanism for DWA-family planners.
+    int t_horizon = 0;
     // DWA parameters (only used when planner_kind == 1).
     int dwa_n_accel = 9;
     int dwa_n_steer = 13;
@@ -439,11 +446,14 @@ __global__ void hybrid_astar_mppi_rollout_kernel(
         if (x < 0.0f || x > WORKSPACE || y < 0.0f || y > WORKSPACE) total_cost += 500.0f;
     }
 
-    // Path-aware terminal: see hybrid_astar_dwa_grid_kernel for rationale.
-    // Direct goal-pull drags the robot off the planned detour on
-    // local-minima scenes; this replaces it with a soft target a few
-    // indices ahead of the rollout-end's nearest path node plus a
-    // remaining-arclength penalty.
+    // Path-aware terminal: soft target a few indices ahead of rollout-
+    // end's nearest path node, plus a remaining-arclength penalty.
+    // Matches hybrid_astar_dwa_grid_kernel's formulation. Tuning the
+    // multiplier didn't fix the open-dynamic regression observed when
+    // hybrid_astar_mppi defaulted to T=60 (regression came from the
+    // longer horizon, not the terminal). hybrid_astar_mppi now defaults
+    // to T=30 again; hybrid_astar_mppi_long uses T=60 for the topology
+    // suite.
     if (path_n > 0) {
         float best_d2 = 1.0e30f;
         int best_idx = 0;
@@ -3623,6 +3633,21 @@ int main(int argc, char** argv) {
         v.planner_kind = 6;
         variants.push_back(v);
     }
+    // Long-horizon variant of hybrid_astar_mppi (T=60 = 6 s lookahead).
+    // Targets long-occupancy timing scenes (dynamic_bottleneck) where the
+    // default T=30 reactive horizon cannot see past the obstacle. Kept as
+    // a separate variant because T=60 was empirically regressive on the
+    // open-dynamic 30-cell suite for the averaging-style MPPI controller
+    // (DWA's argmin selection is unaffected, so hybrid_astar_dwa_long is
+    // safe at T=60). See docs/topology_bench_day4_findings.md.
+    {
+        PlannerVariant v;
+        v.name = "hybrid_astar_mppi_long";
+        v.use_sampling = false;
+        v.planner_kind = 6;
+        v.t_horizon = 60;
+        variants.push_back(v);
+    }
 
     if (!planner_names.empty()) {
         vector<PlannerVariant> filtered;
@@ -3708,8 +3733,15 @@ int main(int argc, char** argv) {
                 for (int seed = 0; seed < seed_count; seed++) {
                     int run_seed = static_cast<int>(1000 + si * 100 + vi * 20 + seed * 7 + k_samples);
                     Scenario eval_scenario = instantiate_eval_scenario(scenario, run_seed);
-                    int t_horizon_to_use = (override_t_horizon > 0)
-                        ? override_t_horizon : DEFAULT_T_HORIZON;
+                    // Resolve t_horizon with precedence: CLI override >
+                    // per-variant default > global DEFAULT_T_HORIZON. The
+                    // CLI wins so users can sweep T explicitly; the
+                    // per-variant value lets registrations pick a horizon
+                    // appropriate to the planner without requiring the
+                    // user to remember a flag.
+                    int t_horizon_to_use = DEFAULT_T_HORIZON;
+                    if (variant.t_horizon > 0) t_horizon_to_use = variant.t_horizon;
+                    if (override_t_horizon > 0) t_horizon_to_use = override_t_horizon;
                     EpisodeRunner runner(
                         variant, scenario, eval_scenario, k_samples, t_horizon_to_use, run_seed,
                         trace_enabled ? &trace_rows : nullptr, trace_max_steps);
