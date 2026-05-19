@@ -93,4 +93,41 @@ value proposition explicit.
 - Hybrid A* + a local replanner (MPC or DWA) inside the planned
   corridor, which is the common production split.
 
-None of these are in scope for this PR.
+## Closing the paradigm gap: hybrid_astar_dwa (planner_kind=4)
+
+The follow-up variant `hybrid_astar_dwa` takes the third option above
+and is registered alongside `hybrid_astar_pp`. The Hybrid A* search
+runs once at episode start exactly as in the baseline (so the global
+plan is still blind to dynamic obstacles), but the per-step controller
+is the DWA grid kernel with the goal-distance and heading terms
+replaced by path-follow terms:
+
+- nearest waypoint lateral distance (weight `had_w_path`)
+- heading vs. lookahead waypoint -- bearing when far, the stored path
+  tangent when within ~0.5 m so the cost stays well-defined at the
+  path end
+- the obstacle and speed terms from DWA are kept verbatim, so dynamic
+  obstacles still bend the local action choice
+
+On the same 30-cell sweep:
+
+| planner            | family    | cells | solved | mean succ | mean final_d | mean coll | mean ms |
+|--------------------|-----------|------:|-------:|----------:|-------------:|----------:|--------:|
+| hybrid_astar_pp    | Hybrid-A* |    30 |     21 |      0.70 |         1.91 |      6.23 |    0.01 |
+| hybrid_astar_dwa   | Hybrid-A* |    30 |     30 |      1.00 |         1.92 |      0.00 |    0.06 |
+| dwa_med            | DWA       |    30 |     30 |      1.00 |         1.91 |      0.00 |    0.05 |
+
+Hard cells (`dyn_speed_scale >= 1.5`):
+
+| planner            | hard cells | solved | mean succ | mean final_d | mean coll |
+|--------------------|-----------:|-------:|----------:|-------------:|----------:|
+| hybrid_astar_pp    |         12 |      3 |      0.25 |         1.91 |     15.58 |
+| hybrid_astar_dwa   |         12 |     12 |      1.00 |         1.89 |      0.00 |
+| dwa_med            |         12 |     12 |      1.00 |         1.91 |      0.00 |
+
+So a global Hybrid A* path with a local DWA tracker that has the
+dynamic-obstacle term wired in matches pure DWA on this grid (12/12
+hard cells, 0 collisions) while keeping the global plan to fall back
+to. The runtime is dominated by the per-step DWA call; the one-shot
+Hybrid A* search at episode start is excluded from `mean ms`, the
+same convention used for `hybrid_astar_pp`.
