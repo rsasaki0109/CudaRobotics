@@ -125,75 +125,16 @@ Concise highlights:
 
 ### Diff-MPPI experiment workflow
 
-<details>
-<summary>Full experiment commands and detailed results (click to expand)</summary>
-
-Fixed rollout budget:
+Entry points (full commands, follow-up suites, and detailed numbers live under `paper/diff_mppi_*_followup.md`):
 
 ```bash
 ./bin/benchmark_diff_mppi --quick
 python3 scripts/summarize_diff_mppi.py --csv build/benchmark_diff_mppi.csv
 python3 scripts/plot_diff_mppi.py --csv build/benchmark_diff_mppi.csv --out-dir build/plots
-```
-
-Cap-based wall-clock sweep:
-
-```bash
-./bin/benchmark_diff_mppi --k-values 256,512,1024,2048,4096,6144,8192 --csv build/benchmark_diff_mppi_wall_clock.csv
-python3 scripts/summarize_diff_mppi.py --csv build/benchmark_diff_mppi_wall_clock.csv --time-caps 1.1,1.5,2.0
-python3 scripts/plot_diff_mppi.py --csv build/benchmark_diff_mppi_wall_clock.csv --out-dir build/plots --time-caps 1.1,1.5,2.0
-```
-
-The benchmark writes per-episode CSV metrics; the summarizer emits Markdown / LaTeX tables for fixed-budget, cap-based wall-clock, and equal-time target comparisons; the plotter writes PNG/PDF figures under `build/plots/`. Reader-facing summary is in the Highlights table above and on GitHub Pages; detailed working notes live under `paper/`.
-
-Exact matched-time tuning (`K` per planner tuned to shared controller-time targets):
-
-```bash
 python3 scripts/tune_diff_mppi_time_targets.py --preset dynamic_nav
 ```
 
-Mechanism analysis (records per-step sampled / refined controls and local gradients; current `dynamic_slalom` trace shows the autodiff stage front-loads corrections — mean early-horizon `0.025` vs. late-horizon `0.001` for `diff_mppi_3`):
-
-```bash
-./bin/benchmark_diff_mppi --scenarios dynamic_slalom --planners mppi,feedback_mppi,diff_mppi_1,diff_mppi_3 --seed-count 1 --k-values 1024 --csv build/benchmark_diff_mppi_mechanism.csv --trace-csv build/benchmark_diff_mppi_mechanism_trace.csv --trace-max-steps 80
-python3 scripts/plot_diff_mppi_mechanism.py --trace-csv build/benchmark_diff_mppi_mechanism_trace.csv --benchmark-csv build/benchmark_diff_mppi_feedback_dynamic_pair.csv --scenario dynamic_slalom --out-dir build/plots_mechanism
-```
-
-Dynamic-obstacle follow-up (seven feedback baselines + Diff-MPPI on two moving-obstacle tasks; `dynamic_slalom` keeps the hard-task split where only Diff-MPPI succeeds). Full numbers and exact-time tuning notes: `paper/diff_mppi_novelty_followup.md`; ICRA/IROS gap list: `paper/icra_iros_gap_list.md`.
-
-```bash
-./bin/benchmark_diff_mppi --scenarios dynamic_crossing,dynamic_slalom --k-values 256,512,1024,2048,4096,6144,8192 --csv build/benchmark_diff_mppi_feedback_dynamic_pair.csv
-python3 scripts/summarize_diff_mppi.py --csv build/benchmark_diff_mppi_feedback_dynamic_pair.csv --time-caps 1.0,1.5 --time-targets 1.0,1.5
-python3 scripts/plot_diff_mppi.py --csv build/benchmark_diff_mppi_feedback_dynamic_pair.csv --out-dir build/plots_feedback_dynamic_pair --time-caps 1.0,1.5 --time-targets 1.0,1.5
-```
-
-Uncertainty follow-up (seed-dependent perturbed obstacle trajectory under nominal-model planning; `mppi` fails both, `feedback_mppi` recovers crossing but fails slalom, Diff-MPPI succeeds on both). Write-up: `paper/diff_mppi_uncertainty_followup.md`.
-
-```bash
-./bin/benchmark_diff_mppi --scenarios uncertain_crossing,uncertain_slalom --planners mppi,feedback_mppi,diff_mppi_1,diff_mppi_3 --seed-count 4 --k-values 256,512,1024,2048,4096,6144,8192 --csv build/benchmark_diff_mppi_uncertain.csv
-python3 scripts/summarize_diff_mppi.py --csv build/benchmark_diff_mppi_uncertain.csv --markdown-out build/benchmark_diff_mppi_uncertain_summary.md --latex-out build/benchmark_diff_mppi_uncertain_summary.tex --time-caps 1.0,1.5 --time-targets 1.0,1.5
-python3 scripts/tune_diff_mppi_time_targets.py --preset uncertain_dynamic_nav
-```
-
-Hybrid-vs-gradient-only ablation (`grad_only_3` improves `corner_turn` slightly but fails `dynamic_crossing` — local gradients alone don't explain the gains):
-
-```bash
-./bin/benchmark_diff_mppi --scenarios corner_turn,dynamic_crossing --seed-count 4 --k-values 256,512,1024,2048,4096,6144,8192 --csv build/benchmark_diff_mppi_ablation.csv
-python3 scripts/summarize_diff_mppi.py --csv build/benchmark_diff_mppi_ablation.csv --time-caps 1.0,1.5 --time-targets 1.0,1.5
-```
-
-CartPole, dynamic-bicycle, planar-manipulator, and 7-DOF manipulator pilots — out-of-domain transfer checks. Detailed write-ups under `paper/diff_mppi_{cartpole,dynamic_bicycle,manipulator,7dof}_followup.md`.
-
-```bash
-./bin/benchmark_diff_mppi_cartpole --csv build/benchmark_diff_mppi_cartpole.csv
-./bin/benchmark_diff_mppi_dynamic_bicycle --csv build/benchmark_diff_mppi_dynamic_bicycle.csv
-./bin/benchmark_diff_mppi_manipulator --seed-count 4 --k-values 256,512 --csv build/benchmark_diff_mppi_manipulator.csv
-./bin/benchmark_diff_mppi_manipulator_7dof --seed-count 4 --k-values 256,512,1024 --csv build/benchmark_diff_mppi_manipulator_7dof.csv
-```
-
-Headline transfer results: `arm_static_shelf` K=256 — `feedback_mppi_cov`/`feedback_mppi_ref` reach `success=1.00` at `0.15` while `mppi` stays at `0.00 / 0.23`. `7dof_dynamic_avoid` K=512 — `diff_mppi_3` reaches `success=1.00 at 0.84 ms`, while `feedback_mppi_ref` reaches `0.75 at 4.01 ms`. `dynbike_slalom` K=32 — `diff_mppi_1` lifts `success=0.75 / 12.60` to `1.00 / 2.24`.
-
-</details>
+Out-of-domain transfer pilots: `benchmark_diff_mppi_cartpole`, `benchmark_diff_mppi_dynamic_bicycle`, `benchmark_diff_mppi_manipulator`, `benchmark_diff_mppi_manipulator_7dof`.
 
 ### Local planner cross-comparison
 
@@ -216,33 +157,23 @@ Findings:
 - **Global + local hybrid closes the paradigm gap** for both DWA and MPPI locals; the pattern is paradigm-agnostic.
 - **Dyn-aware global search alone is brittle** -- the constant-speed search vs. accelerate-from-rest sim timing mismatch makes linearised obstacle prediction worse than blind on hard cells.
 
-### Point-cloud benchmark snapshot
+### Point-cloud benchmark
 
-`bin/benchmark_pointcloud` compares CPU vs GPU implementations of voxel-grid filtering, statistical outlier removal, normal estimation, RANSAC plane fitting, and GICP registration. Both CPU and GPU use the same brute-force algorithms (no KD-trees). Supports `--ply`, `--kitti`, `--xyz` flags for external point cloud files.
-
-Use it as a small point-cloud CLI demo:
+`bin/benchmark_pointcloud` compares CPU vs GPU voxel filter, statistical outlier removal, normal estimation, RANSAC plane, and GICP. Both sides use the same brute-force algorithms (no KD-trees). Supports `--ply`, `--kitti`, `--xyz` external input; `--op` selects `voxel`/`statistical`/`normals`/`ransac`/`gicp`/`all`.
 
 ```bash
 ./bin/benchmark_pointcloud --quick
-./bin/benchmark_pointcloud --xyz examples/pointcloud/sample_room.xyz --input-only --op voxel --leaf-size 0.8 --out build/sample_room_voxel.ply
 ./bin/benchmark_pointcloud --xyz examples/pointcloud/sample_room.xyz --input-only --op ransac --plane-threshold 0.05 --out build/sample_room_plane.ply
-./bin/benchmark_pointcloud --xyz examples/pointcloud/sample_room.xyz --input-only --op normals --k 12 --out build/sample_room_normals.ply
 ```
 
-`--op` can select `voxel`, `statistical`, `normals`, `ransac`, `gicp`, or `all`. `--out` writes the selected external-input result as `.ply` or `.xyz`; the `ransac` output contains plane inliers, and normals `.xyz` output uses `x y z nx ny nz` rows.
-
-Multi-scale results (synthetic room, both CPU and GPU use same brute-force algorithms):
+Synthetic-room speedups (CPU O(n^2) baseline; GPU loses on tiny n due to kernel launch overhead):
 
 | Points | Operation | CPU | GPU | Speedup |
 |---|---|---:|---:|---:|
-| 1,000 | Voxel Grid | 0.67 ms | 1.76 ms | 0.4x (GPU loses) |
+| 1,000 | Voxel Grid | 0.67 ms | 1.76 ms | 0.4x |
 | 2,000 | Statistical Filter | 339 ms | 0.82 ms | **412x** |
-| 5,000 | Normal Estimation | 4,024 ms | 2.08 ms | **1,933x** |
 | 10,000 | Normal Estimation | 15,487 ms | 4.88 ms | **3,171x** |
-| 50,000 | RANSAC Plane | 1,518 ms | 2.78 ms | **546x** |
 | 100,000 | RANSAC Plane | 3,077 ms | 5.62 ms | **547x** |
-
-Speedups scale with point count because the CPU baseline is O(n^2) for k-NN operations. At small n (<2K), GPU kernel launch overhead exceeds the computation, so CPU wins on simple operations like voxel grid.
 
 ## Requirements
 - CMake >= 3.18
@@ -262,136 +193,25 @@ Executables are in `bin/`.
 
 ## Experiment-First Development
 
-This repository now treats some design work as `experiment -> convergence`, not `abstract design -> implementation`.
+Some design work in this repo follows `experiment -> convergence`, not `abstract design -> implementation`:
 
-Current process split:
-- `core/`: only the minimum interfaces that multiple variants already share
-- `experiments/`: discardable concrete variants with different design styles
-- `docs/experiments.md`: generated comparison results
-- `docs/decisions.md`: why something is kept, rejected, or not yet promoted
-- `docs/interfaces.md`: the current minimum stable contract
+- `core/`: minimum interfaces shared by multiple variants
+- `experiments/`: discardable concrete variants in different paradigms (functional / OOP / pipeline)
+- `docs/`: generated process state (`experiments.md`, `decisions.md`, `interfaces.md`)
 
-Concrete entrypoint:
+Current concrete problems (each has 3 paradigm-distinct variants):
+- `planner_selection`, `fixture_promotion`, `time_budget_selection`, `horizon_selection`
 
-```bash
-python3 scripts/run_design_experiments.py
-```
-
-One-command local repair path:
+Entry points (full list in `docs/experiments.md`):
 
 ```bash
-python3 scripts/design_doctor.py
+python3 scripts/run_design_experiments.py      # regenerate comparison docs
+python3 scripts/design_doctor.py               # one-command refresh + validate
+python3 scripts/validate_design_workflow.py    # CI guard
+python3 scripts/scaffold_design_problem.py <slug> --dry-run   # new problem with 3 variants
 ```
 
-Create a new history snapshot while running the same repair path:
-
-```bash
-python3 scripts/design_doctor.py --snapshot-label local_check
-```
-
-Render a targeted comparison between the latest two snapshots:
-
-```bash
-python3 scripts/compare_design_snapshots.py
-```
-
-Check that the latest snapshot did not regress beyond the declared policy:
-
-```bash
-python3 scripts/check_design_regressions.py
-```
-
-Render convergence signals from the snapshot history:
-
-```bash
-python3 scripts/render_design_convergence.py
-```
-
-Render the next suggested process moves from those convergence signals:
-
-```bash
-python3 scripts/render_design_actions.py
-```
-
-Render the helper-promotion watchlist from current shared helper usage:
-
-```bash
-python3 scripts/render_helper_promotion.py
-```
-
-Refresh the checked-in design docs:
-
-```bash
-python3 scripts/refresh_design_docs.py
-```
-
-Record a new design snapshot and regenerate the history doc:
-
-```bash
-python3 scripts/snapshot_design_experiments.py --label local_check
-```
-
-Refresh the version-controlled fixture CSVs from the selected build outputs:
-
-```bash
-python3 scripts/refresh_design_fixtures.py
-```
-
-Check whether the checked-in fixtures still match the configured build outputs:
-
-```bash
-python3 scripts/refresh_design_fixtures.py --check-sync
-```
-
-Scaffold a new concrete problem with 3 disposable variants:
-
-```bash
-python3 scripts/scaffold_design_problem.py cache_policy --dry-run
-```
-
-Validate that the experiment-first guardrails still hold:
-
-```bash
-python3 scripts/validate_design_workflow.py
-```
-
-Check that the scaffolder still emits the current workflow contract:
-
-```bash
-python3 scripts/check_scaffold_design_problem.py
-```
-
-Current concrete problems:
-- `planner_selection`: choose one planner configuration per dataset/scenario pair
-- `fixture_promotion`: choose which benchmark fixture datasets survive into the lightweight experiment corpus
-- `time_budget_selection`: choose one planner configuration per dataset/scenario/time-budget request
-- `horizon_selection`: choose one Diff-MPPI gradient-update horizon per dataset/scenario pair
-
-Each problem is implemented three different ways:
-- functional scoring
-- OOP / lexicographic policy objects
-- staged pipeline filters
-
-All variants consume the same aggregated input rows, answer the same request type for their problem, and are scored under the same benchmark, readability, and extensibility proxies. The process uses version-controlled fixture CSVs in `experiments/data/`, so design comparisons are reproducible without regenerating the heavy benchmark suite. `scripts/validate_design_workflow.py` now also checks that every experiment module appears in generated docs, which keeps the process state externalized instead of hiding it in code only. Nothing in `experiments/` is assumed to be permanent.
-
-The workflow is now module-driven rather than import-driven:
-- each `experiments/<problem>/__init__.py` package declares its own slug-like metadata and request builder
-- each problem package also owns its own report builder
-- `scripts/run_design_experiments.py` discovers those modules automatically
-- `scripts/design_doctor.py` is the promoted local entrypoint for refresh-and-validate maintenance
-- `scripts/run_design_experiments.py` also discovers fixture CSVs automatically from `experiments/data/`
-- `experiments/data/manifest.json` defines which benchmark CSVs are promoted into the lightweight fixture set
-- `scripts/refresh_design_fixtures.py --check-sync` catches drift between checked-in fixtures and available build outputs
-- `scripts/snapshot_design_experiments.py` records aggregate design states into `experiments/history/` and regenerates `docs/experiments_history.md`
-- `experiments/history/policy.json` defines which metrics are allowed to regress, and by how much
-- `experiments/history/actions_policy.json` defines when the process should `hold`, `diversify`, or watch for promotion
-- `scripts/check_design_regressions.py` compares the latest two snapshots against that policy
-- `scripts/compare_design_snapshots.py` renders the latest or selected snapshot delta without editing checked-in docs
-- `scripts/render_design_convergence.py` summarizes which quality signals have started to survive across snapshots
-- `scripts/render_design_actions.py` turns those survival signals into explicit next-step advice
-- `scripts/render_helper_promotion.py` turns repeated helper reuse into an explicit promotion watchlist
-- repeated helper extraction happens in `experiments/support.py` before any implementation is considered for promotion
-- `scripts/validate_design_workflow.py` fails if a discovered module is missing from generated docs or if `docs/experiments.md` is stale; the runtime column is normalized during that check because it is machine-dependent
+Snapshot / regression / promotion machinery lives under `scripts/{snapshot,check,compare,render}_*.py`; policies are in `experiments/history/*.json`. Reusable helpers are extracted into `experiments/support.py` before any variant is considered for promotion.
 
 ### Docker
 ```bash
@@ -412,17 +232,6 @@ Requires [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-nat
 | **FastSLAM 1.0** | `fastslam1` | **Particle x Landmark parallel EKF update (SLAM)** |
 | **Graph SLAM** | `graph_slam` | **GPU pose graph optimization with CG solver (SLAM)** |
 | PF on Episode | `pf_on_episode` | Particle-filter localization over full trajectory episodes |
-
-#### Particle Filter
-Each particle's motion prediction and observation likelihood computation runs as an independent GPU thread. Systematic resampling uses parallel binary search.
-
-<img src="https://rsasaki0109.github.io/CudaRobotics/pf.gif" alt="pf" width="400"/>
-
-#### FastSLAM 1.0
-Combines particle filter (for robot pose) with per-particle EKF (for landmark positions). Each particle independently runs EKF updates for all observed landmarks on GPU. All 2x2 matrix operations (Jacobian, Kalman gain, covariance update) are inline — no Eigen on device.
-
-#### Extended Kalman Filter
-<img src="https://rsasaki0109.github.io/CudaRobotics/ekf.gif" alt="ekf" width="400"/>
 
 ### Path Planning
 
@@ -447,55 +256,6 @@ Combines particle filter (for robot pose) with per-particle EKF (for landmark po
 | PRM | `prm_cuda` | Parallel collision check + k-NN + edge collision |
 | Voronoi Road Map | `voronoi_road_map` | Jump Flooding Algorithm for parallel Voronoi diagram |
 
-#### A*
-Obstacle map is constructed on GPU where each grid cell checks distance to all obstacles in parallel. Search uses CPU priority queue.
-
-<img src="https://rsasaki0109.github.io/CudaRobotics/astar.gif" alt="a_star" width="400"/>
-
-#### Dijkstra
-<img src="https://rsasaki0109.github.io/CudaRobotics/dijkstra.gif" alt="dijkstra" width="400"/>
-
-#### RRT
-GPU-accelerated nearest neighbor search with shared-memory reduction. Collision checking also runs on GPU.
-
-<img src="https://rsasaki0109.github.io/CudaRobotics/rrt.gif" alt="rrt" width="400"/>
-
-#### RRT* Reeds-Shepp
-Extends RRT* with car-like kinematics (forward/reverse driving). The key GPU kernel evaluates Reeds-Shepp paths to all candidate parent nodes in parallel — each thread computes the analytical RS path (48 path types: CSC + CCC families), discretizes it, and checks collision along the entire path.
-
-#### Informed RRT*
-Extends RRT* with ellipsoidal focused sampling. Once an initial path is found, samples are drawn from an ellipse defined by start, goal, and current best cost — the ellipse shrinks as better paths are found, accelerating convergence. GPU handles parallel NN search, radius search, and collision checking.
-
-#### 3D RRT* (Drone/UAV)
-Full 3D extension of RRT* for aerial navigation. Nodes are (x,y,z), obstacles are spheres. GPU kernels handle 3D nearest neighbor search, 3D radius search, and batch 3D collision checking. Visualization shows XY (top) and XZ (side) projections.
-
-#### Dynamic Window Approach
-All (velocity, yaw_rate) combinations in the dynamic window are evaluated simultaneously on GPU. Each thread simulates a full trajectory and computes goal/speed/obstacle costs. Parallel reduction finds the optimal control.
-
-<img src="https://rsasaki0109.github.io/CudaRobotics/dwa.gif" alt="dwa" width="400"/>
-
-#### Frenet Optimal Trajectory
-Each candidate path runs as one GPU thread: quintic/quartic polynomial coefficients solved via Cramer's rule (no Eigen on device), cubic spline evaluation with binary search, collision checking, and cost computation - all fused in a single kernel.
-
-<img src="https://rsasaki0109.github.io/CudaRobotics/frenet.gif" alt="frenet" width="400"/>
-
-#### State Lattice Planner
-Multiple target states are optimized simultaneously on GPU. Lookup table search and trajectory optimization (Newton's method with numerical Jacobian) run in parallel.
-
-<img src="https://rsasaki0109.github.io/CudaRobotics/slp.gif" alt="slp" width="400"/>
-
-#### Potential Field
-GPU computes the entire potential field in one kernel launch: each thread calculates one grid cell's attractive potential (toward goal) and repulsive potential (from all obstacles). Path following uses gradient descent on CPU.
-
-#### 3D Potential Field (Drone/UAV)
-Extends potential field to 3D with spherical obstacles. GPU computes 216,000+ grid cells (60x60x60) in parallel. Each cell: 3D attractive potential + 3D repulsive potential from all spheres. Gradient descent over 26 neighbors (3^3 - 1). Visualization shows XY and XZ slice heatmaps.
-
-#### PRM (Probabilistic Road Map)
-Three GPU kernels: (1) parallel collision checking of N=500 random samples, (2) parallel k-NN search for roadmap construction, (3) parallel edge collision checking. Dijkstra path search on CPU.
-
-#### Voronoi Road Map
-Uses the Jump Flooding Algorithm (JFA) on GPU to construct a Voronoi diagram in O(log N) fully-parallel passes. Each pass, every grid cell checks neighbors at decreasing step sizes and adopts the nearest seed. Road map extracted from Voronoi edges, path found with Dijkstra.
-
 ### Registration / Point Clouds
 
 | Algorithm | Binary | CUDA Parallelization |
@@ -508,19 +268,9 @@ Uses the Jump Flooding Algorithm (JFA) on GPU to construct a Voronoi diagram in 
 | Normal Estimation | `benchmark_pointcloud` | PCA normal estimation with one thread per point |
 | RANSAC Plane | `ransac_plane` | One RANSAC hypothesis per thread with device-side RNG |
 
-#### GICP
-Generalized ICP uses GPU nearest-neighbor search and point-to-plane system accumulation, then solves the 6x6 update on the host. The same infrastructure is reused by `bin/benchmark_pointcloud` to report CPU vs GPU registration throughput.
-
-#### CudaPointCloud Snapshot
-The benchmark room cloud now has a rotating visual summary that shows the same synthetic scene as raw input, after statistical filtering, with the dominant plane highlighted, and with local PCA normals:
-
 <img src="https://rsasaki0109.github.io/CudaRobotics/pointcloud_processing.gif" alt="pointcloud_processing" width="720"/>
 
-Generated from the local benchmark dataset with:
-
-```bash
-python3 scripts/render_pointcloud_processing_gif.py
-```
+Rotating visual summary of the benchmark room cloud (raw / statistical-filtered / dominant plane / PCA normals). Regenerate with `python3 scripts/render_pointcloud_processing_gif.py`.
 
 ### Learning / Optimization
 
@@ -547,17 +297,11 @@ python3 scripts/render_pointcloud_processing_gif.py
 |---|---|---|
 | Occupancy Grid | `occupancy_grid` | Ray-parallel lidar update (360 threads/scan) |
 
-#### Occupancy Grid Mapping
-Each lidar ray is processed by one GPU thread using DDA line walking. Log-odds occupancy probability updated along each ray with atomicAdd.
-
 ### Multi-Robot
 
 | Algorithm | Binary | CUDA Parallelization |
 |---|---|---|
-| Multi-Robot Planner | `multi_robot_planner` | N robots: force computation in parallel |
-
-#### Multi-Robot Collision Avoidance
-Each robot computes attractive/repulsive forces from goals, obstacles, and other robots on GPU. Scales to 500+ robots.
+| Multi-Robot Planner | `multi_robot_planner` | N robots: force computation in parallel; scales to 500+ |
 
 ### Path Tracking
 
@@ -565,18 +309,7 @@ Each robot computes attractive/repulsive forces from goals, obstacles, and other
 |---|---|---|
 | LQR Steering Control | *(CPU only)* | Sequential control loop |
 | LQR Speed+Steering | *(CPU only)* | Sequential control loop |
-| MPC | *(CPU only)* | Requires IPOPT solver |
-
-#### LQR Steering Control
-<img src="https://rsasaki0109.github.io/CudaRobotics/lqr_steering.gif" alt="lqr_steering" width="400"/>
-
-#### LQR Speed and Steering Control
-<img src="https://rsasaki0109.github.io/CudaRobotics/lqr_full.gif" alt="lqr_full" width="400"/>
-
-#### MPC Speed and Steering Control
-Requires [CppAD](https://www.coin-or.org/CppAD/Doc/install.htm) and [IPOPT](https://coin-or.github.io/Ipopt/). Uncomment related lines in CMakeLists.txt to build.
-
-<img src="https://rsasaki0109.github.io/CudaRobotics/mpc.gif" alt="mpc" width="400"/>
+| MPC | *(CPU only)* | Requires [CppAD](https://www.coin-or.org/CppAD/Doc/install.htm) + [IPOPT](https://coin-or.github.io/Ipopt/); uncomment lines in CMakeLists.txt to build |
 
 ## Benchmark: CPU vs CUDA
 
