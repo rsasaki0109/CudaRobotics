@@ -93,6 +93,45 @@ value proposition explicit.
 - Hybrid A* + a local replanner (MPC or DWA) inside the planned
   corridor, which is the common production split.
 
+## Dynamic-aware Hybrid A* alone is not enough: hybrid_astar_dyn_pp (planner_kind=5)
+
+`hybrid_astar_dyn_pp` runs the same Hybrid A* search but with each
+dynamic obstacle's predicted position along the candidate trajectory
+inflated by `hap_robot_radius + hap_dyn_inflation` (default 0.6 + 1.0
+= 1.6 m of buffer). The tracker is the same pure-pursuit as
+`hybrid_astar_pp`. The point is to test whether the global planner
+*can* avoid moving obstacles without a local replanner.
+
+The result on the same 30-cell sweep is a clear negative: the dyn-
+aware variant is **worse** than the blind one on hard cells.
+
+| planner             | family    | hard cells | solved | mean succ | mean coll |
+|---------------------|-----------|-----------:|-------:|----------:|----------:|
+| hybrid_astar_pp     | Hybrid-A* |         12 |      3 |      0.25 |     15.58 |
+| hybrid_astar_dyn_pp | Hybrid-A* |         12 |      2 |      0.17 |     15.92 |
+| hybrid_astar_dwa    | Hybrid-A* |         12 |     12 |      1.00 |      0.00 |
+
+Across all 30 cells `hybrid_astar_dyn_pp` solves 20 (mean coll 6.37)
+vs. `hybrid_astar_pp` 21 (6.23). On easier cells the dyn-aware path is
+slightly *more* direct and occasionally beats the blind variant, but
+on the hard half the dynamic prediction backfires.
+
+Why does it fail: the search uses a constant `v_search` for time
+stamps along the candidate, but the simulator starts from rest and
+accelerates to `target_speed`, so the robot arrives at each pose
+*earlier* than the search predicts. Linearised obstacle prediction
+along the search timestamp is therefore offset from reality by
+~1 s, which against a 2 m/s obstacle is ~2 m -- the same scale as
+the inflated robot circle. The search avoids "ghost" positions and
+walks into the real obstacle.
+
+Inflating the buffer larger (we tested 2.0 m) just makes the search
+either fail to find a path through the pincer convergence or fall
+back to the same path as the static search; smaller buffers leave
+the brittleness in place. The fundamental fix is to close the loop
+with a per-step local controller, which is exactly what
+`hybrid_astar_dwa` (below) does.
+
 ## Closing the paradigm gap: hybrid_astar_dwa (planner_kind=4)
 
 The follow-up variant `hybrid_astar_dwa` takes the third option above
