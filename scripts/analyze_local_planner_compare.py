@@ -36,13 +36,16 @@ def planner_family(planner: str) -> str:
         return "Diff-MPPI"
     if planner == "mppi":
         return "MPPI"
+    if planner.startswith("hybrid_astar"):
+        return "Hybrid-A*"
     return "other"
 
 
 def planner_sort_key(planner: str):
     # Sort by family, then by name for stable column ordering.
     fam = planner_family(planner)
-    fam_order = {"DWA": 0, "STOMP": 1, "MPPI": 2, "Diff-MPPI": 3, "other": 4}
+    fam_order = {"Hybrid-A*": 0, "DWA": 1, "STOMP": 2, "MPPI": 3,
+                 "Diff-MPPI": 4, "other": 5}
     return (fam_order[fam], planner)
 
 
@@ -59,6 +62,7 @@ def load_summary(path: Path) -> list[dict]:
                 "final_d": float(r["final_distance"]),
                 "min_d": float(r["min_goal_distance"]),
                 "cost": float(r["cumulative_cost"]),
+                "collisions": float(r.get("collisions", 0.0)),
                 "ms": float(r["avg_control_ms"]),
             })
     return rows
@@ -126,8 +130,8 @@ def render_planner_summary(rows: list[dict]) -> list[str]:
         by_planner[r["planner"]].append(r)
     out = ["## Per-planner summary across all cells", "",
            "| planner | family | cells | cells solved | mean succ |"
-           " mean final_d | mean ms |",
-           "|---|---|---|---|---|---|---|"]
+           " mean final_d | mean coll | mean ms |",
+           "|---|---|---|---|---|---|---|---|"]
     for planner in sorted(by_planner.keys(), key=planner_sort_key):
         entries = by_planner[planner]
         n = len(entries)
@@ -136,10 +140,11 @@ def render_planner_summary(rows: list[dict]) -> list[str]:
         # Mean final_distance is informative even on cells the planner
         # failed -- it captures "how close did you get when you missed?".
         fd_mean = mean(e["final_d"] for e in entries)
+        coll_mean = mean(e["collisions"] for e in entries)
         ms_mean = mean(e["ms"] for e in entries)
         out.append(
             f"| {planner} | {planner_family(planner)} | {n} | {solved} | "
-            f"{succ_mean:.2f} | {fd_mean:.2f} | {ms_mean:.2f} |")
+            f"{succ_mean:.2f} | {fd_mean:.2f} | {coll_mean:.2f} | {ms_mean:.2f} |")
     out.append("")
     return out
 
@@ -148,11 +153,13 @@ def render_hard_cell_focus(rows: list[dict]) -> list[str]:
     out = ["## Hard-cell focus (speed >= 1.5)", "",
            "Filter cells with dyn_speed_scale >= 1.5 to capture the regime"
            " where the obstacle moves fast enough to force genuine"
-           " replanning. Lower bound on success differentiates planners.",
+           " replanning. Lower bound on success differentiates planners;"
+           " mean collisions per cell exposes the paradigm gap for"
+           " planners that ignore dynamic obstacles.",
            "",
            "| planner | family | hard cells | hard cells solved |"
-           " mean succ | mean final_d |",
-           "|---|---|---|---|---|---|"]
+           " mean succ | mean final_d | mean coll |",
+           "|---|---|---|---|---|---|---|"]
     hard = [r for r in rows if r["speed"] >= 1.5]
     by_planner = defaultdict(list)
     for r in hard:
@@ -163,9 +170,10 @@ def render_hard_cell_focus(rows: list[dict]) -> list[str]:
         solved = sum(1 for e in entries if e["success"] >= 0.999)
         succ_mean = mean(e["success"] for e in entries)
         fd_mean = mean(e["final_d"] for e in entries)
+        coll_mean = mean(e["collisions"] for e in entries)
         out.append(
             f"| {planner} | {planner_family(planner)} | {n} | {solved} | "
-            f"{succ_mean:.2f} | {fd_mean:.2f} |")
+            f"{succ_mean:.2f} | {fd_mean:.2f} | {coll_mean:.2f} |")
     out.append("")
     return out
 
