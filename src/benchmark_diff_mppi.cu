@@ -439,9 +439,31 @@ __global__ void hybrid_astar_mppi_rollout_kernel(
         if (x < 0.0f || x > WORKSPACE || y < 0.0f || y > WORKSPACE) total_cost += 500.0f;
     }
 
-    float gdx = x - cost_params.goal_x;
-    float gdy = y - cost_params.goal_y;
-    total_cost += w_terminal * sqrtf(gdx * gdx + gdy * gdy + 0.01f);
+    // Path-aware terminal: see hybrid_astar_dwa_grid_kernel for rationale.
+    // Direct goal-pull drags the robot off the planned detour on
+    // local-minima scenes; this replaces it with a soft target a few
+    // indices ahead of the rollout-end's nearest path node plus a
+    // remaining-arclength penalty.
+    if (path_n > 0) {
+        float best_d2 = 1.0e30f;
+        int best_idx = 0;
+        for (int p = 0; p < path_n; p++) {
+            float dxp = x - d_path[p * 3 + 0];
+            float dyp = y - d_path[p * 3 + 1];
+            float d2 = dxp * dxp + dyp * dyp;
+            if (d2 < best_d2) { best_d2 = d2; best_idx = p; }
+        }
+        int term_idx = best_idx + lookahead_idx;
+        if (term_idx >= path_n) term_idx = path_n - 1;
+        float tdx = x - d_path[term_idx * 3 + 0];
+        float tdy = y - d_path[term_idx * 3 + 1];
+        float remaining = static_cast<float>(path_n - 1 - term_idx) * 2.5f;
+        total_cost += w_terminal * (sqrtf(tdx * tdx + tdy * tdy + 0.01f) + remaining);
+    } else {
+        float gdx = x - cost_params.goal_x;
+        float gdy = y - cost_params.goal_y;
+        total_cost += w_terminal * sqrtf(gdx * gdx + gdy * gdy + 0.01f);
+    }
     d_costs[k] = total_cost;
     d_rng[k] = local_rng;
 }
@@ -1410,9 +1432,35 @@ __global__ void hybrid_astar_dwa_grid_kernel(
         if (collided) break;
     }
 
-    float gdx = x - cost_params.goal_x;
-    float gdy = y - cost_params.goal_y;
-    cost += w_terminal * sqrtf(gdx * gdx + gdy * gdy + 0.01f);
+    // Path-aware terminal cost. The earlier "w_terminal * dist(robot_end,
+    // goal_x/y)" formulation pulls the robot toward the abstract goal at
+    // the end of every rollout, which on local-minima scenes (U-trap,
+    // S-corridor) drags the robot off the path and into the trap. With
+    // a path available we instead pull toward a soft target a few indices
+    // ahead of the rollout-end's nearest path node, plus a small
+    // remaining-path-length penalty so paths with less left to cover are
+    // preferred. The constant-step approximation (2.5 m / step) is
+    // independent of v_search and works as a relative-cost shape.
+    if (path_n > 0) {
+        float best_d2 = 1.0e30f;
+        int best_idx = 0;
+        for (int p = 0; p < path_n; p++) {
+            float dxp = x - d_path[p * 3 + 0];
+            float dyp = y - d_path[p * 3 + 1];
+            float d2 = dxp * dxp + dyp * dyp;
+            if (d2 < best_d2) { best_d2 = d2; best_idx = p; }
+        }
+        int term_idx = best_idx + lookahead_idx;
+        if (term_idx >= path_n) term_idx = path_n - 1;
+        float tdx = x - d_path[term_idx * 3 + 0];
+        float tdy = y - d_path[term_idx * 3 + 1];
+        float remaining = static_cast<float>(path_n - 1 - term_idx) * 2.5f;
+        cost += w_terminal * (sqrtf(tdx * tdx + tdy * tdy + 0.01f) + remaining);
+    } else {
+        float gdx = x - cost_params.goal_x;
+        float gdy = y - cost_params.goal_y;
+        cost += w_terminal * sqrtf(gdx * gdx + gdy * gdy + 0.01f);
+    }
 
     d_grid_costs[tid] = cost;
 }
@@ -2885,11 +2933,15 @@ static Scenario make_dynamic_bottleneck_scene() {
         // gap y=22..28 (6 units)
     };
     const DynamicObstacle dyn[] = {
-        // crosses the gate from north at v=(0,-2.1); reaches (25, 25)
-        // at t ~= 7s, while a constant-3.2 m/s robot arrives at t ~= 6.3s
-        // -- forces local timing (slow down) or a no-op detour (which the
-        // walls disallow).
-        {25.0f, 40.0f, 0.0f, -2.1f, 2.2f}
+        // Moderate-speed obstacle that occupies the gate during the
+        // window when a constant-3.2 m/s robot would arrive: enters the
+        // gap top at t ~= 2s (y = 30 - 1.0t), centres at t ~= 5s, and
+        // clears the gap bottom at t ~= 8s. A purely greedy controller
+        // collides; a reactive controller must slow to ~80% speed so
+        // it reaches the gate around t = 8.5s. The walls leave no
+        // detour, so timing is the only option -- pp-style trackers
+        // that ignore the dyn obs collide while DWA / MPPI slow down.
+        {25.0f, 30.0f, 0.0f, -1.0f, 2.5f}
     };
     s.n_obs = static_cast<int>(sizeof(obs) / sizeof(obs[0]));
     for (int i = 0; i < s.n_obs; i++) s.obstacles[i] = obs[i];
