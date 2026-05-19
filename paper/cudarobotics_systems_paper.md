@@ -21,7 +21,7 @@ CudaRobotics fills this gap with 87 self-contained CUDA implementations across 8
 - Particle Filter (CPU 100 vs CUDA 10,000 particles)
 - FastSLAM 1.0
 - AMCL (Adaptive Monte Carlo Localization)
-- emcl2 (Expansion Reset MCL)
+- Expansion Reset MCL (independent CUDA reimplementation of Ueda IROS 2004)
 - Particle Filter on Episode (PFoE)
 - Graph SLAM
 
