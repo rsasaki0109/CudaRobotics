@@ -54,7 +54,7 @@ ros2_ws/       # ROS2ワークスペース（particle_filter_node, dwa_node）
 
 ## 主要カテゴリ
 
-- **Localization**: EKF, Particle Filter, FastSLAM, AMCL, emcl2, PFoE
+- **Localization**: EKF, Particle Filter, FastSLAM, AMCL, Expansion Reset MCL, PFoE
 - **Path Planning**: RRT/RRT*, A*/Dijkstra, DWA, MPPI, STOMP, Hybrid A*, PRM
 - **Research**: Diff-MPPI（5バリアント）, Neural SDF, Neuroevolution, MiniIsaacGym, PSO/DE/CMA-ES
 - **PointCloud**: Voxel/Statistical filtering, Normal estimation, GICP, RANSAC
