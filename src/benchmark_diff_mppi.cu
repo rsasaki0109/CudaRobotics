@@ -2784,6 +2784,140 @@ static Scenario make_dynamic_pincer_scene() {
     return s;
 }
 
+// ---- Topology-stress benchmark scenarios (Day 1 of advisor roadmap) ----
+//
+// Goal of these four scenes: surface where global path planning matters,
+// by constructing layouts in which DWA's local goal-pull alone is
+// expected to fail (local minima, long-horizon detours, or timing-
+// dependent gate passage). The existing dynamic_* scenes are "open
+// dynamic" -- local reactive controllers can handle them. These add
+// "global topology" and "topology + dynamic" as orthogonal axes.
+
+// Static U-trap with the mouth opening west (toward robot). Goal is east
+// behind the trap; greedy east-pull traps the robot against the east wall.
+// Hybrid A* should detour over the top or under the bottom.
+static Scenario make_static_u_trap_scene() {
+    Scenario s;
+    s.name = "static_u_trap";
+    s.start_x = 5.0f;
+    s.start_y = 25.0f;
+    s.cost_params.goal_x = 47.0f;
+    s.cost_params.goal_y = 25.0f;
+    s.max_steps = 320;
+    s.cost_params.target_speed = 3.2f;
+    s.cost_params.goal_weight = 5.2f;
+    s.cost_params.obs_weight = 11.5f;
+    s.cost_params.obs_influence = 5.2f;
+    s.cost_params.heading_weight = 0.40f;
+    s.grad_alpha_scale = 0.20f;
+    const Obstacle obs[] = {
+        // top wall y=32
+        {23.0f, 32.0f, 2.5f}, {28.0f, 32.0f, 2.5f},
+        {33.0f, 32.0f, 2.5f}, {38.0f, 32.0f, 2.5f},
+        // bottom wall y=18
+        {23.0f, 18.0f, 2.5f}, {28.0f, 18.0f, 2.5f},
+        {33.0f, 18.0f, 2.5f}, {38.0f, 18.0f, 2.5f},
+        // east wall x=41 closes the trap
+        {41.0f, 20.0f, 2.5f}, {41.0f, 25.0f, 2.5f}, {41.0f, 30.0f, 2.5f}
+    };
+    s.n_obs = static_cast<int>(sizeof(obs) / sizeof(obs[0]));
+    for (int i = 0; i < s.n_obs; i++) s.obstacles[i] = obs[i];
+    s.n_dyn_obs = 0;
+    return s;
+}
+
+// Static S-shaped corridor. Two parallel barriers with gaps on opposite
+// sides force a back-and-forth detour. DWA's diagonal goal-pull aims
+// straight at the first barrier with no way to recover locally.
+static Scenario make_static_s_corridor_scene() {
+    Scenario s;
+    s.name = "static_s_corridor";
+    s.start_x = 5.0f;
+    s.start_y = 5.0f;
+    s.cost_params.goal_x = 45.0f;
+    s.cost_params.goal_y = 45.0f;
+    s.max_steps = 360;
+    s.cost_params.target_speed = 3.2f;
+    s.cost_params.goal_weight = 5.2f;
+    s.cost_params.obs_weight = 11.5f;
+    s.cost_params.obs_influence = 5.2f;
+    s.cost_params.heading_weight = 0.40f;
+    s.grad_alpha_scale = 0.20f;
+    const Obstacle obs[] = {
+        // first barrier y=20, opens at east (x >= 38)
+        {5.0f, 20.0f, 3.0f},  {12.0f, 20.0f, 3.0f},
+        {19.0f, 20.0f, 3.0f}, {26.0f, 20.0f, 3.0f}, {33.0f, 20.0f, 3.0f},
+        // second barrier y=35, opens at west (x <= 12)
+        {17.0f, 35.0f, 3.0f}, {24.0f, 35.0f, 3.0f},
+        {31.0f, 35.0f, 3.0f}, {38.0f, 35.0f, 3.0f}, {45.0f, 35.0f, 3.0f}
+    };
+    s.n_obs = static_cast<int>(sizeof(obs) / sizeof(obs[0]));
+    for (int i = 0; i < s.n_obs; i++) s.obstacles[i] = obs[i];
+    s.n_dyn_obs = 0;
+    return s;
+}
+
+// Static narrow gate plus a dynamic obstacle crossing it. The trap is
+// not topological -- the gate centered at (25, 25) is reachable -- but
+// the dynamic obstacle blocks the gate around t=6-9 s, exactly when a
+// constant-speed robot would arrive. Pure global planning ignores the
+// timing; pure local reactive can detect it but cannot detour because
+// the walls leave no alternative path. Tests global + dyn-aware local.
+static Scenario make_dynamic_bottleneck_scene() {
+    Scenario s;
+    s.name = "dynamic_bottleneck";
+    s.start_x = 5.0f;
+    s.start_y = 25.0f;
+    s.cost_params.goal_x = 45.0f;
+    s.cost_params.goal_y = 25.0f;
+    s.max_steps = 320;
+    s.cost_params.target_speed = 3.2f;
+    s.cost_params.goal_weight = 5.2f;
+    s.cost_params.obs_weight = 11.5f;
+    s.cost_params.obs_influence = 5.2f;
+    s.cost_params.heading_weight = 0.40f;
+    s.grad_alpha_scale = 0.20f;
+    const Obstacle obs[] = {
+        // bottom wall x=25, y=0..22
+        {25.0f, 4.0f, 4.0f},  {25.0f, 12.0f, 4.0f}, {25.0f, 18.0f, 4.0f},
+        // top wall x=25, y=28..50
+        {25.0f, 32.0f, 4.0f}, {25.0f, 40.0f, 4.0f}, {25.0f, 46.0f, 4.0f}
+        // gap y=22..28 (6 units)
+    };
+    const DynamicObstacle dyn[] = {
+        // crosses the gate from north at v=(0,-2.1); reaches (25, 25)
+        // at t ~= 7s, while a constant-3.2 m/s robot arrives at t ~= 6.3s
+        // -- forces local timing (slow down) or a no-op detour (which the
+        // walls disallow).
+        {25.0f, 40.0f, 0.0f, -2.1f, 2.2f}
+    };
+    s.n_obs = static_cast<int>(sizeof(obs) / sizeof(obs[0]));
+    for (int i = 0; i < s.n_obs; i++) s.obstacles[i] = obs[i];
+    s.n_dyn_obs = static_cast<int>(sizeof(dyn) / sizeof(dyn[0]));
+    for (int i = 0; i < s.n_dyn_obs; i++) s.dynamic_obstacles[i] = dyn[i];
+    return s;
+}
+
+// U-trap topology plus a dynamic obstacle on the detour exit. Combines
+// global-topology need (must detour around the U) with dynamic-obstacle
+// need (the detour path is timed-blocked). This is the "both axes"
+// cell expected to separate global-only / local-only / hybrid planners.
+static Scenario make_dynamic_crossing_with_topology_scene() {
+    Scenario s = make_static_u_trap_scene();
+    s.name = "dynamic_crossing_with_topology";
+    s.max_steps = 360;
+    const DynamicObstacle dyn[] = {
+        // moves west along y=36, just above the top-wall detour path.
+        // A naive Hybrid A* path that ignores it crosses this trajectory
+        // around t = 8-12 s; a dyn-aware controller has to slow or
+        // adjust the detour angle.
+        {45.0f, 36.0f, -1.6f, 0.0f, 2.2f}
+    };
+    s.n_dyn_obs = static_cast<int>(sizeof(dyn) / sizeof(dyn[0]));
+    for (int i = 0; i < s.n_dyn_obs; i++) s.dynamic_obstacles[i] = dyn[i];
+    return s;
+}
+
 static Scenario make_uncertain_slalom_scene() {
     Scenario s = make_dynamic_slalom_scene();
     s.name = "uncertain_slalom";
@@ -2978,6 +3112,10 @@ int main(int argc, char** argv) {
     all_scenarios.push_back(make_uncertain_crossing_scene());
     all_scenarios.push_back(make_uncertain_slalom_scene());
     all_scenarios.push_back(make_dynamic_pincer_scene());
+    all_scenarios.push_back(make_static_u_trap_scene());
+    all_scenarios.push_back(make_static_s_corridor_scene());
+    all_scenarios.push_back(make_dynamic_bottleneck_scene());
+    all_scenarios.push_back(make_dynamic_crossing_with_topology_scene());
 
     vector<Scenario> scenarios;
     if (!scenario_names.empty()) {
