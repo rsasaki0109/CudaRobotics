@@ -3123,6 +3123,7 @@ int main(int argc, char** argv) {
     float override_dwa_w_obs = -1.0f;
     float override_dwa_w_heading = -1.0f;
     float override_dwa_w_terminal = -1.0f;
+    int override_t_horizon = -1;
     for (int i = 1; i < argc; i++) {
         string arg = argv[i];
         if (arg == "--quick") quick = true;
@@ -3131,6 +3132,7 @@ int main(int argc, char** argv) {
         else if (arg == "--trace-max-steps" && i + 1 < argc) trace_max_steps = std::max(0, atoi(argv[++i]));
         else if (arg == "--k-values" && i + 1 < argc) k_values = parse_int_list(argv[++i]);
         else if (arg == "--seed-count" && i + 1 < argc) seed_count = std::max(1, atoi(argv[++i]));
+        else if (arg == "--t-horizon" && i + 1 < argc) override_t_horizon = std::max(1, atoi(argv[++i]));
         else if (arg == "--scenarios" && i + 1 < argc) scenario_names = parse_string_list(argv[++i]);
         else if (arg == "--planners" && i + 1 < argc) planner_names = parse_string_list(argv[++i]);
         else if (arg == "--override-feedback-gain-scale" && i + 1 < argc) override_feedback_gain_scale = atof(argv[++i]);
@@ -3515,6 +3517,21 @@ int main(int argc, char** argv) {
         v.dwa_predict_steps = 25;
         variants.push_back(v);
     }
+    // Long-horizon DWA variant. Added during Day 3 of the topology-bench
+    // roadmap: dynamic_bottleneck's slow obstacle occupies the gate for
+    // ~6 s, exceeding dwa_med/fine's 2-2.5 s lookahead. With T=60 (6 s)
+    // DWA can see past the obstacle and find a slowdown plan. Otherwise
+    // identical grid resolution to dwa_med.
+    {
+        PlannerVariant v;
+        v.name = "dwa_long";
+        v.use_sampling = false;
+        v.planner_kind = 1;
+        v.dwa_n_accel = 9;
+        v.dwa_n_steer = 13;
+        v.dwa_predict_steps = 60;
+        variants.push_back(v);
+    }
     // STOMP variants: same rollout kernel as MPPI but STOMP-style normalised
     // weights and a smoothness projection (3-tap moving average) on the
     // updated nominal. iters > 1 == multiple inner cost-weighted updates per
@@ -3569,6 +3586,19 @@ int main(int argc, char** argv) {
         v.name = "hybrid_astar_dwa";
         v.use_sampling = false;
         v.planner_kind = 4;
+        variants.push_back(v);
+    }
+    // Long-horizon Hybrid A* + DWA. Same as hybrid_astar_dwa but with
+    // dwa_predict_steps=60 so the per-step DWA local sees ~6 s ahead
+    // -- enough to clear the dynamic_bottleneck scene where the slow
+    // obstacle occupies the gate over the short-horizon controller's
+    // entire prediction window.
+    {
+        PlannerVariant v;
+        v.name = "hybrid_astar_dwa_long";
+        v.use_sampling = false;
+        v.planner_kind = 4;
+        v.dwa_predict_steps = 60;
         variants.push_back(v);
     }
     // Hybrid A* + Pure Pursuit with DYNAMIC OBSTACLES included in the
@@ -3678,8 +3708,10 @@ int main(int argc, char** argv) {
                 for (int seed = 0; seed < seed_count; seed++) {
                     int run_seed = static_cast<int>(1000 + si * 100 + vi * 20 + seed * 7 + k_samples);
                     Scenario eval_scenario = instantiate_eval_scenario(scenario, run_seed);
+                    int t_horizon_to_use = (override_t_horizon > 0)
+                        ? override_t_horizon : DEFAULT_T_HORIZON;
                     EpisodeRunner runner(
-                        variant, scenario, eval_scenario, k_samples, DEFAULT_T_HORIZON, run_seed,
+                        variant, scenario, eval_scenario, k_samples, t_horizon_to_use, run_seed,
                         trace_enabled ? &trace_rows : nullptr, trace_max_steps);
                     EpisodeMetrics metrics = runner.run();
                     rows.push_back(metrics);
