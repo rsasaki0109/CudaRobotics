@@ -31,7 +31,7 @@
 #define GRID_H 200
 #define GRID_RES 0.1f
 
-#define N_PARTICLES 500
+#define N_PARTICLES 10000
 #define NUM_BEAMS 36
 #define BEAM_ANGLE_STEP (2.0f * PI / NUM_BEAMS)
 #define MAX_RANGE 10.0f
