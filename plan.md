@@ -17,7 +17,7 @@ Short handoff for the next coding agent. The repo is on `master`, synced with
   ```bash
   cd build && cmake .. && make -j$(nproc)
   ```
-- The 2026-05-20 session merged PRs #16〜#23 (8 PRs). The repo's "Why CUDA?"
+- The 2026-05-20 session merged PRs #16〜#23 and #25 (9 PRs). The repo's "Why CUDA?"
   top showcase is now a curated 2x3 grid; the Research Extensions table has
   two new entries (Differentiable Particle Filter + DPF with MLP observation).
 
@@ -35,17 +35,25 @@ Short handoff for the next coding agent. The repo is on `master`, synced with
 | #21 | Differentiable Particle Filter base (`diff_pf`) | α-trained DPF RMSE 18.8m → 8.1m (**57% reduction**) |
 | #22 | Fix Lidar Sim showcase: 2x2 hit blocks survive gif downscale | Visual bug fix |
 | #23 | DPF + learnable MLP observation model (`diff_pf_mlp`) | MLP RMSE = handcrafted × 0.96 (drop-in replacement) |
+| #25 | DPF MLP tracking-loss fine-tuning | Clean scene tracking-tuned MLP 6.16m vs Gaussian 6.97m (**0.88x**) |
 
 All four findings docs are under `docs/`: `topology_bench_day1_findings.md`
 through `topology_bench_day4_findings.md`.
 
-Current feature branch `feat/diff-pf-end-to-end-mlp` picks up the DPF
-follow-up: `src/diff_pf_mlp.cu` now clones the supervised MLP and fine-tunes
-the weights through tracking loss using central finite differences over a
-soft-resampling DPF rollout plus Adam. Latest local run:
+Merged PR #25 picked up the DPF follow-up: `src/diff_pf_mlp.cu` now clones
+the supervised MLP and fine-tunes the weights through tracking loss using
+central finite differences over a soft-resampling DPF rollout plus Adam.
+Latest local run:
 handcrafted Gaussian **6.97 m**, supervised MLP **7.19 m**, tracking-tuned MLP
 **6.16 m** (**0.88x** handcrafted). The gif
 `gif/comparison_diff_pf_mlp.gif` was regenerated as a 3-panel comparison.
+
+Current feature branch `feat/diff-pf-hard-scenes` adds an intentionally
+misspecified observation setting to `src/diff_pf_mlp.cu`: **18%** of visible
+range measurements get uniform **±9 m** outliers. Latest local run:
+handcrafted Gaussian **10.27 m**, supervised MLP **7.45 m**, tracking-tuned
+MLP **6.91 m** (**0.67x** handcrafted). New gif:
+`gif/comparison_diff_pf_mlp_hard.gif`.
 
 ---
 
@@ -64,7 +72,7 @@ handcrafted Gaussian **6.97 m**, supervised MLP **7.19 m**, tracking-tuned MLP
   baseline + the new topology suite. Skeleton is implicit in the four
   Day N findings docs.
 
-### 2. DPF follow-up (after tracking-loss fine-tune branch)
+### 2. DPF follow-up (after hard-scene branch)
 
 - **From-scratch tracking-loss MLP training**. The implemented branch uses
   supervised pre-training as the initialization, then does true end-to-end
@@ -72,9 +80,9 @@ handcrafted Gaussian **6.97 m**, supervised MLP **7.19 m**, tracking-tuned MLP
   but did not yet beat the supervised initialization on the 240-frame eval.
   Next work: longer horizons, multi-seed gradient averaging, or smoother
   resampling relaxations.
-- **Harder scenes**: kidnap recovery comparison (analytic vs MLP under noise
-  model mismatch), or sensor occlusion / non-Gaussian noise where the
-  analytic form is no longer optimal and the MLP can outperform.
+- **Harder scenes beyond range outliers**: kidnap recovery comparison,
+  landmark occlusion, distance-dependent bias, or non-Gaussian noise where
+  the analytic form is even more misspecified.
 - **EKF / AMCL baseline**: compare DPF tracking RMSE against the existing
   `amcl` and `pf` baselines for a clean accuracy / compute trade-off plot.
 
@@ -123,10 +131,9 @@ handcrafted Gaussian **6.97 m**, supervised MLP **7.19 m**, tracking-tuned MLP
 The 2026-05-20 session leaned hard into visual showcases and the DPF
 research line. The most natural next moves:
 
-**If goal = paper / research value**: extend the new **DPF tracking-loss MLP
-fine-tune** into harder scenes (kidnap recovery, occlusion, non-Gaussian
-range noise) where the analytic Gaussian is intentionally misspecified and
-the learned observation model has room to win.
+**If goal = paper / research value**: extend the new **DPF hard-scene result**
+from range outliers into kidnap recovery / occlusion / biased sensors, then
+summarize clean-vs-misspecified observation regimes in a small table.
 
 **If goal = OSS visibility**: pick up **3D Lidar Simulator**. The 2D
 version is a strong tile on the readme; a 3D version paired with the
@@ -139,7 +146,7 @@ expansion** (Day 4+ item 1). Mechanical change to
 Recommended starting branches:
 
 ```bash
-git switch -c feat/diff-pf-hard-scenes        # research track
+git switch -c feat/diff-pf-occlusion-kidnap   # research track
 git switch -c feat/lidar-sim-3d               # showcase track
 git switch -c feat/failure-taxonomy-csv       # bench track
 ```
