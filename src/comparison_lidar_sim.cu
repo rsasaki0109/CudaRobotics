@@ -219,9 +219,11 @@ static void draw_sparse_rays(cv::Mat& panel, float sx, float sy,
     cv::circle(panel, sensor_px, 7, cv::Scalar(0, 0, 0), 1, cv::LINE_AA);
 }
 
-// Direct-pixel splatting for the 1M-ray panel. Each hit writes a
-// single pixel; cv::circle would be hundreds of milliseconds per
-// frame at 1M points and dominate runtime.
+// Direct-pixel splatting for the 1M-ray panel. Each hit writes a 2x2
+// block so it survives ffmpeg's lanczos downscale + gif palette
+// quantisation; a single pixel gets smeared into the background.
+// cv::circle would be hundreds of milliseconds per frame at 1M points
+// and dominate runtime.
 static void draw_dense_hits(cv::Mat& panel, float sx, float sy,
                             float angle0, float angle_step, int n_rays,
                             const float* dist, cv::Vec3b hit_color) {
@@ -235,11 +237,12 @@ static void draw_dense_hits(cv::Mat& panel, float sx, float sy,
         float hy = sy + d * std::sin(theta);
         int px = static_cast<int>(hx * VIS_SCALE);
         int py = PANEL_H - 1 - static_cast<int>(hy * VIS_SCALE);
-        if (px < 0 || px >= PANEL_W || py < 0 || py >= PANEL_H) continue;
-        unsigned char* p = data + py * stride + px * 3;
-        p[0] = hit_color[0];
-        p[1] = hit_color[1];
-        p[2] = hit_color[2];
+        if (px < 0 || px >= PANEL_W - 1 || py < 0 || py >= PANEL_H - 1) continue;
+        for (int dy = 0; dy < 2; dy++) {
+            unsigned char* row = data + (py + dy) * stride + px * 3;
+            row[0] = hit_color[0]; row[1] = hit_color[1]; row[2] = hit_color[2];
+            row[3] = hit_color[0]; row[4] = hit_color[1]; row[5] = hit_color[2];
+        }
     }
     auto sensor_px = world_to_px(sx, sy);
     cv::circle(panel, sensor_px, 7, cv::Scalar(0, 100, 200), -1, cv::LINE_AA);
@@ -339,7 +342,7 @@ int main() {
         draw_dense_hits(right, sx, sy,
                         scan_angle, angle_step_gpu, N_RAYS_GPU,
                         h_dist_gpu.data(),
-                        cv::Vec3b(0, 140, 0));
+                        cv::Vec3b(0, 200, 40));
 
         char buf[128];
         std::snprintf(buf, sizeof(buf), "CPU 1,024 rays  %.1f ms", cpu_ms);
