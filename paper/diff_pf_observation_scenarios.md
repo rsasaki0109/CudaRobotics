@@ -1,6 +1,6 @@
 # Differentiable Particle Filter Observation-Model Scenarios
 
-Last updated: 2026-05-20 JST
+Last updated: 2026-05-21 JST
 
 This note consolidates the `diff_pf_mlp` observation-model experiments into a
 paper-facing table. All rows use the same 8-landmark 40 m x 30 m localization
@@ -16,6 +16,8 @@ receives scaled `(distance, residual)` inputs.
 | Range outliers | 18% of visible ranges get uniform +/-9 m outliers | 9.80 m | 7.18 m | 7.22 m | **7.04 m** | **0.72x** |
 | Distance-dependent bias | `z = d + N(0, 1.0) + 0.35 * max(0, d - 10.0)` | 8.41 m | 7.11 m | 7.03 m | **6.03 m** | **0.72x** |
 | Occlusion + hidden kidnap | 30% landmark dropout + 25% short returns from 1.0-16.0 s; hidden pose jump (-4 m, +3 m) at 3.0 s | 8.25 m | 7.40 m | 8.08 m | **6.93 m** | **0.84x** |
+| Occlusion only | 30% landmark dropout + 25% short returns from 1.0-16.0 s; no pose jump | 7.98 m | **6.57 m** | 7.24 m | 7.11 m | **0.82x** |
+| Kidnap only | Clean Gaussian observations; hidden pose jump (-4 m, +3 m) at 3.0 s | 7.66 m | 12.48 m | 9.85 m | **6.98 m** | **0.91x** |
 
 ## Interpretation
 
@@ -49,6 +51,16 @@ the valid short-return residual tail, reaching 6.93 m versus 8.25 m for the
 Gaussian baseline. Dropout and kidnap recovery still depend on particle support
 and resampling mechanics, not only on the observation likelihood.
 
+The follow-up ablations split those two effects. In occlusion-only, the
+supervised MLP reaches 6.57 m versus 7.98 m for the Gaussian baseline, while
+the calibrated valid-residual surrogate reaches 7.11 m; the likelihood shape
+helps, but the simple supervised fit is strongest in this seeded run. In
+kidnap-only, clean Gaussian observations make the supervised and
+tracking-tuned MLPs brittle after the hidden jump, while the calibration-learned
+Gaussian residual surrogate lands at 6.98 m versus 7.66 m for the handcrafted
+Gaussian. That isolates the remaining hard part as recovery and particle
+support after an unmodeled state jump, not just observation-model mismatch.
+
 ## Current Research Claim
 
 `diff_pf_mlp` now demonstrates a progression:
@@ -60,13 +72,13 @@ and resampling mechanics, not only on the observation likelihood.
    surrogate can be estimated and used to train the same MLP much faster than
    rollout finite differences.
 4. Under misspecified observation models, the best learned likelihoods reduce
-   localization RMSE by 16-28% versus the handcrafted Gaussian baseline across
-   the current misspecified scenario matrix.
+   localization RMSE by 9-28% versus the handcrafted Gaussian baseline across
+   the current stress and ablation matrix.
 
 ## Next Useful Ablation
 
-The next clean experiment is to separate likelihood learning from recovery
-mechanics: run an occlusion-only scene without the hidden kidnap, then a
-kidnap-only scene with clean observations. That would show how much of the
-remaining gap is due to learned observation likelihoods versus particle support
-after an unmodeled pose jump.
+The next clean experiment is to add explicit recovery mechanics to the
+kidnap-only case: low-rate particle injection, expansion reset, or an AMCL
+comparison. The ablation above shows that once observations are clean, the
+dominant limitation is keeping or regenerating particle support after the
+hidden pose jump.

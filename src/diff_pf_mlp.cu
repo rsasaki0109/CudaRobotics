@@ -36,8 +36,10 @@
 #include <random>
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
 #include <chrono>
 #include <algorithm>
+#include <string>
 
 #include <opencv2/opencv.hpp>
 #include <opencv2/core/core.hpp>
@@ -117,8 +119,18 @@ enum ObservationMode {
     OBS_CLEAN_GAUSSIAN,
     OBS_RANGE_OUTLIERS,
     OBS_BIASED_RANGE,
-    OBS_OCCLUSION_KIDNAP
+    OBS_OCCLUSION_KIDNAP,
+    OBS_OCCLUSION_ONLY,
+    OBS_KIDNAP_ONLY
 };
+
+static bool mode_has_occlusion(ObservationMode mode) {
+    return mode == OBS_OCCLUSION_KIDNAP || mode == OBS_OCCLUSION_ONLY;
+}
+
+static bool mode_has_kidnap(ObservationMode mode) {
+    return mode == OBS_OCCLUSION_KIDNAP || mode == OBS_KIDNAP_ONLY;
+}
 
 __host__ __device__ inline float wrap_pi(float a) {
     while (a >  static_cast<float>(M_PI)) a -= 2.0f * static_cast<float>(M_PI);
@@ -293,7 +305,7 @@ static Pose2 gt_at(float t) {
 }
 static Pose2 scene_gt_at(float t, ObservationMode mode) {
     Pose2 p = gt_at(t);
-    if (mode == OBS_OCCLUSION_KIDNAP && t >= KIDNAP_T) {
+    if (mode_has_kidnap(mode) && t >= KIDNAP_T) {
         p.x = std::max(1.0f, std::min(WORLD_W - 1.0f, p.x + KIDNAP_DX));
         p.y = std::max(1.0f, std::min(WORLD_H - 1.0f, p.y + KIDNAP_DY));
     }
@@ -330,6 +342,10 @@ static bool sample_occlusion_sensor(float d, std::mt19937& rng, float t, float& 
     z = std::max(0.0f, zn);
     return true;
 }
+static float sample_clean_sensor(float d, std::mt19937& rng) {
+    std::normal_distribution<float> noise(0.0f, OBS_SIGMA);
+    return std::max(0.0f, d + noise(rng));
+}
 static void controls_at(float t, float& v, float& omega) {
     Pose2 p_now = gt_at(t);
     Pose2 p_next = gt_at(t + DT);
@@ -345,7 +361,6 @@ static void observe(const Pose2& gt, const std::vector<float>& lx,
                     float t = 0.0f) {
     int L = static_cast<int>(lx.size());
     z.resize(L); valid.assign(L, 0u);
-    std::normal_distribution<float> noise(0.0f, OBS_SIGMA);
     for (int l = 0; l < L; l++) {
         float dx = gt.x - lx[l];
         float dy = gt.y - ly[l];
@@ -355,10 +370,10 @@ static void observe(const Pose2& gt, const std::vector<float>& lx,
                 z[l] = sample_range_outlier_sensor(d, rng);
             } else if (mode == OBS_BIASED_RANGE) {
                 z[l] = sample_biased_range_sensor(d, rng);
-            } else if (mode == OBS_OCCLUSION_KIDNAP) {
+            } else if (mode_has_occlusion(mode)) {
                 if (!sample_occlusion_sensor(d, rng, t, z[l])) continue;
             } else {
-                z[l] = std::max(0.0f, d + noise(rng));
+                z[l] = sample_clean_sensor(d, rng);
             }
             valid[l] = 1u;
         }
@@ -624,7 +639,8 @@ static float calibrated_log_lik_at(float r, const ResidualCalibrationModel& cali
     return (1.0f - a) * calib.log_lik_by_bin[lo] + a * calib.log_lik_by_bin[hi];
 }
 
-static ResidualCalibrationModel fit_occlusion_calibration(std::mt19937& rng) {
+static ResidualCalibrationModel fit_residual_calibration(std::mt19937& rng,
+                                                         ObservationMode mode) {
     ResidualCalibrationModel calib;
     calib.log_lik_by_bin.assign(CALIBRATION_RESIDUAL_BINS, -12.0f);
     std::vector<float> counts(CALIBRATION_RESIDUAL_BINS, CALIBRATION_HIST_SMOOTH);
@@ -634,9 +650,13 @@ static ResidualCalibrationModel fit_occlusion_calibration(std::mt19937& rng) {
     while (calib.valid_samples < CALIBRATION_SAMPLES) {
         calib.attempts++;
         float d = ud(rng);
-        float t = ut(rng);
         float z = 0.0f;
-        if (!sample_occlusion_sensor(d, rng, t, z)) continue;
+        if (mode_has_occlusion(mode)) {
+            float t = ut(rng);
+            if (!sample_occlusion_sensor(d, rng, t, z)) continue;
+        } else {
+            z = sample_clean_sensor(d, rng);
+        }
         float residual = z - d;
         counts[residual_bin(residual, calib)] += 1.0f;
         residual_sq += static_cast<double>(residual) * residual;
@@ -716,6 +736,193 @@ static void label(cv::Mat& panel, const std::string& s) {
                 cv::FONT_HERSHEY_SIMPLEX, 0.45, cv::Scalar(0, 0, 0), 1, cv::LINE_AA);
 }
 
+struct ScenarioConfig {
+    ObservationMode mode;
+    const char* name;
+    const char* label_prefix;
+    const char* gif_slug;
+    const char* description;
+};
+
+struct ScenarioResult {
+    double rmse_A = 0.0;
+    double rmse_B = 0.0;
+    double rmse_C = 0.0;
+    double rmse_D = 0.0;
+    float ratio_B = 1.0f;
+    float ratio_C = 1.0f;
+    float ratio_D = 1.0f;
+    int calibration_attempts = 0;
+    int calibration_valid = 0;
+    float calibration_rmse = 0.0f;
+    float calibration_tail_log_lik = 0.0f;
+    double e2e_ms = 0.0;
+    double direct_ms = 0.0;
+};
+
+static ScenarioResult run_scenario(const ScenarioConfig& scenario,
+                                   const std::vector<float>& supervised_weights,
+                                   const std::vector<float>& lx,
+                                   const std::vector<float>& ly,
+                                   const float* d_lx,
+                                   const float* d_ly,
+                                   float* d_z,
+                                   unsigned char* d_zv) {
+    std::printf("\n%s scene: %s\n", scenario.name, scenario.description);
+
+    GpuMLP mlp(MLP_INPUT, MLP_HIDDEN, MLP_LAYERS, MLP_OUTPUT);
+    mlp.load_weights(supervised_weights);
+
+    GpuMLP mlp_e2e(MLP_INPUT, MLP_HIDDEN, MLP_LAYERS, MLP_OUTPUT);
+    mlp_e2e.load_weights(supervised_weights);
+    std::vector<float> tracking_loss_curve;
+    auto t_e2e_0 = std::chrono::high_resolution_clock::now();
+    train_mlp_tracking_finite_difference(mlp_e2e, lx, ly, d_lx, d_ly,
+                                         d_z, d_zv, tracking_loss_curve,
+                                         scenario.mode);
+    auto t_e2e_1 = std::chrono::high_resolution_clock::now();
+    ScenarioResult result;
+    result.e2e_ms = std::chrono::duration<double, std::milli>(t_e2e_1 - t_e2e_0).count();
+    std::printf("%s tracking-loss fine-tuning: %d epochs in %.1f ms, "
+                "loss %.4f -> %.4f\n",
+                scenario.name, E2E_TRAIN_EPOCHS, result.e2e_ms,
+                tracking_loss_curve.front(), tracking_loss_curve.back());
+
+    GpuMLP mlp_direct(MLP_INPUT, MLP_HIDDEN, MLP_LAYERS, MLP_OUTPUT);
+    mlp_direct.load_weights(supervised_weights);
+    std::vector<float> direct_loss_curve;
+    std::mt19937 rng_calib(5151 + static_cast<int>(scenario.mode) * 101);
+    ResidualCalibrationModel calib = fit_residual_calibration(rng_calib, scenario.mode);
+    result.calibration_attempts = calib.attempts;
+    result.calibration_valid = calib.valid_samples;
+    result.calibration_rmse = calib.residual_rmse;
+    result.calibration_tail_log_lik = calib.tail_log_lik;
+    std::printf("%s calibration trace: %d valid samples from %d attempts, "
+                "%d residual bins, residual RMSE %.3f m, log-lik at -6m %.3f\n",
+                scenario.name, calib.valid_samples, calib.attempts,
+                CALIBRATION_RESIDUAL_BINS, calib.residual_rmse, calib.tail_log_lik);
+    auto t_direct_0 = std::chrono::high_resolution_clock::now();
+    train_mlp_calibrated_residual_surrogate(mlp_direct, calib, direct_loss_curve);
+    auto t_direct_1 = std::chrono::high_resolution_clock::now();
+    result.direct_ms = std::chrono::duration<double, std::milli>(t_direct_1 - t_direct_0).count();
+    std::printf("%s calibrated observation surrogate: %d epochs in %.1f ms, "
+                "loss %.4f -> %.4f\n",
+                scenario.name, DIRECT_TRAIN_EPOCHS, result.direct_ms,
+                direct_loss_curve.front(), direct_loss_curve.back());
+
+    ParticleSet PA, PB, PC, PD;
+    PA.alloc(N_PARTICLES, 11);
+    PB.alloc(N_PARTICLES, 13);
+    PC.alloc(N_PARTICLES, 17);
+    PD.alloc(N_PARTICLES, 19);
+    std::vector<float> ipx(N_PARTICLES), ipy(N_PARTICLES), ipth(N_PARTICLES);
+    std::mt19937 rng_init(42);
+    std::normal_distribution<float> nxy(0.0f, 1.5f);
+    Pose2 gt0 = scene_gt_at(0.0f, scenario.mode);
+    for (int i = 0; i < N_PARTICLES; i++) {
+        ipx[i]  = gt0.x + nxy(rng_init);
+        ipy[i]  = gt0.y + nxy(rng_init);
+        ipth[i] = gt0.th;
+    }
+    upload(PA, N_PARTICLES, ipx, ipy, ipth);
+    upload(PB, N_PARTICLES, ipx, ipy, ipth);
+    upload(PC, N_PARTICLES, ipx, ipy, ipth);
+    upload(PD, N_PARTICLES, ipx, ipy, ipth);
+
+    std::string avi_path = std::string("gif/") + scenario.gif_slug + ".avi";
+    std::string gif_path = std::string("gif/") + scenario.gif_slug + ".gif";
+    cv::VideoWriter video(avi_path,
+                          cv::VideoWriter::fourcc('X', 'V', 'I', 'D'), 30,
+                          cv::Size(PANEL_W * 4, PANEL_H));
+
+    std::mt19937 rng_obs_eval(99);
+    std::mt19937 rng_eval_A(199);
+    std::mt19937 rng_eval_B(299);
+    std::mt19937 rng_eval_C(399);
+    std::mt19937 rng_eval_D(499);
+    double rmse_A = 0.0, rmse_B = 0.0, rmse_C = 0.0, rmse_D = 0.0;
+    for (int s = 0; s < N_FRAMES; s++) {
+        float t = s * DT;
+        Pose2 gt = scene_gt_at(t, scenario.mode);
+        float v, omega; controls_at(t, v, omega);
+        std::vector<float> z; std::vector<unsigned char> valid;
+        observe(gt, lx, ly, rng_obs_eval, z, valid, scenario.mode, t);
+        CUDA_CHECK(cudaMemcpy(d_z,  z.data(),     N_LANDMARKS * sizeof(float), cudaMemcpyHostToDevice));
+        CUDA_CHECK(cudaMemcpy(d_zv, valid.data(), N_LANDMARKS,                 cudaMemcpyHostToDevice));
+
+        auto out_A = run_step(PA, N_PARTICLES, TRAINED_ALPHA, v, omega,
+                              0.6f, 0.1f, d_lx, d_ly, d_z, d_zv,
+                              LIK_ANALYTIC, nullptr, rng_eval_A);
+        auto out_B = run_step(PB, N_PARTICLES, TRAINED_ALPHA, v, omega,
+                              0.6f, 0.1f, d_lx, d_ly, d_z, d_zv,
+                              LIK_MLP, &mlp, rng_eval_B);
+        auto out_C = run_step(PC, N_PARTICLES, TRAINED_ALPHA, v, omega,
+                              0.6f, 0.1f, d_lx, d_ly, d_z, d_zv,
+                              LIK_MLP, &mlp_e2e, rng_eval_C);
+        auto out_D = run_step(PD, N_PARTICLES, TRAINED_ALPHA, v, omega,
+                              0.6f, 0.1f, d_lx, d_ly, d_z, d_zv,
+                              LIK_MLP, &mlp_direct, rng_eval_D);
+
+        rmse_A += (out_A.ex - gt.x) * (out_A.ex - gt.x) + (out_A.ey - gt.y) * (out_A.ey - gt.y);
+        rmse_B += (out_B.ex - gt.x) * (out_B.ex - gt.x) + (out_B.ey - gt.y) * (out_B.ey - gt.y);
+        rmse_C += (out_C.ex - gt.x) * (out_C.ex - gt.x) + (out_C.ey - gt.y) * (out_C.ey - gt.y);
+        rmse_D += (out_D.ex - gt.x) * (out_D.ex - gt.x) + (out_D.ey - gt.y) * (out_D.ey - gt.y);
+
+        cv::Mat P0(PANEL_H, PANEL_W, CV_8UC3);
+        cv::Mat P1(PANEL_H, PANEL_W, CV_8UC3);
+        cv::Mat P2(PANEL_H, PANEL_W, CV_8UC3);
+        cv::Mat P3(PANEL_H, PANEL_W, CV_8UC3);
+        draw_base(P0, lx, ly);  draw_base(P1, lx, ly);  draw_base(P2, lx, ly);  draw_base(P3, lx, ly);
+        draw_particles(P0, PA.h_px, PA.h_py, cv::Scalar(60, 60, 200));
+        draw_particles(P1, PB.h_px, PB.h_py, cv::Scalar(0, 130, 60));
+        draw_particles(P2, PC.h_px, PC.h_py, cv::Scalar(190, 110, 0));
+        draw_particles(P3, PD.h_px, PD.h_py, cv::Scalar(150, 55, 150));
+        auto gp = w2p(gt.x, gt.y);
+        cv::circle(P0, gp, 5, cv::Scalar(0, 0, 0), 2, cv::LINE_AA);
+        cv::circle(P1, gp, 5, cv::Scalar(0, 0, 0), 2, cv::LINE_AA);
+        cv::circle(P2, gp, 5, cv::Scalar(0, 0, 0), 2, cv::LINE_AA);
+        cv::circle(P3, gp, 5, cv::Scalar(0, 0, 0), 2, cv::LINE_AA);
+        cv::circle(P0, w2p(out_A.ex, out_A.ey), 6, cv::Scalar(60, 60, 200), 2, cv::LINE_AA);
+        cv::circle(P1, w2p(out_B.ex, out_B.ey), 6, cv::Scalar(0, 130, 60), 2, cv::LINE_AA);
+        cv::circle(P2, w2p(out_C.ex, out_C.ey), 6, cv::Scalar(190, 110, 0), 2, cv::LINE_AA);
+        cv::circle(P3, w2p(out_D.ex, out_D.ey), 6, cv::Scalar(150, 55, 150), 2, cv::LINE_AA);
+        label(P0, std::string(scenario.label_prefix) + ": Gaussian");
+        label(P1, std::string(scenario.label_prefix) + ": supervised MLP");
+        label(P2, std::string(scenario.label_prefix) + ": tracking-loss MLP");
+        label(P3, std::string(scenario.label_prefix) + ": calibrated surrogate MLP");
+        cv::Mat row01, row23, combined;
+        cv::hconcat(P0, P1, row01);
+        cv::hconcat(P2, P3, row23);
+        cv::hconcat(row01, row23, combined);
+        video.write(combined);
+    }
+    video.release();
+    PA.free_all(); PB.free_all(); PC.free_all(); PD.free_all();
+
+    result.rmse_A = std::sqrt(rmse_A / N_FRAMES);
+    result.rmse_B = std::sqrt(rmse_B / N_FRAMES);
+    result.rmse_C = std::sqrt(rmse_C / N_FRAMES);
+    result.rmse_D = std::sqrt(rmse_D / N_FRAMES);
+    result.ratio_B = static_cast<float>(result.rmse_B / result.rmse_A);
+    result.ratio_C = static_cast<float>(result.rmse_C / result.rmse_A);
+    result.ratio_D = static_cast<float>(result.rmse_D / result.rmse_A);
+    std::printf("%s eval RMSE (alpha=%.2f):\n"
+                "  DPF + handcrafted likelihood       = %.3f m\n"
+                "  DPF + supervised MLP likelihood    = %.3f m (%.2fx)\n"
+                "  DPF + tracking-tuned MLP likelihood = %.3f m (%.2fx)\n"
+                "  DPF + calibrated surrogate MLP likelihood = %.3f m (%.2fx)\n",
+                scenario.name, TRAINED_ALPHA, result.rmse_A, result.rmse_B,
+                result.ratio_B, result.rmse_C, result.ratio_C, result.rmse_D,
+                result.ratio_D);
+
+    std::string cmd = "ffmpeg -y -i " + avi_path +
+                      " -vf 'fps=15,scale=1600:-1:flags=lanczos' -loop 0 " +
+                      gif_path + " 2>/dev/null";
+    std::system(cmd.c_str());
+    std::cout << "GIF saved to " << gif_path << std::endl;
+    return result;
+}
+
 // ---------------------------------------------------------------------------
 // Main
 // ---------------------------------------------------------------------------
@@ -724,11 +931,7 @@ int main() {
               << N_PARTICLES << " particles, " << N_LANDMARKS << " landmarks, "
               << "MLP " << MLP_INPUT << "->" << MLP_HIDDEN << "->" << MLP_OUTPUT << ")"
               << std::endl;
-    ObservationMode hard_mode = OBS_OCCLUSION_KIDNAP;
-    std::printf("Occlusion+kidnap scene: %.0f%% landmark dropout and %.0f%% short returns "
-                "from %.1fs to %.1fs, plus hidden pose jump at %.1fs.\n",
-                100.0f * OCCLUSION_DROP_PROB, 100.0f * OCCLUSION_SHORT_PROB,
-                OCCLUSION_START_T, OCCLUSION_END_T, KIDNAP_T);
+    std::printf("Ablation scenes separate occlusion likelihood mismatch from hidden kidnap recovery.\n");
 
     // --- Landmark layout (same as src/diff_pf.cu)
     std::vector<float> lx(N_LANDMARKS), ly(N_LANDMARKS);
@@ -825,152 +1028,35 @@ int main() {
     }
     cudaFree(d_probe_in); cudaFree(d_probe_out);
 
-    // --- Step 3: fine-tune a second MLP directly on tracking loss.
-    // Each weight gradient is a central finite difference of the full
-    // soft-resampling DPF rollout loss.
-    GpuMLP mlp_e2e(MLP_INPUT, MLP_HIDDEN, MLP_LAYERS, MLP_OUTPUT);
-    mlp_e2e.load_weights(mlp.get_weights());
-    std::vector<float> tracking_loss_curve;
-    auto t_e2e_0 = std::chrono::high_resolution_clock::now();
-    train_mlp_tracking_finite_difference(mlp_e2e, lx, ly, d_lx, d_ly,
-                                         d_z, d_zv, tracking_loss_curve,
-                                         hard_mode);
-    auto t_e2e_1 = std::chrono::high_resolution_clock::now();
-    double e2e_ms = std::chrono::duration<double, std::milli>(t_e2e_1 - t_e2e_0).count();
-    std::printf("MLP tracking-loss fine-tuning: %d epochs in %.1f ms, "
-                "loss %.4f -> %.4f\n",
-                E2E_TRAIN_EPOCHS, e2e_ms,
-                tracking_loss_curve.front(), tracking_loss_curve.back());
+    std::vector<float> supervised_weights = mlp.get_weights();
+    std::vector<ScenarioConfig> scenarios = {
+        { OBS_OCCLUSION_ONLY,
+          "Occlusion-only",
+          "Occlusion-only",
+          "comparison_diff_pf_mlp_occlusion_only",
+          "30% landmark dropout and 25% short returns from 1.0s to 16.0s; no pose jump." },
+        { OBS_KIDNAP_ONLY,
+          "Kidnap-only",
+          "Kidnap-only",
+          "comparison_diff_pf_mlp_kidnap_only",
+          "clean Gaussian observations with a hidden pose jump (-4m, +3m) at 3.0s." }
+    };
 
-    // --- Step 4: calibrated observation-surrogate MLP for occlusion short returns.
-    // A calibration trace contains known true distances and measured ranges.
-    // Missing measurements are skipped just like the PF likelihood, so the
-    // MLP learns the valid short-return residual tail from traces.
-    GpuMLP mlp_direct(MLP_INPUT, MLP_HIDDEN, MLP_LAYERS, MLP_OUTPUT);
-    mlp_direct.load_weights(mlp.get_weights());
-    std::vector<float> direct_loss_curve;
-    std::mt19937 rng_calib(5151);
-    ResidualCalibrationModel calib = fit_occlusion_calibration(rng_calib);
-    std::printf("Occlusion calibration trace: %d valid samples from %d attempts, "
-                "%d residual bins, residual RMSE %.3f m, log-lik at -6m %.3f\n",
-                calib.valid_samples, calib.attempts, CALIBRATION_RESIDUAL_BINS,
-                calib.residual_rmse, calib.tail_log_lik);
-    auto t_direct_0 = std::chrono::high_resolution_clock::now();
-    train_mlp_calibrated_residual_surrogate(mlp_direct, calib, direct_loss_curve);
-    auto t_direct_1 = std::chrono::high_resolution_clock::now();
-    double direct_ms = std::chrono::duration<double, std::milli>(t_direct_1 - t_direct_0).count();
-    std::printf("MLP calibrated observation surrogate: %d epochs in %.1f ms, "
-                "loss %.4f -> %.4f\n",
-                DIRECT_TRAIN_EPOCHS, direct_ms,
-                direct_loss_curve.front(), direct_loss_curve.back());
-
-    // --- Step 5: tracking eval, handcrafted vs three learned likelihoods
-    ParticleSet PA, PB, PC, PD;
-    PA.alloc(N_PARTICLES, 11);
-    PB.alloc(N_PARTICLES, 13);
-    PC.alloc(N_PARTICLES, 17);
-    PD.alloc(N_PARTICLES, 19);
-    std::vector<float> ipx(N_PARTICLES), ipy(N_PARTICLES), ipth(N_PARTICLES);
-    std::mt19937 rng_init(42);
-    std::normal_distribution<float> nxy(0.0f, 1.5f);
-    Pose2 gt0 = scene_gt_at(0.0f, hard_mode);
-    for (int i = 0; i < N_PARTICLES; i++) {
-        ipx[i]  = gt0.x + nxy(rng_init);
-        ipy[i]  = gt0.y + nxy(rng_init);
-        ipth[i] = gt0.th;
+    std::vector<ScenarioResult> results;
+    for (const ScenarioConfig& scenario : scenarios) {
+        results.push_back(run_scenario(scenario, supervised_weights, lx, ly,
+                                       d_lx, d_ly, d_z, d_zv));
     }
-    upload(PA, N_PARTICLES, ipx, ipy, ipth);
-    upload(PB, N_PARTICLES, ipx, ipy, ipth);
-    upload(PC, N_PARTICLES, ipx, ipy, ipth);
-    upload(PD, N_PARTICLES, ipx, ipy, ipth);
 
-    cv::VideoWriter video("gif/comparison_diff_pf_mlp_occlusion_kidnap.avi",
-                          cv::VideoWriter::fourcc('X', 'V', 'I', 'D'), 30,
-                          cv::Size(PANEL_W * 4, PANEL_H));
-
-    std::mt19937 rng_obs_eval(99);
-    std::mt19937 rng_eval_A(199);
-    std::mt19937 rng_eval_B(299);
-    std::mt19937 rng_eval_C(399);
-    std::mt19937 rng_eval_D(499);
-    double rmse_A = 0.0, rmse_B = 0.0, rmse_C = 0.0, rmse_D = 0.0;
-    for (int s = 0; s < N_FRAMES; s++) {
-        float t = s * DT;
-        Pose2 gt = scene_gt_at(t, hard_mode);
-        float v, omega; controls_at(t, v, omega);
-        std::vector<float> z; std::vector<unsigned char> valid;
-        observe(gt, lx, ly, rng_obs_eval, z, valid, hard_mode, t);
-        CUDA_CHECK(cudaMemcpy(d_z,  z.data(),     N_LANDMARKS * sizeof(float), cudaMemcpyHostToDevice));
-        CUDA_CHECK(cudaMemcpy(d_zv, valid.data(), N_LANDMARKS,                 cudaMemcpyHostToDevice));
-
-        auto out_A = run_step(PA, N_PARTICLES, TRAINED_ALPHA, v, omega,
-                              0.6f, 0.1f, d_lx, d_ly, d_z, d_zv,
-                              LIK_ANALYTIC, nullptr, rng_eval_A);
-        auto out_B = run_step(PB, N_PARTICLES, TRAINED_ALPHA, v, omega,
-                              0.6f, 0.1f, d_lx, d_ly, d_z, d_zv,
-                              LIK_MLP, &mlp, rng_eval_B);
-        auto out_C = run_step(PC, N_PARTICLES, TRAINED_ALPHA, v, omega,
-                              0.6f, 0.1f, d_lx, d_ly, d_z, d_zv,
-                              LIK_MLP, &mlp_e2e, rng_eval_C);
-        auto out_D = run_step(PD, N_PARTICLES, TRAINED_ALPHA, v, omega,
-                              0.6f, 0.1f, d_lx, d_ly, d_z, d_zv,
-                              LIK_MLP, &mlp_direct, rng_eval_D);
-
-        rmse_A += (out_A.ex - gt.x) * (out_A.ex - gt.x) + (out_A.ey - gt.y) * (out_A.ey - gt.y);
-        rmse_B += (out_B.ex - gt.x) * (out_B.ex - gt.x) + (out_B.ey - gt.y) * (out_B.ey - gt.y);
-        rmse_C += (out_C.ex - gt.x) * (out_C.ex - gt.x) + (out_C.ey - gt.y) * (out_C.ey - gt.y);
-        rmse_D += (out_D.ex - gt.x) * (out_D.ex - gt.x) + (out_D.ey - gt.y) * (out_D.ey - gt.y);
-
-        cv::Mat P0(PANEL_H, PANEL_W, CV_8UC3);
-        cv::Mat P1(PANEL_H, PANEL_W, CV_8UC3);
-        cv::Mat P2(PANEL_H, PANEL_W, CV_8UC3);
-        cv::Mat P3(PANEL_H, PANEL_W, CV_8UC3);
-        draw_base(P0, lx, ly);  draw_base(P1, lx, ly);  draw_base(P2, lx, ly);  draw_base(P3, lx, ly);
-        draw_particles(P0, PA.h_px, PA.h_py, cv::Scalar(60, 60, 200));
-        draw_particles(P1, PB.h_px, PB.h_py, cv::Scalar(0, 130, 60));
-        draw_particles(P2, PC.h_px, PC.h_py, cv::Scalar(190, 110, 0));
-        draw_particles(P3, PD.h_px, PD.h_py, cv::Scalar(150, 55, 150));
-        auto gp = w2p(gt.x, gt.y);
-        cv::circle(P0, gp, 5, cv::Scalar(0, 0, 0), 2, cv::LINE_AA);
-        cv::circle(P1, gp, 5, cv::Scalar(0, 0, 0), 2, cv::LINE_AA);
-        cv::circle(P2, gp, 5, cv::Scalar(0, 0, 0), 2, cv::LINE_AA);
-        cv::circle(P3, gp, 5, cv::Scalar(0, 0, 0), 2, cv::LINE_AA);
-        cv::circle(P0, w2p(out_A.ex, out_A.ey), 6, cv::Scalar(60, 60, 200), 2, cv::LINE_AA);
-        cv::circle(P1, w2p(out_B.ex, out_B.ey), 6, cv::Scalar(0, 130, 60), 2, cv::LINE_AA);
-        cv::circle(P2, w2p(out_C.ex, out_C.ey), 6, cv::Scalar(190, 110, 0), 2, cv::LINE_AA);
-        cv::circle(P3, w2p(out_D.ex, out_D.ey), 6, cv::Scalar(150, 55, 150), 2, cv::LINE_AA);
-        label(P0, "Occlusion+kidnap: Gaussian");
-        label(P1, "Occlusion+kidnap: supervised MLP");
-        label(P2, "Occlusion+kidnap: tracking-loss MLP");
-        label(P3, "Occlusion+kidnap: calibrated surrogate MLP");
-        cv::Mat row01, row23, combined;
-        cv::hconcat(P0, P1, row01);
-        cv::hconcat(P2, P3, row23);
-        cv::hconcat(row01, row23, combined);
-        video.write(combined);
-    }
-    video.release();
-    PA.free_all(); PB.free_all(); PC.free_all(); PD.free_all();
     cudaFree(d_lx); cudaFree(d_ly); cudaFree(d_z); cudaFree(d_zv);
 
-    rmse_A = std::sqrt(rmse_A / N_FRAMES);
-    rmse_B = std::sqrt(rmse_B / N_FRAMES);
-    rmse_C = std::sqrt(rmse_C / N_FRAMES);
-    rmse_D = std::sqrt(rmse_D / N_FRAMES);
-    float ratio_B = static_cast<float>(rmse_B / rmse_A);
-    float ratio_C = static_cast<float>(rmse_C / rmse_A);
-    float ratio_D = static_cast<float>(rmse_D / rmse_A);
-    std::printf("Occlusion+kidnap eval RMSE (alpha=%.2f):\n"
-                "  DPF + handcrafted likelihood       = %.3f m\n"
-                "  DPF + supervised MLP likelihood    = %.3f m (%.2fx)\n"
-                "  DPF + tracking-tuned MLP likelihood = %.3f m (%.2fx)\n"
-                "  DPF + calibrated surrogate MLP likelihood = %.3f m (%.2fx)\n",
-                TRAINED_ALPHA, rmse_A, rmse_B, ratio_B, rmse_C, ratio_C,
-                rmse_D, ratio_D);
-
-    std::system("ffmpeg -y -i gif/comparison_diff_pf_mlp_occlusion_kidnap.avi "
-                "-vf 'fps=15,scale=1600:-1:flags=lanczos' -loop 0 "
-                "gif/comparison_diff_pf_mlp_occlusion_kidnap.gif 2>/dev/null");
-    std::cout << "GIF saved to gif/comparison_diff_pf_mlp_occlusion_kidnap.gif" << std::endl;
+    std::printf("\nAblation summary:\n");
+    for (size_t i = 0; i < scenarios.size(); i++) {
+        const auto& r = results[i];
+        std::printf("  %s: Gaussian %.3f m, supervised %.3f m (%.2fx), "
+                    "tracking-tuned %.3f m (%.2fx), calibrated %.3f m (%.2fx)\n",
+                    scenarios[i].name, r.rmse_A, r.rmse_B, r.ratio_B,
+                    r.rmse_C, r.ratio_C, r.rmse_D, r.ratio_D);
+    }
     return 0;
 }
