@@ -107,6 +107,7 @@ constexpr int   CALIBRATION_SAMPLES  = 8192;
 constexpr int   CALIBRATION_RESIDUAL_BINS = 96;
 constexpr float CALIBRATION_RESIDUAL_MAX  = HARD_OUTLIER_MAG + 4.0f * OBS_SIGMA;
 constexpr float CALIBRATION_HIST_SMOOTH   = 2.0f;
+constexpr float KIDNAP_INJECTION_RATE = 0.12f;
 
 constexpr int   PANEL_W       = 480;
 constexpr int   PANEL_H       = 360;
@@ -264,6 +265,48 @@ static void soft_resample(const std::vector<float>& w_norm,
     }
 }
 
+static void inject_range_reset_particles(std::vector<float>& px,
+                                         std::vector<float>& py,
+                                         std::vector<float>& pth,
+                                         float injection_rate,
+                                         const std::vector<float>* lx,
+                                         const std::vector<float>* ly,
+                                         const std::vector<float>* z,
+                                         const std::vector<unsigned char>* valid,
+                                         std::mt19937& rng) {
+    if (injection_rate <= 0.0f) return;
+    int n = static_cast<int>(px.size());
+    int n_inject = std::max(1, std::min(n, static_cast<int>(std::round(injection_rate * n))));
+    std::vector<int> valid_ids;
+    if (lx && ly && z && valid) {
+        for (int l = 0; l < static_cast<int>(valid->size()); l++) {
+            if ((*valid)[l]) valid_ids.push_back(l);
+        }
+    }
+
+    std::uniform_real_distribution<float> ux(0.0f, WORLD_W);
+    std::uniform_real_distribution<float> uy(0.0f, WORLD_H);
+    std::uniform_real_distribution<float> uth(-static_cast<float>(M_PI),
+                                              static_cast<float>(M_PI));
+    std::uniform_real_distribution<float> uang(0.0f, 2.0f * static_cast<float>(M_PI));
+    std::normal_distribution<float> nr(0.0f, OBS_SIGMA);
+    for (int k = 0; k < n_inject; k++) {
+        int i = n - 1 - k;
+        if (!valid_ids.empty()) {
+            std::uniform_int_distribution<int> pick(0, static_cast<int>(valid_ids.size()) - 1);
+            int l = valid_ids[pick(rng)];
+            float r = std::max(0.0f, (*z)[l] + nr(rng));
+            float a = uang(rng);
+            px[i] = std::max(0.0f, std::min(WORLD_W, (*lx)[l] + r * std::cos(a)));
+            py[i] = std::max(0.0f, std::min(WORLD_H, (*ly)[l] + r * std::sin(a)));
+        } else {
+            px[i] = ux(rng);
+            py[i] = uy(rng);
+        }
+        pth[i] = uth(rng);
+    }
+}
+
 struct ParticleSet {
     float *d_px, *d_py, *d_pth, *d_w;
     float *d_eps_x, *d_eps_y, *d_eps_th;
@@ -388,7 +431,12 @@ static PFStep run_step(ParticleSet& P, int n, float alpha, float v, float omega,
                        const float* d_lx, const float* d_ly,
                        const float* d_z, const unsigned char* d_zv,
                        LikelihoodMode mode, const GpuMLP* mlp,
-                       std::mt19937& rng) {
+                       std::mt19937& rng,
+                       float injection_rate = 0.0f,
+                       const std::vector<float>* h_lx = nullptr,
+                       const std::vector<float>* h_ly = nullptr,
+                       const std::vector<float>* h_z = nullptr,
+                       const std::vector<unsigned char>* h_zv = nullptr) {
     int blk = 256, gd = (n + blk - 1) / blk;
     refresh_motion_noise<<<gd, blk>>>(P.d_states, n, P.d_eps_x, P.d_eps_y, P.d_eps_th);
     predict_kernel<<<gd, blk>>>(P.d_px, P.d_py, P.d_pth,
@@ -420,6 +468,8 @@ static PFStep run_step(ParticleSet& P, int n, float alpha, float v, float omega,
         npy[i]  = P.h_py[idx[i]];
         npth[i] = P.h_pth[idx[i]];
     }
+    inject_range_reset_particles(npx, npy, npth, injection_rate,
+                                 h_lx, h_ly, h_z, h_zv, rng);
     upload(P, n, npx, npy, npth);
     return {ex, ey};
 }
@@ -760,6 +810,20 @@ struct ScenarioResult {
     double direct_ms = 0.0;
 };
 
+struct InjectionResult {
+    double rmse_gaussian = 0.0;
+    double rmse_gaussian_injected = 0.0;
+    double rmse_calibrated = 0.0;
+    double rmse_calibrated_injected = 0.0;
+    float ratio_gaussian_injected = 1.0f;
+    float ratio_calibrated = 1.0f;
+    float ratio_calibrated_injected = 1.0f;
+    int calibration_attempts = 0;
+    int calibration_valid = 0;
+    float calibration_rmse = 0.0f;
+    double direct_ms = 0.0;
+};
+
 static ScenarioResult run_scenario(const ScenarioConfig& scenario,
                                    const std::vector<float>& supervised_weights,
                                    const std::vector<float>& lx,
@@ -923,6 +987,162 @@ static ScenarioResult run_scenario(const ScenarioConfig& scenario,
     return result;
 }
 
+static InjectionResult run_kidnap_injection_scenario(
+    const std::vector<float>& supervised_weights,
+    const std::vector<float>& lx,
+    const std::vector<float>& ly,
+    const float* d_lx,
+    const float* d_ly,
+    float* d_z,
+    unsigned char* d_zv) {
+    std::printf("\nKidnap particle-injection scene: clean Gaussian observations, "
+                "hidden pose jump at %.1fs, %.0f%% range-reset particle injection after the jump.\n",
+                KIDNAP_T, 100.0f * KIDNAP_INJECTION_RATE);
+
+    GpuMLP mlp_direct(MLP_INPUT, MLP_HIDDEN, MLP_LAYERS, MLP_OUTPUT);
+    mlp_direct.load_weights(supervised_weights);
+    std::vector<float> direct_loss_curve;
+    std::mt19937 rng_calib(5656);
+    ResidualCalibrationModel calib = fit_residual_calibration(rng_calib, OBS_KIDNAP_ONLY);
+
+    InjectionResult result;
+    result.calibration_attempts = calib.attempts;
+    result.calibration_valid = calib.valid_samples;
+    result.calibration_rmse = calib.residual_rmse;
+    std::printf("Kidnap injection calibration trace: %d valid samples from %d attempts, "
+                "%d residual bins, residual RMSE %.3f m\n",
+                calib.valid_samples, calib.attempts,
+                CALIBRATION_RESIDUAL_BINS, calib.residual_rmse);
+    auto t_direct_0 = std::chrono::high_resolution_clock::now();
+    train_mlp_calibrated_residual_surrogate(mlp_direct, calib, direct_loss_curve);
+    auto t_direct_1 = std::chrono::high_resolution_clock::now();
+    result.direct_ms = std::chrono::duration<double, std::milli>(t_direct_1 - t_direct_0).count();
+    std::printf("Kidnap injection calibrated observation surrogate: %d epochs in %.1f ms, "
+                "loss %.4f -> %.4f\n",
+                DIRECT_TRAIN_EPOCHS, result.direct_ms,
+                direct_loss_curve.front(), direct_loss_curve.back());
+
+    ParticleSet PA, PB, PC, PD;
+    PA.alloc(N_PARTICLES, 31);
+    PB.alloc(N_PARTICLES, 37);
+    PC.alloc(N_PARTICLES, 41);
+    PD.alloc(N_PARTICLES, 43);
+    std::vector<float> ipx(N_PARTICLES), ipy(N_PARTICLES), ipth(N_PARTICLES);
+    std::mt19937 rng_init(42);
+    std::normal_distribution<float> nxy(0.0f, 1.5f);
+    Pose2 gt0 = scene_gt_at(0.0f, OBS_KIDNAP_ONLY);
+    for (int i = 0; i < N_PARTICLES; i++) {
+        ipx[i]  = gt0.x + nxy(rng_init);
+        ipy[i]  = gt0.y + nxy(rng_init);
+        ipth[i] = gt0.th;
+    }
+    upload(PA, N_PARTICLES, ipx, ipy, ipth);
+    upload(PB, N_PARTICLES, ipx, ipy, ipth);
+    upload(PC, N_PARTICLES, ipx, ipy, ipth);
+    upload(PD, N_PARTICLES, ipx, ipy, ipth);
+
+    const std::string avi_path = "gif/comparison_diff_pf_mlp_kidnap_injection.avi";
+    const std::string gif_path = "gif/comparison_diff_pf_mlp_kidnap_injection.gif";
+    cv::VideoWriter video(avi_path,
+                          cv::VideoWriter::fourcc('X', 'V', 'I', 'D'), 30,
+                          cv::Size(PANEL_W * 4, PANEL_H));
+
+    std::mt19937 rng_obs_eval(99);
+    std::mt19937 rng_eval_A(601);
+    std::mt19937 rng_eval_B(607);
+    std::mt19937 rng_eval_C(613);
+    std::mt19937 rng_eval_D(619);
+    double rmse_A = 0.0, rmse_B = 0.0, rmse_C = 0.0, rmse_D = 0.0;
+    for (int s = 0; s < N_FRAMES; s++) {
+        float t = s * DT;
+        Pose2 gt = scene_gt_at(t, OBS_KIDNAP_ONLY);
+        float v, omega; controls_at(t, v, omega);
+        std::vector<float> z; std::vector<unsigned char> valid;
+        observe(gt, lx, ly, rng_obs_eval, z, valid, OBS_KIDNAP_ONLY, t);
+        CUDA_CHECK(cudaMemcpy(d_z,  z.data(),     N_LANDMARKS * sizeof(float), cudaMemcpyHostToDevice));
+        CUDA_CHECK(cudaMemcpy(d_zv, valid.data(), N_LANDMARKS,                 cudaMemcpyHostToDevice));
+        float injection_rate = (t >= KIDNAP_T) ? KIDNAP_INJECTION_RATE : 0.0f;
+
+        auto out_A = run_step(PA, N_PARTICLES, TRAINED_ALPHA, v, omega,
+                              0.6f, 0.1f, d_lx, d_ly, d_z, d_zv,
+                              LIK_ANALYTIC, nullptr, rng_eval_A);
+        auto out_B = run_step(PB, N_PARTICLES, TRAINED_ALPHA, v, omega,
+                              0.6f, 0.1f, d_lx, d_ly, d_z, d_zv,
+                              LIK_ANALYTIC, nullptr, rng_eval_B,
+                              injection_rate, &lx, &ly, &z, &valid);
+        auto out_C = run_step(PC, N_PARTICLES, TRAINED_ALPHA, v, omega,
+                              0.6f, 0.1f, d_lx, d_ly, d_z, d_zv,
+                              LIK_MLP, &mlp_direct, rng_eval_C);
+        auto out_D = run_step(PD, N_PARTICLES, TRAINED_ALPHA, v, omega,
+                              0.6f, 0.1f, d_lx, d_ly, d_z, d_zv,
+                              LIK_MLP, &mlp_direct, rng_eval_D,
+                              injection_rate, &lx, &ly, &z, &valid);
+
+        rmse_A += (out_A.ex - gt.x) * (out_A.ex - gt.x) + (out_A.ey - gt.y) * (out_A.ey - gt.y);
+        rmse_B += (out_B.ex - gt.x) * (out_B.ex - gt.x) + (out_B.ey - gt.y) * (out_B.ey - gt.y);
+        rmse_C += (out_C.ex - gt.x) * (out_C.ex - gt.x) + (out_C.ey - gt.y) * (out_C.ey - gt.y);
+        rmse_D += (out_D.ex - gt.x) * (out_D.ex - gt.x) + (out_D.ey - gt.y) * (out_D.ey - gt.y);
+
+        cv::Mat P0(PANEL_H, PANEL_W, CV_8UC3);
+        cv::Mat P1(PANEL_H, PANEL_W, CV_8UC3);
+        cv::Mat P2(PANEL_H, PANEL_W, CV_8UC3);
+        cv::Mat P3(PANEL_H, PANEL_W, CV_8UC3);
+        draw_base(P0, lx, ly);  draw_base(P1, lx, ly);  draw_base(P2, lx, ly);  draw_base(P3, lx, ly);
+        draw_particles(P0, PA.h_px, PA.h_py, cv::Scalar(60, 60, 200));
+        draw_particles(P1, PB.h_px, PB.h_py, cv::Scalar(30, 110, 210));
+        draw_particles(P2, PC.h_px, PC.h_py, cv::Scalar(150, 55, 150));
+        draw_particles(P3, PD.h_px, PD.h_py, cv::Scalar(40, 150, 80));
+        auto gp = w2p(gt.x, gt.y);
+        cv::circle(P0, gp, 5, cv::Scalar(0, 0, 0), 2, cv::LINE_AA);
+        cv::circle(P1, gp, 5, cv::Scalar(0, 0, 0), 2, cv::LINE_AA);
+        cv::circle(P2, gp, 5, cv::Scalar(0, 0, 0), 2, cv::LINE_AA);
+        cv::circle(P3, gp, 5, cv::Scalar(0, 0, 0), 2, cv::LINE_AA);
+        cv::circle(P0, w2p(out_A.ex, out_A.ey), 6, cv::Scalar(60, 60, 200), 2, cv::LINE_AA);
+        cv::circle(P1, w2p(out_B.ex, out_B.ey), 6, cv::Scalar(30, 110, 210), 2, cv::LINE_AA);
+        cv::circle(P2, w2p(out_C.ex, out_C.ey), 6, cv::Scalar(150, 55, 150), 2, cv::LINE_AA);
+        cv::circle(P3, w2p(out_D.ex, out_D.ey), 6, cv::Scalar(40, 150, 80), 2, cv::LINE_AA);
+        label(P0, "Kidnap: Gaussian");
+        label(P1, "Kidnap: Gaussian + injection");
+        label(P2, "Kidnap: calibrated MLP");
+        label(P3, "Kidnap: calibrated + injection");
+        cv::Mat row01, row23, combined;
+        cv::hconcat(P0, P1, row01);
+        cv::hconcat(P2, P3, row23);
+        cv::hconcat(row01, row23, combined);
+        video.write(combined);
+    }
+    video.release();
+    PA.free_all(); PB.free_all(); PC.free_all(); PD.free_all();
+
+    result.rmse_gaussian = std::sqrt(rmse_A / N_FRAMES);
+    result.rmse_gaussian_injected = std::sqrt(rmse_B / N_FRAMES);
+    result.rmse_calibrated = std::sqrt(rmse_C / N_FRAMES);
+    result.rmse_calibrated_injected = std::sqrt(rmse_D / N_FRAMES);
+    result.ratio_gaussian_injected =
+        static_cast<float>(result.rmse_gaussian_injected / result.rmse_gaussian);
+    result.ratio_calibrated =
+        static_cast<float>(result.rmse_calibrated / result.rmse_gaussian);
+    result.ratio_calibrated_injected =
+        static_cast<float>(result.rmse_calibrated_injected / result.rmse_gaussian);
+    std::printf("Kidnap particle-injection eval RMSE (alpha=%.2f):\n"
+                "  DPF + Gaussian likelihood                    = %.3f m\n"
+                "  DPF + Gaussian likelihood + injection        = %.3f m (%.2fx)\n"
+                "  DPF + calibrated surrogate MLP likelihood    = %.3f m (%.2fx)\n"
+                "  DPF + calibrated surrogate MLP + injection   = %.3f m (%.2fx)\n",
+                TRAINED_ALPHA,
+                result.rmse_gaussian,
+                result.rmse_gaussian_injected, result.ratio_gaussian_injected,
+                result.rmse_calibrated, result.ratio_calibrated,
+                result.rmse_calibrated_injected, result.ratio_calibrated_injected);
+
+    std::string cmd = "ffmpeg -y -i " + avi_path +
+                      " -vf 'fps=15,scale=1600:-1:flags=lanczos' -loop 0 " +
+                      gif_path + " 2>/dev/null";
+    std::system(cmd.c_str());
+    std::cout << "GIF saved to " << gif_path << std::endl;
+    return result;
+}
+
 // ---------------------------------------------------------------------------
 // Main
 // ---------------------------------------------------------------------------
@@ -1047,6 +1267,9 @@ int main() {
         results.push_back(run_scenario(scenario, supervised_weights, lx, ly,
                                        d_lx, d_ly, d_z, d_zv));
     }
+    InjectionResult injection_result =
+        run_kidnap_injection_scenario(supervised_weights, lx, ly, d_lx, d_ly,
+                                      d_z, d_zv);
 
     cudaFree(d_lx); cudaFree(d_ly); cudaFree(d_z); cudaFree(d_zv);
 
@@ -1058,5 +1281,14 @@ int main() {
                     scenarios[i].name, r.rmse_A, r.rmse_B, r.ratio_B,
                     r.rmse_C, r.ratio_C, r.rmse_D, r.ratio_D);
     }
+    std::printf("  Kidnap injection: Gaussian %.3f m, Gaussian+injection %.3f m (%.2fx), "
+                "calibrated %.3f m (%.2fx), calibrated+injection %.3f m (%.2fx)\n",
+                injection_result.rmse_gaussian,
+                injection_result.rmse_gaussian_injected,
+                injection_result.ratio_gaussian_injected,
+                injection_result.rmse_calibrated,
+                injection_result.ratio_calibrated,
+                injection_result.rmse_calibrated_injected,
+                injection_result.ratio_calibrated_injected);
     return 0;
 }
