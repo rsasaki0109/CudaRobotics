@@ -1,139 +1,160 @@
-# CudaRobotics Plan / Handoff
+# CudaRobotics Plan / Handoff (for Codex)
 
-Last updated: 2026-04-22 JST
+Last updated: 2026-05-20 JST
 
-This is the short handoff for the next coding session. The repo is currently on
-`master`, synced with `origin/master`, and the working tree was clean before this
-file update.
+Short handoff for the next coding agent. The repo is on `master`, synced with
+`origin/master`, working tree clean before this file update.
 
-## Current State
+---
 
-- Main branch: `master`
-- Latest merged work:
-  - PR #1: reproducible benchmark suite runner
-  - PR #2: point-cloud CLI demo workflow
-- Recent merge commit: `b4f1bb0` from PR #2
-- CI status for PR #2: passed
-- Deferred branch: `feat/repro-report` exists but was intentionally not merged
-  because the user wanted to move to higher-value work.
+## Repo State (2026-05-20)
 
-## What Is Done
+- **Main branch**: `master`
+- **gh-pages branch**: hosts gif assets referenced from `readme.md`. Update it
+  whenever you add or regenerate a gif so the readme image URLs resolve.
+- 100+ build targets (`87 .cu` / `14 .cpp` source files)
+- Build:
+  ```bash
+  cd build && cmake .. && make -j$(nproc)
+  ```
+- The 2026-05-20 session merged PRs #16〜#23 (8 PRs). The repo's "Why CUDA?"
+  top showcase is now a curated 2x3 grid; the Research Extensions table has
+  two new entries (Differentiable Particle Filter + DPF with MLP observation).
 
-### Reproducible Benchmark Suite
+---
 
-The repo now has a reproducible benchmark runner path that can be used to keep
-experiments repeatable. This is useful infrastructure, but it is not the most
-interesting product-facing value right now.
+## What Was Just Done (2026-05-20 session)
 
-### Point-Cloud CLI Demo
+| PR | Title | Headline number |
+|---|---|---|
+| #16 | Rename `emcl2` → `expansion_reset_mcl`, readme 3-tile curation | License-clean (LGPL upstream vs MIT repo) |
+| #17 | Per-variant `t_horizon`, split `hybrid_astar_mppi` for topology vs open-dynamic | open-dynamic 27/30 cells, `_long` solves bottleneck |
+| #18 | Massive Lidar Simulator (`comparison_lidar_sim`) | per-ray **1737x** faster on GPU |
+| #19 | Massive Reeds-Shepp Fan (`comparison_reeds_shepp_fan`) | per-path **5236x** faster on GPU |
+| #20 | Expansion Reset MCL → 10K particles, top-showcase tile | Visual showcase |
+| #21 | Differentiable Particle Filter base (`diff_pf`) | α-trained DPF RMSE 18.8m → 8.1m (**57% reduction**) |
+| #22 | Fix Lidar Sim showcase: 2x2 hit blocks survive gif downscale | Visual bug fix |
+| #23 | DPF + learnable MLP observation model (`diff_pf_mlp`) | MLP RMSE = handcrafted × 0.96 (drop-in replacement) |
 
-`bin/benchmark_pointcloud` is now usable as a small CLI demo, not only as a fixed
-benchmark.
+All four findings docs are under `docs/`: `topology_bench_day1_findings.md`
+through `topology_bench_day4_findings.md`.
 
-Supported workflow:
+---
 
-```bash
-./bin/benchmark_pointcloud --quick
-./bin/benchmark_pointcloud --xyz examples/pointcloud/sample_room.xyz --input-only --op voxel --leaf-size 0.8 --out build/sample_room_voxel.ply
-./bin/benchmark_pointcloud --xyz examples/pointcloud/sample_room.xyz --input-only --op ransac --plane-threshold 0.05 --out build/sample_room_plane.ply
-./bin/benchmark_pointcloud --xyz examples/pointcloud/sample_room.xyz --input-only --op normals --k 12 --out build/sample_room_normals.ply
-```
+## Open Threads (parked but not abandoned)
 
-Useful options:
+### 1. Topology bench Day 4+ items (deferred during the visual-showcase sprint)
 
-- `--quick`
-- `--input-only`
-- `--op voxel|statistical|normals|ransac|gicp|all`
-- `--out PATH`
-- `--leaf-size`, `--k`, `--std-mul`, `--plane-threshold`, `--ransac-iters`, `--seed`
+- **Failure taxonomy CSV expansion**: per-episode CSV currently has `success`
+  / `final_dist` / `collisions`. Day 2 hooks call for adding
+  `failure_type` (`stuck` / `collision` / `timeout` / `goal_miss`),
+  `time_to_goal`, `min_clearance`. The new scenes (`dynamic_bottleneck`,
+  `dynamic_crossing_with_topology`) distinguish "stuck at gate" vs
+  "collided in gate" but the summary table cannot see that.
+- **Day 5 consolidated report**: `paper/hybrid_astar_matrix_report.md`
+  draft tying together Day 1〜4 findings + the 30-cell open-dynamic
+  baseline + the new topology suite. Skeleton is implicit in the four
+  Day N findings docs.
 
-Bundled sample:
+### 2. DPF follow-up (after PR #23 merge)
 
-- `examples/pointcloud/sample_room.xyz`
+- **End-to-end MLP weight learning via finite-difference**. Right now the
+  MLP is pre-trained supervised against the analytic likelihood. The natural
+  next step is to fine-tune the MLP weights through tracking loss using
+  finite-difference gradient over the soft-resample DPF chain — true
+  end-to-end DPF training. Tractable because the MLP is tiny (~50 weights);
+  see `src/diff_pf_mlp.cu` for the existing scaffolding.
+- **Harder scenes**: kidnap recovery comparison (analytic vs MLP under noise
+  model mismatch), or sensor occlusion / non-Gaussian noise where the
+  analytic form is no longer optimal and the MLP can outperform.
+- **EKF / AMCL baseline**: compare DPF tracking RMSE against the existing
+  `amcl` and `pf` baselines for a clean accuracy / compute trade-off plot.
 
-Outputs:
+### 3. Brainstorm leftovers (offered during the session, not picked)
 
-- voxel/statistical/ransac: `.ply` or `.xyz` point rows
-- normals: `.ply` with normal properties, or `.xyz` rows as `x y z nx ny nz`
+- **3D Lidar Simulator**: 3D extension of `comparison_lidar_sim`. Same
+  ray-cast kernel pattern, rotating sensor, dense indoor point cloud,
+  flows into the point-cloud pipeline.
+- **10K Boids / Crowd Swarm**: scale `multi_robot_planner` from 500 → 10000
+  agents + flocking. Quick win for one more order-of-magnitude visual.
+- **GPU MCTS Planner**: tree expansion parallelised across threads,
+  grid-world or Sokoban; CudaRobotics has no MCTS yet.
 
-## Validation Already Run
+---
 
-```bash
-cmake --build build --target benchmark_pointcloud -j$(nproc)
-./bin/benchmark_pointcloud --help
-./bin/benchmark_pointcloud --quick --op voxel
-./bin/benchmark_pointcloud --xyz examples/pointcloud/sample_room.xyz --input-only --op voxel --leaf-size 0.8 --out build/sample_room_voxel.ply
-./bin/benchmark_pointcloud --xyz examples/pointcloud/sample_room.xyz --input-only --op ransac --plane-threshold 0.05 --ransac-iters 256 --out build/sample_room_plane.ply
-./bin/benchmark_pointcloud --xyz examples/pointcloud/sample_room.xyz --input-only --op normals --k 12 --out build/sample_room_normals.ply
-./bin/benchmark_pointcloud --xyz examples/pointcloud/sample_room.xyz --input-only --op normals --k 12 --out build/sample_room_normals.xyz
-ctest --test-dir build -L 'python|cpu' --output-on-failure
-git diff --check
-```
+## House Rules
 
-## Next High-Value Directions
+- **Git**: no `Co-Authored-By` lines in commit messages — commits are
+  user-authored only.
+- **PR body**: no "Generated with Claude Code" or similar AI-attribution
+  footers. Per `~/.claude/CLAUDE.md` global rule.
+- **gh-pages workflow**: when you add a gif, push it to the `gh-pages`
+  branch root (not `gif/` subfolder) so the published URL
+  `https://rsasaki0109.github.io/CudaRobotics/<name>.gif` resolves. Pattern:
+  ```bash
+  cp gif/<name>.gif /tmp/x.gif && git checkout gh-pages
+  cp /tmp/x.gif <name>.gif && git add <name>.gif
+  git commit -m "..." && git push origin gh-pages
+  git checkout <feature-branch>
+  ```
+  Pages build deploys in ~1–3 minutes.
+- **License**: repo is MIT. If you port an algorithm from an LGPL/GPL
+  upstream, write the implementation from the paper, not from upstream
+  source. Document attribution in the source header (see
+  `src/expansion_reset_mcl.cu` for the form).
+- **Comparison gifs at >100K samples**: do not use `cv::circle` per
+  sample in the visualisation loop — it is the bottleneck. Use direct
+  pixel splatting (see `src/comparison_lidar_sim.cu::draw_dense_hits`).
+  Write a 2×2 block per sample so points survive ffmpeg lanczos
+  downscale + gif palette quantisation.
 
-### 1. Make The Point-Cloud Demo More Visual
-
-Best next step if the goal is OSS value:
-
-- add a small `examples/pointcloud/README.md`
-- document before/after outputs for voxel, RANSAC plane, and normals
-- add a script that runs the sample demo commands and writes all artifacts into
-  `build/pointcloud_demo/`
-- optionally add screenshots or a simple viewer command path if the repo already
-  has a lightweight dependency available
-
-Why: the project becomes easier to understand in 60 seconds. This is more visible
-than another internal benchmark report.
-
-### 2. Add A Real Registration Demo
-
-The current external-input path does not write a GICP result because GICP needs a
-source and target cloud. A valuable follow-up would add:
-
-- `--source PATH`
-- `--target PATH`
-- `--op gicp`
-- optional synthetic transform mode for the bundled sample cloud
-- output of transformed source cloud and final transform matrix
-
-Why: registration is one of the most recognizable point-cloud robotics workflows.
-
-### 3. Keep Diff-MPPI As A Research Track
-
-Diff-MPPI remains the strongest research story in the repo. Return to it when the
-goal is paper value:
-
-- final paper wording
-- exact-time table cleanup
-- standardized benchmark expansion
-- stronger MuJoCo or hardware-facing task
-
-Why: this is likely the best academic/research value, but it is heavier than a
-quick OSS demo improvement.
-
-### 4. Do Not Resume `feat/repro-report` By Default
-
-The repro report renderer is useful, but the user explicitly called it less
-interesting. Treat it as parked unless the next goal is experiment governance or
-release engineering.
+---
 
 ## Recommended Next Session
 
-Start from `master`, pull, then build the next point-cloud user-facing feature:
+The 2026-05-20 session leaned hard into visual showcases and the DPF
+research line. The most natural next moves:
+
+**If goal = paper / research value**: pick up **DPF end-to-end MLP
+weight learning** (item 2 above). The scaffolding is in `src/diff_pf_mlp.cu`;
+need to add finite-difference gradient computation over tracking loss with
+the MLP weights as the perturbed parameter, plus an Adam loop on those
+weights. Story: "DPF learns observation model from scratch via tracking
+loss" — paper-worthy.
+
+**If goal = OSS visibility**: pick up **3D Lidar Simulator**. The 2D
+version is a strong tile on the readme; a 3D version paired with the
+existing point-cloud pipeline closes a natural product loop.
+
+**If goal = benchmark completeness**: pick up the **failure taxonomy CSV
+expansion** (Day 4+ item 1). Mechanical change to
+`src/benchmark_diff_mppi.cu`, useful for the eventual Day 5 paper draft.
+
+Recommended starting branches:
 
 ```bash
-git pull --ff-only
-cmake --build build --target benchmark_pointcloud -j$(nproc)
+git switch -c feat/diff-pf-end-to-end-mlp     # research track
+git switch -c feat/lidar-sim-3d               # showcase track
+git switch -c feat/failure-taxonomy-csv       # bench track
 ```
 
-Recommended branch name:
+---
 
-```bash
-git switch -c feat/pointcloud-registration-demo
-```
+## File Map (key entry points)
 
-Recommended target:
-
-Build a source/target GICP demo with generated transform output and a short
-example README. That is the clearest next value after the point-cloud CLI merge.
+- `readme.md` — top of repo. Top showcase is the 2×3 grid at line 11–18.
+- `CLAUDE.md` — project-local rules for Claude Code (this file applies
+  to Codex too).
+- `paper/cudarobotics_systems_paper.md` — systems paper draft.
+- `docs/topology_bench_day{1,2,3,4}_findings.md` — Day-by-day topology
+  benchmark results.
+- `include/autodiff_engine.cuh` — dual-number forward-mode autodiff used
+  by Diff-MPPI and Differentiable PF.
+- `include/gpu_mlp.cuh` — flat-array MLP with `forward_batch` and
+  `train_step_backprop`, used by Neural SDF, Neuroevolution, and the
+  new DPF MLP observation model.
+- `src/diff_pf.cu` — DPF base (α-only learnable).
+- `src/diff_pf_mlp.cu` — DPF with learnable MLP observation model.
+- `src/benchmark_diff_mppi.cu` — 12-planner sweep + topology suite.
+- `src/comparison_lidar_sim.cu` — 1M-ray comparison demo.
+- `src/comparison_reeds_shepp_fan.cu` — 1M-path comparison demo.
