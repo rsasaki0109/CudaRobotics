@@ -12,22 +12,23 @@
       1. supervised against the analytic Gaussian on a synthetic dataset;
       2. fine-tuned end-to-end on tracking loss by finite-differencing the
          tiny MLP weight vector through a soft-resampling DPF rollout;
-      3. trained with direct GPU backprop on a biased-observation surrogate
-         for the distance-dependent bias scene.
+      3. trained with direct GPU backprop on a calibration-learned
+         observation surrogate for the distance-dependent bias scene.
 
     The clean scene keeps Gaussian range noise, where the handcrafted
     likelihood is correctly specified. Hard scenes inject range outliers,
     distance-dependent range bias, occlusion short-returns, landmark dropouts,
     and a hidden pose jump, making the Gaussian likelihood intentionally
     misspecified. Learned observation models can be adapted either from
-    localization performance or from a differentiable observation surrogate.
+    localization performance or from a calibration trace that exposes the
+    sensor residual distribution.
 
     Output:
       - Training curve (MSE on log-likelihood, supervised pre-training)
       - Tracking-loss finite-difference curve for the end-to-end MLP
       - Hard-scene tracking gif: handcrafted DPF vs supervised MLP-DPF vs
-        tracking-loss MLP-DPF vs direct-surrogate MLP-DPF, same alpha (=3.14,
-        learned in src/diff_pf.cu)
+        tracking-loss MLP-DPF vs calibrated-surrogate MLP-DPF, same alpha
+        (=3.14, learned in src/diff_pf.cu)
  ************************************************************************/
 
 #include <iostream>
@@ -100,6 +101,8 @@ constexpr float E2E_WEIGHT_CLIP     = 8.0f;
 constexpr int   DIRECT_TRAIN_SAMPLES = 32768;
 constexpr int   DIRECT_TRAIN_EPOCHS  = 1600;
 constexpr float DIRECT_TRAIN_LR      = 0.01f;
+constexpr int   CALIBRATION_SAMPLES  = 8192;
+constexpr int   CALIBRATION_BINS     = 24;
 
 constexpr int   PANEL_W       = 480;
 constexpr int   PANEL_H       = 360;
@@ -297,6 +300,10 @@ static Pose2 scene_gt_at(float t, ObservationMode mode) {
 static float biased_range_mean(float d) {
     return d + BIASED_RANGE_GAIN * std::max(0.0f, d - BIASED_RANGE_D0);
 }
+static float sample_biased_range_sensor(float d, std::mt19937& rng) {
+    std::normal_distribution<float> noise(0.0f, OBS_SIGMA);
+    return std::max(0.0f, biased_range_mean(d) + noise(rng));
+}
 static void controls_at(float t, float& v, float& omega) {
     Pose2 p_now = gt_at(t);
     Pose2 p_next = gt_at(t + DT);
@@ -326,16 +333,20 @@ static void observe(const Pose2& gt, const std::vector<float>& lx,
                 uni(rng) < OCCLUSION_DROP_PROB) {
                 continue;
             }
-            float zn = d + noise(rng);
             if (mode == OBS_RANGE_OUTLIERS && uni(rng) < HARD_OUTLIER_PROB) {
+                float zn = d + noise(rng);
                 zn += outlier(rng);
+                z[l] = std::max(0.0f, zn);
             } else if (mode == OBS_BIASED_RANGE) {
-                zn += biased_range_mean(d) - d;
+                z[l] = sample_biased_range_sensor(d, rng);
             } else if (mode == OBS_OCCLUSION_KIDNAP && occlusion_window &&
                        uni(rng) < OCCLUSION_SHORT_PROB) {
+                float zn = d + noise(rng);
                 zn -= short_hit(rng);
+                z[l] = std::max(0.0f, zn);
+            } else {
+                z[l] = std::max(0.0f, d + noise(rng));
             }
-            z[l] = std::max(0.0f, zn);
             valid[l] = 1u;
         }
     }
@@ -574,20 +585,80 @@ static void train_mlp_tracking_finite_difference(
     P.free_all();
 }
 
-static void train_mlp_biased_observation_surrogate(GpuMLP& mlp,
-                                                   std::vector<float>& loss_curve) {
+struct CalibrationModel {
+    std::vector<float> bias_by_bin;
+    float sigma = OBS_SIGMA;
+    float bias_rmse = 0.0f;
+};
+
+static int calibration_bin(float d) {
+    int b = static_cast<int>((d / OBS_RANGE) * CALIBRATION_BINS);
+    return std::max(0, std::min(CALIBRATION_BINS - 1, b));
+}
+
+static float calibrated_bias_at(float d, const CalibrationModel& calib) {
+    float bin_width = OBS_RANGE / CALIBRATION_BINS;
+    float x = d / bin_width - 0.5f;
+    int lo = static_cast<int>(std::floor(x));
+    float a = x - lo;
+    lo = std::max(0, std::min(CALIBRATION_BINS - 1, lo));
+    int hi = std::max(0, std::min(CALIBRATION_BINS - 1, lo + 1));
+    return (1.0f - a) * calib.bias_by_bin[lo] + a * calib.bias_by_bin[hi];
+}
+
+static CalibrationModel fit_biased_range_calibration(std::mt19937& rng) {
+    CalibrationModel calib;
+    calib.bias_by_bin.assign(CALIBRATION_BINS, 0.0f);
+    std::vector<float> sum(CALIBRATION_BINS, 0.0f);
+    std::vector<int> count(CALIBRATION_BINS, 0);
+    std::vector<float> sample_d(CALIBRATION_SAMPLES);
+    std::vector<float> sample_residual(CALIBRATION_SAMPLES);
+    std::uniform_real_distribution<float> ud(0.0f, OBS_RANGE);
+    for (int i = 0; i < CALIBRATION_SAMPLES; i++) {
+        float d = ud(rng);
+        float z = sample_biased_range_sensor(d, rng);
+        float residual = z - d;
+        int b = calibration_bin(d);
+        sum[b] += residual;
+        count[b]++;
+        sample_d[i] = d;
+        sample_residual[i] = residual;
+    }
+    for (int b = 0; b < CALIBRATION_BINS; b++) {
+        calib.bias_by_bin[b] = (count[b] > 0) ? (sum[b] / count[b]) : 0.0f;
+    }
+
+    double var_sum = 0.0;
+    double bias_err_sum = 0.0;
+    for (int i = 0; i < CALIBRATION_SAMPLES; i++) {
+        float d = sample_d[i];
+        float err = sample_residual[i] - calibrated_bias_at(d, calib);
+        var_sum += static_cast<double>(err) * err;
+        float hidden_bias = biased_range_mean(d) - d;
+        float bias_err = calibrated_bias_at(d, calib) - hidden_bias;
+        bias_err_sum += static_cast<double>(bias_err) * bias_err;
+    }
+    calib.sigma = std::max(0.25f, std::sqrt(static_cast<float>(var_sum / CALIBRATION_SAMPLES)));
+    calib.bias_rmse = std::sqrt(static_cast<float>(bias_err_sum / CALIBRATION_SAMPLES));
+    return calib;
+}
+
+static void train_mlp_calibrated_observation_surrogate(GpuMLP& mlp,
+                                                       const CalibrationModel& calib,
+                                                       std::vector<float>& loss_curve) {
     std::vector<float> h_train_in(DIRECT_TRAIN_SAMPLES * MLP_INPUT);
     std::vector<float> h_train_tgt(DIRECT_TRAIN_SAMPLES * MLP_OUTPUT);
-    std::mt19937 rng_data(4242);
+    std::mt19937 rng_data(4343);
     std::uniform_real_distribution<float> ud(0.0f, OBS_RANGE);
-    std::uniform_real_distribution<float> ur(-5.0f * OBS_SIGMA, 5.0f * OBS_SIGMA);
-    float two_sig2 = 2.0f * OBS_SIGMA * OBS_SIGMA;
+    std::uniform_real_distribution<float> ur(-5.0f * calib.sigma, 5.0f * calib.sigma);
+    float two_sig2 = 2.0f * calib.sigma * calib.sigma;
     for (int i = 0; i < DIRECT_TRAIN_SAMPLES; i++) {
         float d = ud(rng_data);
         float sensor_residual = ur(rng_data);
-        float z = biased_range_mean(d) - sensor_residual;
+        float calibrated_mean = d + calibrated_bias_at(d, calib);
+        float z = calibrated_mean - sensor_residual;
         if (z < 0.0f) z = 0.0f;
-        float r = biased_range_mean(d) - z;
+        float r = calibrated_mean - z;
         h_train_in[i * MLP_INPUT + 0] = d / OBS_RANGE;
         h_train_in[i * MLP_INPUT + 1] = (z - d) / (5.0f * OBS_SIGMA);
         float ll = -(r * r) / two_sig2;
@@ -764,17 +835,23 @@ int main() {
                 E2E_TRAIN_EPOCHS, e2e_ms,
                 tracking_loss_curve.front(), tracking_loss_curve.back());
 
-    // --- Step 4: direct observation-surrogate MLP for the biased sensor.
-    // This uses ordinary GPU backprop on the biased measurement likelihood,
-    // avoiding rollout-scale finite differences through the PF.
+    // --- Step 4: calibrated observation-surrogate MLP for the biased sensor.
+    // A calibration trace contains known true distances and measured ranges.
+    // The MLP never sees the hidden bias formula; it learns from the estimated
+    // residual curve and ordinary GPU backprop.
     GpuMLP mlp_direct(MLP_INPUT, MLP_HIDDEN, MLP_LAYERS, MLP_OUTPUT);
     mlp_direct.load_weights(mlp.get_weights());
     std::vector<float> direct_loss_curve;
+    std::mt19937 rng_calib(5151);
+    CalibrationModel calib = fit_biased_range_calibration(rng_calib);
+    std::printf("Calibration trace: %d samples, %d bins, estimated sigma %.3f, "
+                "bias RMSE vs hidden simulator %.3f m\n",
+                CALIBRATION_SAMPLES, CALIBRATION_BINS, calib.sigma, calib.bias_rmse);
     auto t_direct_0 = std::chrono::high_resolution_clock::now();
-    train_mlp_biased_observation_surrogate(mlp_direct, direct_loss_curve);
+    train_mlp_calibrated_observation_surrogate(mlp_direct, calib, direct_loss_curve);
     auto t_direct_1 = std::chrono::high_resolution_clock::now();
     double direct_ms = std::chrono::duration<double, std::milli>(t_direct_1 - t_direct_0).count();
-    std::printf("MLP direct biased-observation surrogate: %d epochs in %.1f ms, "
+    std::printf("MLP calibrated observation surrogate: %d epochs in %.1f ms, "
                 "loss %.4f -> %.4f\n",
                 DIRECT_TRAIN_EPOCHS, direct_ms,
                 direct_loss_curve.front(), direct_loss_curve.back());
@@ -857,7 +934,7 @@ int main() {
         label(P0, "Biased range: Gaussian");
         label(P1, "Biased range: supervised MLP");
         label(P2, "Biased range: tracking-loss MLP");
-        label(P3, "Biased range: direct surrogate MLP");
+        label(P3, "Biased range: calibrated surrogate MLP");
         cv::Mat row01, row23, combined;
         cv::hconcat(P0, P1, row01);
         cv::hconcat(P2, P3, row23);
@@ -879,7 +956,7 @@ int main() {
                 "  DPF + handcrafted likelihood       = %.3f m\n"
                 "  DPF + supervised MLP likelihood    = %.3f m (%.2fx)\n"
                 "  DPF + tracking-tuned MLP likelihood = %.3f m (%.2fx)\n"
-                "  DPF + direct surrogate MLP likelihood = %.3f m (%.2fx)\n",
+                "  DPF + calibrated surrogate MLP likelihood = %.3f m (%.2fx)\n",
                 TRAINED_ALPHA, rmse_A, rmse_B, ratio_B, rmse_C, ratio_C,
                 rmse_D, ratio_D);
 
