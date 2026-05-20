@@ -24,7 +24,7 @@ CudaRobotics fills this gap with 87 self-contained CUDA implementations across 8
 - Expansion Reset MCL (independent CUDA reimplementation of Ueda IROS 2004)
 - Particle Filter on Episode (PFoE)
 - Graph SLAM
-- Differentiable Particle Filter (soft-resampling + reparameterized motion noise; end-to-end autodiff via dual numbers — 57% RMSE reduction vs hand-tuned baseline on the 8-landmark tracking task; also supports learnable MLP observation models, including finite-difference tracking-loss fine-tuning to 0.88x handcrafted RMSE on clean Gaussian observations and 0.67x handcrafted RMSE under range outliers)
+- Differentiable Particle Filter (soft-resampling + reparameterized motion noise; end-to-end autodiff via dual numbers — 57% RMSE reduction vs hand-tuned baseline on the 8-landmark tracking task; also supports learnable MLP observation models, including finite-difference tracking-loss fine-tuning to 0.88x handcrafted RMSE on clean Gaussian observations, 0.67x under range outliers, and 0.73x under occlusion plus hidden kidnap)
 
 ### Path Planning (16 implementations)
 - A*, Dijkstra (grid-based)
