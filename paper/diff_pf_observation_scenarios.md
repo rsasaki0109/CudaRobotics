@@ -16,8 +16,8 @@ receives scaled `(distance, residual)` inputs.
 | Range outliers | 18% of visible ranges get uniform +/-9 m outliers | 9.80 m | 7.18 m | 7.22 m | **7.04 m** | **0.72x** |
 | Distance-dependent bias | `z = d + N(0, 1.0) + 0.35 * max(0, d - 10.0)` | 8.41 m | 7.11 m | 7.03 m | **6.03 m** | **0.72x** |
 | Occlusion + hidden kidnap | 30% landmark dropout + 25% short returns from 1.0-16.0 s; hidden pose jump (-4 m, +3 m) at 3.0 s | 8.25 m | 7.40 m | 8.08 m | **6.93 m** | **0.84x** |
-| Occlusion only | 30% landmark dropout + 25% short returns from 1.0-16.0 s; no pose jump | 7.98 m | **6.57 m** | 7.24 m | 7.11 m | **0.82x** |
-| Kidnap only | Clean Gaussian observations; hidden pose jump (-4 m, +3 m) at 3.0 s | 7.66 m | 12.48 m | 9.85 m | **6.98 m** | **0.91x** |
+| Occlusion only | 30% landmark dropout + 25% short returns from 1.0-16.0 s; no pose jump | 7.98 m | 7.27 m | **6.69 m** | 6.99 m | **0.84x** |
+| Kidnap only | Clean Gaussian observations; hidden pose jump (-4 m, +3 m) at 3.0 s | 7.66 m | 8.24 m | 12.27 m | **6.90 m** | **0.90x** |
 
 ## Interpretation
 
@@ -52,14 +52,33 @@ Gaussian baseline. Dropout and kidnap recovery still depend on particle support
 and resampling mechanics, not only on the observation likelihood.
 
 The follow-up ablations split those two effects. In occlusion-only, the
-supervised MLP reaches 6.57 m versus 7.98 m for the Gaussian baseline, while
-the calibrated valid-residual surrogate reaches 7.11 m; the likelihood shape
-helps, but the simple supervised fit is strongest in this seeded run. In
-kidnap-only, clean Gaussian observations make the supervised and
-tracking-tuned MLPs brittle after the hidden jump, while the calibration-learned
-Gaussian residual surrogate lands at 6.98 m versus 7.66 m for the handcrafted
-Gaussian. That isolates the remaining hard part as recovery and particle
-support after an unmodeled state jump, not just observation-model mismatch.
+tracking-tuned MLP reaches 6.69 m versus 7.98 m for the Gaussian baseline,
+while the calibrated valid-residual surrogate reaches 6.99 m. In kidnap-only,
+clean Gaussian observations make the learned likelihoods sensitive to particle
+support after the hidden jump; the calibration-learned Gaussian residual
+surrogate lands at 6.90 m versus 7.66 m for the handcrafted Gaussian, while
+the rollout-tuned MLP is worse in this seeded run. That isolates the remaining
+hard part as recovery after an unmodeled state jump, not just
+observation-model mismatch.
+
+## Particle-Support Recovery
+
+The kidnap-only recovery follow-up adds range-reset particle injection after
+the hidden jump. At each step after `t=3.0s`, 12% of the resampled particles
+are replaced by samples drawn on measured landmark-range circles, then the
+usual likelihood update selects particles consistent with the full observation
+set.
+
+| Kidnap recovery variant | RMSE | Ratio vs no-injection Gaussian |
+|---|---:|---:|
+| Gaussian likelihood | 7.30 m | 1.00x |
+| Gaussian likelihood + range-reset injection | **1.01 m** | **0.14x** |
+| Calibrated-surrogate MLP likelihood | 5.87 m | 0.80x |
+| Calibrated-surrogate MLP + range-reset injection | 1.08 m | 0.15x |
+
+This closes most of the hidden-jump gap without changing the observation
+likelihood, confirming that kidnap recovery is primarily a particle-support
+problem once the measurements are clean.
 
 ## Current Research Claim
 
@@ -72,13 +91,15 @@ support after an unmodeled state jump, not just observation-model mismatch.
    surrogate can be estimated and used to train the same MLP much faster than
    rollout finite differences.
 4. Under misspecified observation models, the best learned likelihoods reduce
-   localization RMSE by 9-28% versus the handcrafted Gaussian baseline across
+   localization RMSE by 10-28% versus the handcrafted Gaussian baseline across
    the current stress and ablation matrix.
+5. In the kidnap-only case, range-reset particle injection reduces RMSE by 86%
+   versus the no-injection Gaussian baseline, showing that explicit support
+   recovery is the right tool for hidden state jumps.
 
 ## Next Useful Ablation
 
-The next clean experiment is to add explicit recovery mechanics to the
-kidnap-only case: low-rate particle injection, expansion reset, or an AMCL
-comparison. The ablation above shows that once observations are clean, the
-dominant limitation is keeping or regenerating particle support after the
-hidden pose jump.
+The next clean experiment is an injection trigger/rate ablation: compare fixed
+12% range-reset injection against an effective-sample-size trigger, lower
+steady-state rates, expansion reset, and the existing AMCL-style recovery
+baseline.
