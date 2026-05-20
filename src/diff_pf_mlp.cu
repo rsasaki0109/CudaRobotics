@@ -13,17 +13,17 @@
       2. fine-tuned end-to-end on tracking loss by finite-differencing the
          tiny MLP weight vector through a soft-resampling DPF rollout.
 
-    The point is not "neural likelihood beats Gaussian" (the analytic
-    form is optimal under the assumed noise model). The point is that
-    the DPF architecture accepts a swappable observation model, which
-    is what enables future work where the observation is non-Gaussian,
-    has no analytic form, or should be learned directly from task loss.
+    The clean scene keeps Gaussian range noise, where the handcrafted
+    likelihood is correctly specified. The hard scene injects range
+    outliers, making that Gaussian likelihood intentionally misspecified;
+    the tracking-loss-tuned MLP can learn a heavier-tailed observation
+    model directly from localization performance.
 
     Output:
       - Training curve (MSE on log-likelihood, supervised pre-training)
       - Tracking-loss finite-difference curve for the end-to-end MLP
-      - Tracking gif: handcrafted DPF vs supervised MLP-DPF vs tracking-loss
-        MLP-DPF, same scene, same alpha (=3.14, learned in src/diff_pf.cu)
+      - Hard-scene tracking gif: handcrafted DPF vs supervised MLP-DPF vs
+        tracking-loss MLP-DPF, same alpha (=3.14, learned in src/diff_pf.cu)
  ************************************************************************/
 
 #include <iostream>
@@ -64,6 +64,8 @@ constexpr float OBS_RANGE     = 22.0f;
 constexpr float OBS_SIGMA     = 1.0f;
 constexpr float SOFT_BETA     = 0.7f;
 constexpr float TRAINED_ALPHA = 3.14f;
+constexpr float HARD_OUTLIER_PROB = 0.18f;
+constexpr float HARD_OUTLIER_MAG  = 9.0f;
 
 constexpr int   MLP_INPUT     = 2;   // (d, z)
 constexpr int   MLP_HIDDEN    = 16;
@@ -85,6 +87,8 @@ constexpr float VIS_SX        = static_cast<float>(PANEL_W) / WORLD_W;
 constexpr float VIS_SY        = static_cast<float>(PANEL_H) / WORLD_H;
 
 struct Pose2 { float x, y, th; };
+
+enum ObservationMode { OBS_CLEAN_GAUSSIAN, OBS_RANGE_OUTLIERS };
 
 __host__ __device__ inline float wrap_pi(float a) {
     while (a >  static_cast<float>(M_PI)) a -= 2.0f * static_cast<float>(M_PI);
@@ -267,16 +271,23 @@ static void controls_at(float t, float& v, float& omega) {
 }
 static void observe(const Pose2& gt, const std::vector<float>& lx,
                     const std::vector<float>& ly, std::mt19937& rng,
-                    std::vector<float>& z, std::vector<unsigned char>& valid) {
+                    std::vector<float>& z, std::vector<unsigned char>& valid,
+                    ObservationMode mode = OBS_CLEAN_GAUSSIAN) {
     int L = static_cast<int>(lx.size());
     z.resize(L); valid.assign(L, 0u);
     std::normal_distribution<float> noise(0.0f, OBS_SIGMA);
+    std::uniform_real_distribution<float> uni(0.0f, 1.0f);
+    std::uniform_real_distribution<float> outlier(-HARD_OUTLIER_MAG, HARD_OUTLIER_MAG);
     for (int l = 0; l < L; l++) {
         float dx = gt.x - lx[l];
         float dy = gt.y - ly[l];
         float d = std::sqrt(dx * dx + dy * dy);
         if (d <= OBS_RANGE) {
-            z[l] = d + noise(rng);
+            float zn = d + noise(rng);
+            if (mode == OBS_RANGE_OUTLIERS && uni(rng) < HARD_OUTLIER_PROB) {
+                zn += outlier(rng);
+            }
+            z[l] = std::max(0.0f, zn);
             valid[l] = 1u;
         }
     }
@@ -357,7 +368,8 @@ static float rollout_tracking_loss_mlp(ParticleSet& P, int n,
                                        float* d_z,
                                        unsigned char* d_zv,
                                        unsigned int seed,
-                                       int n_frames) {
+                                       int n_frames,
+                                       ObservationMode obs_mode) {
     reset_particle_set(P, n, seed + 11u,
                        static_cast<unsigned long long>(seed) * 1009ULL + 17ULL);
 
@@ -372,7 +384,7 @@ static float rollout_tracking_loss_mlp(ParticleSet& P, int n,
 
         std::vector<float> z;
         std::vector<unsigned char> valid;
-        observe(gt, lx, ly, rng_obs, z, valid);
+        observe(gt, lx, ly, rng_obs, z, valid, obs_mode);
         CUDA_CHECK(cudaMemcpy(d_z, z.data(), N_LANDMARKS * sizeof(float),
                               cudaMemcpyHostToDevice));
         CUDA_CHECK(cudaMemcpy(d_zv, valid.data(), N_LANDMARKS,
@@ -433,7 +445,8 @@ static void train_mlp_tracking_finite_difference(
     const float* d_ly,
     float* d_z,
     unsigned char* d_zv,
-    std::vector<float>& loss_curve) {
+    std::vector<float>& loss_curve,
+    ObservationMode obs_mode) {
     auto cfg = mlp.config();
     std::vector<float> weights = mlp.get_weights();
     std::vector<float> grad(cfg.total_weights, 0.0f);
@@ -448,7 +461,8 @@ static void train_mlp_tracking_finite_difference(
         mlp.load_weights(w);
         return rollout_tracking_loss_mlp(P, E2E_TRAIN_PARTICLES, mlp,
                                          lx, ly, d_lx, d_ly, d_z, d_zv,
-                                         seed_base, E2E_TRAIN_FRAMES);
+                                         seed_base, E2E_TRAIN_FRAMES,
+                                         obs_mode);
     };
 
     for (int epoch = 0; epoch < E2E_TRAIN_EPOCHS; epoch++) {
@@ -510,6 +524,8 @@ int main() {
               << N_PARTICLES << " particles, " << N_LANDMARKS << " landmarks, "
               << "MLP " << MLP_INPUT << "->" << MLP_HIDDEN << "->" << MLP_OUTPUT << ")"
               << std::endl;
+    std::printf("Hard scene: %.0f%% visible range measurements get uniform +/-%.1f m outliers.\n",
+                100.0f * HARD_OUTLIER_PROB, HARD_OUTLIER_MAG);
 
     // --- Landmark layout (same as src/diff_pf.cu)
     std::vector<float> lx(N_LANDMARKS), ly(N_LANDMARKS);
@@ -614,7 +630,8 @@ int main() {
     std::vector<float> tracking_loss_curve;
     auto t_e2e_0 = std::chrono::high_resolution_clock::now();
     train_mlp_tracking_finite_difference(mlp_e2e, lx, ly, d_lx, d_ly,
-                                         d_z, d_zv, tracking_loss_curve);
+                                         d_z, d_zv, tracking_loss_curve,
+                                         OBS_RANGE_OUTLIERS);
     auto t_e2e_1 = std::chrono::high_resolution_clock::now();
     double e2e_ms = std::chrono::duration<double, std::milli>(t_e2e_1 - t_e2e_0).count();
     std::printf("MLP tracking-loss fine-tuning: %d epochs in %.1f ms, "
@@ -640,7 +657,7 @@ int main() {
     upload(PB, N_PARTICLES, ipx, ipy, ipth);
     upload(PC, N_PARTICLES, ipx, ipy, ipth);
 
-    cv::VideoWriter video("gif/comparison_diff_pf_mlp.avi",
+    cv::VideoWriter video("gif/comparison_diff_pf_mlp_hard.avi",
                           cv::VideoWriter::fourcc('X', 'V', 'I', 'D'), 30,
                           cv::Size(PANEL_W * 3, PANEL_H));
 
@@ -654,7 +671,7 @@ int main() {
         Pose2 gt = gt_at(t);
         float v, omega; controls_at(t, v, omega);
         std::vector<float> z; std::vector<unsigned char> valid;
-        observe(gt, lx, ly, rng_obs_eval, z, valid);
+        observe(gt, lx, ly, rng_obs_eval, z, valid, OBS_RANGE_OUTLIERS);
         CUDA_CHECK(cudaMemcpy(d_z,  z.data(),     N_LANDMARKS * sizeof(float), cudaMemcpyHostToDevice));
         CUDA_CHECK(cudaMemcpy(d_zv, valid.data(), N_LANDMARKS,                 cudaMemcpyHostToDevice));
 
@@ -686,9 +703,9 @@ int main() {
         cv::circle(P0, w2p(out_A.ex, out_A.ey), 6, cv::Scalar(60, 60, 200), 2, cv::LINE_AA);
         cv::circle(P1, w2p(out_B.ex, out_B.ey), 6, cv::Scalar(0, 130, 60), 2, cv::LINE_AA);
         cv::circle(P2, w2p(out_C.ex, out_C.ey), 6, cv::Scalar(190, 110, 0), 2, cv::LINE_AA);
-        label(P0, "DPF + handcrafted Gaussian likelihood");
-        label(P1, "DPF + MLP likelihood (supervised log-lik)");
-        label(P2, "DPF + MLP likelihood (tracking-loss fine-tuned)");
+        label(P0, "Outlier scene: DPF + Gaussian likelihood");
+        label(P1, "Outlier scene: DPF + supervised MLP");
+        label(P2, "Outlier scene: DPF + tracking-loss tuned MLP");
         cv::Mat row01, combined;
         cv::hconcat(P0, P1, row01);
         cv::hconcat(row01, P2, combined);
@@ -703,15 +720,15 @@ int main() {
     rmse_C = std::sqrt(rmse_C / N_FRAMES);
     float ratio_B = static_cast<float>(rmse_B / rmse_A);
     float ratio_C = static_cast<float>(rmse_C / rmse_A);
-    std::printf("Eval RMSE (alpha=%.2f):\n"
+    std::printf("Hard-scene eval RMSE (alpha=%.2f):\n"
                 "  DPF + handcrafted likelihood       = %.3f m\n"
                 "  DPF + supervised MLP likelihood    = %.3f m (%.2fx)\n"
                 "  DPF + tracking-tuned MLP likelihood = %.3f m (%.2fx)\n",
                 TRAINED_ALPHA, rmse_A, rmse_B, ratio_B, rmse_C, ratio_C);
 
-    std::system("ffmpeg -y -i gif/comparison_diff_pf_mlp.avi "
+    std::system("ffmpeg -y -i gif/comparison_diff_pf_mlp_hard.avi "
                 "-vf 'fps=15,scale=1200:-1:flags=lanczos' -loop 0 "
-                "gif/comparison_diff_pf_mlp.gif 2>/dev/null");
-    std::cout << "GIF saved to gif/comparison_diff_pf_mlp.gif" << std::endl;
+                "gif/comparison_diff_pf_mlp_hard.gif 2>/dev/null");
+    std::cout << "GIF saved to gif/comparison_diff_pf_mlp_hard.gif" << std::endl;
     return 0;
 }
