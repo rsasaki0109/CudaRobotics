@@ -17,7 +17,7 @@ Short handoff for the next coding agent. The repo is on `master`, synced with
   ```bash
   cd build && cmake .. && make -j$(nproc)
   ```
-- The 2026-05-20 session merged PRs #16〜#23 and #25〜#34 (18 PRs). The repo's "Why CUDA?"
+- The 2026-05-20/21 session merged PRs #16〜#23 and #25〜#35 (19 PRs). The repo's "Why CUDA?"
   top showcase is now a curated 2x3 grid; the Research Extensions table has
   two new entries (Differentiable Particle Filter + DPF with MLP observation).
 
@@ -45,6 +45,7 @@ Short handoff for the next coding agent. The repo is on `master`, synced with
 | #32 | DPF calibrated biased observation | Calibrated-surrogate MLP 6.03m vs Gaussian 8.41m (**0.72x**) |
 | #33 | DPF calibrated outlier surrogate | Calibrated-surrogate MLP 7.04m vs Gaussian 9.80m (**0.72x**) |
 | #34 | DPF calibrated occlusion surrogate | Calibrated-surrogate MLP 6.93m vs Gaussian 8.25m (**0.84x**) |
+| #35 | DPF occlusion/kidnap ablations | Split occlusion-only vs kidnap-only recovery limits |
 
 All four findings docs are under `docs/`: `topology_bench_day1_findings.md`
 through `topology_bench_day4_findings.md`.
@@ -122,17 +123,27 @@ RMSE **2.301 m**, log-likelihood at **-6m = -2.553**, handcrafted Gaussian
 **8.08 m** (**0.98x**), calibrated-surrogate MLP **6.93 m** (**0.84x**).
 Calibrated surrogate training took **~2.9s**.
 
-Current feature branch `feat/diff-pf-kidnap-ablation` splits that stress scene
+Merged PR #35 split that stress scene
 into occlusion-only and kidnap-only runs. `src/diff_pf_mlp.cu` now has
 separate `OBS_OCCLUSION_ONLY` and `OBS_KIDNAP_ONLY` modes and runs both from
-the same supervised pre-training checkpoint. Latest local run:
-occlusion-only Gaussian **7.98 m**, supervised MLP **6.57 m** (**0.82x**),
-tracking-tuned MLP **7.24 m** (**0.91x**), calibrated-surrogate MLP
-**7.11 m** (**0.89x**); kidnap-only Gaussian **7.66 m**, supervised MLP
-**12.48 m** (**1.63x**), tracking-tuned MLP **9.85 m** (**1.29x**),
-calibrated-surrogate MLP **6.98 m** (**0.91x**). New gifs:
+the same supervised pre-training checkpoint. Latest local run from the
+follow-up branch: occlusion-only Gaussian **7.98 m**, supervised MLP
+**7.27 m** (**0.91x**), tracking-tuned MLP **6.69 m** (**0.84x**),
+calibrated-surrogate MLP **6.99 m** (**0.88x**); kidnap-only Gaussian
+**7.66 m**, supervised MLP **8.24 m** (**1.08x**), tracking-tuned MLP
+**12.27 m** (**1.60x**), calibrated-surrogate MLP **6.90 m** (**0.90x**).
+Gifs:
 `gif/comparison_diff_pf_mlp_occlusion_only.gif` and
 `gif/comparison_diff_pf_mlp_kidnap_only.gif`.
+
+Current feature branch `feat/diff-pf-particle-injection` adds explicit
+particle-support recovery to the kidnap-only ablation. After the hidden jump,
+12% of particles are range-reset by sampling on valid landmark-measurement
+circles before the next likelihood update. Latest local run:
+no-injection Gaussian **7.30 m**, Gaussian + range-reset injection **1.01 m**
+(**0.14x**), calibrated-surrogate MLP **5.87 m** (**0.80x**),
+calibrated-surrogate + injection **1.08 m** (**0.15x**). New gif:
+`gif/comparison_diff_pf_mlp_kidnap_injection.gif`.
 
 ---
 
@@ -159,13 +170,12 @@ calibrated-surrogate MLP **6.98 m** (**0.91x**). New gifs:
   but did not yet beat the supervised initialization on the 240-frame eval.
   Next work: longer horizons, multi-seed gradient averaging, or smoother
   resampling relaxations.
-- **Particle support after hidden kidnap**: the occlusion-only / kidnap-only
-  split shows the observation-model story is mostly handled, while hidden
-  jumps still depend on support recovery. Next work: add a low-rate particle
-  injection / expansion reset variant, or compare against existing `amcl` /
-  `expansion_reset_mcl` behavior.
+- **Particle-injection ablation**: fixed 12% range-reset injection closes the
+  kidnap-only recovery gap. Next work: compare fixed injection against an
+  effective-sample-size trigger, lower steady-state rates, expansion reset, and
+  existing `amcl` / `expansion_reset_mcl` recovery behavior.
 - **Harder scenes beyond current stress tests**: longer kidnap recovery with
-  particle injection, or smoother resampling relaxations where
+  injection trigger/rate tuning, or smoother resampling relaxations where
   observation-model learning and recovery mechanics can be separated cleanly.
 - **EKF / AMCL baseline**: compare DPF tracking RMSE against the existing
   `amcl` and `pf` baselines for a clean accuracy / compute trade-off plot.
@@ -215,10 +225,10 @@ calibrated-surrogate MLP **6.98 m** (**0.91x**). New gifs:
 The 2026-05-20 session leaned hard into visual showcases and the DPF
 research line. The most natural next moves:
 
-**If goal = paper / research value**: add explicit particle-support recovery
-to the kidnap-only DPF ablation. The likelihood side is now split cleanly; the
-remaining question is whether low-rate particle injection or expansion reset
-closes the hidden-pose-jump gap.
+**If goal = paper / research value**: turn the particle-injection result into
+a rate/trigger ablation. Fixed 12% range-reset injection works; the remaining
+question is how low the injection rate can be, and whether an ESS-triggered
+reset or expansion reset keeps the same recovery with less steady-state noise.
 
 **If goal = OSS visibility**: pick up **3D Lidar Simulator**. The 2D
 version is a strong tile on the readme; a 3D version paired with the
@@ -231,7 +241,7 @@ expansion** (Day 4+ item 1). Mechanical change to
 Recommended starting branches:
 
 ```bash
-git switch -c feat/diff-pf-particle-injection  # research track
+git switch -c feat/diff-pf-injection-trigger   # research track
 git switch -c feat/lidar-sim-3d               # showcase track
 git switch -c feat/failure-taxonomy-csv       # bench track
 ```
