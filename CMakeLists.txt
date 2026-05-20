@@ -306,6 +306,10 @@ add_executable(diff_pf src/diff_pf.cu)
 target_link_libraries(diff_pf ${OpenCV_LIBS})
 target_compile_options(diff_pf PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
 
+add_executable(diff_pf_mlp src/diff_pf_mlp.cu)
+target_link_libraries(diff_pf_mlp ${OpenCV_LIBS})
+target_compile_options(diff_pf_mlp PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
+
 add_executable(comparison_dwa_visual src/comparison_dwa_visual.cu)
 target_link_libraries(comparison_dwa_visual ${OpenCV_LIBS})
 
