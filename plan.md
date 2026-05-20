@@ -39,6 +39,14 @@ Short handoff for the next coding agent. The repo is on `master`, synced with
 All four findings docs are under `docs/`: `topology_bench_day1_findings.md`
 through `topology_bench_day4_findings.md`.
 
+Current feature branch `feat/diff-pf-end-to-end-mlp` picks up the DPF
+follow-up: `src/diff_pf_mlp.cu` now clones the supervised MLP and fine-tunes
+the weights through tracking loss using central finite differences over a
+soft-resampling DPF rollout plus Adam. Latest local run:
+handcrafted Gaussian **6.97 m**, supervised MLP **7.19 m**, tracking-tuned MLP
+**6.16 m** (**0.88x** handcrafted). The gif
+`gif/comparison_diff_pf_mlp.gif` was regenerated as a 3-panel comparison.
+
 ---
 
 ## Open Threads (parked but not abandoned)
@@ -56,14 +64,14 @@ through `topology_bench_day4_findings.md`.
   baseline + the new topology suite. Skeleton is implicit in the four
   Day N findings docs.
 
-### 2. DPF follow-up (after PR #23 merge)
+### 2. DPF follow-up (after tracking-loss fine-tune branch)
 
-- **End-to-end MLP weight learning via finite-difference**. Right now the
-  MLP is pre-trained supervised against the analytic likelihood. The natural
-  next step is to fine-tune the MLP weights through tracking loss using
-  finite-difference gradient over the soft-resample DPF chain — true
-  end-to-end DPF training. Tractable because the MLP is tiny (~50 weights);
-  see `src/diff_pf_mlp.cu` for the existing scaffolding.
+- **From-scratch tracking-loss MLP training**. The implemented branch uses
+  supervised pre-training as the initialization, then does true end-to-end
+  finite-difference fine-tuning. Scratch-only training decreases rollout loss
+  but did not yet beat the supervised initialization on the 240-frame eval.
+  Next work: longer horizons, multi-seed gradient averaging, or smoother
+  resampling relaxations.
 - **Harder scenes**: kidnap recovery comparison (analytic vs MLP under noise
   model mismatch), or sensor occlusion / non-Gaussian noise where the
   analytic form is no longer optimal and the MLP can outperform.
@@ -115,12 +123,10 @@ through `topology_bench_day4_findings.md`.
 The 2026-05-20 session leaned hard into visual showcases and the DPF
 research line. The most natural next moves:
 
-**If goal = paper / research value**: pick up **DPF end-to-end MLP
-weight learning** (item 2 above). The scaffolding is in `src/diff_pf_mlp.cu`;
-need to add finite-difference gradient computation over tracking loss with
-the MLP weights as the perturbed parameter, plus an Adam loop on those
-weights. Story: "DPF learns observation model from scratch via tracking
-loss" — paper-worthy.
+**If goal = paper / research value**: extend the new **DPF tracking-loss MLP
+fine-tune** into harder scenes (kidnap recovery, occlusion, non-Gaussian
+range noise) where the analytic Gaussian is intentionally misspecified and
+the learned observation model has room to win.
 
 **If goal = OSS visibility**: pick up **3D Lidar Simulator**. The 2D
 version is a strong tile on the readme; a 3D version paired with the
@@ -133,7 +139,7 @@ expansion** (Day 4+ item 1). Mechanical change to
 Recommended starting branches:
 
 ```bash
-git switch -c feat/diff-pf-end-to-end-mlp     # research track
+git switch -c feat/diff-pf-hard-scenes        # research track
 git switch -c feat/lidar-sim-3d               # showcase track
 git switch -c feat/failure-taxonomy-csv       # bench track
 ```
