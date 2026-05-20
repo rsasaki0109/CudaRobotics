@@ -12,8 +12,8 @@
       1. supervised against the analytic Gaussian on a synthetic dataset;
       2. fine-tuned end-to-end on tracking loss by finite-differencing the
          tiny MLP weight vector through a soft-resampling DPF rollout;
-      3. trained with direct GPU backprop on a calibration-learned
-         observation surrogate for the distance-dependent bias scene.
+      3. trained with direct GPU backprop on calibration-learned observation
+         surrogates for misspecified range sensors.
 
     The clean scene keeps Gaussian range noise, where the handcrafted
     likelihood is correctly specified. Hard scenes inject range outliers,
@@ -102,7 +102,9 @@ constexpr int   DIRECT_TRAIN_SAMPLES = 32768;
 constexpr int   DIRECT_TRAIN_EPOCHS  = 1600;
 constexpr float DIRECT_TRAIN_LR      = 0.01f;
 constexpr int   CALIBRATION_SAMPLES  = 8192;
-constexpr int   CALIBRATION_BINS     = 24;
+constexpr int   CALIBRATION_RESIDUAL_BINS = 96;
+constexpr float CALIBRATION_RESIDUAL_MAX  = HARD_OUTLIER_MAG + 4.0f * OBS_SIGMA;
+constexpr float CALIBRATION_HIST_SMOOTH   = 2.0f;
 
 constexpr int   PANEL_W       = 480;
 constexpr int   PANEL_H       = 360;
@@ -304,6 +306,14 @@ static float sample_biased_range_sensor(float d, std::mt19937& rng) {
     std::normal_distribution<float> noise(0.0f, OBS_SIGMA);
     return std::max(0.0f, biased_range_mean(d) + noise(rng));
 }
+static float sample_range_outlier_sensor(float d, std::mt19937& rng) {
+    std::normal_distribution<float> noise(0.0f, OBS_SIGMA);
+    std::uniform_real_distribution<float> uni(0.0f, 1.0f);
+    std::uniform_real_distribution<float> outlier(-HARD_OUTLIER_MAG, HARD_OUTLIER_MAG);
+    float z = d + noise(rng);
+    if (uni(rng) < HARD_OUTLIER_PROB) z += outlier(rng);
+    return std::max(0.0f, z);
+}
 static void controls_at(float t, float& v, float& omega) {
     Pose2 p_now = gt_at(t);
     Pose2 p_next = gt_at(t + DT);
@@ -321,7 +331,6 @@ static void observe(const Pose2& gt, const std::vector<float>& lx,
     z.resize(L); valid.assign(L, 0u);
     std::normal_distribution<float> noise(0.0f, OBS_SIGMA);
     std::uniform_real_distribution<float> uni(0.0f, 1.0f);
-    std::uniform_real_distribution<float> outlier(-HARD_OUTLIER_MAG, HARD_OUTLIER_MAG);
     std::uniform_real_distribution<float> short_hit(0.0f, OCCLUSION_SHORT_MAG);
     bool occlusion_window = (t >= OCCLUSION_START_T && t <= OCCLUSION_END_T);
     for (int l = 0; l < L; l++) {
@@ -333,10 +342,8 @@ static void observe(const Pose2& gt, const std::vector<float>& lx,
                 uni(rng) < OCCLUSION_DROP_PROB) {
                 continue;
             }
-            if (mode == OBS_RANGE_OUTLIERS && uni(rng) < HARD_OUTLIER_PROB) {
-                float zn = d + noise(rng);
-                zn += outlier(rng);
-                z[l] = std::max(0.0f, zn);
+            if (mode == OBS_RANGE_OUTLIERS) {
+                z[l] = sample_range_outlier_sensor(d, rng);
             } else if (mode == OBS_BIASED_RANGE) {
                 z[l] = sample_biased_range_sensor(d, rng);
             } else if (mode == OBS_OCCLUSION_KIDNAP && occlusion_window &&
@@ -585,85 +592,71 @@ static void train_mlp_tracking_finite_difference(
     P.free_all();
 }
 
-struct CalibrationModel {
-    std::vector<float> bias_by_bin;
-    float sigma = OBS_SIGMA;
-    float bias_rmse = 0.0f;
+struct ResidualCalibrationModel {
+    std::vector<float> log_lik_by_bin;
+    float residual_min = -CALIBRATION_RESIDUAL_MAX;
+    float residual_max =  CALIBRATION_RESIDUAL_MAX;
+    float tail_log_lik = -12.0f;
+    float residual_rmse = OBS_SIGMA;
 };
 
-static int calibration_bin(float d) {
-    int b = static_cast<int>((d / OBS_RANGE) * CALIBRATION_BINS);
-    return std::max(0, std::min(CALIBRATION_BINS - 1, b));
+static int residual_bin(float r, const ResidualCalibrationModel& calib) {
+    float u = (r - calib.residual_min) / (calib.residual_max - calib.residual_min);
+    int b = static_cast<int>(u * CALIBRATION_RESIDUAL_BINS);
+    return std::max(0, std::min(CALIBRATION_RESIDUAL_BINS - 1, b));
 }
 
-static float calibrated_bias_at(float d, const CalibrationModel& calib) {
-    float bin_width = OBS_RANGE / CALIBRATION_BINS;
-    float x = d / bin_width - 0.5f;
+static float calibrated_log_lik_at(float r, const ResidualCalibrationModel& calib) {
+    float bin_width = (calib.residual_max - calib.residual_min) / CALIBRATION_RESIDUAL_BINS;
+    float x = (r - calib.residual_min) / bin_width - 0.5f;
     int lo = static_cast<int>(std::floor(x));
     float a = x - lo;
-    lo = std::max(0, std::min(CALIBRATION_BINS - 1, lo));
-    int hi = std::max(0, std::min(CALIBRATION_BINS - 1, lo + 1));
-    return (1.0f - a) * calib.bias_by_bin[lo] + a * calib.bias_by_bin[hi];
+    lo = std::max(0, std::min(CALIBRATION_RESIDUAL_BINS - 1, lo));
+    int hi = std::max(0, std::min(CALIBRATION_RESIDUAL_BINS - 1, lo + 1));
+    return (1.0f - a) * calib.log_lik_by_bin[lo] + a * calib.log_lik_by_bin[hi];
 }
 
-static CalibrationModel fit_biased_range_calibration(std::mt19937& rng) {
-    CalibrationModel calib;
-    calib.bias_by_bin.assign(CALIBRATION_BINS, 0.0f);
-    std::vector<float> sum(CALIBRATION_BINS, 0.0f);
-    std::vector<int> count(CALIBRATION_BINS, 0);
-    std::vector<float> sample_d(CALIBRATION_SAMPLES);
-    std::vector<float> sample_residual(CALIBRATION_SAMPLES);
+static ResidualCalibrationModel fit_range_outlier_calibration(std::mt19937& rng) {
+    ResidualCalibrationModel calib;
+    calib.log_lik_by_bin.assign(CALIBRATION_RESIDUAL_BINS, -12.0f);
+    std::vector<float> counts(CALIBRATION_RESIDUAL_BINS, CALIBRATION_HIST_SMOOTH);
     std::uniform_real_distribution<float> ud(0.0f, OBS_RANGE);
+    double residual_sq = 0.0;
     for (int i = 0; i < CALIBRATION_SAMPLES; i++) {
         float d = ud(rng);
-        float z = sample_biased_range_sensor(d, rng);
+        float z = sample_range_outlier_sensor(d, rng);
         float residual = z - d;
-        int b = calibration_bin(d);
-        sum[b] += residual;
-        count[b]++;
-        sample_d[i] = d;
-        sample_residual[i] = residual;
-    }
-    for (int b = 0; b < CALIBRATION_BINS; b++) {
-        calib.bias_by_bin[b] = (count[b] > 0) ? (sum[b] / count[b]) : 0.0f;
+        counts[residual_bin(residual, calib)] += 1.0f;
+        residual_sq += static_cast<double>(residual) * residual;
     }
 
-    double var_sum = 0.0;
-    double bias_err_sum = 0.0;
-    for (int i = 0; i < CALIBRATION_SAMPLES; i++) {
-        float d = sample_d[i];
-        float err = sample_residual[i] - calibrated_bias_at(d, calib);
-        var_sum += static_cast<double>(err) * err;
-        float hidden_bias = biased_range_mean(d) - d;
-        float bias_err = calibrated_bias_at(d, calib) - hidden_bias;
-        bias_err_sum += static_cast<double>(bias_err) * bias_err;
+    float max_count = *std::max_element(counts.begin(), counts.end());
+    for (int b = 0; b < CALIBRATION_RESIDUAL_BINS; b++) {
+        float ll = std::log(counts[b] / max_count);
+        calib.log_lik_by_bin[b] = std::max(-12.0f, ll);
     }
-    calib.sigma = std::max(0.25f, std::sqrt(static_cast<float>(var_sum / CALIBRATION_SAMPLES)));
-    calib.bias_rmse = std::sqrt(static_cast<float>(bias_err_sum / CALIBRATION_SAMPLES));
+    calib.tail_log_lik = 0.5f * (calibrated_log_lik_at(6.0f, calib) +
+                                 calibrated_log_lik_at(-6.0f, calib));
+    calib.residual_rmse = std::sqrt(static_cast<float>(residual_sq / CALIBRATION_SAMPLES));
     return calib;
 }
 
-static void train_mlp_calibrated_observation_surrogate(GpuMLP& mlp,
-                                                       const CalibrationModel& calib,
-                                                       std::vector<float>& loss_curve) {
+static void train_mlp_calibrated_outlier_surrogate(GpuMLP& mlp,
+                                                   const ResidualCalibrationModel& calib,
+                                                   std::vector<float>& loss_curve) {
     std::vector<float> h_train_in(DIRECT_TRAIN_SAMPLES * MLP_INPUT);
     std::vector<float> h_train_tgt(DIRECT_TRAIN_SAMPLES * MLP_OUTPUT);
-    std::mt19937 rng_data(4343);
+    std::mt19937 rng_data(4444);
     std::uniform_real_distribution<float> ud(0.0f, OBS_RANGE);
-    std::uniform_real_distribution<float> ur(-5.0f * calib.sigma, 5.0f * calib.sigma);
-    float two_sig2 = 2.0f * calib.sigma * calib.sigma;
+    std::uniform_real_distribution<float> ur(calib.residual_min, calib.residual_max);
     for (int i = 0; i < DIRECT_TRAIN_SAMPLES; i++) {
         float d = ud(rng_data);
-        float sensor_residual = ur(rng_data);
-        float calibrated_mean = d + calibrated_bias_at(d, calib);
-        float z = calibrated_mean - sensor_residual;
-        if (z < 0.0f) z = 0.0f;
-        float r = calibrated_mean - z;
+        float residual = ur(rng_data);
+        float z = std::max(0.0f, d + residual);
+        float effective_residual = z - d;
         h_train_in[i * MLP_INPUT + 0] = d / OBS_RANGE;
-        h_train_in[i * MLP_INPUT + 1] = (z - d) / (5.0f * OBS_SIGMA);
-        float ll = -(r * r) / two_sig2;
-        if (ll < -12.0f) ll = -12.0f;
-        h_train_tgt[i] = ll;
+        h_train_in[i * MLP_INPUT + 1] = effective_residual / (5.0f * OBS_SIGMA);
+        h_train_tgt[i] = calibrated_log_lik_at(effective_residual, calib);
     }
 
     float *d_train_in, *d_train_tgt;
@@ -719,9 +712,9 @@ int main() {
               << N_PARTICLES << " particles, " << N_LANDMARKS << " landmarks, "
               << "MLP " << MLP_INPUT << "->" << MLP_HIDDEN << "->" << MLP_OUTPUT << ")"
               << std::endl;
-    ObservationMode hard_mode = OBS_BIASED_RANGE;
-    std::printf("Biased-range scene: z = d + N(0, %.1f) + %.2f * max(0, d - %.1f).\n",
-                OBS_SIGMA, BIASED_RANGE_GAIN, BIASED_RANGE_D0);
+    ObservationMode hard_mode = OBS_RANGE_OUTLIERS;
+    std::printf("Range-outlier scene: z = d + N(0, %.1f), then %.0f%% get uniform +/-%.1f m outliers.\n",
+                OBS_SIGMA, 100.0f * HARD_OUTLIER_PROB, HARD_OUTLIER_MAG);
 
     // --- Landmark layout (same as src/diff_pf.cu)
     std::vector<float> lx(N_LANDMARKS), ly(N_LANDMARKS);
@@ -835,20 +828,21 @@ int main() {
                 E2E_TRAIN_EPOCHS, e2e_ms,
                 tracking_loss_curve.front(), tracking_loss_curve.back());
 
-    // --- Step 4: calibrated observation-surrogate MLP for the biased sensor.
+    // --- Step 4: calibrated observation-surrogate MLP for range outliers.
     // A calibration trace contains known true distances and measured ranges.
-    // The MLP never sees the hidden bias formula; it learns from the estimated
-    // residual curve and ordinary GPU backprop.
+    // The MLP never sees the outlier probability or magnitude; it learns a
+    // robust residual-density curve and ordinary GPU backprop trains the MLP.
     GpuMLP mlp_direct(MLP_INPUT, MLP_HIDDEN, MLP_LAYERS, MLP_OUTPUT);
     mlp_direct.load_weights(mlp.get_weights());
     std::vector<float> direct_loss_curve;
     std::mt19937 rng_calib(5151);
-    CalibrationModel calib = fit_biased_range_calibration(rng_calib);
-    std::printf("Calibration trace: %d samples, %d bins, estimated sigma %.3f, "
-                "bias RMSE vs hidden simulator %.3f m\n",
-                CALIBRATION_SAMPLES, CALIBRATION_BINS, calib.sigma, calib.bias_rmse);
+    ResidualCalibrationModel calib = fit_range_outlier_calibration(rng_calib);
+    std::printf("Outlier calibration trace: %d samples, %d residual bins, "
+                "residual RMSE %.3f m, log-lik at +/-6m %.3f\n",
+                CALIBRATION_SAMPLES, CALIBRATION_RESIDUAL_BINS,
+                calib.residual_rmse, calib.tail_log_lik);
     auto t_direct_0 = std::chrono::high_resolution_clock::now();
-    train_mlp_calibrated_observation_surrogate(mlp_direct, calib, direct_loss_curve);
+    train_mlp_calibrated_outlier_surrogate(mlp_direct, calib, direct_loss_curve);
     auto t_direct_1 = std::chrono::high_resolution_clock::now();
     double direct_ms = std::chrono::duration<double, std::milli>(t_direct_1 - t_direct_0).count();
     std::printf("MLP calibrated observation surrogate: %d epochs in %.1f ms, "
@@ -876,7 +870,7 @@ int main() {
     upload(PC, N_PARTICLES, ipx, ipy, ipth);
     upload(PD, N_PARTICLES, ipx, ipy, ipth);
 
-    cv::VideoWriter video("gif/comparison_diff_pf_mlp_biased_range.avi",
+    cv::VideoWriter video("gif/comparison_diff_pf_mlp_hard.avi",
                           cv::VideoWriter::fourcc('X', 'V', 'I', 'D'), 30,
                           cv::Size(PANEL_W * 4, PANEL_H));
 
@@ -931,10 +925,10 @@ int main() {
         cv::circle(P1, w2p(out_B.ex, out_B.ey), 6, cv::Scalar(0, 130, 60), 2, cv::LINE_AA);
         cv::circle(P2, w2p(out_C.ex, out_C.ey), 6, cv::Scalar(190, 110, 0), 2, cv::LINE_AA);
         cv::circle(P3, w2p(out_D.ex, out_D.ey), 6, cv::Scalar(150, 55, 150), 2, cv::LINE_AA);
-        label(P0, "Biased range: Gaussian");
-        label(P1, "Biased range: supervised MLP");
-        label(P2, "Biased range: tracking-loss MLP");
-        label(P3, "Biased range: calibrated surrogate MLP");
+        label(P0, "Range outliers: Gaussian");
+        label(P1, "Range outliers: supervised MLP");
+        label(P2, "Range outliers: tracking-loss MLP");
+        label(P3, "Range outliers: calibrated surrogate MLP");
         cv::Mat row01, row23, combined;
         cv::hconcat(P0, P1, row01);
         cv::hconcat(P2, P3, row23);
@@ -952,7 +946,7 @@ int main() {
     float ratio_B = static_cast<float>(rmse_B / rmse_A);
     float ratio_C = static_cast<float>(rmse_C / rmse_A);
     float ratio_D = static_cast<float>(rmse_D / rmse_A);
-    std::printf("Biased-range eval RMSE (alpha=%.2f):\n"
+    std::printf("Range-outlier eval RMSE (alpha=%.2f):\n"
                 "  DPF + handcrafted likelihood       = %.3f m\n"
                 "  DPF + supervised MLP likelihood    = %.3f m (%.2fx)\n"
                 "  DPF + tracking-tuned MLP likelihood = %.3f m (%.2fx)\n"
@@ -960,9 +954,9 @@ int main() {
                 TRAINED_ALPHA, rmse_A, rmse_B, ratio_B, rmse_C, ratio_C,
                 rmse_D, ratio_D);
 
-    std::system("ffmpeg -y -i gif/comparison_diff_pf_mlp_biased_range.avi "
+    std::system("ffmpeg -y -i gif/comparison_diff_pf_mlp_hard.avi "
                 "-vf 'fps=15,scale=1600:-1:flags=lanczos' -loop 0 "
-                "gif/comparison_diff_pf_mlp_biased_range.gif 2>/dev/null");
-    std::cout << "GIF saved to gif/comparison_diff_pf_mlp_biased_range.gif" << std::endl;
+                "gif/comparison_diff_pf_mlp_hard.gif 2>/dev/null");
+    std::cout << "GIF saved to gif/comparison_diff_pf_mlp_hard.gif" << std::endl;
     return 0;
 }
