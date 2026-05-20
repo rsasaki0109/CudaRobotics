@@ -16,7 +16,7 @@ CudaRobotics fills this gap with 87 self-contained CUDA implementations across 8
 
 ## II. Algorithm Coverage
 
-### Localization (7 implementations)
+### Localization (8 implementations)
 - Extended Kalman Filter
 - Particle Filter (CPU 100 vs CUDA 10,000 particles)
 - FastSLAM 1.0
@@ -24,6 +24,7 @@ CudaRobotics fills this gap with 87 self-contained CUDA implementations across 8
 - Expansion Reset MCL (independent CUDA reimplementation of Ueda IROS 2004)
 - Particle Filter on Episode (PFoE)
 - Graph SLAM
+- Differentiable Particle Filter (soft-resampling + reparameterized motion noise; end-to-end autodiff via dual numbers — 57% RMSE reduction vs hand-tuned baseline on the 8-landmark tracking task)
 
 ### Path Planning (16 implementations)
 - A*, Dijkstra (grid-based)

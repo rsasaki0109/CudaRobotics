@@ -302,6 +302,10 @@ add_executable(comparison_reeds_shepp_fan src/comparison_reeds_shepp_fan.cu)
 target_link_libraries(comparison_reeds_shepp_fan ${OpenCV_LIBS})
 target_compile_options(comparison_reeds_shepp_fan PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
 
+add_executable(diff_pf src/diff_pf.cu)
+target_link_libraries(diff_pf ${OpenCV_LIBS})
+target_compile_options(diff_pf PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
+
 add_executable(comparison_dwa_visual src/comparison_dwa_visual.cu)
 target_link_libraries(comparison_dwa_visual ${OpenCV_LIBS})
 
