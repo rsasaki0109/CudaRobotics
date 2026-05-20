@@ -8,23 +8,26 @@
         d = ||particle - landmark||,    z = measured distance
     Internally the two inputs are scaled as (d / range, (z - d) / 5 sigma)
     so the tiny tanh network does not spend capacity fighting raw units.
-    The MLP is trained two ways:
+    The MLP is trained three ways:
       1. supervised against the analytic Gaussian on a synthetic dataset;
       2. fine-tuned end-to-end on tracking loss by finite-differencing the
-         tiny MLP weight vector through a soft-resampling DPF rollout.
+         tiny MLP weight vector through a soft-resampling DPF rollout;
+      3. trained with direct GPU backprop on a biased-observation surrogate
+         for the distance-dependent bias scene.
 
     The clean scene keeps Gaussian range noise, where the handcrafted
     likelihood is correctly specified. Hard scenes inject range outliers,
     distance-dependent range bias, occlusion short-returns, landmark dropouts,
     and a hidden pose jump, making the Gaussian likelihood intentionally
-    misspecified. The tracking-loss-tuned MLP can learn a better effective
-    observation model directly from localization performance.
+    misspecified. Learned observation models can be adapted either from
+    localization performance or from a differentiable observation surrogate.
 
     Output:
       - Training curve (MSE on log-likelihood, supervised pre-training)
       - Tracking-loss finite-difference curve for the end-to-end MLP
       - Hard-scene tracking gif: handcrafted DPF vs supervised MLP-DPF vs
-        tracking-loss MLP-DPF, same alpha (=3.14, learned in src/diff_pf.cu)
+        tracking-loss MLP-DPF vs direct-surrogate MLP-DPF, same alpha (=3.14,
+        learned in src/diff_pf.cu)
  ************************************************************************/
 
 #include <iostream>
@@ -94,6 +97,9 @@ constexpr float E2E_FD_EPS          = 0.04f;
 constexpr float E2E_LR              = 0.0035f;
 constexpr float E2E_GRAD_CLIP       = 4.0f;
 constexpr float E2E_WEIGHT_CLIP     = 8.0f;
+constexpr int   DIRECT_TRAIN_SAMPLES = 32768;
+constexpr int   DIRECT_TRAIN_EPOCHS  = 1600;
+constexpr float DIRECT_TRAIN_LR      = 0.01f;
 
 constexpr int   PANEL_W       = 480;
 constexpr int   PANEL_H       = 360;
@@ -288,6 +294,9 @@ static Pose2 scene_gt_at(float t, ObservationMode mode) {
     }
     return p;
 }
+static float biased_range_mean(float d) {
+    return d + BIASED_RANGE_GAIN * std::max(0.0f, d - BIASED_RANGE_D0);
+}
 static void controls_at(float t, float& v, float& omega) {
     Pose2 p_now = gt_at(t);
     Pose2 p_next = gt_at(t + DT);
@@ -321,7 +330,7 @@ static void observe(const Pose2& gt, const std::vector<float>& lx,
             if (mode == OBS_RANGE_OUTLIERS && uni(rng) < HARD_OUTLIER_PROB) {
                 zn += outlier(rng);
             } else if (mode == OBS_BIASED_RANGE) {
-                zn += BIASED_RANGE_GAIN * std::max(0.0f, d - BIASED_RANGE_D0);
+                zn += biased_range_mean(d) - d;
             } else if (mode == OBS_OCCLUSION_KIDNAP && occlusion_window &&
                        uni(rng) < OCCLUSION_SHORT_PROB) {
                 zn -= short_hit(rng);
@@ -565,6 +574,48 @@ static void train_mlp_tracking_finite_difference(
     P.free_all();
 }
 
+static void train_mlp_biased_observation_surrogate(GpuMLP& mlp,
+                                                   std::vector<float>& loss_curve) {
+    std::vector<float> h_train_in(DIRECT_TRAIN_SAMPLES * MLP_INPUT);
+    std::vector<float> h_train_tgt(DIRECT_TRAIN_SAMPLES * MLP_OUTPUT);
+    std::mt19937 rng_data(4242);
+    std::uniform_real_distribution<float> ud(0.0f, OBS_RANGE);
+    std::uniform_real_distribution<float> ur(-5.0f * OBS_SIGMA, 5.0f * OBS_SIGMA);
+    float two_sig2 = 2.0f * OBS_SIGMA * OBS_SIGMA;
+    for (int i = 0; i < DIRECT_TRAIN_SAMPLES; i++) {
+        float d = ud(rng_data);
+        float sensor_residual = ur(rng_data);
+        float z = biased_range_mean(d) - sensor_residual;
+        if (z < 0.0f) z = 0.0f;
+        float r = biased_range_mean(d) - z;
+        h_train_in[i * MLP_INPUT + 0] = d / OBS_RANGE;
+        h_train_in[i * MLP_INPUT + 1] = (z - d) / (5.0f * OBS_SIGMA);
+        float ll = -(r * r) / two_sig2;
+        if (ll < -12.0f) ll = -12.0f;
+        h_train_tgt[i] = ll;
+    }
+
+    float *d_train_in, *d_train_tgt;
+    CUDA_CHECK(cudaMalloc(&d_train_in,  DIRECT_TRAIN_SAMPLES * MLP_INPUT * sizeof(float)));
+    CUDA_CHECK(cudaMalloc(&d_train_tgt, DIRECT_TRAIN_SAMPLES * MLP_OUTPUT * sizeof(float)));
+    CUDA_CHECK(cudaMemcpy(d_train_in, h_train_in.data(),
+                          DIRECT_TRAIN_SAMPLES * MLP_INPUT * sizeof(float),
+                          cudaMemcpyHostToDevice));
+    CUDA_CHECK(cudaMemcpy(d_train_tgt, h_train_tgt.data(),
+                          DIRECT_TRAIN_SAMPLES * MLP_OUTPUT * sizeof(float),
+                          cudaMemcpyHostToDevice));
+
+    loss_curve.clear();
+    for (int e = 0; e < DIRECT_TRAIN_EPOCHS; e++) {
+        float L = mlp.train_step_backprop(d_train_in, d_train_tgt,
+                                          DIRECT_TRAIN_SAMPLES,
+                                          DIRECT_TRAIN_LR, MLP_ACTIV);
+        loss_curve.push_back(L);
+    }
+    cudaFree(d_train_in);
+    cudaFree(d_train_tgt);
+}
+
 // ---------------------------------------------------------------------------
 // Visualisation
 // ---------------------------------------------------------------------------
@@ -713,11 +764,27 @@ int main() {
                 E2E_TRAIN_EPOCHS, e2e_ms,
                 tracking_loss_curve.front(), tracking_loss_curve.back());
 
-    // --- Step 4: tracking eval, handcrafted vs supervised MLP vs E2E MLP
-    ParticleSet PA, PB, PC;
+    // --- Step 4: direct observation-surrogate MLP for the biased sensor.
+    // This uses ordinary GPU backprop on the biased measurement likelihood,
+    // avoiding rollout-scale finite differences through the PF.
+    GpuMLP mlp_direct(MLP_INPUT, MLP_HIDDEN, MLP_LAYERS, MLP_OUTPUT);
+    mlp_direct.load_weights(mlp.get_weights());
+    std::vector<float> direct_loss_curve;
+    auto t_direct_0 = std::chrono::high_resolution_clock::now();
+    train_mlp_biased_observation_surrogate(mlp_direct, direct_loss_curve);
+    auto t_direct_1 = std::chrono::high_resolution_clock::now();
+    double direct_ms = std::chrono::duration<double, std::milli>(t_direct_1 - t_direct_0).count();
+    std::printf("MLP direct biased-observation surrogate: %d epochs in %.1f ms, "
+                "loss %.4f -> %.4f\n",
+                DIRECT_TRAIN_EPOCHS, direct_ms,
+                direct_loss_curve.front(), direct_loss_curve.back());
+
+    // --- Step 5: tracking eval, handcrafted vs three learned likelihoods
+    ParticleSet PA, PB, PC, PD;
     PA.alloc(N_PARTICLES, 11);
     PB.alloc(N_PARTICLES, 13);
     PC.alloc(N_PARTICLES, 17);
+    PD.alloc(N_PARTICLES, 19);
     std::vector<float> ipx(N_PARTICLES), ipy(N_PARTICLES), ipth(N_PARTICLES);
     std::mt19937 rng_init(42);
     std::normal_distribution<float> nxy(0.0f, 1.5f);
@@ -730,16 +797,18 @@ int main() {
     upload(PA, N_PARTICLES, ipx, ipy, ipth);
     upload(PB, N_PARTICLES, ipx, ipy, ipth);
     upload(PC, N_PARTICLES, ipx, ipy, ipth);
+    upload(PD, N_PARTICLES, ipx, ipy, ipth);
 
     cv::VideoWriter video("gif/comparison_diff_pf_mlp_biased_range.avi",
                           cv::VideoWriter::fourcc('X', 'V', 'I', 'D'), 30,
-                          cv::Size(PANEL_W * 3, PANEL_H));
+                          cv::Size(PANEL_W * 4, PANEL_H));
 
     std::mt19937 rng_obs_eval(99);
     std::mt19937 rng_eval_A(199);
     std::mt19937 rng_eval_B(299);
     std::mt19937 rng_eval_C(399);
-    double rmse_A = 0.0, rmse_B = 0.0, rmse_C = 0.0;
+    std::mt19937 rng_eval_D(499);
+    double rmse_A = 0.0, rmse_B = 0.0, rmse_C = 0.0, rmse_D = 0.0;
     for (int s = 0; s < N_FRAMES; s++) {
         float t = s * DT;
         Pose2 gt = scene_gt_at(t, hard_mode);
@@ -758,50 +827,64 @@ int main() {
         auto out_C = run_step(PC, N_PARTICLES, TRAINED_ALPHA, v, omega,
                               0.6f, 0.1f, d_lx, d_ly, d_z, d_zv,
                               LIK_MLP, &mlp_e2e, rng_eval_C);
+        auto out_D = run_step(PD, N_PARTICLES, TRAINED_ALPHA, v, omega,
+                              0.6f, 0.1f, d_lx, d_ly, d_z, d_zv,
+                              LIK_MLP, &mlp_direct, rng_eval_D);
 
         rmse_A += (out_A.ex - gt.x) * (out_A.ex - gt.x) + (out_A.ey - gt.y) * (out_A.ey - gt.y);
         rmse_B += (out_B.ex - gt.x) * (out_B.ex - gt.x) + (out_B.ey - gt.y) * (out_B.ey - gt.y);
         rmse_C += (out_C.ex - gt.x) * (out_C.ex - gt.x) + (out_C.ey - gt.y) * (out_C.ey - gt.y);
+        rmse_D += (out_D.ex - gt.x) * (out_D.ex - gt.x) + (out_D.ey - gt.y) * (out_D.ey - gt.y);
 
         cv::Mat P0(PANEL_H, PANEL_W, CV_8UC3);
         cv::Mat P1(PANEL_H, PANEL_W, CV_8UC3);
         cv::Mat P2(PANEL_H, PANEL_W, CV_8UC3);
-        draw_base(P0, lx, ly);  draw_base(P1, lx, ly);  draw_base(P2, lx, ly);
+        cv::Mat P3(PANEL_H, PANEL_W, CV_8UC3);
+        draw_base(P0, lx, ly);  draw_base(P1, lx, ly);  draw_base(P2, lx, ly);  draw_base(P3, lx, ly);
         draw_particles(P0, PA.h_px, PA.h_py, cv::Scalar(60, 60, 200));
         draw_particles(P1, PB.h_px, PB.h_py, cv::Scalar(0, 130, 60));
         draw_particles(P2, PC.h_px, PC.h_py, cv::Scalar(190, 110, 0));
+        draw_particles(P3, PD.h_px, PD.h_py, cv::Scalar(150, 55, 150));
         auto gp = w2p(gt.x, gt.y);
         cv::circle(P0, gp, 5, cv::Scalar(0, 0, 0), 2, cv::LINE_AA);
         cv::circle(P1, gp, 5, cv::Scalar(0, 0, 0), 2, cv::LINE_AA);
         cv::circle(P2, gp, 5, cv::Scalar(0, 0, 0), 2, cv::LINE_AA);
+        cv::circle(P3, gp, 5, cv::Scalar(0, 0, 0), 2, cv::LINE_AA);
         cv::circle(P0, w2p(out_A.ex, out_A.ey), 6, cv::Scalar(60, 60, 200), 2, cv::LINE_AA);
         cv::circle(P1, w2p(out_B.ex, out_B.ey), 6, cv::Scalar(0, 130, 60), 2, cv::LINE_AA);
         cv::circle(P2, w2p(out_C.ex, out_C.ey), 6, cv::Scalar(190, 110, 0), 2, cv::LINE_AA);
-        label(P0, "Biased range: DPF + Gaussian likelihood");
-        label(P1, "Biased range: DPF + supervised MLP");
-        label(P2, "Biased range: DPF + tracking-loss tuned MLP");
-        cv::Mat row01, combined;
+        cv::circle(P3, w2p(out_D.ex, out_D.ey), 6, cv::Scalar(150, 55, 150), 2, cv::LINE_AA);
+        label(P0, "Biased range: Gaussian");
+        label(P1, "Biased range: supervised MLP");
+        label(P2, "Biased range: tracking-loss MLP");
+        label(P3, "Biased range: direct surrogate MLP");
+        cv::Mat row01, row23, combined;
         cv::hconcat(P0, P1, row01);
-        cv::hconcat(row01, P2, combined);
+        cv::hconcat(P2, P3, row23);
+        cv::hconcat(row01, row23, combined);
         video.write(combined);
     }
     video.release();
-    PA.free_all(); PB.free_all(); PC.free_all();
+    PA.free_all(); PB.free_all(); PC.free_all(); PD.free_all();
     cudaFree(d_lx); cudaFree(d_ly); cudaFree(d_z); cudaFree(d_zv);
 
     rmse_A = std::sqrt(rmse_A / N_FRAMES);
     rmse_B = std::sqrt(rmse_B / N_FRAMES);
     rmse_C = std::sqrt(rmse_C / N_FRAMES);
+    rmse_D = std::sqrt(rmse_D / N_FRAMES);
     float ratio_B = static_cast<float>(rmse_B / rmse_A);
     float ratio_C = static_cast<float>(rmse_C / rmse_A);
+    float ratio_D = static_cast<float>(rmse_D / rmse_A);
     std::printf("Biased-range eval RMSE (alpha=%.2f):\n"
                 "  DPF + handcrafted likelihood       = %.3f m\n"
                 "  DPF + supervised MLP likelihood    = %.3f m (%.2fx)\n"
-                "  DPF + tracking-tuned MLP likelihood = %.3f m (%.2fx)\n",
-                TRAINED_ALPHA, rmse_A, rmse_B, ratio_B, rmse_C, ratio_C);
+                "  DPF + tracking-tuned MLP likelihood = %.3f m (%.2fx)\n"
+                "  DPF + direct surrogate MLP likelihood = %.3f m (%.2fx)\n",
+                TRAINED_ALPHA, rmse_A, rmse_B, ratio_B, rmse_C, ratio_C,
+                rmse_D, ratio_D);
 
     std::system("ffmpeg -y -i gif/comparison_diff_pf_mlp_biased_range.avi "
-                "-vf 'fps=15,scale=1200:-1:flags=lanczos' -loop 0 "
+                "-vf 'fps=15,scale=1600:-1:flags=lanczos' -loop 0 "
                 "gif/comparison_diff_pf_mlp_biased_range.gif 2>/dev/null");
     std::cout << "GIF saved to gif/comparison_diff_pf_mlp_biased_range.gif" << std::endl;
     return 0;
