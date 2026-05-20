@@ -51,6 +51,7 @@ Recent additions push the repository beyond direct CUDA ports of classic robotic
 |---|---|---|
 | Autodiff + GPU MLP foundation | `test_autodiff`, `test_gpu_mlp` | Dual-number forward-mode autodiff and a compact GPU MLP training/inference engine used as the base for later research-style experiments. |
 | Differentiable MPPI | `diff_mppi`, `comparison_diff_mppi`, `benchmark_diff_mppi`, `benchmark_diff_mppi_cartpole`, `benchmark_diff_mppi_dynamic_bicycle`, `benchmark_diff_mppi_manipulator`, `benchmark_diff_mppi_manipulator_7dof` | Augments MPPI with a short autodiff refinement stage. Evaluated on 2D dynamic-obstacle navigation, CartPole, dynamic-bicycle, 2-link planar arm, and 7-DOF serial arm. Includes strong in-repo feedback baselines, matched-time tuning, mechanism analysis, MuJoCo transfer checks, and uncertainty follow-ups. On the hard `dynamic_slalom` task, the hybrid controller is the only method that succeeds in the submission-critical `1.0 ms` exact-time table, and the gap survives broader matched-time robustness sweeps. |
+| Differentiable Particle Filter | `diff_pf` | Localization analogue of Diff-MPPI. Soft-resampling kernel (mix likelihood with uniform, importance-corrected) + reparameterized motion noise so the full PF forward pass is autodiff-able via the same dual-number engine. Tuning the motion-noise scale `alpha` end-to-end on tracking loss drives RMSE from 18.8 m (hand-tuned hard-resample baseline) down to 8.1 m on the 8-landmark 40 m x 30 m scene — a 57% reduction over 120 Adam epochs. |
 | Neural SDF Navigation | `neural_sdf`, `sdf_potential_field`, `sdf_mppi`, `comparison_sdf_nav` | Learns 2D signed distance fields with a GPU MLP, then uses them for potential-field planning and MPPI on non-circular obstacle layouts. |
 | Neuroevolution for Cart-Pole | `neuroevo`, `comparison_neuroevo` | Evolves 4096 neural policies in parallel on GPU and compares them against a CPU baseline with side-by-side learning curves. |
 | MiniIsaacGym | `mini_isaac`, `mini_isaac_rl` | Runs thousands of CartPole environments in parallel on GPU and trains a compact policy with GPU-side REINFORCE updates. |
@@ -65,8 +66,8 @@ Recent additions push the repository beyond direct CUDA ports of classic robotic
 | <img src="https://rsasaki0109.github.io/CudaRobotics/diff_mppi_pareto.png" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/diff_mppi_mechanism.png" width="400"/> |
 | **Diff-MPPI 7-DOF benchmark** | **Diff-MPPI ablation figure** |
 | <img src="https://rsasaki0109.github.io/CudaRobotics/diff_mppi_7dof.png" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/diff_mppi_ablation.png" width="400"/> |
-| **Diff-MPPI task scenarios** | |
-| <img src="https://rsasaki0109.github.io/CudaRobotics/diff_mppi_scenarios.png" width="400"/> | |
+| **Diff-MPPI task scenarios** | **Differentiable Particle Filter: hard-resample vs DPF untrained vs DPF trained (3 panels)** |
+| <img src="https://rsasaki0109.github.io/CudaRobotics/diff_mppi_scenarios.png" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/comparison_diff_pf.gif" width="400"/> |
 | **Neural SDF vs true field** | **Neural SDF MPPI vs circle approximation** |
 | <img src="https://rsasaki0109.github.io/CudaRobotics/neural_sdf.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/comparison_sdf_nav.gif" width="400"/> |
 | **Neural SDF potential-field navigation** | **Neural SDF MPPI rollout** |
