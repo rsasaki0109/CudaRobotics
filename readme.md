@@ -10,12 +10,12 @@ GPU enables orders-of-magnitude more particles/samples, resulting in visually be
 
 | | |
 |---|---|
-| **Multi-Robot: CPU 5 vs CUDA 500 robots** | **Particle Filter: CPU 100 vs CUDA 10,000 particles** |
-| <img src="https://rsasaki0109.github.io/CudaRobotics/comparison_multi_robot_visual.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/comparison_pf_visual.gif" width="400"/> |
-| **DWA: CPU 50 vs CUDA 50,000 samples** | **Lidar Simulator: CPU 1,024 vs CUDA 1,048,576 rays / scan** |
-| <img src="https://rsasaki0109.github.io/CudaRobotics/comparison_dwa_visual.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/comparison_lidar_sim.gif" width="400"/> |
-| **Reeds-Shepp Fan: CPU 1,024 vs CUDA 1,048,572 candidate paths** | |
-| <img src="https://rsasaki0109.github.io/CudaRobotics/comparison_reeds_shepp_fan.gif" width="400"/> | |
+| **Particle Filter: CPU 100 vs CUDA 10,000 particles** | **Expansion Reset MCL: 10,000 particles, kidnap recovery (Standard MCL fails, Expansion Reset recovers)** |
+| <img src="https://rsasaki0109.github.io/CudaRobotics/comparison_pf_visual.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/comparison_expansion_reset_mcl.gif" width="400"/> |
+| **Multi-Robot: CPU 5 vs CUDA 500 robots** | **DWA: CPU 50 vs CUDA 50,000 samples** |
+| <img src="https://rsasaki0109.github.io/CudaRobotics/comparison_multi_robot_visual.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/comparison_dwa_visual.gif" width="400"/> |
+| **Lidar Simulator: CPU 1,024 vs CUDA 1,048,576 rays / scan** | **Reeds-Shepp Fan: CPU 1,024 vs CUDA 1,048,572 candidate paths** |
+| <img src="https://rsasaki0109.github.io/CudaRobotics/comparison_lidar_sim.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/comparison_reeds_shepp_fan.gif" width="400"/> |
 
 <details>
 <summary>All CPU vs CUDA speed comparisons + algorithm-axis demos (click to expand)</summary>
@@ -38,8 +38,6 @@ GPU enables orders-of-magnitude more particles/samples, resulting in visually be
 | <img src="https://rsasaki0109.github.io/CudaRobotics/comparison_fastslam.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/comparison_amcl.gif" width="400"/> |
 | **Value Iteration (CPU vs CUDA convergence)** | **Particle Filter on Episode (PFoE, demo)** |
 | <img src="https://rsasaki0109.github.io/CudaRobotics/comparison_value_iteration.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/pf_on_episode.gif" width="400"/> |
-| **Expansion Reset MCL — Standard MCL (fails) vs Expansion Reset (recovers), algorithm axis** | |
-| <img src="https://rsasaki0109.github.io/CudaRobotics/comparison_expansion_reset_mcl.gif" width="400"/> | |
 
 </details>
 
