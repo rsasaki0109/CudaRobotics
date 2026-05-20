@@ -17,7 +17,7 @@ Short handoff for the next coding agent. The repo is on `master`, synced with
   ```bash
   cd build && cmake .. && make -j$(nproc)
   ```
-- The 2026-05-20 session merged PRs #16〜#23 and #25〜#27 (11 PRs). The repo's "Why CUDA?"
+- The 2026-05-20 session merged PRs #16〜#23 and #25〜#28 (12 PRs). The repo's "Why CUDA?"
   top showcase is now a curated 2x3 grid; the Research Extensions table has
   two new entries (Differentiable Particle Filter + DPF with MLP observation).
 
@@ -38,6 +38,7 @@ Short handoff for the next coding agent. The repo is on `master`, synced with
 | #25 | DPF MLP tracking-loss fine-tuning | Clean scene tracking-tuned MLP 6.16m vs Gaussian 6.97m (**0.88x**) |
 | #26 | DPF MLP range-outlier hard scene | Tracking-tuned MLP 6.91m vs Gaussian 10.27m (**0.67x**) |
 | #27 | DPF MLP occlusion+kidnap stress scene | Tracking-tuned MLP 7.56m vs Gaussian 10.38m (**0.73x**) |
+| #28 | DPF observation scenario table | Paper-facing clean/outlier/occlusion matrix |
 
 All four findings docs are under `docs/`: `topology_bench_day1_findings.md`
 through `topology_bench_day4_findings.md`.
@@ -64,10 +65,16 @@ Latest local run: handcrafted Gaussian **10.38 m**, supervised MLP **7.66 m**,
 tracking-tuned MLP **7.56 m** (**0.73x** handcrafted). New gif:
 `gif/comparison_diff_pf_mlp_occlusion_kidnap.gif`.
 
-Current feature branch `feat/diff-pf-scenario-table` adds
-`paper/diff_pf_observation_scenarios.md`, consolidating clean Gaussian,
-range-outlier, and occlusion+kidnap DPF observation-model results into a
-single paper-facing matrix with interpretation and next-ablation notes.
+Merged PR #28 added `paper/diff_pf_observation_scenarios.md`, consolidating
+clean Gaussian, range-outlier, and occlusion+kidnap DPF observation-model
+results into a single paper-facing matrix.
+
+Current feature branch `feat/diff-pf-biased-range` adds the next ablation:
+distance-dependent range bias,
+`z = d + N(0, 1.0) + 0.35 * max(0, d - 10.0)`. Latest local run:
+handcrafted Gaussian **8.33 m**, supervised MLP **6.13 m** (**0.74x**
+handcrafted), tracking-tuned MLP **7.20 m** (**0.86x** handcrafted). New gif:
+`gif/comparison_diff_pf_mlp_biased_range.gif`.
 
 ---
 
@@ -94,10 +101,13 @@ single paper-facing matrix with interpretation and next-ablation notes.
   but did not yet beat the supervised initialization on the 240-frame eval.
   Next work: longer horizons, multi-seed gradient averaging, or smoother
   resampling relaxations.
-- **Harder scenes beyond current stress tests**: distance-dependent bias,
-  longer kidnap recovery with particle injection, or smoother resampling
-  relaxations where observation-model learning and recovery mechanics can
-  be separated cleanly.
+- **Tracking-tuning variance on biased ranges**: the current biased-range
+  branch shows the supervised MLP beating the Gaussian more strongly than the
+  tracking-tuned MLP. Next work: longer horizons, multi-seed gradient
+  averaging, or smoother resampling relaxations.
+- **Harder scenes beyond current stress tests**: longer kidnap recovery with
+  particle injection, or smoother resampling relaxations where
+  observation-model learning and recovery mechanics can be separated cleanly.
 - **EKF / AMCL baseline**: compare DPF tracking RMSE against the existing
   `amcl` and `pf` baselines for a clean accuracy / compute trade-off plot.
 
@@ -146,10 +156,10 @@ single paper-facing matrix with interpretation and next-ablation notes.
 The 2026-05-20 session leaned hard into visual showcases and the DPF
 research line. The most natural next moves:
 
-**If goal = paper / research value**: add a **distance-dependent bias** DPF
-scene. The current scenario table already covers clean Gaussian, range
-outliers, and occlusion+kidnap; biased ranges would isolate observation-model
-mismatch without particle depletion from kidnap recovery.
+**If goal = paper / research value**: improve the **biased-range tracking
+fine-tuning** result with multi-seed finite-difference gradients or a smoother
+resampling relaxation. The new biased-range scene isolates systematic
+observation mismatch, and the remaining gap is now in the optimizer.
 
 **If goal = OSS visibility**: pick up **3D Lidar Simulator**. The 2D
 version is a strong tile on the readme; a 3D version paired with the
