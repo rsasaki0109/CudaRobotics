@@ -17,7 +17,7 @@ Short handoff for the next coding agent. The repo is on `master`, synced with
   ```bash
   cd build && cmake .. && make -j$(nproc)
   ```
-- The 2026-05-20 session merged PRs #16〜#23 and #25〜#32 (16 PRs). The repo's "Why CUDA?"
+- The 2026-05-20 session merged PRs #16〜#23 and #25〜#33 (17 PRs). The repo's "Why CUDA?"
   top showcase is now a curated 2x3 grid; the Research Extensions table has
   two new entries (Differentiable Particle Filter + DPF with MLP observation).
 
@@ -43,6 +43,7 @@ Short handoff for the next coding agent. The repo is on `master`, synced with
 | #30 | DPF MLP biased-range tuning | Tracking-tuned MLP 6.64m vs Gaussian 8.33m (**0.80x**) |
 | #31 | DPF direct observation surrogate | Direct-surrogate MLP 5.81m vs Gaussian 8.33m (**0.70x**) |
 | #32 | DPF calibrated biased observation | Calibrated-surrogate MLP 6.03m vs Gaussian 8.41m (**0.72x**) |
+| #33 | DPF calibrated outlier surrogate | Calibrated-surrogate MLP 7.04m vs Gaussian 9.80m (**0.72x**) |
 
 All four findings docs are under `docs/`: `topology_bench_day1_findings.md`
 through `topology_bench_day4_findings.md`.
@@ -101,7 +102,7 @@ sigma **1.002 m**, handcrafted Gaussian **8.41 m**, supervised MLP **7.11 m**
 calibrated-surrogate MLP **6.03 m** (**0.72x**). Calibrated surrogate training
 took **~2.8s**.
 
-Current feature branch `feat/diff-pf-calibrated-outliers` applies the same
+Merged PR #33 applied the same
 trace-learned surrogate idea to the range-outlier scene. It fits a 96-bin
 residual likelihood from **8,192** known-distance calibration traces, then
 trains the MLP surrogate with ordinary GPU backprop. Latest local run:
@@ -109,6 +110,16 @@ residual RMSE **2.301 m**, tail log-likelihood at +/-6m **-3.464**,
 handcrafted Gaussian **9.80 m**, supervised MLP **7.18 m** (**0.73x**),
 tracking-tuned MLP **7.22 m** (**0.74x**), calibrated-surrogate MLP
 **7.04 m** (**0.72x**). Calibrated surrogate training took **~2.8s**.
+
+Current feature branch `feat/diff-pf-calibrated-occlusion` extends that
+calibration path to the occlusion+kidnap scene. It samples known-distance
+measurements during the occlusion window, skips dropped landmarks as invalid,
+and fits the valid short-return residual tail with the same 96-bin likelihood.
+Latest local run: **8,192** valid samples from **11,713** attempts, residual
+RMSE **2.301 m**, log-likelihood at **-6m = -2.553**, handcrafted Gaussian
+**8.25 m**, supervised MLP **7.40 m** (**0.90x**), tracking-tuned MLP
+**8.08 m** (**0.98x**), calibrated-surrogate MLP **6.93 m** (**0.84x**).
+Calibrated surrogate training took **~2.9s**.
 
 ---
 
@@ -135,10 +146,12 @@ tracking-tuned MLP **7.22 m** (**0.74x**), calibrated-surrogate MLP
   but did not yet beat the supervised initialization on the 240-frame eval.
   Next work: longer horizons, multi-seed gradient averaging, or smoother
   resampling relaxations.
-- **Calibration-learned occlusion likelihoods**: calibrated surrogates now
-  handle smooth distance-dependent bias and range outliers. Next work: feed
-  calibration traces with occlusion/short-return mixtures into the same fast
-  surrogate path.
+- **Separate likelihood learning from recovery mechanics**: calibrated
+  surrogates now handle smooth distance-dependent bias, range outliers, and
+  valid short-return residuals under occlusion. Next work: split the current
+  occlusion+kidnap stress test into occlusion-only and kidnap-only ablations so
+  the observation model can be separated from particle support after a hidden
+  pose jump.
 - **Harder scenes beyond current stress tests**: longer kidnap recovery with
   particle injection, or smoother resampling relaxations where
   observation-model learning and recovery mechanics can be separated cleanly.
@@ -190,10 +203,10 @@ tracking-tuned MLP **7.22 m** (**0.74x**), calibrated-surrogate MLP
 The 2026-05-20 session leaned hard into visual showcases and the DPF
 research line. The most natural next moves:
 
-**If goal = paper / research value**: extend the calibration-learned
-observation surrogate to occlusion/short-return mixtures. Smooth bias and
-range-outlier tails now work from traces; missing/short returns are the next
-missing likelihood shape.
+**If goal = paper / research value**: split the occlusion+kidnap result into
+occlusion-only and kidnap-only ablations. The calibrated likelihood now learns
+valid short-return residuals; the remaining question is how much recovery is
+limited by particle support and resampling after an unmodeled pose jump.
 
 **If goal = OSS visibility**: pick up **3D Lidar Simulator**. The 2D
 version is a strong tile on the readme; a 3D version paired with the
@@ -206,7 +219,7 @@ expansion** (Day 4+ item 1). Mechanical change to
 Recommended starting branches:
 
 ```bash
-git switch -c feat/diff-pf-calibrated-occlusion # research track
+git switch -c feat/diff-pf-kidnap-ablation     # research track
 git switch -c feat/lidar-sim-3d               # showcase track
 git switch -c feat/failure-taxonomy-csv       # bench track
 ```
