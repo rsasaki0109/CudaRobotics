@@ -17,7 +17,7 @@ Short handoff for the next coding agent. The repo is on `master`, synced with
   ```bash
   cd build && cmake .. && make -j$(nproc)
   ```
-- The 2026-05-20 session merged PRs #16〜#23, #25, and #26 (10 PRs). The repo's "Why CUDA?"
+- The 2026-05-20 session merged PRs #16〜#23 and #25〜#27 (11 PRs). The repo's "Why CUDA?"
   top showcase is now a curated 2x3 grid; the Research Extensions table has
   two new entries (Differentiable Particle Filter + DPF with MLP observation).
 
@@ -37,6 +37,7 @@ Short handoff for the next coding agent. The repo is on `master`, synced with
 | #23 | DPF + learnable MLP observation model (`diff_pf_mlp`) | MLP RMSE = handcrafted × 0.96 (drop-in replacement) |
 | #25 | DPF MLP tracking-loss fine-tuning | Clean scene tracking-tuned MLP 6.16m vs Gaussian 6.97m (**0.88x**) |
 | #26 | DPF MLP range-outlier hard scene | Tracking-tuned MLP 6.91m vs Gaussian 10.27m (**0.67x**) |
+| #27 | DPF MLP occlusion+kidnap stress scene | Tracking-tuned MLP 7.56m vs Gaussian 10.38m (**0.73x**) |
 
 All four findings docs are under `docs/`: `topology_bench_day1_findings.md`
 through `topology_bench_day4_findings.md`.
@@ -56,12 +57,17 @@ handcrafted Gaussian **10.27 m**, supervised MLP **7.45 m**, tracking-tuned
 MLP **6.91 m** (**0.67x** handcrafted). New gif:
 `gif/comparison_diff_pf_mlp_hard.gif`.
 
-Current feature branch `feat/diff-pf-occlusion-kidnap` adds a second DPF
+Merged PR #27 adds a second DPF
 stress scene: **30%** landmark dropout + **25%** short returns from
 **t=1.0..16.0s**, plus a hidden pose jump of **(-4m, +3m)** at **t=3.0s**.
 Latest local run: handcrafted Gaussian **10.38 m**, supervised MLP **7.66 m**,
 tracking-tuned MLP **7.56 m** (**0.73x** handcrafted). New gif:
 `gif/comparison_diff_pf_mlp_occlusion_kidnap.gif`.
+
+Current feature branch `feat/diff-pf-scenario-table` adds
+`paper/diff_pf_observation_scenarios.md`, consolidating clean Gaussian,
+range-outlier, and occlusion+kidnap DPF observation-model results into a
+single paper-facing matrix with interpretation and next-ablation notes.
 
 ---
 
@@ -80,7 +86,7 @@ tracking-tuned MLP **7.56 m** (**0.73x** handcrafted). New gif:
   baseline + the new topology suite. Skeleton is implicit in the four
   Day N findings docs.
 
-### 2. DPF follow-up (after occlusion/kidnap branch)
+### 2. DPF follow-up (after scenario-table branch)
 
 - **From-scratch tracking-loss MLP training**. The implemented branch uses
   supervised pre-training as the initialization, then does true end-to-end
@@ -88,9 +94,6 @@ tracking-tuned MLP **7.56 m** (**0.73x** handcrafted). New gif:
   but did not yet beat the supervised initialization on the 240-frame eval.
   Next work: longer horizons, multi-seed gradient averaging, or smoother
   resampling relaxations.
-- **Scenario table**: consolidate clean Gaussian, range outlier, and
-  occlusion+kidnap into a compact table in `paper/` with Gaussian /
-  supervised MLP / tracking-tuned MLP rows and RMSE ratios.
 - **Harder scenes beyond current stress tests**: distance-dependent bias,
   longer kidnap recovery with particle injection, or smoother resampling
   relaxations where observation-model learning and recovery mechanics can
@@ -143,10 +146,10 @@ tracking-tuned MLP **7.56 m** (**0.73x** handcrafted). New gif:
 The 2026-05-20 session leaned hard into visual showcases and the DPF
 research line. The most natural next moves:
 
-**If goal = paper / research value**: write the **DPF observation-model
-scenario table** in `paper/`, then optionally add a distance-dependent bias
-scene. The current results already cover clean Gaussian, range outliers, and
-occlusion+kidnap.
+**If goal = paper / research value**: add a **distance-dependent bias** DPF
+scene. The current scenario table already covers clean Gaussian, range
+outliers, and occlusion+kidnap; biased ranges would isolate observation-model
+mismatch without particle depletion from kidnap recovery.
 
 **If goal = OSS visibility**: pick up **3D Lidar Simulator**. The 2D
 version is a strong tile on the readme; a 3D version paired with the
@@ -159,7 +162,7 @@ expansion** (Day 4+ item 1). Mechanical change to
 Recommended starting branches:
 
 ```bash
-git switch -c feat/diff-pf-scenario-table     # research track
+git switch -c feat/diff-pf-biased-range       # research track
 git switch -c feat/lidar-sim-3d               # showcase track
 git switch -c feat/failure-taxonomy-csv       # bench track
 ```
