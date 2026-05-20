@@ -14,7 +14,7 @@ receives scaled `(distance, residual)` inputs.
 |---|---|---:|---:|---:|---:|
 | Clean Gaussian | None; simulator noise matches analytic Gaussian | 6.97 m | 7.19 m | **6.16 m** | **0.88x** |
 | Range outliers | 18% of visible ranges get uniform +/-9 m outliers | 10.27 m | 7.45 m | **6.91 m** | **0.67x** |
-| Distance-dependent bias | `z = d + N(0, 1.0) + 0.35 * max(0, d - 10.0)` | 8.33 m | **6.13 m** | 7.20 m | **0.74x** |
+| Distance-dependent bias | `z = d + N(0, 1.0) + 0.35 * max(0, d - 10.0)` | 8.33 m | 6.76 m | **6.64 m** | **0.80x** |
 | Occlusion + hidden kidnap | 30% landmark dropout + 25% short returns from 1.0-16.0 s; hidden pose jump (-4 m, +3 m) at 3.0 s | 10.38 m | 7.66 m | **7.56 m** | **0.73x** |
 
 ## Interpretation
@@ -31,11 +31,12 @@ while tracking-loss tuning pushes the MLP toward a heavier-tailed effective
 likelihood. The result improves from 10.27 m to 6.91 m.
 
 The distance-dependent bias scenario isolates systematic observation-model
-mismatch without particle depletion from a hidden state jump. The learned MLP
-likelihood improves over the Gaussian baseline, but the supervised MLP is the
-best row entry: 6.13 m versus 8.33 m. Tracking-loss fine-tuning still beats the
-Gaussian at 7.20 m, but this scene exposes the current finite-difference
-tuning noise more clearly than the outlier-only case.
+mismatch without particle depletion from a hidden state jump. The first
+single-seed finite-difference run improved over the Gaussian but trailed the
+supervised MLP. Averaging the finite-difference gradient over two rollout seeds
+and restoring the best held-out validation checkpoint reduces the
+tracking-tuned result to 6.64 m, narrowly ahead of the supervised MLP at
+6.76 m and well ahead of the Gaussian at 8.33 m.
 
 The occlusion+kidnap scenario mixes two failure modes: corrupted/missing
 measurements and a hidden state jump. The MLP still improves over the Gaussian
@@ -51,15 +52,14 @@ only on the observation likelihood.
 2. The MLP weights can be fine-tuned end-to-end through a soft-resampling DPF
    rollout using finite-difference tracking gradients.
 3. Under misspecified observation models, learned likelihoods reduce
-   localization RMSE by 14-33% versus the handcrafted Gaussian baseline.
-   Tracking-loss tuning wins on range outliers and occlusion+kidnap; the
-   supervised likelihood wins on the systematic biased-range scene.
+   localization RMSE by 20-33% versus the handcrafted Gaussian baseline.
+   Tracking-loss tuning now wins on range outliers, distance-dependent bias,
+   and occlusion+kidnap.
 
 ## Next Useful Ablation
 
-The next clean experiment is to reduce the finite-difference tuning variance
-on the biased-range scene: average gradients over multiple rollout seeds,
-increase the training horizon, or replace the current hard central-difference
-loop with a smoother resampling relaxation. The target is to see whether
-tracking-loss tuning can recover the supervised MLP's 6.13 m biased-range
-result without overfitting to rollout noise.
+The next clean experiment is to replace the finite-difference MLP update with a
+smoother resampling relaxation or direct differentiable surrogate. The two-seed
+central-difference update is enough to recover the biased-range scene, but it
+still takes roughly one minute for a tiny 65-parameter MLP because each epoch
+reruns many full PF rollouts.
