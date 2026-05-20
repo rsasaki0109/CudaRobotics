@@ -15,10 +15,10 @@
 
     The clean scene keeps Gaussian range noise, where the handcrafted
     likelihood is correctly specified. Hard scenes inject range outliers,
-    occlusion short-returns, landmark dropouts, and a hidden pose jump,
-    making the Gaussian likelihood intentionally misspecified. The
-    tracking-loss-tuned MLP can learn a heavier-tailed observation model
-    directly from localization performance.
+    distance-dependent range bias, occlusion short-returns, landmark dropouts,
+    and a hidden pose jump, making the Gaussian likelihood intentionally
+    misspecified. The tracking-loss-tuned MLP can learn a better effective
+    observation model directly from localization performance.
 
     Output:
       - Training curve (MSE on log-likelihood, supervised pre-training)
@@ -67,6 +67,8 @@ constexpr float SOFT_BETA     = 0.7f;
 constexpr float TRAINED_ALPHA = 3.14f;
 constexpr float HARD_OUTLIER_PROB = 0.18f;
 constexpr float HARD_OUTLIER_MAG  = 9.0f;
+constexpr float BIASED_RANGE_D0    = 10.0f;
+constexpr float BIASED_RANGE_GAIN  = 0.35f;
 constexpr float OCCLUSION_START_T = 1.0f;
 constexpr float OCCLUSION_END_T   = 16.0f;
 constexpr float OCCLUSION_DROP_PROB = 0.30f;
@@ -100,6 +102,7 @@ struct Pose2 { float x, y, th; };
 enum ObservationMode {
     OBS_CLEAN_GAUSSIAN,
     OBS_RANGE_OUTLIERS,
+    OBS_BIASED_RANGE,
     OBS_OCCLUSION_KIDNAP
 };
 
@@ -314,6 +317,8 @@ static void observe(const Pose2& gt, const std::vector<float>& lx,
             float zn = d + noise(rng);
             if (mode == OBS_RANGE_OUTLIERS && uni(rng) < HARD_OUTLIER_PROB) {
                 zn += outlier(rng);
+            } else if (mode == OBS_BIASED_RANGE) {
+                zn += BIASED_RANGE_GAIN * std::max(0.0f, d - BIASED_RANGE_D0);
             } else if (mode == OBS_OCCLUSION_KIDNAP && occlusion_window &&
                        uni(rng) < OCCLUSION_SHORT_PROB) {
                 zn -= short_hit(rng);
@@ -557,11 +562,9 @@ int main() {
               << N_PARTICLES << " particles, " << N_LANDMARKS << " landmarks, "
               << "MLP " << MLP_INPUT << "->" << MLP_HIDDEN << "->" << MLP_OUTPUT << ")"
               << std::endl;
-    ObservationMode hard_mode = OBS_OCCLUSION_KIDNAP;
-    std::printf("Hard scene: %.0f%% landmark dropout + %.0f%% short returns from t=%.1f..%.1f, "
-                "hidden pose jump (%.1f, %.1f)m at t=%.1f.\n",
-                100.0f * OCCLUSION_DROP_PROB, 100.0f * OCCLUSION_SHORT_PROB,
-                OCCLUSION_START_T, OCCLUSION_END_T, KIDNAP_DX, KIDNAP_DY, KIDNAP_T);
+    ObservationMode hard_mode = OBS_BIASED_RANGE;
+    std::printf("Biased-range scene: z = d + N(0, %.1f) + %.2f * max(0, d - %.1f).\n",
+                OBS_SIGMA, BIASED_RANGE_GAIN, BIASED_RANGE_D0);
 
     // --- Landmark layout (same as src/diff_pf.cu)
     std::vector<float> lx(N_LANDMARKS), ly(N_LANDMARKS);
@@ -693,7 +696,7 @@ int main() {
     upload(PB, N_PARTICLES, ipx, ipy, ipth);
     upload(PC, N_PARTICLES, ipx, ipy, ipth);
 
-    cv::VideoWriter video("gif/comparison_diff_pf_mlp_occlusion_kidnap.avi",
+    cv::VideoWriter video("gif/comparison_diff_pf_mlp_biased_range.avi",
                           cv::VideoWriter::fourcc('X', 'V', 'I', 'D'), 30,
                           cv::Size(PANEL_W * 3, PANEL_H));
 
@@ -739,9 +742,9 @@ int main() {
         cv::circle(P0, w2p(out_A.ex, out_A.ey), 6, cv::Scalar(60, 60, 200), 2, cv::LINE_AA);
         cv::circle(P1, w2p(out_B.ex, out_B.ey), 6, cv::Scalar(0, 130, 60), 2, cv::LINE_AA);
         cv::circle(P2, w2p(out_C.ex, out_C.ey), 6, cv::Scalar(190, 110, 0), 2, cv::LINE_AA);
-        label(P0, "Occlusion+kidnap: DPF + Gaussian likelihood");
-        label(P1, "Occlusion+kidnap: DPF + supervised MLP");
-        label(P2, "Occlusion+kidnap: DPF + tracking-loss tuned MLP");
+        label(P0, "Biased range: DPF + Gaussian likelihood");
+        label(P1, "Biased range: DPF + supervised MLP");
+        label(P2, "Biased range: DPF + tracking-loss tuned MLP");
         cv::Mat row01, combined;
         cv::hconcat(P0, P1, row01);
         cv::hconcat(row01, P2, combined);
@@ -756,15 +759,15 @@ int main() {
     rmse_C = std::sqrt(rmse_C / N_FRAMES);
     float ratio_B = static_cast<float>(rmse_B / rmse_A);
     float ratio_C = static_cast<float>(rmse_C / rmse_A);
-    std::printf("Occlusion+kidnap eval RMSE (alpha=%.2f):\n"
+    std::printf("Biased-range eval RMSE (alpha=%.2f):\n"
                 "  DPF + handcrafted likelihood       = %.3f m\n"
                 "  DPF + supervised MLP likelihood    = %.3f m (%.2fx)\n"
                 "  DPF + tracking-tuned MLP likelihood = %.3f m (%.2fx)\n",
                 TRAINED_ALPHA, rmse_A, rmse_B, ratio_B, rmse_C, ratio_C);
 
-    std::system("ffmpeg -y -i gif/comparison_diff_pf_mlp_occlusion_kidnap.avi "
+    std::system("ffmpeg -y -i gif/comparison_diff_pf_mlp_biased_range.avi "
                 "-vf 'fps=15,scale=1200:-1:flags=lanczos' -loop 0 "
-                "gif/comparison_diff_pf_mlp_occlusion_kidnap.gif 2>/dev/null");
-    std::cout << "GIF saved to gif/comparison_diff_pf_mlp_occlusion_kidnap.gif" << std::endl;
+                "gif/comparison_diff_pf_mlp_biased_range.gif 2>/dev/null");
+    std::cout << "GIF saved to gif/comparison_diff_pf_mlp_biased_range.gif" << std::endl;
     return 0;
 }
