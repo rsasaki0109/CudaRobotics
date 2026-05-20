@@ -1,13 +1,13 @@
 # CudaRobotics Plan / Handoff (for Codex)
 
-Last updated: 2026-05-20 JST
+Last updated: 2026-05-21 JST
 
 Short handoff for the next coding agent. The repo is on `master`, synced with
 `origin/master`, working tree clean before this file update.
 
 ---
 
-## Repo State (2026-05-20)
+## Repo State (2026-05-21)
 
 - **Main branch**: `master`
 - **gh-pages branch**: hosts gif assets referenced from `readme.md`. Update it
@@ -17,7 +17,7 @@ Short handoff for the next coding agent. The repo is on `master`, synced with
   ```bash
   cd build && cmake .. && make -j$(nproc)
   ```
-- The 2026-05-20 session merged PRs #16〜#23 and #25〜#33 (17 PRs). The repo's "Why CUDA?"
+- The 2026-05-20 session merged PRs #16〜#23 and #25〜#34 (18 PRs). The repo's "Why CUDA?"
   top showcase is now a curated 2x3 grid; the Research Extensions table has
   two new entries (Differentiable Particle Filter + DPF with MLP observation).
 
@@ -44,6 +44,7 @@ Short handoff for the next coding agent. The repo is on `master`, synced with
 | #31 | DPF direct observation surrogate | Direct-surrogate MLP 5.81m vs Gaussian 8.33m (**0.70x**) |
 | #32 | DPF calibrated biased observation | Calibrated-surrogate MLP 6.03m vs Gaussian 8.41m (**0.72x**) |
 | #33 | DPF calibrated outlier surrogate | Calibrated-surrogate MLP 7.04m vs Gaussian 9.80m (**0.72x**) |
+| #34 | DPF calibrated occlusion surrogate | Calibrated-surrogate MLP 6.93m vs Gaussian 8.25m (**0.84x**) |
 
 All four findings docs are under `docs/`: `topology_bench_day1_findings.md`
 through `topology_bench_day4_findings.md`.
@@ -111,7 +112,7 @@ handcrafted Gaussian **9.80 m**, supervised MLP **7.18 m** (**0.73x**),
 tracking-tuned MLP **7.22 m** (**0.74x**), calibrated-surrogate MLP
 **7.04 m** (**0.72x**). Calibrated surrogate training took **~2.8s**.
 
-Current feature branch `feat/diff-pf-calibrated-occlusion` extends that
+Merged PR #34 extended that
 calibration path to the occlusion+kidnap scene. It samples known-distance
 measurements during the occlusion window, skips dropped landmarks as invalid,
 and fits the valid short-return residual tail with the same 96-bin likelihood.
@@ -120,6 +121,18 @@ RMSE **2.301 m**, log-likelihood at **-6m = -2.553**, handcrafted Gaussian
 **8.25 m**, supervised MLP **7.40 m** (**0.90x**), tracking-tuned MLP
 **8.08 m** (**0.98x**), calibrated-surrogate MLP **6.93 m** (**0.84x**).
 Calibrated surrogate training took **~2.9s**.
+
+Current feature branch `feat/diff-pf-kidnap-ablation` splits that stress scene
+into occlusion-only and kidnap-only runs. `src/diff_pf_mlp.cu` now has
+separate `OBS_OCCLUSION_ONLY` and `OBS_KIDNAP_ONLY` modes and runs both from
+the same supervised pre-training checkpoint. Latest local run:
+occlusion-only Gaussian **7.98 m**, supervised MLP **6.57 m** (**0.82x**),
+tracking-tuned MLP **7.24 m** (**0.91x**), calibrated-surrogate MLP
+**7.11 m** (**0.89x**); kidnap-only Gaussian **7.66 m**, supervised MLP
+**12.48 m** (**1.63x**), tracking-tuned MLP **9.85 m** (**1.29x**),
+calibrated-surrogate MLP **6.98 m** (**0.91x**). New gifs:
+`gif/comparison_diff_pf_mlp_occlusion_only.gif` and
+`gif/comparison_diff_pf_mlp_kidnap_only.gif`.
 
 ---
 
@@ -146,12 +159,11 @@ Calibrated surrogate training took **~2.9s**.
   but did not yet beat the supervised initialization on the 240-frame eval.
   Next work: longer horizons, multi-seed gradient averaging, or smoother
   resampling relaxations.
-- **Separate likelihood learning from recovery mechanics**: calibrated
-  surrogates now handle smooth distance-dependent bias, range outliers, and
-  valid short-return residuals under occlusion. Next work: split the current
-  occlusion+kidnap stress test into occlusion-only and kidnap-only ablations so
-  the observation model can be separated from particle support after a hidden
-  pose jump.
+- **Particle support after hidden kidnap**: the occlusion-only / kidnap-only
+  split shows the observation-model story is mostly handled, while hidden
+  jumps still depend on support recovery. Next work: add a low-rate particle
+  injection / expansion reset variant, or compare against existing `amcl` /
+  `expansion_reset_mcl` behavior.
 - **Harder scenes beyond current stress tests**: longer kidnap recovery with
   particle injection, or smoother resampling relaxations where
   observation-model learning and recovery mechanics can be separated cleanly.
@@ -203,10 +215,10 @@ Calibrated surrogate training took **~2.9s**.
 The 2026-05-20 session leaned hard into visual showcases and the DPF
 research line. The most natural next moves:
 
-**If goal = paper / research value**: split the occlusion+kidnap result into
-occlusion-only and kidnap-only ablations. The calibrated likelihood now learns
-valid short-return residuals; the remaining question is how much recovery is
-limited by particle support and resampling after an unmodeled pose jump.
+**If goal = paper / research value**: add explicit particle-support recovery
+to the kidnap-only DPF ablation. The likelihood side is now split cleanly; the
+remaining question is whether low-rate particle injection or expansion reset
+closes the hidden-pose-jump gap.
 
 **If goal = OSS visibility**: pick up **3D Lidar Simulator**. The 2D
 version is a strong tile on the readme; a 3D version paired with the
@@ -219,7 +231,7 @@ expansion** (Day 4+ item 1). Mechanical change to
 Recommended starting branches:
 
 ```bash
-git switch -c feat/diff-pf-kidnap-ablation     # research track
+git switch -c feat/diff-pf-particle-injection  # research track
 git switch -c feat/lidar-sim-3d               # showcase track
 git switch -c feat/failure-taxonomy-csv       # bench track
 ```
