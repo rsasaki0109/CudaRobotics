@@ -14,10 +14,11 @@
          tiny MLP weight vector through a soft-resampling DPF rollout.
 
     The clean scene keeps Gaussian range noise, where the handcrafted
-    likelihood is correctly specified. The hard scene injects range
-    outliers, making that Gaussian likelihood intentionally misspecified;
-    the tracking-loss-tuned MLP can learn a heavier-tailed observation
-    model directly from localization performance.
+    likelihood is correctly specified. Hard scenes inject range outliers,
+    occlusion short-returns, landmark dropouts, and a hidden pose jump,
+    making the Gaussian likelihood intentionally misspecified. The
+    tracking-loss-tuned MLP can learn a heavier-tailed observation model
+    directly from localization performance.
 
     Output:
       - Training curve (MSE on log-likelihood, supervised pre-training)
@@ -66,6 +67,14 @@ constexpr float SOFT_BETA     = 0.7f;
 constexpr float TRAINED_ALPHA = 3.14f;
 constexpr float HARD_OUTLIER_PROB = 0.18f;
 constexpr float HARD_OUTLIER_MAG  = 9.0f;
+constexpr float OCCLUSION_START_T = 1.0f;
+constexpr float OCCLUSION_END_T   = 16.0f;
+constexpr float OCCLUSION_DROP_PROB = 0.30f;
+constexpr float OCCLUSION_SHORT_PROB = 0.25f;
+constexpr float OCCLUSION_SHORT_MAG  = 8.0f;
+constexpr float KIDNAP_T  = 3.0f;
+constexpr float KIDNAP_DX = -4.0f;
+constexpr float KIDNAP_DY = 3.0f;
 
 constexpr int   MLP_INPUT     = 2;   // (d, z)
 constexpr int   MLP_HIDDEN    = 16;
@@ -88,7 +97,11 @@ constexpr float VIS_SY        = static_cast<float>(PANEL_H) / WORLD_H;
 
 struct Pose2 { float x, y, th; };
 
-enum ObservationMode { OBS_CLEAN_GAUSSIAN, OBS_RANGE_OUTLIERS };
+enum ObservationMode {
+    OBS_CLEAN_GAUSSIAN,
+    OBS_RANGE_OUTLIERS,
+    OBS_OCCLUSION_KIDNAP
+};
 
 __host__ __device__ inline float wrap_pi(float a) {
     while (a >  static_cast<float>(M_PI)) a -= 2.0f * static_cast<float>(M_PI);
@@ -261,6 +274,14 @@ static Pose2 gt_at(float t) {
     p.th = wrap_pi(0.5f * t);
     return p;
 }
+static Pose2 scene_gt_at(float t, ObservationMode mode) {
+    Pose2 p = gt_at(t);
+    if (mode == OBS_OCCLUSION_KIDNAP && t >= KIDNAP_T) {
+        p.x = std::max(1.0f, std::min(WORLD_W - 1.0f, p.x + KIDNAP_DX));
+        p.y = std::max(1.0f, std::min(WORLD_H - 1.0f, p.y + KIDNAP_DY));
+    }
+    return p;
+}
 static void controls_at(float t, float& v, float& omega) {
     Pose2 p_now = gt_at(t);
     Pose2 p_next = gt_at(t + DT);
@@ -272,20 +293,30 @@ static void controls_at(float t, float& v, float& omega) {
 static void observe(const Pose2& gt, const std::vector<float>& lx,
                     const std::vector<float>& ly, std::mt19937& rng,
                     std::vector<float>& z, std::vector<unsigned char>& valid,
-                    ObservationMode mode = OBS_CLEAN_GAUSSIAN) {
+                    ObservationMode mode = OBS_CLEAN_GAUSSIAN,
+                    float t = 0.0f) {
     int L = static_cast<int>(lx.size());
     z.resize(L); valid.assign(L, 0u);
     std::normal_distribution<float> noise(0.0f, OBS_SIGMA);
     std::uniform_real_distribution<float> uni(0.0f, 1.0f);
     std::uniform_real_distribution<float> outlier(-HARD_OUTLIER_MAG, HARD_OUTLIER_MAG);
+    std::uniform_real_distribution<float> short_hit(0.0f, OCCLUSION_SHORT_MAG);
+    bool occlusion_window = (t >= OCCLUSION_START_T && t <= OCCLUSION_END_T);
     for (int l = 0; l < L; l++) {
         float dx = gt.x - lx[l];
         float dy = gt.y - ly[l];
         float d = std::sqrt(dx * dx + dy * dy);
         if (d <= OBS_RANGE) {
+            if (mode == OBS_OCCLUSION_KIDNAP && occlusion_window &&
+                uni(rng) < OCCLUSION_DROP_PROB) {
+                continue;
+            }
             float zn = d + noise(rng);
             if (mode == OBS_RANGE_OUTLIERS && uni(rng) < HARD_OUTLIER_PROB) {
                 zn += outlier(rng);
+            } else if (mode == OBS_OCCLUSION_KIDNAP && occlusion_window &&
+                       uni(rng) < OCCLUSION_SHORT_PROB) {
+                zn -= short_hit(rng);
             }
             z[l] = std::max(0.0f, zn);
             valid[l] = 1u;
@@ -342,11 +373,12 @@ static PFStep run_step(ParticleSet& P, int n, float alpha, float v, float omega,
 // ---------------------------------------------------------------------------
 static void reset_particle_set(ParticleSet& P, int n,
                                unsigned int init_seed,
-                               unsigned long long motion_seed) {
+                               unsigned long long motion_seed,
+                               ObservationMode obs_mode) {
     std::vector<float> ipx(n), ipy(n), ipth(n);
     std::mt19937 rng_init(init_seed);
     std::normal_distribution<float> nxy(0.0f, 1.5f);
-    Pose2 gt0 = gt_at(0.0f);
+    Pose2 gt0 = scene_gt_at(0.0f, obs_mode);
     for (int i = 0; i < n; i++) {
         ipx[i]  = gt0.x + nxy(rng_init);
         ipy[i]  = gt0.y + nxy(rng_init);
@@ -371,20 +403,21 @@ static float rollout_tracking_loss_mlp(ParticleSet& P, int n,
                                        int n_frames,
                                        ObservationMode obs_mode) {
     reset_particle_set(P, n, seed + 11u,
-                       static_cast<unsigned long long>(seed) * 1009ULL + 17ULL);
+                       static_cast<unsigned long long>(seed) * 1009ULL + 17ULL,
+                       obs_mode);
 
     std::mt19937 rng_obs(seed + 23u);
     std::mt19937 rng_resample(seed + 37u);
     double loss_sum = 0.0;
     for (int s = 0; s < n_frames; s++) {
         float t = s * DT;
-        Pose2 gt = gt_at(t);
+        Pose2 gt = scene_gt_at(t, obs_mode);
         float v, omega;
         controls_at(t, v, omega);
 
         std::vector<float> z;
         std::vector<unsigned char> valid;
-        observe(gt, lx, ly, rng_obs, z, valid, obs_mode);
+        observe(gt, lx, ly, rng_obs, z, valid, obs_mode, t);
         CUDA_CHECK(cudaMemcpy(d_z, z.data(), N_LANDMARKS * sizeof(float),
                               cudaMemcpyHostToDevice));
         CUDA_CHECK(cudaMemcpy(d_zv, valid.data(), N_LANDMARKS,
@@ -524,8 +557,11 @@ int main() {
               << N_PARTICLES << " particles, " << N_LANDMARKS << " landmarks, "
               << "MLP " << MLP_INPUT << "->" << MLP_HIDDEN << "->" << MLP_OUTPUT << ")"
               << std::endl;
-    std::printf("Hard scene: %.0f%% visible range measurements get uniform +/-%.1f m outliers.\n",
-                100.0f * HARD_OUTLIER_PROB, HARD_OUTLIER_MAG);
+    ObservationMode hard_mode = OBS_OCCLUSION_KIDNAP;
+    std::printf("Hard scene: %.0f%% landmark dropout + %.0f%% short returns from t=%.1f..%.1f, "
+                "hidden pose jump (%.1f, %.1f)m at t=%.1f.\n",
+                100.0f * OCCLUSION_DROP_PROB, 100.0f * OCCLUSION_SHORT_PROB,
+                OCCLUSION_START_T, OCCLUSION_END_T, KIDNAP_DX, KIDNAP_DY, KIDNAP_T);
 
     // --- Landmark layout (same as src/diff_pf.cu)
     std::vector<float> lx(N_LANDMARKS), ly(N_LANDMARKS);
@@ -631,7 +667,7 @@ int main() {
     auto t_e2e_0 = std::chrono::high_resolution_clock::now();
     train_mlp_tracking_finite_difference(mlp_e2e, lx, ly, d_lx, d_ly,
                                          d_z, d_zv, tracking_loss_curve,
-                                         OBS_RANGE_OUTLIERS);
+                                         hard_mode);
     auto t_e2e_1 = std::chrono::high_resolution_clock::now();
     double e2e_ms = std::chrono::duration<double, std::milli>(t_e2e_1 - t_e2e_0).count();
     std::printf("MLP tracking-loss fine-tuning: %d epochs in %.1f ms, "
@@ -647,7 +683,7 @@ int main() {
     std::vector<float> ipx(N_PARTICLES), ipy(N_PARTICLES), ipth(N_PARTICLES);
     std::mt19937 rng_init(42);
     std::normal_distribution<float> nxy(0.0f, 1.5f);
-    Pose2 gt0 = gt_at(0.0f);
+    Pose2 gt0 = scene_gt_at(0.0f, hard_mode);
     for (int i = 0; i < N_PARTICLES; i++) {
         ipx[i]  = gt0.x + nxy(rng_init);
         ipy[i]  = gt0.y + nxy(rng_init);
@@ -657,7 +693,7 @@ int main() {
     upload(PB, N_PARTICLES, ipx, ipy, ipth);
     upload(PC, N_PARTICLES, ipx, ipy, ipth);
 
-    cv::VideoWriter video("gif/comparison_diff_pf_mlp_hard.avi",
+    cv::VideoWriter video("gif/comparison_diff_pf_mlp_occlusion_kidnap.avi",
                           cv::VideoWriter::fourcc('X', 'V', 'I', 'D'), 30,
                           cv::Size(PANEL_W * 3, PANEL_H));
 
@@ -668,10 +704,10 @@ int main() {
     double rmse_A = 0.0, rmse_B = 0.0, rmse_C = 0.0;
     for (int s = 0; s < N_FRAMES; s++) {
         float t = s * DT;
-        Pose2 gt = gt_at(t);
+        Pose2 gt = scene_gt_at(t, hard_mode);
         float v, omega; controls_at(t, v, omega);
         std::vector<float> z; std::vector<unsigned char> valid;
-        observe(gt, lx, ly, rng_obs_eval, z, valid, OBS_RANGE_OUTLIERS);
+        observe(gt, lx, ly, rng_obs_eval, z, valid, hard_mode, t);
         CUDA_CHECK(cudaMemcpy(d_z,  z.data(),     N_LANDMARKS * sizeof(float), cudaMemcpyHostToDevice));
         CUDA_CHECK(cudaMemcpy(d_zv, valid.data(), N_LANDMARKS,                 cudaMemcpyHostToDevice));
 
@@ -703,9 +739,9 @@ int main() {
         cv::circle(P0, w2p(out_A.ex, out_A.ey), 6, cv::Scalar(60, 60, 200), 2, cv::LINE_AA);
         cv::circle(P1, w2p(out_B.ex, out_B.ey), 6, cv::Scalar(0, 130, 60), 2, cv::LINE_AA);
         cv::circle(P2, w2p(out_C.ex, out_C.ey), 6, cv::Scalar(190, 110, 0), 2, cv::LINE_AA);
-        label(P0, "Outlier scene: DPF + Gaussian likelihood");
-        label(P1, "Outlier scene: DPF + supervised MLP");
-        label(P2, "Outlier scene: DPF + tracking-loss tuned MLP");
+        label(P0, "Occlusion+kidnap: DPF + Gaussian likelihood");
+        label(P1, "Occlusion+kidnap: DPF + supervised MLP");
+        label(P2, "Occlusion+kidnap: DPF + tracking-loss tuned MLP");
         cv::Mat row01, combined;
         cv::hconcat(P0, P1, row01);
         cv::hconcat(row01, P2, combined);
@@ -720,15 +756,15 @@ int main() {
     rmse_C = std::sqrt(rmse_C / N_FRAMES);
     float ratio_B = static_cast<float>(rmse_B / rmse_A);
     float ratio_C = static_cast<float>(rmse_C / rmse_A);
-    std::printf("Hard-scene eval RMSE (alpha=%.2f):\n"
+    std::printf("Occlusion+kidnap eval RMSE (alpha=%.2f):\n"
                 "  DPF + handcrafted likelihood       = %.3f m\n"
                 "  DPF + supervised MLP likelihood    = %.3f m (%.2fx)\n"
                 "  DPF + tracking-tuned MLP likelihood = %.3f m (%.2fx)\n",
                 TRAINED_ALPHA, rmse_A, rmse_B, ratio_B, rmse_C, ratio_C);
 
-    std::system("ffmpeg -y -i gif/comparison_diff_pf_mlp_hard.avi "
+    std::system("ffmpeg -y -i gif/comparison_diff_pf_mlp_occlusion_kidnap.avi "
                 "-vf 'fps=15,scale=1200:-1:flags=lanczos' -loop 0 "
-                "gif/comparison_diff_pf_mlp_hard.gif 2>/dev/null");
-    std::cout << "GIF saved to gif/comparison_diff_pf_mlp_hard.gif" << std::endl;
+                "gif/comparison_diff_pf_mlp_occlusion_kidnap.gif 2>/dev/null");
+    std::cout << "GIF saved to gif/comparison_diff_pf_mlp_occlusion_kidnap.gif" << std::endl;
     return 0;
 }
