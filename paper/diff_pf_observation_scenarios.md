@@ -15,7 +15,7 @@ receives scaled `(distance, residual)` inputs.
 | Clean Gaussian | None; simulator noise matches analytic Gaussian | 6.97 m | 7.19 m | **6.16 m** | not run | **0.88x** |
 | Range outliers | 18% of visible ranges get uniform +/-9 m outliers | 9.80 m | 7.18 m | 7.22 m | **7.04 m** | **0.72x** |
 | Distance-dependent bias | `z = d + N(0, 1.0) + 0.35 * max(0, d - 10.0)` | 8.41 m | 7.11 m | 7.03 m | **6.03 m** | **0.72x** |
-| Occlusion + hidden kidnap | 30% landmark dropout + 25% short returns from 1.0-16.0 s; hidden pose jump (-4 m, +3 m) at 3.0 s | 10.38 m | 7.66 m | **7.56 m** | not run | **0.73x** |
+| Occlusion + hidden kidnap | 30% landmark dropout + 25% short returns from 1.0-16.0 s; hidden pose jump (-4 m, +3 m) at 3.0 s | 8.25 m | 7.40 m | 8.08 m | **6.93 m** | **0.84x** |
 
 ## Interpretation
 
@@ -41,9 +41,13 @@ ordinary GPU backprop. That trace-learned path reaches 6.03 m after about
 
 The occlusion+kidnap scenario mixes two failure modes: corrupted/missing
 measurements and a hidden state jump. The MLP still improves over the Gaussian
-likelihood, but the gap is smaller than in the outlier-only scene because
-kidnap recovery also depends on particle support and resampling mechanics, not
-only on the observation likelihood.
+likelihood, but the calibrated result is more constrained than the outlier-only
+and bias-only scenes. The trace-learned surrogate observes known-distance
+measurements during the occlusion window and skips dropouts, matching the PF
+update where invalid landmarks contribute no likelihood. It therefore learns
+the valid short-return residual tail, reaching 6.93 m versus 8.25 m for the
+Gaussian baseline. Dropout and kidnap recovery still depend on particle support
+and resampling mechanics, not only on the observation likelihood.
 
 ## Current Research Claim
 
@@ -56,11 +60,13 @@ only on the observation likelihood.
    surrogate can be estimated and used to train the same MLP much faster than
    rollout finite differences.
 4. Under misspecified observation models, the best learned likelihoods reduce
-   localization RMSE by roughly 27-28% versus the handcrafted Gaussian
-   baseline across the current misspecified scenario matrix.
+   localization RMSE by 16-28% versus the handcrafted Gaussian baseline across
+   the current misspecified scenario matrix.
 
 ## Next Useful Ablation
 
-The next clean experiment is to feed calibration traces from occlusion mixtures
-into the same surrogate path. That tests whether a trace-learned likelihood can
-handle missing/short returns, not only smooth bias or range outlier tails.
+The next clean experiment is to separate likelihood learning from recovery
+mechanics: run an occlusion-only scene without the hidden kidnap, then a
+kidnap-only scene with clean observations. That would show how much of the
+remaining gap is due to learned observation likelihoods versus particle support
+after an unmodeled pose jump.
