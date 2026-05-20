@@ -87,8 +87,11 @@ constexpr int   MLP_ACTIV     = 1;   // tanh hidden activation
 constexpr int   E2E_TRAIN_PARTICLES = 384;
 constexpr int   E2E_TRAIN_FRAMES    = 48;
 constexpr int   E2E_TRAIN_EPOCHS    = 24;
+constexpr int   E2E_GRAD_SEEDS      = 2;
+constexpr int   E2E_VAL_FRAMES      = 96;
+constexpr int   E2E_VAL_SEEDS       = 2;
 constexpr float E2E_FD_EPS          = 0.04f;
-constexpr float E2E_LR              = 0.005f;
+constexpr float E2E_LR              = 0.0035f;
 constexpr float E2E_GRAD_CLIP       = 4.0f;
 constexpr float E2E_WEIGHT_CLIP     = 8.0f;
 
@@ -495,38 +498,70 @@ static void train_mlp_tracking_finite_difference(
     loss_curve.clear();
 
     auto eval_loss = [&](const std::vector<float>& w,
-                         unsigned int seed_base) -> float {
+                         unsigned int seed_base,
+                         int n_frames) -> float {
         mlp.load_weights(w);
         return rollout_tracking_loss_mlp(P, E2E_TRAIN_PARTICLES, mlp,
                                          lx, ly, d_lx, d_ly, d_z, d_zv,
-                                         seed_base, E2E_TRAIN_FRAMES,
+                                         seed_base, n_frames,
                                          obs_mode);
     };
+    auto eval_loss_avg = [&](const std::vector<float>& w,
+                             unsigned int seed_base,
+                             int n_frames,
+                             int n_seeds) -> float {
+        double loss = 0.0;
+        for (int k = 0; k < n_seeds; k++) {
+            loss += eval_loss(w, seed_base + static_cast<unsigned int>(k) * 10007u,
+                              n_frames);
+        }
+        return static_cast<float>(loss / n_seeds);
+    };
+
+    std::vector<float> best_weights = weights;
+    float best_val = eval_loss_avg(weights, 24001u, E2E_VAL_FRAMES, E2E_VAL_SEEDS);
+    std::printf("E2E MLP initial validation loss %.4f (%d seeds x %d frames)\n",
+                best_val, E2E_VAL_SEEDS, E2E_VAL_FRAMES);
 
     for (int epoch = 0; epoch < E2E_TRAIN_EPOCHS; epoch++) {
         unsigned int seed_base = 9001u + static_cast<unsigned int>(epoch) * 131u;
-        float base_loss = eval_loss(weights, seed_base + 7u);
+        float base_loss = eval_loss_avg(weights, seed_base + 7u,
+                                        E2E_TRAIN_FRAMES, E2E_GRAD_SEEDS);
         loss_curve.push_back(base_loss);
 
         for (int wid = 0; wid < cfg.total_weights; wid++) {
-            tmp = weights;
-            tmp[wid] += E2E_FD_EPS;
-            float lp = eval_loss(tmp, seed_base + 31u);
+            double gsum = 0.0;
+            for (int k = 0; k < E2E_GRAD_SEEDS; k++) {
+                unsigned int fd_seed = seed_base + 31u + static_cast<unsigned int>(k) * 10007u;
+                tmp = weights;
+                tmp[wid] += E2E_FD_EPS;
+                float lp = eval_loss(tmp, fd_seed, E2E_TRAIN_FRAMES);
 
-            tmp[wid] = weights[wid] - E2E_FD_EPS;
-            float lm = eval_loss(tmp, seed_base + 31u);
+                tmp[wid] = weights[wid] - E2E_FD_EPS;
+                float lm = eval_loss(tmp, fd_seed, E2E_TRAIN_FRAMES);
 
-            grad[wid] = (lp - lm) / (2.0f * E2E_FD_EPS);
+                gsum += (lp - lm) / (2.0f * E2E_FD_EPS);
+            }
+            grad[wid] = static_cast<float>(gsum / E2E_GRAD_SEEDS);
         }
 
         float gnorm = apply_adam(weights, grad, adam, E2E_LR);
         mlp.load_weights(weights);
-        float next_loss = eval_loss(weights, seed_base + 7u);
-        std::printf("E2E MLP epoch %02d/%02d: tracking loss %.4f -> %.4f, |g|=%.3f\n",
-                    epoch + 1, E2E_TRAIN_EPOCHS, base_loss, next_loss, gnorm);
+        float next_loss = eval_loss_avg(weights, seed_base + 7u,
+                                        E2E_TRAIN_FRAMES, E2E_GRAD_SEEDS);
+        float val_loss = eval_loss_avg(weights, 24001u, E2E_VAL_FRAMES, E2E_VAL_SEEDS);
+        if (val_loss < best_val) {
+            best_val = val_loss;
+            best_weights = weights;
+        }
+        std::printf("E2E MLP epoch %02d/%02d: tracking loss %.4f -> %.4f, "
+                    "val %.4f, |g|=%.3f\n",
+                    epoch + 1, E2E_TRAIN_EPOCHS, base_loss, next_loss,
+                    val_loss, gnorm);
     }
 
-    mlp.load_weights(weights);
+    mlp.load_weights(best_weights);
+    std::printf("E2E MLP restored best validation loss %.4f\n", best_val);
     P.free_all();
 }
 
