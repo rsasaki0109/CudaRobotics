@@ -17,7 +17,7 @@ Short handoff for the next coding agent. The repo is on `master`, synced with
   ```bash
   cd build && cmake .. && make -j$(nproc)
   ```
-- The 2026-05-20 session merged PRs #16〜#23 and #25〜#30 (14 PRs). The repo's "Why CUDA?"
+- The 2026-05-20 session merged PRs #16〜#23 and #25〜#31 (15 PRs). The repo's "Why CUDA?"
   top showcase is now a curated 2x3 grid; the Research Extensions table has
   two new entries (Differentiable Particle Filter + DPF with MLP observation).
 
@@ -41,6 +41,7 @@ Short handoff for the next coding agent. The repo is on `master`, synced with
 | #28 | DPF observation scenario table | Paper-facing clean/outlier/occlusion matrix |
 | #29 | DPF MLP biased-range scene | Supervised MLP 6.13m vs Gaussian 8.33m (**0.74x**) |
 | #30 | DPF MLP biased-range tuning | Tracking-tuned MLP 6.64m vs Gaussian 8.33m (**0.80x**) |
+| #31 | DPF direct observation surrogate | Direct-surrogate MLP 5.81m vs Gaussian 8.33m (**0.70x**) |
 
 All four findings docs are under `docs/`: `topology_bench_day1_findings.md`
 through `topology_bench_day4_findings.md`.
@@ -83,12 +84,21 @@ held-out validation checkpoint. That run found handcrafted Gaussian **8.33 m**,
 supervised MLP **6.76 m** (**0.81x** handcrafted), tracking-tuned MLP
 **6.64 m** (**0.80x** handcrafted).
 
-Current feature branch `feat/diff-pf-direct-obs-grad` adds a direct biased
-observation surrogate trained with ordinary GPU backprop. Latest local run:
-handcrafted Gaussian **8.33 m**, supervised MLP **6.21 m** (**0.75x**),
-tracking-tuned MLP **6.94 m** (**0.83x**), direct-surrogate MLP **5.81 m**
-(**0.70x**). Direct surrogate training took **~2.9s**, versus **~86s** for the
-finite-difference tracking update in the same run.
+Merged PR #31 added a direct biased observation surrogate trained with
+ordinary GPU backprop. That run found handcrafted Gaussian **8.33 m**,
+supervised MLP **6.21 m** (**0.75x**), tracking-tuned MLP **6.94 m**
+(**0.83x**), direct-surrogate MLP **5.81 m** (**0.70x**). Direct surrogate
+training took **~2.9s**, versus **~86s** for the finite-difference tracking
+update in the same run.
+
+Feature branch `feat/diff-pf-calibrated-obs` removes the hand-coded bias
+formula from the direct training target. It fits a 24-bin bias curve and
+residual sigma from **8,192** known-distance calibration traces, then trains
+the MLP surrogate with ordinary GPU backprop. Latest local run: calibration
+bias RMSE **0.064 m**, estimated sigma **1.002 m**, handcrafted Gaussian
+**8.41 m**, supervised MLP **7.11 m** (**0.85x**), tracking-tuned MLP
+**7.03 m** (**0.84x**), calibrated-surrogate MLP **6.03 m** (**0.72x**).
+Calibrated surrogate training took **~2.8s**.
 
 ---
 
@@ -115,10 +125,9 @@ finite-difference tracking update in the same run.
   but did not yet beat the supervised initialization on the 240-frame eval.
   Next work: longer horizons, multi-seed gradient averaging, or smoother
   resampling relaxations.
-- **Calibration-learned observation surrogate**: the current direct surrogate
-  branch uses the known biased-range sensor formula. Next work: learn that
-  surrogate from calibration traces so the same fast path can cover unknown
-  bias, outliers, and occlusion mixtures.
+- **Calibration-learned robust likelihoods**: the current calibrated surrogate
+  handles smooth distance-dependent bias. Next work: feed calibration traces
+  with range outliers and occlusion mixtures into the same fast surrogate path.
 - **Harder scenes beyond current stress tests**: longer kidnap recovery with
   particle injection, or smoother resampling relaxations where
   observation-model learning and recovery mechanics can be separated cleanly.
@@ -170,10 +179,9 @@ finite-difference tracking update in the same run.
 The 2026-05-20 session leaned hard into visual showcases and the DPF
 research line. The most natural next moves:
 
-**If goal = paper / research value**: generalize the direct observation
-surrogate from a known biased sensor to calibration-learned sensor models. The
-direct path now beats rollout finite differences on biased range, but it still
-uses the hand-coded bias formula.
+**If goal = paper / research value**: extend the calibration-learned
+observation surrogate to non-Gaussian range outliers. The smooth biased-range
+case now works from traces; robust tails are the next missing likelihood shape.
 
 **If goal = OSS visibility**: pick up **3D Lidar Simulator**. The 2D
 version is a strong tile on the readme; a 3D version paired with the
@@ -186,7 +194,7 @@ expansion** (Day 4+ item 1). Mechanical change to
 Recommended starting branches:
 
 ```bash
-git switch -c feat/diff-pf-calibrated-obs     # research track
+git switch -c feat/diff-pf-calibrated-outliers # research track
 git switch -c feat/lidar-sim-3d               # showcase track
 git switch -c feat/failure-taxonomy-csv       # bench track
 ```
