@@ -314,6 +314,22 @@ static float sample_range_outlier_sensor(float d, std::mt19937& rng) {
     if (uni(rng) < HARD_OUTLIER_PROB) z += outlier(rng);
     return std::max(0.0f, z);
 }
+static bool sample_occlusion_sensor(float d, std::mt19937& rng, float t, float& z) {
+    std::normal_distribution<float> noise(0.0f, OBS_SIGMA);
+    std::uniform_real_distribution<float> uni(0.0f, 1.0f);
+    std::uniform_real_distribution<float> short_hit(0.0f, OCCLUSION_SHORT_MAG);
+    bool occlusion_window = (t >= OCCLUSION_START_T && t <= OCCLUSION_END_T);
+    if (occlusion_window && uni(rng) < OCCLUSION_DROP_PROB) {
+        return false;
+    }
+    bool short_return = occlusion_window && uni(rng) < OCCLUSION_SHORT_PROB;
+    float zn = d + noise(rng);
+    if (short_return) {
+        zn -= short_hit(rng);
+    }
+    z = std::max(0.0f, zn);
+    return true;
+}
 static void controls_at(float t, float& v, float& omega) {
     Pose2 p_now = gt_at(t);
     Pose2 p_next = gt_at(t + DT);
@@ -330,27 +346,17 @@ static void observe(const Pose2& gt, const std::vector<float>& lx,
     int L = static_cast<int>(lx.size());
     z.resize(L); valid.assign(L, 0u);
     std::normal_distribution<float> noise(0.0f, OBS_SIGMA);
-    std::uniform_real_distribution<float> uni(0.0f, 1.0f);
-    std::uniform_real_distribution<float> short_hit(0.0f, OCCLUSION_SHORT_MAG);
-    bool occlusion_window = (t >= OCCLUSION_START_T && t <= OCCLUSION_END_T);
     for (int l = 0; l < L; l++) {
         float dx = gt.x - lx[l];
         float dy = gt.y - ly[l];
         float d = std::sqrt(dx * dx + dy * dy);
         if (d <= OBS_RANGE) {
-            if (mode == OBS_OCCLUSION_KIDNAP && occlusion_window &&
-                uni(rng) < OCCLUSION_DROP_PROB) {
-                continue;
-            }
             if (mode == OBS_RANGE_OUTLIERS) {
                 z[l] = sample_range_outlier_sensor(d, rng);
             } else if (mode == OBS_BIASED_RANGE) {
                 z[l] = sample_biased_range_sensor(d, rng);
-            } else if (mode == OBS_OCCLUSION_KIDNAP && occlusion_window &&
-                       uni(rng) < OCCLUSION_SHORT_PROB) {
-                float zn = d + noise(rng);
-                zn -= short_hit(rng);
-                z[l] = std::max(0.0f, zn);
+            } else if (mode == OBS_OCCLUSION_KIDNAP) {
+                if (!sample_occlusion_sensor(d, rng, t, z[l])) continue;
             } else {
                 z[l] = std::max(0.0f, d + noise(rng));
             }
@@ -598,6 +604,8 @@ struct ResidualCalibrationModel {
     float residual_max =  CALIBRATION_RESIDUAL_MAX;
     float tail_log_lik = -12.0f;
     float residual_rmse = OBS_SIGMA;
+    int attempts = 0;
+    int valid_samples = 0;
 };
 
 static int residual_bin(float r, const ResidualCalibrationModel& calib) {
@@ -616,18 +624,23 @@ static float calibrated_log_lik_at(float r, const ResidualCalibrationModel& cali
     return (1.0f - a) * calib.log_lik_by_bin[lo] + a * calib.log_lik_by_bin[hi];
 }
 
-static ResidualCalibrationModel fit_range_outlier_calibration(std::mt19937& rng) {
+static ResidualCalibrationModel fit_occlusion_calibration(std::mt19937& rng) {
     ResidualCalibrationModel calib;
     calib.log_lik_by_bin.assign(CALIBRATION_RESIDUAL_BINS, -12.0f);
     std::vector<float> counts(CALIBRATION_RESIDUAL_BINS, CALIBRATION_HIST_SMOOTH);
     std::uniform_real_distribution<float> ud(0.0f, OBS_RANGE);
+    std::uniform_real_distribution<float> ut(OCCLUSION_START_T, OCCLUSION_END_T);
     double residual_sq = 0.0;
-    for (int i = 0; i < CALIBRATION_SAMPLES; i++) {
+    while (calib.valid_samples < CALIBRATION_SAMPLES) {
+        calib.attempts++;
         float d = ud(rng);
-        float z = sample_range_outlier_sensor(d, rng);
+        float t = ut(rng);
+        float z = 0.0f;
+        if (!sample_occlusion_sensor(d, rng, t, z)) continue;
         float residual = z - d;
         counts[residual_bin(residual, calib)] += 1.0f;
         residual_sq += static_cast<double>(residual) * residual;
+        calib.valid_samples++;
     }
 
     float max_count = *std::max_element(counts.begin(), counts.end());
@@ -635,15 +648,14 @@ static ResidualCalibrationModel fit_range_outlier_calibration(std::mt19937& rng)
         float ll = std::log(counts[b] / max_count);
         calib.log_lik_by_bin[b] = std::max(-12.0f, ll);
     }
-    calib.tail_log_lik = 0.5f * (calibrated_log_lik_at(6.0f, calib) +
-                                 calibrated_log_lik_at(-6.0f, calib));
-    calib.residual_rmse = std::sqrt(static_cast<float>(residual_sq / CALIBRATION_SAMPLES));
+    calib.tail_log_lik = calibrated_log_lik_at(-6.0f, calib);
+    calib.residual_rmse = std::sqrt(static_cast<float>(residual_sq / calib.valid_samples));
     return calib;
 }
 
-static void train_mlp_calibrated_outlier_surrogate(GpuMLP& mlp,
-                                                   const ResidualCalibrationModel& calib,
-                                                   std::vector<float>& loss_curve) {
+static void train_mlp_calibrated_residual_surrogate(GpuMLP& mlp,
+                                                    const ResidualCalibrationModel& calib,
+                                                    std::vector<float>& loss_curve) {
     std::vector<float> h_train_in(DIRECT_TRAIN_SAMPLES * MLP_INPUT);
     std::vector<float> h_train_tgt(DIRECT_TRAIN_SAMPLES * MLP_OUTPUT);
     std::mt19937 rng_data(4444);
@@ -712,9 +724,11 @@ int main() {
               << N_PARTICLES << " particles, " << N_LANDMARKS << " landmarks, "
               << "MLP " << MLP_INPUT << "->" << MLP_HIDDEN << "->" << MLP_OUTPUT << ")"
               << std::endl;
-    ObservationMode hard_mode = OBS_RANGE_OUTLIERS;
-    std::printf("Range-outlier scene: z = d + N(0, %.1f), then %.0f%% get uniform +/-%.1f m outliers.\n",
-                OBS_SIGMA, 100.0f * HARD_OUTLIER_PROB, HARD_OUTLIER_MAG);
+    ObservationMode hard_mode = OBS_OCCLUSION_KIDNAP;
+    std::printf("Occlusion+kidnap scene: %.0f%% landmark dropout and %.0f%% short returns "
+                "from %.1fs to %.1fs, plus hidden pose jump at %.1fs.\n",
+                100.0f * OCCLUSION_DROP_PROB, 100.0f * OCCLUSION_SHORT_PROB,
+                OCCLUSION_START_T, OCCLUSION_END_T, KIDNAP_T);
 
     // --- Landmark layout (same as src/diff_pf.cu)
     std::vector<float> lx(N_LANDMARKS), ly(N_LANDMARKS);
@@ -828,21 +842,21 @@ int main() {
                 E2E_TRAIN_EPOCHS, e2e_ms,
                 tracking_loss_curve.front(), tracking_loss_curve.back());
 
-    // --- Step 4: calibrated observation-surrogate MLP for range outliers.
+    // --- Step 4: calibrated observation-surrogate MLP for occlusion short returns.
     // A calibration trace contains known true distances and measured ranges.
-    // The MLP never sees the outlier probability or magnitude; it learns a
-    // robust residual-density curve and ordinary GPU backprop trains the MLP.
+    // Missing measurements are skipped just like the PF likelihood, so the
+    // MLP learns the valid short-return residual tail from traces.
     GpuMLP mlp_direct(MLP_INPUT, MLP_HIDDEN, MLP_LAYERS, MLP_OUTPUT);
     mlp_direct.load_weights(mlp.get_weights());
     std::vector<float> direct_loss_curve;
     std::mt19937 rng_calib(5151);
-    ResidualCalibrationModel calib = fit_range_outlier_calibration(rng_calib);
-    std::printf("Outlier calibration trace: %d samples, %d residual bins, "
-                "residual RMSE %.3f m, log-lik at +/-6m %.3f\n",
-                CALIBRATION_SAMPLES, CALIBRATION_RESIDUAL_BINS,
+    ResidualCalibrationModel calib = fit_occlusion_calibration(rng_calib);
+    std::printf("Occlusion calibration trace: %d valid samples from %d attempts, "
+                "%d residual bins, residual RMSE %.3f m, log-lik at -6m %.3f\n",
+                calib.valid_samples, calib.attempts, CALIBRATION_RESIDUAL_BINS,
                 calib.residual_rmse, calib.tail_log_lik);
     auto t_direct_0 = std::chrono::high_resolution_clock::now();
-    train_mlp_calibrated_outlier_surrogate(mlp_direct, calib, direct_loss_curve);
+    train_mlp_calibrated_residual_surrogate(mlp_direct, calib, direct_loss_curve);
     auto t_direct_1 = std::chrono::high_resolution_clock::now();
     double direct_ms = std::chrono::duration<double, std::milli>(t_direct_1 - t_direct_0).count();
     std::printf("MLP calibrated observation surrogate: %d epochs in %.1f ms, "
@@ -870,7 +884,7 @@ int main() {
     upload(PC, N_PARTICLES, ipx, ipy, ipth);
     upload(PD, N_PARTICLES, ipx, ipy, ipth);
 
-    cv::VideoWriter video("gif/comparison_diff_pf_mlp_hard.avi",
+    cv::VideoWriter video("gif/comparison_diff_pf_mlp_occlusion_kidnap.avi",
                           cv::VideoWriter::fourcc('X', 'V', 'I', 'D'), 30,
                           cv::Size(PANEL_W * 4, PANEL_H));
 
@@ -925,10 +939,10 @@ int main() {
         cv::circle(P1, w2p(out_B.ex, out_B.ey), 6, cv::Scalar(0, 130, 60), 2, cv::LINE_AA);
         cv::circle(P2, w2p(out_C.ex, out_C.ey), 6, cv::Scalar(190, 110, 0), 2, cv::LINE_AA);
         cv::circle(P3, w2p(out_D.ex, out_D.ey), 6, cv::Scalar(150, 55, 150), 2, cv::LINE_AA);
-        label(P0, "Range outliers: Gaussian");
-        label(P1, "Range outliers: supervised MLP");
-        label(P2, "Range outliers: tracking-loss MLP");
-        label(P3, "Range outliers: calibrated surrogate MLP");
+        label(P0, "Occlusion+kidnap: Gaussian");
+        label(P1, "Occlusion+kidnap: supervised MLP");
+        label(P2, "Occlusion+kidnap: tracking-loss MLP");
+        label(P3, "Occlusion+kidnap: calibrated surrogate MLP");
         cv::Mat row01, row23, combined;
         cv::hconcat(P0, P1, row01);
         cv::hconcat(P2, P3, row23);
@@ -946,7 +960,7 @@ int main() {
     float ratio_B = static_cast<float>(rmse_B / rmse_A);
     float ratio_C = static_cast<float>(rmse_C / rmse_A);
     float ratio_D = static_cast<float>(rmse_D / rmse_A);
-    std::printf("Range-outlier eval RMSE (alpha=%.2f):\n"
+    std::printf("Occlusion+kidnap eval RMSE (alpha=%.2f):\n"
                 "  DPF + handcrafted likelihood       = %.3f m\n"
                 "  DPF + supervised MLP likelihood    = %.3f m (%.2fx)\n"
                 "  DPF + tracking-tuned MLP likelihood = %.3f m (%.2fx)\n"
@@ -954,9 +968,9 @@ int main() {
                 TRAINED_ALPHA, rmse_A, rmse_B, ratio_B, rmse_C, ratio_C,
                 rmse_D, ratio_D);
 
-    std::system("ffmpeg -y -i gif/comparison_diff_pf_mlp_hard.avi "
+    std::system("ffmpeg -y -i gif/comparison_diff_pf_mlp_occlusion_kidnap.avi "
                 "-vf 'fps=15,scale=1600:-1:flags=lanczos' -loop 0 "
-                "gif/comparison_diff_pf_mlp_hard.gif 2>/dev/null");
-    std::cout << "GIF saved to gif/comparison_diff_pf_mlp_hard.gif" << std::endl;
+                "gif/comparison_diff_pf_mlp_occlusion_kidnap.gif 2>/dev/null");
+    std::cout << "GIF saved to gif/comparison_diff_pf_mlp_occlusion_kidnap.gif" << std::endl;
     return 0;
 }
