@@ -6,20 +6,24 @@
         log p(z_l | x) = -(||x - l|| - z_l)^2 / (2 sigma^2)
     is replaced with a small MLP h_theta(d, z) -> log_lik, where
         d = ||particle - landmark||,    z = measured distance
-    The MLP is trained supervised against the analytic Gaussian on a
-    synthetic dataset, then dropped into the DPF observation kernel.
+    Internally the two inputs are scaled as (d / range, (z - d) / 5 sigma)
+    so the tiny tanh network does not spend capacity fighting raw units.
+    The MLP is trained two ways:
+      1. supervised against the analytic Gaussian on a synthetic dataset;
+      2. fine-tuned end-to-end on tracking loss by finite-differencing the
+         tiny MLP weight vector through a soft-resampling DPF rollout.
 
     The point is not "neural likelihood beats Gaussian" (the analytic
     form is optimal under the assumed noise model). The point is that
     the DPF architecture accepts a swappable observation model, which
-    is what enables future work where the observation is non-Gaussian
-    or there is no analytic form. Demonstrating that a learned model
-    achieves comparable tracking RMSE validates the framework.
+    is what enables future work where the observation is non-Gaussian,
+    has no analytic form, or should be learned directly from task loss.
 
     Output:
       - Training curve (MSE on log-likelihood, supervised pre-training)
-      - Tracking gif: handcrafted DPF vs MLP-DPF, same scene, same
-        alpha (=3.14, learned in src/diff_pf.cu)
+      - Tracking-loss finite-difference curve for the end-to-end MLP
+      - Tracking gif: handcrafted DPF vs supervised MLP-DPF vs tracking-loss
+        MLP-DPF, same scene, same alpha (=3.14, learned in src/diff_pf.cu)
  ************************************************************************/
 
 #include <iostream>
@@ -28,6 +32,7 @@
 #include <cmath>
 #include <cstdio>
 #include <chrono>
+#include <algorithm>
 
 #include <opencv2/opencv.hpp>
 #include <opencv2/core/core.hpp>
@@ -65,6 +70,14 @@ constexpr int   MLP_HIDDEN    = 16;
 constexpr int   MLP_LAYERS    = 1;   // single hidden layer
 constexpr int   MLP_OUTPUT    = 1;   // log-likelihood
 constexpr int   MLP_ACTIV     = 1;   // tanh hidden activation
+
+constexpr int   E2E_TRAIN_PARTICLES = 384;
+constexpr int   E2E_TRAIN_FRAMES    = 48;
+constexpr int   E2E_TRAIN_EPOCHS    = 24;
+constexpr float E2E_FD_EPS          = 0.04f;
+constexpr float E2E_LR              = 0.005f;
+constexpr float E2E_GRAD_CLIP       = 4.0f;
+constexpr float E2E_WEIGHT_CLIP     = 8.0f;
 
 constexpr int   PANEL_W       = 480;
 constexpr int   PANEL_H       = 360;
@@ -158,8 +171,8 @@ __global__ void likelihood_kernel_mlp(const float* px, const float* py,
         float dx = px[i] - lx[l];
         float dy = py[i] - ly[l];
         float d = sqrtf(dx * dx + dy * dy);
-        mlp_in[0] = d;
-        mlp_in[1] = z_dist[l];
+        mlp_in[0] = d / OBS_RANGE;
+        mlp_in[1] = (z_dist[l] - d) / (5.0f * OBS_SIGMA);
         mlp_forward(mlp_w, mlp_in, input_dim,
                     mlp_out, output_dim,
                     hidden_dim, n_layers, scratch, activation);
@@ -314,6 +327,158 @@ static PFStep run_step(ParticleSet& P, int n, float alpha, float v, float omega,
 }
 
 // ---------------------------------------------------------------------------
+// End-to-end MLP training through tracking loss
+// ---------------------------------------------------------------------------
+static void reset_particle_set(ParticleSet& P, int n,
+                               unsigned int init_seed,
+                               unsigned long long motion_seed) {
+    std::vector<float> ipx(n), ipy(n), ipth(n);
+    std::mt19937 rng_init(init_seed);
+    std::normal_distribution<float> nxy(0.0f, 1.5f);
+    Pose2 gt0 = gt_at(0.0f);
+    for (int i = 0; i < n; i++) {
+        ipx[i]  = gt0.x + nxy(rng_init);
+        ipy[i]  = gt0.y + nxy(rng_init);
+        ipth[i] = gt0.th;
+    }
+    upload(P, n, ipx, ipy, ipth);
+
+    int blk = 256, gd = (n + blk - 1) / blk;
+    init_curand<<<gd, blk>>>(P.d_states, motion_seed, n);
+    CUDA_CHECK(cudaDeviceSynchronize());
+}
+
+static float rollout_tracking_loss_mlp(ParticleSet& P, int n,
+                                       const GpuMLP& mlp,
+                                       const std::vector<float>& lx,
+                                       const std::vector<float>& ly,
+                                       const float* d_lx,
+                                       const float* d_ly,
+                                       float* d_z,
+                                       unsigned char* d_zv,
+                                       unsigned int seed,
+                                       int n_frames) {
+    reset_particle_set(P, n, seed + 11u,
+                       static_cast<unsigned long long>(seed) * 1009ULL + 17ULL);
+
+    std::mt19937 rng_obs(seed + 23u);
+    std::mt19937 rng_resample(seed + 37u);
+    double loss_sum = 0.0;
+    for (int s = 0; s < n_frames; s++) {
+        float t = s * DT;
+        Pose2 gt = gt_at(t);
+        float v, omega;
+        controls_at(t, v, omega);
+
+        std::vector<float> z;
+        std::vector<unsigned char> valid;
+        observe(gt, lx, ly, rng_obs, z, valid);
+        CUDA_CHECK(cudaMemcpy(d_z, z.data(), N_LANDMARKS * sizeof(float),
+                              cudaMemcpyHostToDevice));
+        CUDA_CHECK(cudaMemcpy(d_zv, valid.data(), N_LANDMARKS,
+                              cudaMemcpyHostToDevice));
+
+        PFStep out = run_step(P, n, TRAINED_ALPHA, v, omega,
+                              0.6f, 0.1f, d_lx, d_ly, d_z, d_zv,
+                              LIK_MLP, &mlp, rng_resample);
+        float dx = out.ex - gt.x;
+        float dy = out.ey - gt.y;
+        loss_sum += dx * dx + dy * dy;
+    }
+    return static_cast<float>(loss_sum / n_frames);
+}
+
+struct AdamVec {
+    std::vector<float> m, v;
+    int t = 0;
+
+    explicit AdamVec(int n) : m(n, 0.0f), v(n, 0.0f) {}
+};
+
+static float apply_adam(std::vector<float>& weights,
+                        std::vector<float>& grad,
+                        AdamVec& adam,
+                        float lr) {
+    double norm2 = 0.0;
+    for (float g : grad) norm2 += static_cast<double>(g) * g;
+    float grad_norm = std::sqrt(static_cast<float>(norm2));
+    if (grad_norm > E2E_GRAD_CLIP) {
+        float s = E2E_GRAD_CLIP / (grad_norm + 1.0e-12f);
+        for (float& g : grad) g *= s;
+        grad_norm = E2E_GRAD_CLIP;
+    }
+
+    adam.t++;
+    constexpr float beta1 = 0.9f;
+    constexpr float beta2 = 0.999f;
+    constexpr float eps = 1.0e-8f;
+    float b1_corr = 1.0f - std::pow(beta1, adam.t);
+    float b2_corr = 1.0f - std::pow(beta2, adam.t);
+    for (size_t i = 0; i < weights.size(); i++) {
+        adam.m[i] = beta1 * adam.m[i] + (1.0f - beta1) * grad[i];
+        adam.v[i] = beta2 * adam.v[i] + (1.0f - beta2) * grad[i] * grad[i];
+        float mh = adam.m[i] / b1_corr;
+        float vh = adam.v[i] / b2_corr;
+        weights[i] -= lr * mh / (std::sqrt(vh) + eps);
+        weights[i] = std::max(-E2E_WEIGHT_CLIP, std::min(E2E_WEIGHT_CLIP, weights[i]));
+    }
+    return grad_norm;
+}
+
+static void train_mlp_tracking_finite_difference(
+    GpuMLP& mlp,
+    const std::vector<float>& lx,
+    const std::vector<float>& ly,
+    const float* d_lx,
+    const float* d_ly,
+    float* d_z,
+    unsigned char* d_zv,
+    std::vector<float>& loss_curve) {
+    auto cfg = mlp.config();
+    std::vector<float> weights = mlp.get_weights();
+    std::vector<float> grad(cfg.total_weights, 0.0f);
+    std::vector<float> tmp = weights;
+    AdamVec adam(cfg.total_weights);
+    ParticleSet P;
+    P.alloc(E2E_TRAIN_PARTICLES, 777ULL);
+    loss_curve.clear();
+
+    auto eval_loss = [&](const std::vector<float>& w,
+                         unsigned int seed_base) -> float {
+        mlp.load_weights(w);
+        return rollout_tracking_loss_mlp(P, E2E_TRAIN_PARTICLES, mlp,
+                                         lx, ly, d_lx, d_ly, d_z, d_zv,
+                                         seed_base, E2E_TRAIN_FRAMES);
+    };
+
+    for (int epoch = 0; epoch < E2E_TRAIN_EPOCHS; epoch++) {
+        unsigned int seed_base = 9001u + static_cast<unsigned int>(epoch) * 131u;
+        float base_loss = eval_loss(weights, seed_base + 7u);
+        loss_curve.push_back(base_loss);
+
+        for (int wid = 0; wid < cfg.total_weights; wid++) {
+            tmp = weights;
+            tmp[wid] += E2E_FD_EPS;
+            float lp = eval_loss(tmp, seed_base + 31u);
+
+            tmp[wid] = weights[wid] - E2E_FD_EPS;
+            float lm = eval_loss(tmp, seed_base + 31u);
+
+            grad[wid] = (lp - lm) / (2.0f * E2E_FD_EPS);
+        }
+
+        float gnorm = apply_adam(weights, grad, adam, E2E_LR);
+        mlp.load_weights(weights);
+        float next_loss = eval_loss(weights, seed_base + 7u);
+        std::printf("E2E MLP epoch %02d/%02d: tracking loss %.4f -> %.4f, |g|=%.3f\n",
+                    epoch + 1, E2E_TRAIN_EPOCHS, base_loss, next_loss, gnorm);
+    }
+
+    mlp.load_weights(weights);
+    P.free_all();
+}
+
+// ---------------------------------------------------------------------------
 // Visualisation
 // ---------------------------------------------------------------------------
 static cv::Point2i w2p(float x, float y) {
@@ -383,8 +548,8 @@ int main() {
         float r = ur(rng_data);
         float z = d - r;
         if (z < 0.0f) z = 0.0f;
-        h_train_in[i * MLP_INPUT + 0] = d;
-        h_train_in[i * MLP_INPUT + 1] = z;
+        h_train_in[i * MLP_INPUT + 0] = d / OBS_RANGE;
+        h_train_in[i * MLP_INPUT + 1] = (z - d) / (5.0f * OBS_SIGMA);
         // Clip extreme log-likelihoods so the MLP target range stays
         // bounded; weights = exp(log_lik) below -12 are numerically
         // indistinguishable anyway.
@@ -421,8 +586,8 @@ int main() {
     float probe_d[] = { 2.0f, 5.0f, 5.0f, 10.0f, 10.0f, 15.0f, 15.0f, 20.0f };
     float probe_z[] = { 2.0f, 5.0f, 6.0f, 10.0f, 12.0f, 15.0f, 17.0f, 20.0f };
     for (int i = 0; i < 8; i++) {
-        probe_in[i * MLP_INPUT + 0] = probe_d[i];
-        probe_in[i * MLP_INPUT + 1] = probe_z[i];
+        probe_in[i * MLP_INPUT + 0] = probe_d[i] / OBS_RANGE;
+        probe_in[i * MLP_INPUT + 1] = (probe_z[i] - probe_d[i]) / (5.0f * OBS_SIGMA);
     }
     float* d_probe_in; float* d_probe_out;
     CUDA_CHECK(cudaMalloc(&d_probe_in,  8 * MLP_INPUT * sizeof(float)));
@@ -441,10 +606,27 @@ int main() {
     }
     cudaFree(d_probe_in); cudaFree(d_probe_out);
 
-    // --- Step 3: tracking eval, handcrafted vs MLP
-    ParticleSet PA, PB;
+    // --- Step 3: fine-tune a second MLP directly on tracking loss.
+    // Each weight gradient is a central finite difference of the full
+    // soft-resampling DPF rollout loss.
+    GpuMLP mlp_e2e(MLP_INPUT, MLP_HIDDEN, MLP_LAYERS, MLP_OUTPUT);
+    mlp_e2e.load_weights(mlp.get_weights());
+    std::vector<float> tracking_loss_curve;
+    auto t_e2e_0 = std::chrono::high_resolution_clock::now();
+    train_mlp_tracking_finite_difference(mlp_e2e, lx, ly, d_lx, d_ly,
+                                         d_z, d_zv, tracking_loss_curve);
+    auto t_e2e_1 = std::chrono::high_resolution_clock::now();
+    double e2e_ms = std::chrono::duration<double, std::milli>(t_e2e_1 - t_e2e_0).count();
+    std::printf("MLP tracking-loss fine-tuning: %d epochs in %.1f ms, "
+                "loss %.4f -> %.4f\n",
+                E2E_TRAIN_EPOCHS, e2e_ms,
+                tracking_loss_curve.front(), tracking_loss_curve.back());
+
+    // --- Step 4: tracking eval, handcrafted vs supervised MLP vs E2E MLP
+    ParticleSet PA, PB, PC;
     PA.alloc(N_PARTICLES, 11);
     PB.alloc(N_PARTICLES, 13);
+    PC.alloc(N_PARTICLES, 17);
     std::vector<float> ipx(N_PARTICLES), ipy(N_PARTICLES), ipth(N_PARTICLES);
     std::mt19937 rng_init(42);
     std::normal_distribution<float> nxy(0.0f, 1.5f);
@@ -456,63 +638,79 @@ int main() {
     }
     upload(PA, N_PARTICLES, ipx, ipy, ipth);
     upload(PB, N_PARTICLES, ipx, ipy, ipth);
+    upload(PC, N_PARTICLES, ipx, ipy, ipth);
 
     cv::VideoWriter video("gif/comparison_diff_pf_mlp.avi",
                           cv::VideoWriter::fourcc('X', 'V', 'I', 'D'), 30,
-                          cv::Size(PANEL_W * 2, PANEL_H));
+                          cv::Size(PANEL_W * 3, PANEL_H));
 
-    std::mt19937 rng_eval(99);
-    double rmse_A = 0.0, rmse_B = 0.0;
+    std::mt19937 rng_obs_eval(99);
+    std::mt19937 rng_eval_A(199);
+    std::mt19937 rng_eval_B(299);
+    std::mt19937 rng_eval_C(399);
+    double rmse_A = 0.0, rmse_B = 0.0, rmse_C = 0.0;
     for (int s = 0; s < N_FRAMES; s++) {
         float t = s * DT;
         Pose2 gt = gt_at(t);
         float v, omega; controls_at(t, v, omega);
         std::vector<float> z; std::vector<unsigned char> valid;
-        observe(gt, lx, ly, rng_eval, z, valid);
+        observe(gt, lx, ly, rng_obs_eval, z, valid);
         CUDA_CHECK(cudaMemcpy(d_z,  z.data(),     N_LANDMARKS * sizeof(float), cudaMemcpyHostToDevice));
         CUDA_CHECK(cudaMemcpy(d_zv, valid.data(), N_LANDMARKS,                 cudaMemcpyHostToDevice));
 
         auto out_A = run_step(PA, N_PARTICLES, TRAINED_ALPHA, v, omega,
                               0.6f, 0.1f, d_lx, d_ly, d_z, d_zv,
-                              LIK_ANALYTIC, nullptr, rng_eval);
+                              LIK_ANALYTIC, nullptr, rng_eval_A);
         auto out_B = run_step(PB, N_PARTICLES, TRAINED_ALPHA, v, omega,
                               0.6f, 0.1f, d_lx, d_ly, d_z, d_zv,
-                              LIK_MLP, &mlp, rng_eval);
+                              LIK_MLP, &mlp, rng_eval_B);
+        auto out_C = run_step(PC, N_PARTICLES, TRAINED_ALPHA, v, omega,
+                              0.6f, 0.1f, d_lx, d_ly, d_z, d_zv,
+                              LIK_MLP, &mlp_e2e, rng_eval_C);
 
         rmse_A += (out_A.ex - gt.x) * (out_A.ex - gt.x) + (out_A.ey - gt.y) * (out_A.ey - gt.y);
         rmse_B += (out_B.ex - gt.x) * (out_B.ex - gt.x) + (out_B.ey - gt.y) * (out_B.ey - gt.y);
+        rmse_C += (out_C.ex - gt.x) * (out_C.ex - gt.x) + (out_C.ey - gt.y) * (out_C.ey - gt.y);
 
         cv::Mat P0(PANEL_H, PANEL_W, CV_8UC3);
         cv::Mat P1(PANEL_H, PANEL_W, CV_8UC3);
-        draw_base(P0, lx, ly);  draw_base(P1, lx, ly);
+        cv::Mat P2(PANEL_H, PANEL_W, CV_8UC3);
+        draw_base(P0, lx, ly);  draw_base(P1, lx, ly);  draw_base(P2, lx, ly);
         draw_particles(P0, PA.h_px, PA.h_py, cv::Scalar(60, 60, 200));
         draw_particles(P1, PB.h_px, PB.h_py, cv::Scalar(0, 130, 60));
+        draw_particles(P2, PC.h_px, PC.h_py, cv::Scalar(190, 110, 0));
         auto gp = w2p(gt.x, gt.y);
         cv::circle(P0, gp, 5, cv::Scalar(0, 0, 0), 2, cv::LINE_AA);
         cv::circle(P1, gp, 5, cv::Scalar(0, 0, 0), 2, cv::LINE_AA);
+        cv::circle(P2, gp, 5, cv::Scalar(0, 0, 0), 2, cv::LINE_AA);
         cv::circle(P0, w2p(out_A.ex, out_A.ey), 6, cv::Scalar(60, 60, 200), 2, cv::LINE_AA);
         cv::circle(P1, w2p(out_B.ex, out_B.ey), 6, cv::Scalar(0, 130, 60), 2, cv::LINE_AA);
+        cv::circle(P2, w2p(out_C.ex, out_C.ey), 6, cv::Scalar(190, 110, 0), 2, cv::LINE_AA);
         label(P0, "DPF + handcrafted Gaussian likelihood");
-        label(P1, "DPF + MLP-learned likelihood (2->16->1, supervised)");
-        cv::Mat combined;
-        cv::hconcat(P0, P1, combined);
+        label(P1, "DPF + MLP likelihood (supervised log-lik)");
+        label(P2, "DPF + MLP likelihood (tracking-loss fine-tuned)");
+        cv::Mat row01, combined;
+        cv::hconcat(P0, P1, row01);
+        cv::hconcat(row01, P2, combined);
         video.write(combined);
     }
     video.release();
-    PA.free_all(); PB.free_all();
+    PA.free_all(); PB.free_all(); PC.free_all();
     cudaFree(d_lx); cudaFree(d_ly); cudaFree(d_z); cudaFree(d_zv);
 
     rmse_A = std::sqrt(rmse_A / N_FRAMES);
     rmse_B = std::sqrt(rmse_B / N_FRAMES);
-    float ratio = static_cast<float>(rmse_B / rmse_A);
+    rmse_C = std::sqrt(rmse_C / N_FRAMES);
+    float ratio_B = static_cast<float>(rmse_B / rmse_A);
+    float ratio_C = static_cast<float>(rmse_C / rmse_A);
     std::printf("Eval RMSE (alpha=%.2f):\n"
-                "  DPF + handcrafted likelihood = %.3f m\n"
-                "  DPF + MLP likelihood         = %.3f m\n"
-                "  MLP/handcrafted ratio = %.2fx\n",
-                TRAINED_ALPHA, rmse_A, rmse_B, ratio);
+                "  DPF + handcrafted likelihood       = %.3f m\n"
+                "  DPF + supervised MLP likelihood    = %.3f m (%.2fx)\n"
+                "  DPF + tracking-tuned MLP likelihood = %.3f m (%.2fx)\n",
+                TRAINED_ALPHA, rmse_A, rmse_B, ratio_B, rmse_C, ratio_C);
 
     std::system("ffmpeg -y -i gif/comparison_diff_pf_mlp.avi "
-                "-vf 'fps=15,scale=960:-1:flags=lanczos' -loop 0 "
+                "-vf 'fps=15,scale=1200:-1:flags=lanczos' -loop 0 "
                 "gif/comparison_diff_pf_mlp.gif 2>/dev/null");
     std::cout << "GIF saved to gif/comparison_diff_pf_mlp.gif" << std::endl;
     return 0;
