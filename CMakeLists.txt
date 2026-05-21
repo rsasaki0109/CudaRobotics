@@ -290,6 +290,10 @@ add_executable(comparison_voxel_map src/comparison_voxel_map.cu)
 target_link_libraries(comparison_voxel_map ${OpenCV_LIBS})
 target_compile_options(comparison_voxel_map PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
 
+add_executable(comparison_collision_check src/comparison_collision_check.cu)
+target_link_libraries(comparison_collision_check ${OpenCV_LIBS})
+target_compile_options(comparison_collision_check PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
+
 add_executable(comparison_fastslam src/comparison_fastslam.cu)
 target_link_libraries(comparison_fastslam ${OpenCV_LIBS})
 target_compile_options(comparison_fastslam PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
