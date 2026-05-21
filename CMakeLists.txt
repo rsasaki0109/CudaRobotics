@@ -290,9 +290,9 @@ add_executable(comparison_esdf src/comparison_esdf.cu)
 target_link_libraries(comparison_esdf ${OpenCV_LIBS})
 target_compile_options(comparison_esdf PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
 
-add_executable(comparison_esdf_3d src/comparison_esdf_3d.cu)
-target_link_libraries(comparison_esdf_3d ${OpenCV_LIBS})
-target_compile_options(comparison_esdf_3d PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
+add_executable(pf_esdf src/pf_esdf.cu)
+target_link_libraries(pf_esdf ${OpenCV_LIBS})
+target_compile_options(pf_esdf PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
 
 add_executable(comparison_voxel_map src/comparison_voxel_map.cu)
 target_link_libraries(comparison_voxel_map ${OpenCV_LIBS})
