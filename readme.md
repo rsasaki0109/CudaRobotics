@@ -4,6 +4,21 @@ CUDA-accelerated C++ implementations of robotics algorithms, based on [PythonRob
 
 Each algorithm leverages GPU parallelism for significant speedup over CPU-only implementations.
 
+## GPU Capability Matrix
+
+Core robotics building blocks shipped as standalone CPU vs CUDA demos:
+
+| Capability | Demo binary | GPU scale | Headline result |
+|---|---|---|---|
+| Occupancy grid mapping | `comparison_occupancy_grid` | 256x256 grid, log-odds | CPU vs CUDA log-odds raycast updates |
+| Collision checker | `comparison_collision_check` | 1,048,576 candidate segments / scan | 1,277x faster per candidate (2D DDA) |
+| Scan matching | `comparison_icp`, `comparison_ndt`, `gicp` | 10K+ point clouds | Parallel correspondence + transform |
+| Particle filter | `comparison_pf`, `diff_pf`, `diff_pf_mlp` | 10,000 particles | 100x particle count, end-to-end differentiable |
+| RRT family | `comparison_rrt`, `comparison_rrtstar`, `comparison_reeds_shepp_fan` | 1M candidate paths | Batch NN + RS collision check, 5,000x per-path |
+| 3D voxel map | `comparison_voxel_map` | 256x256x32 voxels, 64x1024 rays | 58x faster per ray (3D DDA log-odds) |
+| ESDF (Euclidean distance transform) | `comparison_esdf` | 800x800 (640K cells) | 53,404x faster per cell (Jump Flooding) |
+| Raycasting (LiDAR sim) | `comparison_lidar_sim`, `comparison_lidar3d_sim` | 1M 2D rays / 131K 3D rays per scan | Massive parallel ray-cast with material returns |
+
 ## Why CUDA? — Visual Quality Difference
 
 GPU enables orders-of-magnitude more particles/samples, resulting in visually better results. All comparisons below use the **same algorithm** on CPU and GPU — the only difference is sample/particle count enabled by GPU parallelism:
