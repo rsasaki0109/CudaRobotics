@@ -14,8 +14,8 @@ GPU enables orders-of-magnitude more particles/samples, resulting in visually be
 | <img src="https://rsasaki0109.github.io/CudaRobotics/comparison_pf_visual.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/comparison_expansion_reset_mcl.gif" width="400"/> |
 | **Multi-Robot: CPU 5 vs CUDA 500 robots** | **DWA: CPU 50 vs CUDA 50,000 samples** |
 | <img src="https://rsasaki0109.github.io/CudaRobotics/comparison_multi_robot_visual.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/comparison_dwa_visual.gif" width="400"/> |
-| **Lidar Simulator: CPU 1,024 vs CUDA 1,048,576 rays / scan** | **Reeds-Shepp Fan: CPU 1,024 vs CUDA 1,048,572 candidate paths** |
-| <img src="https://rsasaki0109.github.io/CudaRobotics/comparison_lidar_sim.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/comparison_reeds_shepp_fan.gif" width="400"/> |
+| **3D LiDAR Simulator: CPU 16x512 vs CUDA 64x2048 rays / scan** | **Reeds-Shepp Fan: CPU 1,024 vs CUDA 1,048,572 candidate paths** |
+| <img src="https://rsasaki0109.github.io/CudaRobotics/comparison_lidar3d_sim.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/comparison_reeds_shepp_fan.gif" width="400"/> |
 
 <details>
 <summary>All CPU vs CUDA speed comparisons + algorithm-axis demos (click to expand)</summary>
@@ -26,6 +26,8 @@ GPU enables orders-of-magnitude more particles/samples, resulting in visually be
 | <img src="https://rsasaki0109.github.io/CudaRobotics/comparison_multi_robot.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/comparison_pf.gif" width="400"/> |
 | **Dynamic Window Approach** | **Frenet Optimal Trajectory** |
 | <img src="https://rsasaki0109.github.io/CudaRobotics/comparison_dwa.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/comparison_frenet.gif" width="400"/> |
+| **2D Lidar Simulator: CPU 1,024 vs CUDA 1,048,576 rays / scan** | **3D LiDAR Simulator: CPU 16x512 vs CUDA 64x2048 rays / scan** |
+| <img src="https://rsasaki0109.github.io/CudaRobotics/comparison_lidar_sim.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/comparison_lidar3d_sim.gif" width="400"/> |
 | **RRT** | **RRT*** |
 | <img src="https://rsasaki0109.github.io/CudaRobotics/comparison_rrt.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/comparison_rrtstar.gif" width="400"/> |
 | **A*** | **Dijkstra** |
@@ -309,6 +311,7 @@ Rotating visual summary of the benchmark room cloud (raw / statistical-filtered 
 |---|---|---|
 | Occupancy Grid | `occupancy_grid` | Ray-parallel lidar update (360 threads/scan) |
 | **Massive Lidar Simulator** | `comparison_lidar_sim` | **2D DDA raycast, 1 ray = 1 thread; 1M rays/scan in ~0.25 ms (1500x per-ray throughput vs CPU)** |
+| **3D LiDAR Simulator** | `comparison_lidar3d_sim` | **Multi-ring analytic raycast, 1 ray = 1 thread; dense point cloud + range image from 64x2048 rays/scan; ~650x faster per ray than CPU in the animated sweep** |
 
 ### Multi-Robot
 
