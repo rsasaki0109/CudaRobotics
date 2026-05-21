@@ -16,7 +16,7 @@ Core robotics building blocks shipped as standalone CPU vs CUDA demos:
 | Particle filter | `comparison_pf`, `diff_pf`, `diff_pf_mlp` | 10,000 particles | 100x particle count, end-to-end differentiable |
 | RRT family | `comparison_rrt`, `comparison_rrtstar`, `comparison_reeds_shepp_fan` | 1M candidate paths | Batch NN + RS collision check, 5,000x per-path |
 | 3D voxel map | `comparison_voxel_map` | 256x256x32 voxels, 64x1024 rays | 58x faster per ray (3D DDA log-odds) |
-| ESDF (Euclidean distance transform) | `comparison_esdf` | 800x800 (640K cells) | 53,404x faster per cell (Jump Flooding) |
+| ESDF (Euclidean distance transform) | `comparison_esdf`, `comparison_esdf_3d` | 800x800 (640K cells) / 128x128x64 (1.05M voxels) | 53,404x per cell (2D JFA); 86,613x per voxel (3D JFA) |
 | Raycasting (LiDAR sim) | `comparison_lidar_sim`, `comparison_lidar3d_sim` | 1M 2D rays / 131K 3D rays per scan | Massive parallel ray-cast with material returns |
 
 ## Why CUDA? — Visual Quality Difference
@@ -53,8 +53,8 @@ GPU enables orders-of-magnitude more particles/samples, resulting in visually be
 | <img src="https://rsasaki0109.github.io/CudaRobotics/comparison_rrt3d.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/comparison_occupancy_grid.gif" width="400"/> |
 | **ESDF: CPU brute force 100x100 vs CUDA Jump Flooding 800x800** | **3D Voxel Map: CPU 64x64x16 + 16x256 rays vs CUDA 256x256x32 + 64x1024 rays** |
 | <img src="https://rsasaki0109.github.io/CudaRobotics/comparison_esdf.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/comparison_voxel_map.gif" width="400"/> |
-| **Massive Collision Check: CPU 1,024 vs CUDA 1,048,576 candidate segments / scan** | |
-| <img src="https://rsasaki0109.github.io/CudaRobotics/comparison_collision_check.gif" width="400"/> | |
+| **Massive Collision Check: CPU 1,024 vs CUDA 1,048,576 candidate segments / scan** | **3D ESDF: CPU brute force 32x32x16 vs CUDA JFA-3D 128x128x64** |
+| <img src="https://rsasaki0109.github.io/CudaRobotics/comparison_collision_check.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/comparison_esdf_3d.gif" width="400"/> |
 | **FastSLAM 1.0** | **AMCL** |
 | <img src="https://rsasaki0109.github.io/CudaRobotics/comparison_fastslam.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/comparison_amcl.gif" width="400"/> |
 | **Value Iteration (CPU vs CUDA convergence)** | **Particle Filter on Episode (PFoE, demo)** |
@@ -337,6 +337,7 @@ Rotating visual summary of the benchmark room cloud (raw / statistical-filtered 
 | **ESDF (Jump Flooding)** | `comparison_esdf` | **Euclidean distance transform on a 2D occupancy grid. CPU brute force 100x100 vs CUDA JFA 800x800 (64x larger field); validates to numerical equality with CPU brute force on 64x64; per-cell throughput 53,404x faster than CPU (0.193 ms / 640K-cell ESDF vs 161 ms / 10K-cell ESDF)** |
 | **3D Voxel Map (log-odds)** | `comparison_voxel_map` | **3D DDA log-odds occupancy with atomicAdd updates, 1 ray = 1 thread. CPU 64x64x16 voxels + 16x256 rays vs CUDA 256x256x32 voxels + 64x1024 rays (32x larger grid, 16x more rays). ~58x faster per ray (CPU 2.24 ms/scan vs CUDA 0.61 ms/scan).** |
 | **Massive Collision Checker** | `comparison_collision_check` | **2D DDA segment collision check against a static occupancy grid, 1 candidate = 1 thread. CPU 1,024 vs CUDA 1,048,576 segments / scan; 100% agreement with CPU DDA on 4,096-sample validation; per-candidate throughput 1,277x faster (CPU 0.61 ms / scan vs CUDA 0.49 ms / scan).** |
+| **3D ESDF (Jump Flooding 3D)** | `comparison_esdf_3d` | **3D Euclidean distance transform via 3D JFA (26-neighbour propagation). CPU brute force 32x32x16 voxels vs CUDA JFA-3D 128x128x64 voxels (64x larger field); per-voxel throughput 86,613x faster than CPU (GPU 0.854 ms / 1.05M voxels vs CPU 1156 ms / 16K voxels). JFA validation max |CPU-GPU| = 0.09 m on 32x32x16 (~0.18 cells, JFA's known small approximation error).** |
 
 ### Multi-Robot
 
