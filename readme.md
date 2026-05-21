@@ -28,6 +28,8 @@ GPU enables orders-of-magnitude more particles/samples, resulting in visually be
 | <img src="https://rsasaki0109.github.io/CudaRobotics/comparison_dwa.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/comparison_frenet.gif" width="400"/> |
 | **2D Lidar Simulator: CPU 1,024 vs CUDA 1,048,576 rays / scan** | **3D LiDAR Simulator: CPU 16x512 vs CUDA 64x2048 rays / scan** |
 | <img src="https://rsasaki0109.github.io/CudaRobotics/comparison_lidar_sim.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/comparison_lidar3d_sim.gif" width="400"/> |
+| **Gaussian Splatting Map Renderer: sparse CPU vs dense CUDA surfels** | **CudaPointCloud processing summary** |
+| <img src="https://rsasaki0109.github.io/CudaRobotics/comparison_gaussian_splatting.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/pointcloud_processing.gif" width="400"/> |
 | **RRT** | **RRT*** |
 | <img src="https://rsasaki0109.github.io/CudaRobotics/comparison_rrt.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/comparison_rrtstar.gif" width="400"/> |
 | **A*** | **Dijkstra** |
@@ -56,6 +58,7 @@ Recent additions push the repository beyond direct CUDA ports of classic robotic
 | Neuroevolution for Cart-Pole | `neuroevo`, `comparison_neuroevo` | Evolves 4096 neural policies in parallel on GPU and compares them against a CPU baseline with side-by-side learning curves. |
 | MiniIsaacGym | `mini_isaac`, `mini_isaac_rl` | Runs thousands of CartPole environments in parallel on GPU and trains a compact policy with GPU-side REINFORCE updates. |
 | CudaPointCloud | `voxel_grid_filter`, `statistical_filter`, `normal_estimation`, `gicp`, `ransac_plane`, `benchmark_pointcloud` | GPU voxel filtering, outlier removal, PCA normals, plane extraction, and GICP registration. Supports PLY/KITTI/XYZ file input. Normal estimation reaches 3,171x speedup at 10K points. |
+| Gaussian Splatting Map Renderer | `comparison_gaussian_splatting` | Forward-only CUDA Gaussian splatting for robotics map visualization. One Gaussian surfel per thread, projected to screen space and atomically accumulated into color/opacity buffers; renders dense 3D surfel maps beside a sparse CPU baseline. Latest animated sweep: 65,536 CUDA Gaussians at 0.77 ms/frame, about 1,381x faster per Gaussian than CPU. |
 | Swarm Optimization | `pso_cuda`, `differential_evolution`, `cma_es`, `aco_tsp`, `comparison_swarm` | Large-scale PSO, DE, CMA-ES, and ACO implementations with animated convergence comparisons. |
 
 | | |
@@ -312,6 +315,7 @@ Rotating visual summary of the benchmark room cloud (raw / statistical-filtered 
 | Occupancy Grid | `occupancy_grid` | Ray-parallel lidar update (360 threads/scan) |
 | **Massive Lidar Simulator** | `comparison_lidar_sim` | **2D DDA raycast, 1 ray = 1 thread; 1M rays/scan in ~0.25 ms (1500x per-ray throughput vs CPU)** |
 | **3D LiDAR Simulator** | `comparison_lidar3d_sim` | **Multi-ring analytic raycast, 1 ray = 1 thread; dense point cloud + range image from 64x2048 rays/scan; ~650x faster per ray than CPU in the animated sweep** |
+| **Gaussian Splatting Map Renderer** | `comparison_gaussian_splatting` | **Forward-only Gaussian surfel rendering, 1 Gaussian = 1 thread; 65,536 CUDA Gaussians at 0.77 ms/frame in the animated sweep** |
 
 ### Multi-Robot
 

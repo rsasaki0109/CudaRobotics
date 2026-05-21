@@ -302,6 +302,10 @@ add_executable(comparison_lidar3d_sim src/comparison_lidar3d_sim.cu)
 target_link_libraries(comparison_lidar3d_sim ${OpenCV_LIBS})
 target_compile_options(comparison_lidar3d_sim PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
 
+add_executable(comparison_gaussian_splatting src/comparison_gaussian_splatting.cu)
+target_link_libraries(comparison_gaussian_splatting ${OpenCV_LIBS})
+target_compile_options(comparison_gaussian_splatting PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
+
 add_executable(comparison_reeds_shepp_fan src/comparison_reeds_shepp_fan.cu)
 target_link_libraries(comparison_reeds_shepp_fan ${OpenCV_LIBS})
 target_compile_options(comparison_reeds_shepp_fan PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
