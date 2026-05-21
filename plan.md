@@ -1,9 +1,15 @@
-# CudaRobotics Plan / Handoff (for Codex)
+# CudaRobotics Plan / Handoff (for Codex / Claude)
 
 Last updated: 2026-05-21 JST
 
-Short handoff for the next coding agent. The repo is on `master`, synced with
-`origin/master`, working tree clean before this file update.
+Short handoff for the next coding agent. The local checkout is currently on
+`feat/diff-pf-injection-trigger`. The CUDA driver/library mismatch that had
+blocked earlier validation has been resolved (kernel and userspace are now
+both `580.159.03`, `nvidia-smi` healthy), the DPF MLP injection-rate / ESS
+trigger sweep has been run end-to-end, and the resulting numbers, gif, and
+docs are committed locally; the remaining work is gh-pages publish + PR.
+
+PR #39 (Gaussian splatting renderer) is still open as a draft with CI green.
 
 ---
 
@@ -17,13 +23,14 @@ Short handoff for the next coding agent. The repo is on `master`, synced with
   ```bash
   cd build && cmake .. && make -j$(nproc)
   ```
-- The 2026-05-20/21 session merged PRs #16〜#23 and #25〜#35 (19 PRs). The repo's "Why CUDA?"
-  top showcase is now a curated 2x3 grid; the Research Extensions table has
-  two new entries (Differentiable Particle Filter + DPF with MLP observation).
+- The 2026-05-20/21 session merged PRs #16〜#23 and #25〜#38. PR #39 is open
+  as a draft and CI is green. The repo's "Why CUDA?" top showcase is now a
+  curated visual grid; the Research Extensions table includes DPF, 3D LiDAR,
+  and Gaussian-splatting-style map rendering work.
 
 ---
 
-## What Was Just Done (2026-05-20 session)
+## What Was Just Done (2026-05-20/21 session)
 
 | PR | Title | Headline number |
 |---|---|---|
@@ -46,6 +53,10 @@ Short handoff for the next coding agent. The repo is on `master`, synced with
 | #33 | DPF calibrated outlier surrogate | Calibrated-surrogate MLP 7.04m vs Gaussian 9.80m (**0.72x**) |
 | #34 | DPF calibrated occlusion surrogate | Calibrated-surrogate MLP 6.93m vs Gaussian 8.25m (**0.84x**) |
 | #35 | DPF occlusion/kidnap ablations | Split occlusion-only vs kidnap-only recovery limits |
+| #36 | DPF kidnap particle injection | Gaussian+injection 1.01m vs no-injection Gaussian 7.30m (**0.14x**) |
+| #37 | Show expansion reset particles in MCL comparison | Merged visual fix: orange reset-cloud overlay is now visible after kidnap |
+| #38 | Add 3D LiDAR simulator comparison | Merged: CPU 16x512 vs CUDA 64x2048 multi-ring raycast; ~651x faster per ray in animated sweep |
+| #39 | Add Gaussian splatting map renderer | **Open draft**, CI green: CPU sparse vs CUDA dense Gaussian surfels; ~1381x faster per Gaussian |
 
 All four findings docs are under `docs/`: `topology_bench_day1_findings.md`
 through `topology_bench_day4_findings.md`.
@@ -136,7 +147,7 @@ Gifs:
 `gif/comparison_diff_pf_mlp_occlusion_only.gif` and
 `gif/comparison_diff_pf_mlp_kidnap_only.gif`.
 
-Current feature branch `feat/diff-pf-particle-injection` adds explicit
+Merged PR #36 added explicit
 particle-support recovery to the kidnap-only ablation. After the hidden jump,
 12% of particles are range-reset by sampling on valid landmark-measurement
 circles before the next likelihood update. Latest local run:
@@ -144,6 +155,87 @@ no-injection Gaussian **7.30 m**, Gaussian + range-reset injection **1.01 m**
 (**0.14x**), calibrated-surrogate MLP **5.87 m** (**0.80x**),
 calibrated-surrogate + injection **1.08 m** (**0.15x**). New gif:
 `gif/comparison_diff_pf_mlp_kidnap_injection.gif`.
+
+Merged PR #37 fixed the Expansion Reset MCL showcase. The comparison used to
+draw only post-likelihood/post-resample particles, so the actual expansion
+reset cloud was not visible even though recovery worked.
+`src/comparison_expansion_reset_mcl.cu` now snapshots reset-time particles and
+overlays them in orange for a short window;
+`gif/comparison_expansion_reset_mcl.gif` was regenerated and published to
+`gh-pages`.
+
+Merged PR #38 added `src/comparison_lidar3d_sim.cu`, a PR-sized 3D extension
+of the 2D massive lidar simulator. It uses analytic 3D primitives, a spinning
+multi-ring LiDAR model, and one CUDA thread per ray. Outputs include a
+3-panel GIF (`gif/comparison_lidar3d_sim.gif`) with CPU sparse point cloud,
+CUDA dense point cloud, and CUDA range image. Latest local run:
+`64x2048` CPU **63.00 ms** vs CUDA **0.088 ms** (**715.7x** same-ray speedup),
+`128x4096` CPU **248.19 ms** vs CUDA **0.116 ms** (**2144.9x**), correctness
+max range error **0.000381 m**, label match **100%**, animated sweep about
+**651x** faster per ray. GIF was published to `gh-pages`.
+
+Open PR #39 adds `src/comparison_gaussian_splatting.cu`, a forward-only
+Gaussian surfel renderer inspired by the EasyGaussianSplatting direction but
+implemented as a small robotics map-visualization demo, not a training stack.
+It renders CPU sparse vs CUDA dense Gaussian maps plus an opacity/density
+panel. Latest local run: correctness check on **2,048** Gaussians, CPU
+**35.07 ms**, CUDA **29.624 ms**, accumulator MAE **0.000000**; animated
+average CPU **66.84 ms/frame** for **4,096** Gaussians vs CUDA
+**0.77 ms/frame** for **65,536** Gaussians, about **1381x** faster per
+Gaussian. `gif/comparison_gaussian_splatting.gif` was generated and published
+to `gh-pages`. PR #39 status as of this handoff: draft, mergeable, GitHub
+Actions build **SUCCESS**.
+
+Commands already run for #39:
+
+```bash
+rtk cmake -S . -B build
+rtk cmake --build build --target comparison_gaussian_splatting -j$(nproc)
+rtk ./bin/comparison_gaussian_splatting
+rtk git diff --check
+```
+
+To finish #39:
+
+```bash
+rtk gh pr ready 39
+rtk gh pr merge 39 --squash --delete-branch \
+  --subject "Add Gaussian splatting map renderer" --body ""
+```
+
+Current WIP branch `feat/diff-pf-injection-trigger` adds an injection-rate /
+ESS-trigger ablation on the kidnap-only scene. `src/diff_pf_mlp.cu` now:
+
+- computes normalized-weight effective sample size, `ESS = 1 / sum(w_i^2)`
+  (clamped to `[1, N]` to stay sane on collapse);
+- returns ESS and the actually applied injection rate per step via `PFStep`;
+- sweeps fixed-rate policies at **1% / 3% / 6% / 12% / 24%**;
+- sweeps ESS-triggered policies at **3%** and **12%** with threshold
+  `ESS < 0.35 N`;
+- generates a 4-panel GIF
+  `gif/comparison_diff_pf_mlp_injection_trigger.gif` showing no injection,
+  fixed 3%, fixed 12%, and ESS-triggered 12%.
+
+Latest local run (Gaussian likelihood, kidnap-only, 240 frames):
+
+| Policy | RMSE | Inj. steps | Mean ESS | Mean applied rate |
+|---|---:|---:|---:|---:|
+| No injection | 12.255 m | 0/240 | 0.47 N | 0.000 |
+| Fixed 1% | 1.271 m | 210/240 | 0.37 N | 0.009 |
+| Fixed 3% | 1.079 m | 210/240 | 0.40 N | 0.026 |
+| **Fixed 6%** | **0.972 m** | 210/240 | 0.41 N | 0.052 |
+| Fixed 12% | 0.994 m | 210/240 | 0.37 N | 0.105 |
+| Fixed 24% | 0.979 m | 210/240 | 0.30 N | 0.210 |
+| ESS 3%@0.35N | 1.130 m | 98/240 | 0.36 N | 0.012 |
+| **ESS 12%@0.35N** | **1.081 m** | **77/240** | 0.39 N | 0.038 |
+
+Recovery saturates near 6% fixed rate; ESS-triggered 12% matches the
+order-of-magnitude recovery while firing on only 32% of post-jump steps and
+cutting mean applied perturbation from 0.105 to 0.038. Local CUDA runtime is
+healthy again (driver/library both `580.159.03`).
+
+Remaining work for this branch: copy the new GIF to `gh-pages`, commit the
+code/doc/gif changes, push, open the PR, wait for CI, merge.
 
 ---
 
@@ -170,21 +262,27 @@ calibrated-surrogate + injection **1.08 m** (**0.15x**). New gif:
   but did not yet beat the supervised initialization on the 240-frame eval.
   Next work: longer horizons, multi-seed gradient averaging, or smoother
   resampling relaxations.
-- **Particle-injection ablation**: fixed 12% range-reset injection closes the
-  kidnap-only recovery gap. Next work: compare fixed injection against an
-  effective-sample-size trigger, lower steady-state rates, expansion reset, and
-  existing `amcl` / `expansion_reset_mcl` recovery behavior.
+- **Particle-injection trigger ablation**: fixed 12% range-reset injection
+  closes the kidnap-only recovery gap. A WIP branch now compares fixed rates
+  against an effective-sample-size trigger, but runtime validation is blocked
+  by the local NVIDIA driver/library mismatch described above.
 - **Harder scenes beyond current stress tests**: longer kidnap recovery with
   injection trigger/rate tuning, or smoother resampling relaxations where
   observation-model learning and recovery mechanics can be separated cleanly.
 - **EKF / AMCL baseline**: compare DPF tracking RMSE against the existing
   `amcl` and `pf` baselines for a clean accuracy / compute trade-off plot.
 
-### 3. Brainstorm leftovers (offered during the session, not picked)
+### 3. Brainstorm leftovers / next showcase options
 
-- **3D Lidar Simulator**: 3D extension of `comparison_lidar_sim`. Same
-  ray-cast kernel pattern, rotating sensor, dense indoor point cloud,
-  flows into the point-cloud pipeline.
+- **Gaussian Splatting follow-ups**: after PR #39 merges, possible next work
+  is loading point-cloud outputs into Gaussian surfels, adding approximate
+  depth ordering / tile binning, or rendering real PLY/KITTI inputs. Keep this
+  forward-rendering-only unless deliberately starting a larger training PR.
+- **MathematicalRobotics-inspired optimization demos**: both
+  `scomup/MathematicalRobotics` and `scomup/EasyGaussianSplatting` are MIT.
+  Good repo-fitting ports would be GPU Gauss-Newton / pose graph / bundle
+  adjustment demos. Do not directly copy large external implementations; keep
+  PRs small and write CudaRobotics-native CUDA/C++ demos.
 - **10K Boids / Crowd Swarm**: scale `multi_robot_planner` from 500 → 10000
   agents + flocking. Quick win for one more order-of-magnitude visual.
 - **GPU MCTS Planner**: tree expansion parallelised across threads,
@@ -222,17 +320,21 @@ calibrated-surrogate + injection **1.08 m** (**0.15x**). New gif:
 
 ## Recommended Next Session
 
-The 2026-05-20 session leaned hard into visual showcases and the DPF
+The 2026-05-20/21 session leaned hard into visual showcases and the DPF
 research line. The most natural next moves:
 
-**If goal = paper / research value**: turn the particle-injection result into
-a rate/trigger ablation. Fixed 12% range-reset injection works; the remaining
-question is how low the injection rate can be, and whether an ESS-triggered
-reset or expansion reset keeps the same recovery with less steady-state noise.
+**Immediate cleanup**: PR #39 is already open, draft, mergeable, and CI green.
+Merge it first unless the user wants to inspect it.
 
-**If goal = OSS visibility**: pick up **3D Lidar Simulator**. The 2D
-version is a strong tile on the readme; a 3D version paired with the
-existing point-cloud pipeline closes a natural product loop.
+**If goal = paper / research value**: first unblock CUDA runtime validation,
+then finish `feat/diff-pf-injection-trigger`. Fixed 12% range-reset injection
+works; the current WIP asks how low the injection rate can be, and whether an
+ESS-triggered reset keeps the same recovery with less steady-state noise.
+
+**If goal = OSS visibility**: after #39, the strongest next visual continuation
+is Gaussian/point-cloud integration: render real point-cloud samples or 3D
+LiDAR hits as Gaussian surfels, then optionally add depth sorting or tiled
+accumulation.
 
 **If goal = benchmark completeness**: pick up the **failure taxonomy CSV
 expansion** (Day 4+ item 1). Mechanical change to
@@ -241,8 +343,8 @@ expansion** (Day 4+ item 1). Mechanical change to
 Recommended starting branches:
 
 ```bash
-git switch -c feat/diff-pf-injection-trigger   # research track
-git switch -c feat/lidar-sim-3d               # showcase track
+git switch feat/diff-pf-injection-trigger      # current research WIP
+git switch -c feat/gaussian-pointcloud-map     # possible next showcase track
 git switch -c feat/failure-taxonomy-csv       # bench track
 ```
 
@@ -265,4 +367,6 @@ git switch -c feat/failure-taxonomy-csv       # bench track
 - `src/diff_pf_mlp.cu` — DPF with learnable MLP observation model.
 - `src/benchmark_diff_mppi.cu` — 12-planner sweep + topology suite.
 - `src/comparison_lidar_sim.cu` — 1M-ray comparison demo.
+- `src/comparison_lidar3d_sim.cu` — merged 3D multi-ring LiDAR comparison demo.
+- `src/comparison_gaussian_splatting.cu` — PR #39 forward-only Gaussian surfel renderer.
 - `src/comparison_reeds_shepp_fan.cu` — 1M-path comparison demo.
