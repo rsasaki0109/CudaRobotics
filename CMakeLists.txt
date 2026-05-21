@@ -282,6 +282,10 @@ target_link_libraries(comparison_voronoi ${OpenCV_LIBS})
 add_executable(comparison_occupancy_grid src/comparison_occupancy_grid.cu)
 target_link_libraries(comparison_occupancy_grid ${OpenCV_LIBS})
 
+add_executable(comparison_esdf src/comparison_esdf.cu)
+target_link_libraries(comparison_esdf ${OpenCV_LIBS})
+target_compile_options(comparison_esdf PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
+
 add_executable(comparison_fastslam src/comparison_fastslam.cu)
 target_link_libraries(comparison_fastslam ${OpenCV_LIBS})
 target_compile_options(comparison_fastslam PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
