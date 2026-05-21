@@ -1,0 +1,51 @@
+name: Performance regression check
+
+# GitHub-hosted runners do not have GPUs, so the actual benchmark can
+# only run on a self-hosted runner with a CUDA-capable GPU labelled
+# `gpu`. The job is triggered:
+#   - manually via workflow_dispatch
+#   - on PRs that touch comparison_*.cu, MPPI, ESDF, RRT* sources or
+#     this workflow itself (only effective if a self-hosted gpu runner
+#     is available; otherwise the job is simply skipped)
+
+on:
+  workflow_dispatch: {}
+  pull_request:
+    paths:
+      - "src/comparison_*.cu"
+      - "src/esdf_mppi.cu"
+      - "scripts/perf_check.py"
+      - "scripts/perf_baseline.json"
+      - ".github/workflows/perf.yml"
+
+jobs:
+  perf:
+    runs-on: [self-hosted, gpu]
+    if: ${{ vars.PERF_RUNNER_AVAILABLE == 'true' || github.event_name == 'workflow_dispatch' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build perf-critical targets
+        run: |
+          cmake --build build --target \
+            comparison_esdf \
+            comparison_esdf_3d \
+            comparison_voxel_map \
+            comparison_collision_check \
+            comparison_rrtstar_rewire \
+            esdf_mppi \
+            -j$(nproc)
+
+      - name: Run perf_check
+        run: python3 scripts/perf_check.py --tolerance 0.30
+
+      - name: Upload measurements on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: perf-output
+          path: |
+            scripts/perf_baseline.json
