@@ -81,6 +81,7 @@ CudaRobotics fills this gap with 87 self-contained CUDA implementations across 8
 - Mechanism analysis (gradient freshness)
 - Pareto frontier analysis
 - Neural SDF for MPPI planning
+- ESDF-MPPI (JFA distance field + bilinear lookup cost; 0.335 ms / rollout iter with K=4096, T=30)
 - Comparison visualization framework
 
 ## III. Design Principles

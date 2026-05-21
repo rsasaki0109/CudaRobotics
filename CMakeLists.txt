@@ -166,6 +166,10 @@ target_link_libraries(sdf_potential_field ${OpenCV_LIBS})
 add_executable(sdf_mppi src/sdf_mppi.cu)
 target_link_libraries(sdf_mppi ${OpenCV_LIBS})
 
+add_executable(esdf_mppi src/esdf_mppi.cu)
+target_link_libraries(esdf_mppi ${OpenCV_LIBS})
+target_compile_options(esdf_mppi PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
+
 add_executable(comparison_sdf_nav src/comparison_sdf_nav.cu)
 target_link_libraries(comparison_sdf_nav ${OpenCV_LIBS})
 
