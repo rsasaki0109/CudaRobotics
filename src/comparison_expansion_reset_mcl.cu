@@ -347,8 +347,15 @@ int main() {
     bool kidnapped = false;
     int step = 0;
 
+    struct ResetOverlay {
+        std::vector<float> x;
+        std::vector<float> y;
+        int frames_left = 0;
+    };
+    ResetOverlay exp_reset_overlay;
+
     // Lambda to run one PF step
-    auto run_pf = [&](GPUParticles& pf, bool do_expansion) {
+    auto run_pf = [&](GPUParticles& pf, bool do_expansion, ResetOverlay* overlay = nullptr) {
         predict_kernel<<<blk, thr>>>(pf.d_px, pf.d_py, pf.d_pt, robot_v, robot_omega, DT, pf.d_rng, np);
         compute_likelihood_kernel<<<blk, thr>>>(pf.d_px, pf.d_py, pf.d_pt, pf.d_pw,
             d_lf, d_beams, GRID_W, GRID_H, GRID_RES, origin_x, origin_y, np);
@@ -365,6 +372,14 @@ int main() {
             int nr = np / 4;
             sensor_reset_kernel<<<(nr + 255) / 256, 256>>>(pf.d_px, pf.d_py, pf.d_pt, pf.d_pw,
                 d_occ, GRID_W, GRID_H, origin_x, origin_y, GRID_RES, pf.d_rng, np, nr);
+            CUDA_CHECK(cudaDeviceSynchronize());
+            if (overlay) {
+                overlay->x.resize(np);
+                overlay->y.resize(np);
+                CUDA_CHECK(cudaMemcpy(overlay->x.data(), pf.d_px, np * sizeof(float), cudaMemcpyDeviceToHost));
+                CUDA_CHECK(cudaMemcpy(overlay->y.data(), pf.d_py, np * sizeof(float), cudaMemcpyDeviceToHost));
+                overlay->frames_left = 18;
+            }
             compute_likelihood_kernel<<<blk, thr>>>(pf.d_px, pf.d_py, pf.d_pt, pf.d_pw,
                 d_lf, d_beams, GRID_W, GRID_H, GRID_RES, origin_x, origin_y, np);
             check_reset_kernel<<<1, thr, 2 * thr * sizeof(float)>>>(pf.d_pw, np, pf.d_max_w, pf.d_sum_w);
@@ -393,7 +408,8 @@ int main() {
         CUDA_CHECK(cudaDeviceSynchronize());
     };
 
-    auto draw_panel = [&](cv::Mat& panel, GPUParticles& pf, const char* label, float gt_x, float gt_y, float gt_t) {
+    auto draw_panel = [&](cv::Mat& panel, GPUParticles& pf, const char* label, float gt_x, float gt_y, float gt_t,
+                          const ResetOverlay* overlay = nullptr) {
         panel = map_img.clone();
         std::vector<float> lx(np), ly(np);
         CUDA_CHECK(cudaMemcpy(lx.data(), pf.d_px, np * sizeof(float), cudaMemcpyDeviceToHost));
@@ -402,6 +418,15 @@ int main() {
             cv::Point2i p = w2p(lx[i], ly[i]);
             if (p.x >= 0 && p.x < PANEL_W && p.y >= 0 && p.y < PANEL_H)
                 cv::circle(panel, p, 2, cv::Scalar(0, 0, 255), -1);
+        }
+        if (overlay && overlay->frames_left > 0) {
+            for (int i = 0; i < (int)overlay->x.size(); i++) {
+                cv::Point2i p = w2p(overlay->x[i], overlay->y[i]);
+                if (p.x >= 0 && p.x < PANEL_W && p.y >= 0 && p.y < PANEL_H)
+                    cv::circle(panel, p, 1, cv::Scalar(0, 140, 255), -1);
+            }
+            cv::putText(panel, "EXPANSION RESET PARTICLES", cv::Point(5, PANEL_H - 40),
+                cv::FONT_HERSHEY_SIMPLEX, 0.45, cv::Scalar(0, 90, 200), 1);
         }
         float ex, ey, et;
         CUDA_CHECK(cudaMemcpy(&ex, pf.d_ex, sizeof(float), cudaMemcpyDeviceToHost));
@@ -444,12 +469,13 @@ int main() {
         CUDA_CHECK(cudaMemcpy(d_beams, h_beams, NUM_BEAMS * sizeof(float), cudaMemcpyHostToDevice));
 
         run_pf(std_pf, false);  // Standard MCL: NO expansion reset
-        run_pf(exp_pf, true);  // Expansion Resetting MCL: WITH expansion reset
+        run_pf(exp_pf, true, &exp_reset_overlay);  // Expansion Resetting MCL: WITH expansion reset
 
         // Visualization
         cv::Mat left, right;
         draw_panel(left, std_pf, "Standard MCL (no reset)", gt_x, gt_y, gt_theta);
-        draw_panel(right, exp_pf, "Expansion Reset MCL", gt_x, gt_y, gt_theta);
+        draw_panel(right, exp_pf, "Expansion Reset MCL", gt_x, gt_y, gt_theta, &exp_reset_overlay);
+        if (exp_reset_overlay.frames_left > 0) exp_reset_overlay.frames_left--;
 
         if (kidnapped) {
             cv::putText(left, "KIDNAPPED", cv::Point(PANEL_W / 2 - 60, PANEL_H - 15),
