@@ -63,11 +63,29 @@ target_link_libraries(dwa_node
 ament_target_dependencies(dwa_node ${ROS_DEPS})
 
 # -------------------------------------------------------------------
+# esdf_node
+# -------------------------------------------------------------------
+add_executable(esdf_node src/esdf_node.cu)
+target_include_directories(esdf_node PRIVATE
+  ${EIGEN3_INCLUDE_DIR}
+  ${OpenCV_INCLUDE_DIRS}
+)
+target_link_libraries(esdf_node
+  ${OpenCV_LIBS}
+  CUDA::cudart
+)
+target_compile_options(esdf_node PRIVATE
+  $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>
+)
+ament_target_dependencies(esdf_node ${ROS_DEPS})
+
+# -------------------------------------------------------------------
 # Install
 # -------------------------------------------------------------------
 install(TARGETS
   particle_filter_node
   dwa_node
+  esdf_node
   DESTINATION lib/${PROJECT_NAME}
 )
 
