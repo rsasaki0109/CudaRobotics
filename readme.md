@@ -184,6 +184,8 @@ Same algorithm on CPU and GPU — GPU enables orders of magnitude more particles
 | <img src="https://rsasaki0109.github.io/CudaRobotics/comparison_dwa.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/comparison_frenet.gif" width="400"/> |
 | 500-robot multi-robot | Particle Filter |
 | <img src="https://rsasaki0109.github.io/CudaRobotics/comparison_multi_robot.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/comparison_pf.gif" width="400"/> |
+| Gaussian Splatting Map Renderer (CPU sparse surfels vs CUDA dense splatting) | |
+| <img src="https://rsasaki0109.github.io/CudaRobotics/comparison_gaussian_splatting.gif" width="400"/> | |
 
 </details>
 
