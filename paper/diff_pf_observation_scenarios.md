@@ -1,6 +1,6 @@
 # Differentiable Particle Filter Observation-Model Scenarios
 
-Last updated: 2026-05-21 JST
+Last updated: 2026-05-21 JST (injection rate / ESS trigger ablation)
 
 This note consolidates the `diff_pf_mlp` observation-model experiments into a
 paper-facing table. All rows use the same 8-landmark 40 m x 30 m localization
@@ -80,6 +80,37 @@ This closes most of the hidden-jump gap without changing the observation
 likelihood, confirming that kidnap recovery is primarily a particle-support
 problem once the measurements are clean.
 
+## Injection Rate and ESS Trigger Ablation
+
+The injection rate is then swept on the kidnap-only scene, both as fixed
+per-step rates and as an effective-sample-size trigger. ESS is computed as
+`ESS = 1 / sum(w_i^2)` on the normalized post-likelihood weights, and the
+trigger replaces a fraction of the resampled particles only when
+`ESS < 0.35 N`. All rows use the handcrafted Gaussian likelihood with
+`alpha=3.14`; the hidden jump is at `t=3.0 s` and the run is 240 frames.
+
+| Policy | RMSE | Ratio vs no-injection | Injection steps | Mean ESS | Mean applied rate |
+|---|---:|---:|---:|---:|---:|
+| No injection | 12.255 m | 1.00x | 0 / 240 | 0.47 N | 0.000 |
+| Fixed 1% | 1.271 m | 0.10x | 210 / 240 | 0.37 N | 0.009 |
+| Fixed 3% | 1.079 m | 0.09x | 210 / 240 | 0.40 N | 0.026 |
+| **Fixed 6%** | **0.972 m** | **0.08x** | 210 / 240 | 0.41 N | 0.052 |
+| Fixed 12% | 0.994 m | 0.08x | 210 / 240 | 0.37 N | 0.105 |
+| Fixed 24% | 0.979 m | 0.08x | 210 / 240 | 0.30 N | 0.210 |
+| ESS 3% @ 0.35 N | 1.130 m | 0.09x | **98 / 240** | 0.36 N | 0.012 |
+| **ESS 12% @ 0.35 N** | **1.081 m** | **0.09x** | **77 / 240** | 0.39 N | 0.038 |
+
+The fixed-rate sweep shows that even 1% injection recovers the filter (1.27 m
+versus 12.26 m with no injection), the RMSE curve plateaus around 6% at
+0.97 m, and pushing the rate to 24% does not further improve tracking
+(0.98 m). The ESS-triggered policies achieve the same order-of-magnitude
+recovery while firing on only 32-41% of the post-jump steps: ESS 12% reaches
+1.08 m with 77 injection events versus 210 for fixed 12%, and the mean
+applied perturbation drops from 0.105 to 0.038. The trigger therefore trades
+about 8% RMSE for about 64% fewer injection events, which is the relevant
+operating point when steady-state noise from continuously injected particles
+matters.
+
 ## Current Research Claim
 
 `diff_pf_mlp` now demonstrates a progression:
@@ -96,10 +127,15 @@ problem once the measurements are clean.
 5. In the kidnap-only case, range-reset particle injection reduces RMSE by 86%
    versus the no-injection Gaussian baseline, showing that explicit support
    recovery is the right tool for hidden state jumps.
+6. The injection-rate sweep shows recovery saturates near 6% fixed rate
+   (0.97 m), and an ESS-triggered policy at the same nominal 12% rate reaches
+   1.08 m while firing on only 77 of 240 post-jump steps, cutting the mean
+   applied perturbation from 0.105 to 0.038.
 
 ## Next Useful Ablation
 
-The next clean experiment is an injection trigger/rate ablation: compare fixed
-12% range-reset injection against an effective-sample-size trigger, lower
-steady-state rates, expansion reset, and the existing AMCL-style recovery
-baseline.
+The remaining recovery-side experiments are an expansion-reset / AMCL-style
+KLD-sampling comparison against the ESS-triggered injection above, and a
+re-run of the trigger study under the calibrated-surrogate likelihood and the
+occlusion+kidnap combined scene to check whether ESS triggering generalizes
+to misspecified observation models.
