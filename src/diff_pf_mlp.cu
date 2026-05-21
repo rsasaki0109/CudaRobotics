@@ -239,6 +239,20 @@ static void normalise(std::vector<float>& w) {
     for (float& v : w) v *= inv;
 }
 
+static float effective_sample_size(const std::vector<float>& w_norm) {
+    double s2 = 0.0;
+    for (float v : w_norm) {
+        if (!std::isfinite(v)) continue;
+        s2 += static_cast<double>(v) * v;
+    }
+    const double n = static_cast<double>(w_norm.size());
+    if (s2 < 1.0e-30) return static_cast<float>(n);
+    double ess = 1.0 / s2;
+    if (ess > n) ess = n;
+    if (ess < 1.0) ess = 1.0;
+    return static_cast<float>(ess);
+}
+
 static void soft_resample(const std::vector<float>& w_norm,
                           std::vector<int>& indices,
                           float beta, std::mt19937& rng) {
@@ -425,7 +439,11 @@ static void observe(const Pose2& gt, const std::vector<float>& lx,
 
 enum LikelihoodMode { LIK_ANALYTIC, LIK_MLP };
 
-struct PFStep { float ex, ey; };
+struct PFStep {
+    float ex, ey;
+    float ess;
+    float applied_injection_rate;
+};
 static PFStep run_step(ParticleSet& P, int n, float alpha, float v, float omega,
                        float sigma_xy, float sigma_th,
                        const float* d_lx, const float* d_ly,
@@ -436,7 +454,8 @@ static PFStep run_step(ParticleSet& P, int n, float alpha, float v, float omega,
                        const std::vector<float>* h_lx = nullptr,
                        const std::vector<float>* h_ly = nullptr,
                        const std::vector<float>* h_z = nullptr,
-                       const std::vector<unsigned char>* h_zv = nullptr) {
+                       const std::vector<unsigned char>* h_zv = nullptr,
+                       float ess_trigger_frac = -1.0f) {
     int blk = 256, gd = (n + blk - 1) / blk;
     refresh_motion_noise<<<gd, blk>>>(P.d_states, n, P.d_eps_x, P.d_eps_y, P.d_eps_th);
     predict_kernel<<<gd, blk>>>(P.d_px, P.d_py, P.d_pth,
@@ -458,6 +477,7 @@ static PFStep run_step(ParticleSet& P, int n, float alpha, float v, float omega,
     CUDA_CHECK(cudaMemcpy(P.h_pth.data(), P.d_pth, n * sizeof(float), cudaMemcpyDeviceToHost));
     CUDA_CHECK(cudaMemcpy(P.h_w.data(),   P.d_w,   n * sizeof(float), cudaMemcpyDeviceToHost));
     normalise(P.h_w);
+    float ess = effective_sample_size(P.h_w);
     float ex = 0.0f, ey = 0.0f;
     for (int i = 0; i < n; i++) { ex += P.h_w[i] * P.h_px[i]; ey += P.h_w[i] * P.h_py[i]; }
     std::vector<int> idx;
@@ -468,10 +488,14 @@ static PFStep run_step(ParticleSet& P, int n, float alpha, float v, float omega,
         npy[i]  = P.h_py[idx[i]];
         npth[i] = P.h_pth[idx[i]];
     }
-    inject_range_reset_particles(npx, npy, npth, injection_rate,
+    float applied_injection_rate = injection_rate;
+    if (ess_trigger_frac > 0.0f && ess / n >= ess_trigger_frac) {
+        applied_injection_rate = 0.0f;
+    }
+    inject_range_reset_particles(npx, npy, npth, applied_injection_rate,
                                  h_lx, h_ly, h_z, h_zv, rng);
     upload(P, n, npx, npy, npth);
-    return {ex, ey};
+    return {ex, ey, ess, applied_injection_rate};
 }
 
 // ---------------------------------------------------------------------------
@@ -824,6 +848,24 @@ struct InjectionResult {
     double direct_ms = 0.0;
 };
 
+struct InjectionPolicy {
+    const char* name;
+    const char* label;
+    float rate;
+    float ess_trigger_frac;
+    unsigned long long particle_seed;
+    unsigned int resample_seed;
+    cv::Scalar color;
+};
+
+struct InjectionPolicyResult {
+    double rmse = 0.0;
+    float ratio = 1.0f;
+    int injection_steps = 0;
+    float mean_ess_frac = 0.0f;
+    float mean_applied_rate = 0.0f;
+};
+
 static ScenarioResult run_scenario(const ScenarioConfig& scenario,
                                    const std::vector<float>& supervised_weights,
                                    const std::vector<float>& lx,
@@ -1143,6 +1185,205 @@ static InjectionResult run_kidnap_injection_scenario(
     return result;
 }
 
+static InjectionPolicyResult eval_kidnap_gaussian_injection_policy(
+    const InjectionPolicy& policy,
+    const std::vector<float>& lx,
+    const std::vector<float>& ly,
+    const float* d_lx,
+    const float* d_ly,
+    float* d_z,
+    unsigned char* d_zv,
+    double baseline_rmse = 0.0) {
+    ParticleSet P;
+    P.alloc(N_PARTICLES, policy.particle_seed);
+    reset_particle_set(P, N_PARTICLES, 42u, policy.particle_seed * 1009ULL,
+                       OBS_KIDNAP_ONLY);
+
+    std::mt19937 rng_obs_eval(99);
+    std::mt19937 rng_eval(policy.resample_seed);
+    double rmse = 0.0;
+    double ess_sum = 0.0;
+    double applied_rate_sum = 0.0;
+    int injection_steps = 0;
+    for (int s = 0; s < N_FRAMES; s++) {
+        float t = s * DT;
+        Pose2 gt = scene_gt_at(t, OBS_KIDNAP_ONLY);
+        float v, omega; controls_at(t, v, omega);
+        std::vector<float> z; std::vector<unsigned char> valid;
+        observe(gt, lx, ly, rng_obs_eval, z, valid, OBS_KIDNAP_ONLY, t);
+        CUDA_CHECK(cudaMemcpy(d_z,  z.data(),     N_LANDMARKS * sizeof(float), cudaMemcpyHostToDevice));
+        CUDA_CHECK(cudaMemcpy(d_zv, valid.data(), N_LANDMARKS,                 cudaMemcpyHostToDevice));
+        float rate = (t >= KIDNAP_T) ? policy.rate : 0.0f;
+        float ess_trigger = (t >= KIDNAP_T) ? policy.ess_trigger_frac : -1.0f;
+        auto out = run_step(P, N_PARTICLES, TRAINED_ALPHA, v, omega,
+                            0.6f, 0.1f, d_lx, d_ly, d_z, d_zv,
+                            LIK_ANALYTIC, nullptr, rng_eval,
+                            rate, &lx, &ly, &z, &valid, ess_trigger);
+        rmse += (out.ex - gt.x) * (out.ex - gt.x) + (out.ey - gt.y) * (out.ey - gt.y);
+        ess_sum += out.ess / N_PARTICLES;
+        applied_rate_sum += out.applied_injection_rate;
+        if (out.applied_injection_rate > 0.0f) injection_steps++;
+    }
+    P.free_all();
+
+    InjectionPolicyResult result;
+    result.rmse = std::sqrt(rmse / N_FRAMES);
+    result.ratio = baseline_rmse > 0.0 ? static_cast<float>(result.rmse / baseline_rmse) : 1.0f;
+    result.injection_steps = injection_steps;
+    result.mean_ess_frac = static_cast<float>(ess_sum / N_FRAMES);
+    result.mean_applied_rate = static_cast<float>(applied_rate_sum / N_FRAMES);
+    return result;
+}
+
+static std::vector<InjectionPolicyResult> run_kidnap_injection_rate_table(
+    const std::vector<float>& lx,
+    const std::vector<float>& ly,
+    const float* d_lx,
+    const float* d_ly,
+    float* d_z,
+    unsigned char* d_zv,
+    const std::vector<InjectionPolicy>& policies) {
+    std::vector<InjectionPolicyResult> results;
+    results.reserve(policies.size());
+    double baseline = 0.0;
+    for (size_t i = 0; i < policies.size(); i++) {
+        InjectionPolicyResult r = eval_kidnap_gaussian_injection_policy(
+            policies[i], lx, ly, d_lx, d_ly, d_z, d_zv, baseline);
+        if (i == 0) {
+            baseline = r.rmse;
+            r.ratio = 1.0f;
+        } else if (baseline > 0.0) {
+            r.ratio = static_cast<float>(r.rmse / baseline);
+        }
+        results.push_back(r);
+    }
+
+    std::printf("\nKidnap injection rate / ESS trigger table (Gaussian likelihood):\n");
+    for (size_t i = 0; i < policies.size(); i++) {
+        const auto& p = policies[i];
+        const auto& r = results[i];
+        std::printf("  %-22s rate %.0f%%, ESS trigger %s: RMSE %.3f m (%.2fx), "
+                    "injected %d/%d steps, mean ESS %.2fN, mean applied rate %.3f\n",
+                    p.name, 100.0f * p.rate,
+                    p.ess_trigger_frac > 0.0f ? "< threshold" : "off",
+                    r.rmse, r.ratio, r.injection_steps, N_FRAMES,
+                    r.mean_ess_frac, r.mean_applied_rate);
+    }
+    return results;
+}
+
+static std::vector<InjectionPolicyResult> run_kidnap_injection_trigger_gif(
+    const std::vector<float>& lx,
+    const std::vector<float>& ly,
+    const float* d_lx,
+    const float* d_ly,
+    float* d_z,
+    unsigned char* d_zv,
+    const std::vector<InjectionPolicy>& policies) {
+    ParticleSet PA, PB, PC, PD;
+    PA.alloc(N_PARTICLES, policies[0].particle_seed);
+    PB.alloc(N_PARTICLES, policies[1].particle_seed);
+    PC.alloc(N_PARTICLES, policies[2].particle_seed);
+    PD.alloc(N_PARTICLES, policies[3].particle_seed);
+    reset_particle_set(PA, N_PARTICLES, 42u, policies[0].particle_seed * 1009ULL,
+                       OBS_KIDNAP_ONLY);
+    reset_particle_set(PB, N_PARTICLES, 42u, policies[1].particle_seed * 1009ULL,
+                       OBS_KIDNAP_ONLY);
+    reset_particle_set(PC, N_PARTICLES, 42u, policies[2].particle_seed * 1009ULL,
+                       OBS_KIDNAP_ONLY);
+    reset_particle_set(PD, N_PARTICLES, 42u, policies[3].particle_seed * 1009ULL,
+                       OBS_KIDNAP_ONLY);
+
+    const std::string avi_path = "gif/comparison_diff_pf_mlp_injection_trigger.avi";
+    const std::string gif_path = "gif/comparison_diff_pf_mlp_injection_trigger.gif";
+    cv::VideoWriter video(avi_path,
+                          cv::VideoWriter::fourcc('X', 'V', 'I', 'D'), 30,
+                          cv::Size(PANEL_W * 4, PANEL_H));
+
+    std::vector<ParticleSet*> P = {&PA, &PB, &PC, &PD};
+    std::vector<std::mt19937> rng_eval;
+    for (const auto& policy : policies) rng_eval.emplace_back(policy.resample_seed);
+    std::vector<double> rmse(4, 0.0);
+    std::vector<double> ess_sum(4, 0.0);
+    std::vector<double> applied_rate_sum(4, 0.0);
+    std::vector<int> injection_steps(4, 0);
+    std::mt19937 rng_obs_eval(99);
+
+    for (int s = 0; s < N_FRAMES; s++) {
+        float t = s * DT;
+        Pose2 gt = scene_gt_at(t, OBS_KIDNAP_ONLY);
+        float v, omega; controls_at(t, v, omega);
+        std::vector<float> z; std::vector<unsigned char> valid;
+        observe(gt, lx, ly, rng_obs_eval, z, valid, OBS_KIDNAP_ONLY, t);
+        CUDA_CHECK(cudaMemcpy(d_z,  z.data(),     N_LANDMARKS * sizeof(float), cudaMemcpyHostToDevice));
+        CUDA_CHECK(cudaMemcpy(d_zv, valid.data(), N_LANDMARKS,                 cudaMemcpyHostToDevice));
+
+        std::vector<PFStep> out;
+        out.reserve(4);
+        for (int k = 0; k < 4; k++) {
+            float rate = (t >= KIDNAP_T) ? policies[k].rate : 0.0f;
+            float ess_trigger = (t >= KIDNAP_T) ? policies[k].ess_trigger_frac : -1.0f;
+            out.push_back(run_step(*P[k], N_PARTICLES, TRAINED_ALPHA, v, omega,
+                                   0.6f, 0.1f, d_lx, d_ly, d_z, d_zv,
+                                   LIK_ANALYTIC, nullptr, rng_eval[k],
+                                   rate, &lx, &ly, &z, &valid, ess_trigger));
+            rmse[k] += (out[k].ex - gt.x) * (out[k].ex - gt.x) +
+                       (out[k].ey - gt.y) * (out[k].ey - gt.y);
+            ess_sum[k] += out[k].ess / N_PARTICLES;
+            applied_rate_sum[k] += out[k].applied_injection_rate;
+            if (out[k].applied_injection_rate > 0.0f) injection_steps[k]++;
+        }
+
+        cv::Mat panels[4] = {
+            cv::Mat(PANEL_H, PANEL_W, CV_8UC3),
+            cv::Mat(PANEL_H, PANEL_W, CV_8UC3),
+            cv::Mat(PANEL_H, PANEL_W, CV_8UC3),
+            cv::Mat(PANEL_H, PANEL_W, CV_8UC3)
+        };
+        for (int k = 0; k < 4; k++) {
+            draw_base(panels[k], lx, ly);
+            draw_particles(panels[k], P[k]->h_px, P[k]->h_py, policies[k].color);
+            auto gp = w2p(gt.x, gt.y);
+            cv::circle(panels[k], gp, 5, cv::Scalar(0, 0, 0), 2, cv::LINE_AA);
+            cv::circle(panels[k], w2p(out[k].ex, out[k].ey), 6, policies[k].color, 2, cv::LINE_AA);
+            label(panels[k], std::string("Kidnap: ") + policies[k].label);
+        }
+        cv::Mat row01, row23, combined;
+        cv::hconcat(panels[0], panels[1], row01);
+        cv::hconcat(panels[2], panels[3], row23);
+        cv::hconcat(row01, row23, combined);
+        video.write(combined);
+    }
+    video.release();
+    PA.free_all(); PB.free_all(); PC.free_all(); PD.free_all();
+
+    std::vector<InjectionPolicyResult> results(4);
+    double baseline = std::sqrt(rmse[0] / N_FRAMES);
+    for (int k = 0; k < 4; k++) {
+        results[k].rmse = std::sqrt(rmse[k] / N_FRAMES);
+        results[k].ratio = static_cast<float>(results[k].rmse / baseline);
+        results[k].injection_steps = injection_steps[k];
+        results[k].mean_ess_frac = static_cast<float>(ess_sum[k] / N_FRAMES);
+        results[k].mean_applied_rate = static_cast<float>(applied_rate_sum[k] / N_FRAMES);
+    }
+
+    std::printf("\nKidnap injection trigger GIF variants (Gaussian likelihood):\n");
+    for (int k = 0; k < 4; k++) {
+        std::printf("  %-14s RMSE %.3f m (%.2fx), injected %d/%d steps, "
+                    "mean ESS %.2fN, mean applied rate %.3f\n",
+                    policies[k].name, results[k].rmse, results[k].ratio,
+                    results[k].injection_steps, N_FRAMES,
+                    results[k].mean_ess_frac, results[k].mean_applied_rate);
+    }
+
+    std::string cmd = "ffmpeg -y -i " + avi_path +
+                      " -vf 'fps=15,scale=1600:-1:flags=lanczos' -loop 0 " +
+                      gif_path + " 2>/dev/null";
+    std::system(cmd.c_str());
+    std::cout << "GIF saved to " << gif_path << std::endl;
+    return results;
+}
+
 // ---------------------------------------------------------------------------
 // Main
 // ---------------------------------------------------------------------------
@@ -1270,6 +1511,28 @@ int main() {
     InjectionResult injection_result =
         run_kidnap_injection_scenario(supervised_weights, lx, ly, d_lx, d_ly,
                                       d_z, d_zv);
+    std::vector<InjectionPolicy> table_policies = {
+        { "No injection", "No injection", 0.0f, -1.0f, 701ULL, 1701u, cv::Scalar(60, 60, 200) },
+        { "Fixed 1%", "Fixed 1%", 0.01f, -1.0f, 709ULL, 1709u, cv::Scalar(90, 130, 220) },
+        { "Fixed 3%", "Fixed 3%", 0.03f, -1.0f, 719ULL, 1719u, cv::Scalar(30, 110, 210) },
+        { "Fixed 6%", "Fixed 6%", 0.06f, -1.0f, 727ULL, 1727u, cv::Scalar(50, 160, 210) },
+        { "Fixed 12%", "Fixed 12%", 0.12f, -1.0f, 733ULL, 1733u, cv::Scalar(40, 150, 80) },
+        { "Fixed 24%", "Fixed 24%", 0.24f, -1.0f, 739ULL, 1739u, cv::Scalar(40, 120, 40) },
+        { "ESS 3%@0.35N", "ESS 3%", 0.03f, 0.35f, 743ULL, 1743u, cv::Scalar(170, 95, 20) },
+        { "ESS 12%@0.35N", "ESS 12%", 0.12f, 0.35f, 751ULL, 1751u, cv::Scalar(150, 55, 150) }
+    };
+    std::vector<InjectionPolicyResult> rate_results =
+        run_kidnap_injection_rate_table(lx, ly, d_lx, d_ly, d_z, d_zv,
+                                        table_policies);
+    std::vector<InjectionPolicy> gif_policies = {
+        table_policies[0],
+        table_policies[2],
+        table_policies[4],
+        table_policies[7]
+    };
+    std::vector<InjectionPolicyResult> trigger_results =
+        run_kidnap_injection_trigger_gif(lx, ly, d_lx, d_ly, d_z, d_zv,
+                                         gif_policies);
 
     cudaFree(d_lx); cudaFree(d_ly); cudaFree(d_z); cudaFree(d_zv);
 
@@ -1290,5 +1553,19 @@ int main() {
                 injection_result.ratio_calibrated,
                 injection_result.rmse_calibrated_injected,
                 injection_result.ratio_calibrated_injected);
+    size_t best_fixed = 1;
+    for (size_t i = 2; i <= 5; i++) {
+        if (rate_results[i].rmse < rate_results[best_fixed].rmse) best_fixed = i;
+    }
+    std::printf("  Injection trigger best fixed-rate: %s %.3f m (%.2fx); "
+                "ESS-triggered 12%% %.3f m (%.2fx, %d/%d injection steps)\n",
+                table_policies[best_fixed].name,
+                rate_results[best_fixed].rmse, rate_results[best_fixed].ratio,
+                rate_results[7].rmse, rate_results[7].ratio,
+                rate_results[7].injection_steps, N_FRAMES);
+    std::printf("  Injection trigger GIF: no %.3f m, fixed 3%% %.3f m, "
+                "fixed 12%% %.3f m, ESS 12%% %.3f m\n",
+                trigger_results[0].rmse, trigger_results[1].rmse,
+                trigger_results[2].rmse, trigger_results[3].rmse);
     return 0;
 }
