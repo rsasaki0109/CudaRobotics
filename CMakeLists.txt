@@ -322,6 +322,10 @@ add_executable(gpu_gaussian_splatting src/gpu_gaussian_splatting.cu)
 target_link_libraries(gpu_gaussian_splatting ${OpenCV_LIBS})
 target_compile_options(gpu_gaussian_splatting PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
 
+add_executable(gpu_multi_robot_planner src/gpu_multi_robot_planner.cu)
+target_link_libraries(gpu_multi_robot_planner ${OpenCV_LIBS})
+target_compile_options(gpu_multi_robot_planner PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
+
 add_executable(comparison_voxel_map src/comparison_voxel_map.cu)
 target_link_libraries(comparison_voxel_map ${OpenCV_LIBS})
 target_compile_options(comparison_voxel_map PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
