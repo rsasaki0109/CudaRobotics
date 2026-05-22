@@ -48,12 +48,13 @@ CudaRobotics fills this gap with 97 self-contained CUDA implementations across 8
 - ORCA (Optimal Reciprocal Collision Avoidance)
 - Social Force Model
 
-### Mapping and Perception (9 implementations)
+### Mapping and Perception (10 implementations)
 - Occupancy Grid Mapping
 - ICP (Iterative Closest Point)
 - NDT (Normal Distributions Transform)
 - Value Iteration
 - ESDF via Jump Flooding (2D Euclidean distance transform; 640K cells in 0.193 ms)
+- ESDF 3D via Jump Flooding (3D distance transform with 26-neighbour propagation; 1.05M voxels in 0.854 ms)
 - 3D Voxel Map (log-odds occupancy with 3D DDA raycasting; 65K rays/scan in 0.61 ms)
 - Massive Parallel Collision Checker (2D DDA segment check; 1M candidate segments/scan in 0.49 ms)
 
@@ -105,6 +106,7 @@ CudaRobotics fills this gap with 97 self-contained CUDA implementations across 8
 | Point Cloud | Statistical Filter (2K pts) | 389 ms | 0.79 ms | 492x |
 | Point Cloud | RANSAC Plane (20K pts) | 142 ms | 1.04 ms | 136x |
 | Mapping | ESDF (per cell, JFA vs brute force) | 16.13 us | 0.30 ns | 53,404x |
+| Mapping | ESDF 3D (per voxel, JFA-3D vs brute force) | 70.58 us | 0.81 ns | 86,613x |
 | Mapping | 3D Voxel Map (per ray, DDA log-odds) | 547 ns | 9.3 ns | 58x |
 | Mapping | Collision Check (per candidate, 2D DDA) | 596 ns | 0.47 ns | 1,277x |
 | Navigation | DWA (50K samples) | — | real-time | 1000x sample count |
