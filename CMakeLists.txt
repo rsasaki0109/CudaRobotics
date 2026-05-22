@@ -294,6 +294,10 @@ add_executable(comparison_esdf_3d src/comparison_esdf_3d.cu)
 target_link_libraries(comparison_esdf_3d ${OpenCV_LIBS})
 target_compile_options(comparison_esdf_3d PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
 
+add_executable(comparison_rrtstar_rewire src/comparison_rrtstar_rewire.cu)
+target_link_libraries(comparison_rrtstar_rewire ${OpenCV_LIBS})
+target_compile_options(comparison_rrtstar_rewire PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
+
 add_executable(comparison_voxel_map src/comparison_voxel_map.cu)
 target_link_libraries(comparison_voxel_map ${OpenCV_LIBS})
 target_compile_options(comparison_voxel_map PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
