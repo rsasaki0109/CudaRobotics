@@ -326,6 +326,10 @@ add_executable(gpu_multi_robot_planner src/gpu_multi_robot_planner.cu)
 target_link_libraries(gpu_multi_robot_planner ${OpenCV_LIBS})
 target_compile_options(gpu_multi_robot_planner PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
 
+add_executable(diff_e2e_slam src/diff_e2e_slam.cu)
+target_link_libraries(diff_e2e_slam ${OpenCV_LIBS})
+target_compile_options(diff_e2e_slam PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
+
 add_executable(comparison_voxel_map src/comparison_voxel_map.cu)
 target_link_libraries(comparison_voxel_map ${OpenCV_LIBS})
 target_compile_options(comparison_voxel_map PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
