@@ -4,6 +4,19 @@ CUDA-accelerated C++ implementations of robotics algorithms, based on [PythonRob
 
 Each algorithm leverages GPU parallelism for significant speedup over CPU-only implementations.
 
+## Why CUDA? — Visual Quality Difference
+
+GPU enables orders-of-magnitude more particles/samples, resulting in visually better results. All comparisons below use the **same algorithm** on CPU and GPU — the only difference is sample/particle count enabled by GPU parallelism:
+
+| | |
+|---|---|
+| **Particle Filter: CPU 100 vs CUDA 10,000 particles** | **Expansion Reset MCL: 10,000 particles, kidnap recovery (Standard MCL fails, Expansion Reset recovers)** |
+| <img src="https://rsasaki0109.github.io/CudaRobotics/comparison_pf_visual.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/comparison_expansion_reset_mcl.gif" width="400"/> |
+| **Multi-Robot: CPU 5 vs CUDA 500 robots** | **DWA: CPU 50 vs CUDA 50,000 samples** |
+| <img src="https://rsasaki0109.github.io/CudaRobotics/comparison_multi_robot_visual.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/comparison_dwa_visual.gif" width="400"/> |
+| **3D LiDAR Simulator: CPU 16x512 vs CUDA 64x2048 rays / scan** | **Reeds-Shepp Fan: CPU 1,024 vs CUDA 1,048,572 candidate paths** |
+| <img src="https://rsasaki0109.github.io/CudaRobotics/comparison_lidar3d_sim.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/comparison_reeds_shepp_fan.gif" width="400"/> |
+
 ## GPU Capability Matrix
 
 Core robotics building blocks shipped as standalone CPU vs CUDA demos:
@@ -18,19 +31,6 @@ Core robotics building blocks shipped as standalone CPU vs CUDA demos:
 | 3D voxel map | `comparison_voxel_map` | 256x256x32 voxels, 64x1024 rays | 58x faster per ray (3D DDA log-odds) |
 | ESDF (Euclidean distance transform) | `comparison_esdf`, `comparison_esdf_3d` | 800x800 (640K cells) / 128x128x64 (1.05M voxels) | 53,404x per cell (2D JFA); 86,613x per voxel (3D JFA) |
 | Raycasting (LiDAR sim) | `comparison_lidar_sim`, `comparison_lidar3d_sim`, `comparison_lidar3d_realistic` | 1M 2D rays / 131K 3D rays per scan | Massive parallel ray-cast with material returns; realistic version adds range-dependent noise, beam divergence, multi-path, material reflectivity, rolling-shutter pose lerp |
-
-## Why CUDA? — Visual Quality Difference
-
-GPU enables orders-of-magnitude more particles/samples, resulting in visually better results. All comparisons below use the **same algorithm** on CPU and GPU — the only difference is sample/particle count enabled by GPU parallelism:
-
-| | |
-|---|---|
-| **Particle Filter: CPU 100 vs CUDA 10,000 particles** | **Expansion Reset MCL: 10,000 particles, kidnap recovery (Standard MCL fails, Expansion Reset recovers)** |
-| <img src="https://rsasaki0109.github.io/CudaRobotics/comparison_pf_visual.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/comparison_expansion_reset_mcl.gif" width="400"/> |
-| **Multi-Robot: CPU 5 vs CUDA 500 robots** | **DWA: CPU 50 vs CUDA 50,000 samples** |
-| <img src="https://rsasaki0109.github.io/CudaRobotics/comparison_multi_robot_visual.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/comparison_dwa_visual.gif" width="400"/> |
-| **3D LiDAR Simulator: CPU 16x512 vs CUDA 64x2048 rays / scan** | **Reeds-Shepp Fan: CPU 1,024 vs CUDA 1,048,572 candidate paths** |
-| <img src="https://rsasaki0109.github.io/CudaRobotics/comparison_lidar3d_sim.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/comparison_reeds_shepp_fan.gif" width="400"/> |
 
 <details>
 <summary>All CPU vs CUDA speed comparisons + algorithm-axis demos (click to expand)</summary>
