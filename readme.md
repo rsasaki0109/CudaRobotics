@@ -43,8 +43,8 @@ GPU enables orders-of-magnitude more particles/samples, resulting in visually be
 | <img src="https://rsasaki0109.github.io/CudaRobotics/comparison_dwa.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/comparison_frenet.gif" width="400"/> |
 | **2D Lidar Simulator: CPU 1,024 vs CUDA 1,048,576 rays / scan** | **3D LiDAR Simulator: CPU 16x512 vs CUDA 64x2048 rays / scan** |
 | <img src="https://rsasaki0109.github.io/CudaRobotics/comparison_lidar_sim.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/comparison_lidar3d_sim.gif" width="400"/> |
-| **3D LiDAR Realistic: clean cloud vs realistic (noise + divergence + multi-path + reflectivity + rolling shutter)** | |
-| <img src="https://rsasaki0109.github.io/CudaRobotics/comparison_lidar3d_realistic.gif" width="400"/> | |
+| **3D LiDAR Realistic: clean cloud vs realistic (noise + divergence + multi-path + reflectivity + rolling shutter)** | **GPU 2D LiDAR SLAM: scan-to-scan ICP + log-odds map (200 frames, 0.68 ms / frame)** |
+| <img src="https://rsasaki0109.github.io/CudaRobotics/comparison_lidar3d_realistic.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_lidar_slam.gif" width="400"/> |
 | **RRT** | **RRT*** |
 | <img src="https://rsasaki0109.github.io/CudaRobotics/comparison_rrt.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/comparison_rrtstar.gif" width="400"/> |
 | **A*** | **Dijkstra** |
@@ -57,8 +57,8 @@ GPU enables orders-of-magnitude more particles/samples, resulting in visually be
 | <img src="https://rsasaki0109.github.io/CudaRobotics/comparison_esdf.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/comparison_voxel_map.gif" width="400"/> |
 | **Massive Collision Check: CPU 1,024 vs CUDA 1,048,576 candidate segments / scan** | **3D ESDF: CPU brute force 32x32x16 vs CUDA JFA-3D 128x128x64** |
 | <img src="https://rsasaki0109.github.io/CudaRobotics/comparison_collision_check.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/comparison_esdf_3d.gif" width="400"/> |
-| **Massive RRT* Rewire: CPU N=2,000 vs CUDA N=200,000 nodes** | |
-| <img src="https://rsasaki0109.github.io/CudaRobotics/comparison_rrtstar_rewire.gif" width="400"/> | |
+| **Massive RRT* Rewire: CPU N=2,000 vs CUDA N=200,000 nodes** | **GPU Bundle Adjustment: 200 poses x 400 LM x 6,000 obs, Gauss-Newton + Schur + Jacobi-PCG (RMSE 0.583 -> 0.024 m, 0.43 ms / LM iter)** |
+| <img src="https://rsasaki0109.github.io/CudaRobotics/comparison_rrtstar_rewire.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_bundle_adjustment.gif" width="400"/> |
 | **FastSLAM 1.0** | **AMCL** |
 | <img src="https://rsasaki0109.github.io/CudaRobotics/comparison_fastslam.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/comparison_amcl.gif" width="400"/> |
 | **Value Iteration (CPU vs CUDA convergence)** | **Particle Filter on Episode (PFoE, demo)** |
@@ -104,8 +104,10 @@ Recent additions push the repository beyond direct CUDA ports of classic robotic
 | <img src="https://rsasaki0109.github.io/CudaRobotics/neural_sdf.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/comparison_sdf_nav.gif" width="400"/> |
 | **Neural SDF potential-field navigation** | **Neural SDF MPPI rollout** |
 | <img src="https://rsasaki0109.github.io/CudaRobotics/sdf_potential_field.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/sdf_mppi.gif" width="400"/> |
-| **ESDF-MPPI: JFA ESDF + bilinear lookup cost** | |
-| <img src="https://rsasaki0109.github.io/CudaRobotics/esdf_mppi.gif" width="400"/> | |
+| **ESDF-MPPI: JFA ESDF + bilinear lookup cost** | **Visibility-aware MPPI: baseline vs -W_VIS * V(x,y) (precomputed LOS visibility field)** |
+| <img src="https://rsasaki0109.github.io/CudaRobotics/esdf_mppi.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/visibility_mppi.gif" width="400"/> |
+| **PF + ESDF observation model: weight via bilinear ESDF lookup** | **PF realistic obs: Gaussian vs Cauchy vs learned MLP likelihood (3 panels, 8192 particles each)** |
+| <img src="https://rsasaki0109.github.io/CudaRobotics/pf_esdf.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/pf_realistic_obs.gif" width="400"/> |
 | **Neuroevolution: CPU 100 vs CUDA 4096 individuals** | **Swarm Optimization: PSO vs DE vs CMA-ES** |
 | <img src="https://rsasaki0109.github.io/CudaRobotics/comparison_neuroevo.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/comparison_swarm.gif" width="400"/> |
 | **GPU Neuroevolution Cart-Pole replay** | **Particle Swarm Optimization** |
