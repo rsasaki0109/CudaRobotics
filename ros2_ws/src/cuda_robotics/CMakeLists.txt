@@ -80,12 +80,30 @@ target_compile_options(esdf_node PRIVATE
 ament_target_dependencies(esdf_node ${ROS_DEPS})
 
 # -------------------------------------------------------------------
+# voxel_node
+# -------------------------------------------------------------------
+add_executable(voxel_node src/voxel_node.cu)
+target_include_directories(voxel_node PRIVATE
+  ${EIGEN3_INCLUDE_DIR}
+  ${OpenCV_INCLUDE_DIRS}
+)
+target_link_libraries(voxel_node
+  ${OpenCV_LIBS}
+  CUDA::cudart
+)
+target_compile_options(voxel_node PRIVATE
+  $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>
+)
+ament_target_dependencies(voxel_node ${ROS_DEPS})
+
+# -------------------------------------------------------------------
 # Install
 # -------------------------------------------------------------------
 install(TARGETS
   particle_filter_node
   dwa_node
   esdf_node
+  voxel_node
   DESTINATION lib/${PROJECT_NAME}
 )
 
