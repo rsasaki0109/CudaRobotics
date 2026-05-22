@@ -109,6 +109,7 @@ CudaRobotics fills this gap with 97 self-contained CUDA implementations across 8
 | Mapping | ESDF 3D (per voxel, JFA-3D vs brute force) | 70.58 us | 0.81 ns | 86,613x |
 | Mapping | 3D Voxel Map (per ray, DDA log-odds) | 547 ns | 9.3 ns | 58x |
 | Mapping | Collision Check (per candidate, 2D DDA) | 596 ns | 0.47 ns | 1,277x |
+| Planning | RRT* Rewire (per node, parallel vs sequential) | 26.84 us | 0.43 us | 62x |
 | Navigation | DWA (50K samples) | — | real-time | 1000x sample count |
 | Localization | Particle Filter (10K particles) | — | real-time | 100x particle count |
 | Control | Diff-MPPI gradient (7-DOF) | 13.6 ms | 0.79 ms | 17x |

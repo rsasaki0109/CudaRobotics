@@ -14,7 +14,7 @@ Core robotics building blocks shipped as standalone CPU vs CUDA demos:
 | Collision checker | `comparison_collision_check` | 1,048,576 candidate segments / scan | 1,277x faster per candidate (2D DDA) |
 | Scan matching | `comparison_icp`, `comparison_ndt`, `gicp` | 10K+ point clouds | Parallel correspondence + transform |
 | Particle filter | `comparison_pf`, `diff_pf`, `diff_pf_mlp` | 10,000 particles | 100x particle count, end-to-end differentiable |
-| RRT family | `comparison_rrt`, `comparison_rrtstar`, `comparison_reeds_shepp_fan` | 1M candidate paths | Batch NN + RS collision check, 5,000x per-path |
+| RRT family | `comparison_rrt`, `comparison_rrtstar`, `comparison_reeds_shepp_fan`, `comparison_rrtstar_rewire` | 1M candidate paths / 200K rewire nodes | Batch NN + RS collision check, 5,000x per-path; rewire 62x per node (1 thread = 1 node) |
 | 3D voxel map | `comparison_voxel_map` | 256x256x32 voxels, 64x1024 rays | 58x faster per ray (3D DDA log-odds) |
 | ESDF (Euclidean distance transform) | `comparison_esdf`, `comparison_esdf_3d` | 800x800 (640K cells) / 128x128x64 (1.05M voxels) | 53,404x per cell (2D JFA); 86,613x per voxel (3D JFA) |
 | Raycasting (LiDAR sim) | `comparison_lidar_sim`, `comparison_lidar3d_sim` | 1M 2D rays / 131K 3D rays per scan | Massive parallel ray-cast with material returns |
@@ -55,6 +55,8 @@ GPU enables orders-of-magnitude more particles/samples, resulting in visually be
 | <img src="https://rsasaki0109.github.io/CudaRobotics/comparison_esdf.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/comparison_voxel_map.gif" width="400"/> |
 | **Massive Collision Check: CPU 1,024 vs CUDA 1,048,576 candidate segments / scan** | **3D ESDF: CPU brute force 32x32x16 vs CUDA JFA-3D 128x128x64** |
 | <img src="https://rsasaki0109.github.io/CudaRobotics/comparison_collision_check.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/comparison_esdf_3d.gif" width="400"/> |
+| **Massive RRT* Rewire: CPU N=2,000 vs CUDA N=200,000 nodes** | |
+| <img src="https://rsasaki0109.github.io/CudaRobotics/comparison_rrtstar_rewire.gif" width="400"/> | |
 | **FastSLAM 1.0** | **AMCL** |
 | <img src="https://rsasaki0109.github.io/CudaRobotics/comparison_fastslam.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/comparison_amcl.gif" width="400"/> |
 | **Value Iteration (CPU vs CUDA convergence)** | **Particle Filter on Episode (PFoE, demo)** |
@@ -278,6 +280,7 @@ Requires [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-nat
 | RRT* | `rrtstar_cuda` | Nearest neighbor + near nodes + rewiring + collision |
 | **RRT* Reeds-Shepp** | `rrtstar_rs_cuda` | **Batch RS path computation + collision check (nonholonomic)** |
 | **Massive Reeds-Shepp Fan** | `comparison_reeds_shepp_fan` | **1M 3-segment RS candidate paths from a parking-lot start pose per frame, with collision check and argmin reduction (5000x per-path throughput vs CPU)** |
+| **Massive RRT* Rewire** | `comparison_rrtstar_rewire` | **GPU-parallel rewire pass of an existing RRT* forest. CPU N=2,000 (O(N^2), 4 iters) vs CUDA N=200,000 (1 thread = 1 node, 4 iters); per-node throughput 62x faster than CPU (CPU 26.84 us / node vs CUDA 0.43 us / node)** |
 | **Informed RRT*** | `informed_rrtstar_cuda` | **Ellipsoidal sampling + parallel NN/rewiring** |
 | **3D RRT*** | `rrtstar_3d_cuda` | **3D nearest neighbor + 3D collision (drone/UAV)** |
 | Dynamic Window Approach | `dwa` | ~120K velocity samples evaluated in parallel |
