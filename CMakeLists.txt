@@ -314,6 +314,10 @@ add_executable(pf_realistic_obs src/pf_realistic_obs.cu)
 target_link_libraries(pf_realistic_obs ${OpenCV_LIBS})
 target_compile_options(pf_realistic_obs PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
 
+add_executable(gpu_pose_graph_slam src/gpu_pose_graph_slam.cu)
+target_link_libraries(gpu_pose_graph_slam ${OpenCV_LIBS})
+target_compile_options(gpu_pose_graph_slam PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
+
 add_executable(comparison_voxel_map src/comparison_voxel_map.cu)
 target_link_libraries(comparison_voxel_map ${OpenCV_LIBS})
 target_compile_options(comparison_voxel_map PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
