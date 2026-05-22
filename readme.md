@@ -17,7 +17,7 @@ Core robotics building blocks shipped as standalone CPU vs CUDA demos:
 | RRT family | `comparison_rrt`, `comparison_rrtstar`, `comparison_reeds_shepp_fan` | 1M candidate paths | Batch NN + RS collision check, 5,000x per-path |
 | 3D voxel map | `comparison_voxel_map` | 256x256x32 voxels, 64x1024 rays | 58x faster per ray (3D DDA log-odds) |
 | ESDF (Euclidean distance transform) | `comparison_esdf`, `comparison_esdf_3d` | 800x800 (640K cells) / 128x128x64 (1.05M voxels) | 53,404x per cell (2D JFA); 86,613x per voxel (3D JFA) |
-| Raycasting (LiDAR sim) | `comparison_lidar_sim`, `comparison_lidar3d_sim` | 1M 2D rays / 131K 3D rays per scan | Massive parallel ray-cast with material returns |
+| Raycasting (LiDAR sim) | `comparison_lidar_sim`, `comparison_lidar3d_sim`, `comparison_lidar3d_realistic` | 1M 2D rays / 131K 3D rays per scan | Massive parallel ray-cast with material returns; realistic version adds range-dependent noise, beam divergence, multi-path, material reflectivity, rolling-shutter pose lerp |
 
 ## Why CUDA? — Visual Quality Difference
 
@@ -43,6 +43,8 @@ GPU enables orders-of-magnitude more particles/samples, resulting in visually be
 | <img src="https://rsasaki0109.github.io/CudaRobotics/comparison_dwa.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/comparison_frenet.gif" width="400"/> |
 | **2D Lidar Simulator: CPU 1,024 vs CUDA 1,048,576 rays / scan** | **3D LiDAR Simulator: CPU 16x512 vs CUDA 64x2048 rays / scan** |
 | <img src="https://rsasaki0109.github.io/CudaRobotics/comparison_lidar_sim.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/comparison_lidar3d_sim.gif" width="400"/> |
+| **3D LiDAR Realistic: clean cloud vs realistic (noise + divergence + multi-path + reflectivity + rolling shutter)** | |
+| <img src="https://rsasaki0109.github.io/CudaRobotics/comparison_lidar3d_realistic.gif" width="400"/> | |
 | **RRT** | **RRT*** |
 | <img src="https://rsasaki0109.github.io/CudaRobotics/comparison_rrt.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/comparison_rrtstar.gif" width="400"/> |
 | **A*** | **Dijkstra** |
@@ -334,6 +336,7 @@ Rotating visual summary of the benchmark room cloud (raw / statistical-filtered 
 | Occupancy Grid | `occupancy_grid` | Ray-parallel lidar update (360 threads/scan) |
 | **Massive Lidar Simulator** | `comparison_lidar_sim` | **2D DDA raycast, 1 ray = 1 thread; 1M rays/scan in ~0.25 ms (1500x per-ray throughput vs CPU)** |
 | **3D LiDAR Simulator** | `comparison_lidar3d_sim` | **Multi-ring analytic raycast, 1 ray = 1 thread; dense point cloud + range image from 64x2048 rays/scan; ~650x faster per ray than CPU in the animated sweep** |
+| **3D LiDAR Realistic** | `comparison_lidar3d_realistic` | **Adds five physical effects to the GPU raycast: range-dependent noise (sigma = a + b*r), beam divergence (1.5 mrad cone, MC sub-ray), specular multi-path at grazing incidence, material reflectivity (albedo * cos(theta) * exp(-r/scale) with detection threshold drops), and rolling-shutter pose lerp across the 100 ms scan. Clean baseline + realistic shown side-by-side; multi-path returns highlighted in red. 64x1024 rays/scan, sub-millisecond GPU per scan.** |
 | **ESDF (Jump Flooding)** | `comparison_esdf` | **Euclidean distance transform on a 2D occupancy grid. CPU brute force 100x100 vs CUDA JFA 800x800 (64x larger field); validates to numerical equality with CPU brute force on 64x64; per-cell throughput 53,404x faster than CPU (0.193 ms / 640K-cell ESDF vs 161 ms / 10K-cell ESDF)** |
 | **3D Voxel Map (log-odds)** | `comparison_voxel_map` | **3D DDA log-odds occupancy with atomicAdd updates, 1 ray = 1 thread. CPU 64x64x16 voxels + 16x256 rays vs CUDA 256x256x32 voxels + 64x1024 rays (32x larger grid, 16x more rays). ~58x faster per ray (CPU 2.24 ms/scan vs CUDA 0.61 ms/scan).** |
 | **Massive Collision Checker** | `comparison_collision_check` | **2D DDA segment collision check against a static occupancy grid, 1 candidate = 1 thread. CPU 1,024 vs CUDA 1,048,576 segments / scan; 100% agreement with CPU DDA on 4,096-sample validation; per-candidate throughput 1,277x faster (CPU 0.61 ms / scan vs CUDA 0.49 ms / scan).** |
