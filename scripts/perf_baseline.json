@@ -1,0 +1,8 @@
+{
+  "esdf_2d_gpu_ms": 0.194,
+  "esdf_3d_gpu_ms": 0.859,
+  "voxel_map_gpu_ms": 0.612,
+  "collision_check_gpu_ms": 0.493,
+  "rrtstar_rewire_gpu_ms": 303.319,
+  "esdf_mppi_rollout_ms": 0.332
+}
