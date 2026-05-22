@@ -302,6 +302,10 @@ add_executable(gpu_bundle_adjustment src/gpu_bundle_adjustment.cu)
 target_link_libraries(gpu_bundle_adjustment ${OpenCV_LIBS})
 target_compile_options(gpu_bundle_adjustment PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
 
+add_executable(gpu_lidar_slam src/gpu_lidar_slam.cu)
+target_link_libraries(gpu_lidar_slam ${OpenCV_LIBS})
+target_compile_options(gpu_lidar_slam PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
+
 add_executable(comparison_voxel_map src/comparison_voxel_map.cu)
 target_link_libraries(comparison_voxel_map ${OpenCV_LIBS})
 target_compile_options(comparison_voxel_map PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
