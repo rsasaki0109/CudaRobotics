@@ -41,17 +41,17 @@
 #include <random>
 #include <vector>
 
-#define CUDA_CHECK(call)                                                  \
-    do {                                                                  \
-        cudaError_t err = (call);                                         \
-        if (err != cudaSuccess) {                                         \
-            std::fprintf(stderr, "CUDA error %s at %s:%d\n",              \
-                         cudaGetErrorString(err), __FILE__, __LINE__);    \
-            std::exit(1);                                                 \
-        }                                                                 \
-    } while (0)
+#include "cuda_check.cuh"
+#include "cuda_blas.cuh"
+#include "cuda_video.h"
 
 namespace cudabot {
+
+using blas::axpy_kernel;
+using blas::xpay_kernel;
+using blas::copy_kernel;
+using blas::zero_kernel;
+using blas::dot_kernel;
 
 // -------------------------------------------------------------------------
 // Constants
@@ -329,43 +329,7 @@ __global__ void update_poses_kernel(int n_poses,
     poses[3 * i + 2] = th;
 }
 
-// Reductions
-__global__ void dot_kernel(int n, const float* a, const float* b, float* out) {
-    __shared__ float sm[256];
-    int tid = threadIdx.x;
-    int idx = blockIdx.x * blockDim.x + tid;
-    float v = 0.0f;
-    for (int k = idx; k < n; k += gridDim.x * blockDim.x) v += a[k] * b[k];
-    sm[tid] = v;
-    __syncthreads();
-    for (int s = 128; s > 0; s >>= 1) {
-        if (tid < s) sm[tid] += sm[tid + s];
-        __syncthreads();
-    }
-    if (tid == 0) atomicAdd(out, sm[0]);
-}
-
-__global__ void axpy_kernel(int n, float a, const float* x, float* y) {
-    int idx = blockIdx.x * blockDim.x + threadIdx.x;
-    if (idx >= n) return;
-    y[idx] += a * x[idx];
-}
-
-__global__ void xpay_kernel(int n, float a, const float* x, float* y) {
-    int idx = blockIdx.x * blockDim.x + threadIdx.x;
-    if (idx >= n) return;
-    y[idx] = x[idx] + a * y[idx];
-}
-
-__global__ void copy_kernel(int n, const float* src, float* dst) {
-    int idx = blockIdx.x * blockDim.x + threadIdx.x;
-    if (idx < n) dst[idx] = src[idx];
-}
-
-__global__ void zero_kernel(int n, float* arr) {
-    int idx = blockIdx.x * blockDim.x + threadIdx.x;
-    if (idx < n) arr[idx] = 0.0f;
-}
+// Reductions and BLAS-like primitives come from include/cuda_blas.cuh
 
 // -------------------------------------------------------------------------
 // Host driver
@@ -445,14 +409,7 @@ static cv::Mat draw_panel(const std::vector<float>& poses,
     return img;
 }
 
-static void convert_avi_to_gif(const std::string& avi, const std::string& gif, int fps) {
-    char cmd[1024];
-    std::snprintf(cmd, sizeof(cmd),
-                  "ffmpeg -y -i %s -vf \"fps=%d,scale=1080:-1:flags=lanczos,split[a][b];[a]palettegen=stats_mode=diff[p];[b][p]paletteuse=dither=bayer:bayer_scale=5:diff_mode=rectangle\" %s 2>/dev/null",
-                  avi.c_str(), fps, gif.c_str());
-    int rc = std::system(cmd);
-    if (rc != 0) std::fprintf(stderr, "ffmpeg failed (%d)\n", rc);
-}
+// convert_avi_to_gif moved to include/cuda_video.h (avi_to_gif).
 
 }  // namespace cudabot
 
@@ -672,7 +629,7 @@ done_lc:
     // Final frames
     for (int k = 0; k < 20; k++) draw_frame("converged", rmse_final);
     video.release();
-    convert_avi_to_gif("gif/gpu_pose_graph_slam.avi", "gif/gpu_pose_graph_slam.gif", 12);
+    cudabot::avi_to_gif("gif/gpu_pose_graph_slam.avi", "gif/gpu_pose_graph_slam.gif", 12, 1080);
     std::printf("GIF saved to gif/gpu_pose_graph_slam.gif\n");
 
     cudaFree(d_ei); cudaFree(d_ej); cudaFree(d_ez); cudaFree(d_poses);
