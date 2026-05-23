@@ -31,15 +31,8 @@
 #include <random>
 #include <vector>
 
-#define CUDA_CHECK(call)                                                  \
-    do {                                                                  \
-        cudaError_t err = (call);                                         \
-        if (err != cudaSuccess) {                                         \
-            std::fprintf(stderr, "CUDA error %s at %s:%d\n",              \
-                         cudaGetErrorString(err), __FILE__, __LINE__);    \
-            std::exit(1);                                                 \
-        }                                                                 \
-    } while (0)
+#include "cuda_check.cuh"
+#include "cuda_video.h"
 
 namespace cudabot {
 
@@ -264,14 +257,7 @@ static void compose_view_matrix(float eye_x, float eye_y, float eye_z,
     V[8]  = fx; V[9]  = fy; V[10] = fz; V[11] = -(fx * eye_x + fy * eye_y + fz * eye_z);
 }
 
-static void convert_avi_to_gif(const std::string& avi, const std::string& gif, int fps) {
-    char cmd[1024];
-    std::snprintf(cmd, sizeof(cmd),
-                  "ffmpeg -y -i %s -vf \"fps=%d,scale=1080:-1:flags=lanczos,split[a][b];[a]palettegen=stats_mode=diff[p];[b][p]paletteuse=dither=bayer:bayer_scale=5:diff_mode=rectangle\" %s 2>/dev/null",
-                  avi.c_str(), fps, gif.c_str());
-    int rc = std::system(cmd);
-    if (rc != 0) std::fprintf(stderr, "ffmpeg failed (%d)\n", rc);
-}
+// convert_avi_to_gif lives in include/cuda_video.h (avi_to_gif).
 
 }  // namespace cudabot
 
@@ -354,7 +340,7 @@ int main() {
     video.release();
     std::printf("Avg render time: %.2f ms / frame  (%d frames, %d Gaussians)\n",
                 ms_total / N_FRAMES, N_FRAMES, n);
-    convert_avi_to_gif("gif/gpu_gaussian_splatting.avi", "gif/gpu_gaussian_splatting.gif", 15);
+    cudabot::avi_to_gif("gif/gpu_gaussian_splatting.avi", "gif/gpu_gaussian_splatting.gif", 15, 1080);
     std::printf("GIF saved to gif/gpu_gaussian_splatting.gif\n");
 
     cudaFree(d_gs); cudaFree(d_ps); cudaFree(d_order); cudaFree(d_V); cudaFree(d_img);
