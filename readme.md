@@ -73,6 +73,8 @@ Same algorithm on CPU and GPU — GPU enables orders of magnitude more particles
 | <img src="https://rsasaki0109.github.io/CudaRobotics/comparison_lidar3d_realistic.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/comparison_voxel_map.gif" width="400"/> |
 | **Massive 2D LiDAR Sim (1M rays/scan)** | **ESDF JFA (640K cells, 53,404x)** |
 | <img src="https://rsasaki0109.github.io/CudaRobotics/comparison_lidar_sim.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/comparison_esdf.gif" width="400"/> |
+| **GPU NDT 2D scan matching (Newton on NDT grid, 0.54 ms/scenario, ~0.02 m typical)** | |
+| <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_ndt_2d.gif" width="400"/> | |
 
 <details>
 <summary>More classical-algorithm GIFs</summary>
