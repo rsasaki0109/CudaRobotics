@@ -30,8 +30,8 @@ separate parked work, not active blockers for new feature work.
   Multi-robot planner, Gaussian Splatting, NeRF volume, diffusion planner,
   online SLAM, shared headers refactor, **and the full 2D/3D NDT + 2D/3D
   GICP scan matching family**, followed by **multi-resolution NDT 3D** and
-  **GPU Hungarian-class assignment**, then **GPU CMA-ES**. The current
-  branch adds **GPU MCTS kinodynamic planning**.
+  **GPU Hungarian-class assignment**, then **GPU CMA-ES**. PR #75 adds
+  **GPU MCTS kinodynamic planning**.
 - The "scan matching 4 siblings" are NDT 2D (#67), NDT 3D (#68), GICP 2D
   (#69), GICP 3D (#70). All present and merged.
 - Follow-up #71 adds coarse-to-fine NDT 3D and fixes the old #68 outlier
@@ -130,9 +130,9 @@ Compact PR list. Format: `#PR  Title  | headline number`.
 | #72 | GPU Hungarian assignment | 512 batched 64x64 dense assignments, 0.082 ms/batch, **158.2x** vs CPU Hungarian |
 | #73 | Update handoff plan | Refreshed `plan.md` after #72 |
 | #74 | GPU CMA-ES optimiser demo | 3 x 32768 candidates x 10D, 0.025 ms/generation eval, **1254x** objective eval |
-| current branch | GPU MCTS planner | 64 scenes x 4096 rollouts x 48 horizon, 1.82 ms/plan, **712x** vs CPU |
+| #75 | GPU MCTS planner | 64 scenes x 4096 rollouts x 48 horizon, 1.82 ms/plan, **712x** vs CPU |
 
-(35 merged PRs in 4 days, plus the current GPU MCTS branch; cadence was sustained because each demo was a single
+(35 merged PRs in 4 days, plus PR #75; cadence was sustained because each demo was a single
 ~500-700 LOC `.cu` file plus a few lines in `CMakeLists.txt` and
 `readme.md`.)
 
@@ -429,7 +429,7 @@ rtk git switch -c chore/shared-cuda-cleanup    # A: cleanup
   checked against CPU Hungarian.
 - `src/gpu_cma_es.cu` (PR #74) — 3 objective families x 32768 candidates
   x 10D, host covariance update with GPU objective evaluation.
-- `src/gpu_mcts_planner.cu` (current branch) — root-parallel MCTS for 64
+- `src/gpu_mcts_planner.cu` (PR #75) — root-parallel MCTS for 64
   kinodynamic planning scenes, 4096 rollouts x 48 horizon per scene.
 - `src/gpu_multi_robot_planner.cu` (PR #60) — 200 robots, parallel BF
   distance fields.
