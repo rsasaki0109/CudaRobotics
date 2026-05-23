@@ -334,6 +334,10 @@ add_executable(gpu_gicp_2d src/gpu_gicp_2d.cu)
 target_link_libraries(gpu_gicp_2d ${OpenCV_LIBS})
 target_compile_options(gpu_gicp_2d PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
 
+add_executable(gpu_gicp_3d src/gpu_gicp_3d.cu)
+target_link_libraries(gpu_gicp_3d ${OpenCV_LIBS})
+target_compile_options(gpu_gicp_3d PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
+
 add_executable(gpu_gaussian_splatting src/gpu_gaussian_splatting.cu)
 target_link_libraries(gpu_gaussian_splatting ${OpenCV_LIBS})
 target_compile_options(gpu_gaussian_splatting PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
