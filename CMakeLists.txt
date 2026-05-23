@@ -354,6 +354,10 @@ add_executable(gpu_multi_robot_planner src/gpu_multi_robot_planner.cu)
 target_link_libraries(gpu_multi_robot_planner ${OpenCV_LIBS})
 target_compile_options(gpu_multi_robot_planner PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
 
+add_executable(gpu_hungarian_assignment src/gpu_hungarian_assignment.cu)
+target_link_libraries(gpu_hungarian_assignment ${OpenCV_LIBS})
+target_compile_options(gpu_hungarian_assignment PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
+
 add_executable(gpu_diffusion_planner src/gpu_diffusion_planner.cu)
 target_link_libraries(gpu_diffusion_planner ${OpenCV_LIBS})
 target_compile_options(gpu_diffusion_planner PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
