@@ -52,16 +52,16 @@
     fprintf(stderr, "CUDA error at %s:%d: %s\n", __FILE__, __LINE__, cudaGetErrorString(err)); \
     std::exit(EXIT_FAILURE); } } while (0)
 
-constexpr int   N_POSES     = 200;
-constexpr int   N_LANDMARKS = 400;
-constexpr int   N_OBS       = 6000;   // budget; actual count may be lower
-constexpr float WORLD       = 40.0f;
-constexpr float SENSOR_RANGE = 8.0f;
+constexpr int   N_POSES     = 1000;
+constexpr int   N_LANDMARKS = 8000;
+constexpr int   N_OBS       = 60000;   // budget; actual count may be lower
+constexpr float WORLD       = 80.0f;
+constexpr float SENSOR_RANGE = 6.0f;
 constexpr float NOISE_OBS    = 0.05f;   // observation noise [m]
-constexpr float NOISE_POSE_T = 0.6f;    // initial pose translation noise [m]
-constexpr float NOISE_POSE_R = 0.05f;   // initial pose rotation noise [rad]
-constexpr float NOISE_LM     = 0.6f;    // initial landmark noise [m]
-constexpr int   LM_ITERS     = 50;
+constexpr float NOISE_POSE_T = 0.5f;    // initial pose translation noise [m]
+constexpr float NOISE_POSE_R = 0.04f;   // initial pose rotation noise [rad]
+constexpr float NOISE_LM     = 0.5f;    // initial landmark noise [m]
+constexpr int   LM_ITERS     = 40;
 constexpr int   PCG_ITERS    = 80;
 constexpr float DAMPING_INIT = 1.0e-3f;
 constexpr int   PANEL_W      = 540;
@@ -398,10 +398,13 @@ static Dataset build_dataset(unsigned long seed) {
     Dataset d;
     d.poses_gt.resize(N_POSES * 3);
     d.poses_init.resize(N_POSES * 3);
+    // 3-loop spiral trajectory so 1000 poses cover the scene without overlap
     for (int i = 0; i < N_POSES; i++) {
-        float t = (float)i / N_POSES * 2.0f * (float)M_PI;
-        float cx = WORLD * 0.5f + 12.0f * std::cos(t);
-        float cy = WORLD * 0.5f + 12.0f * std::sin(t);
+        float s = (float)i / (N_POSES - 1);
+        float t = s * 3.0f * 2.0f * (float)M_PI;
+        float r = 8.0f + 20.0f * s;
+        float cx = WORLD * 0.5f + r * std::cos(t);
+        float cy = WORLD * 0.5f + r * std::sin(t);
         float th = t + (float)M_PI / 2.0f;
         d.poses_gt[i * 3 + 0] = cx;
         d.poses_gt[i * 3 + 1] = cy;
@@ -430,10 +433,16 @@ static Dataset build_dataset(unsigned long seed) {
 
     d.obs.reserve(N_OBS);
     int obs_per_pose = N_OBS / N_POSES;
+    // shuffle landmark visit order per pose to avoid biased "first N" picks
+    std::vector<int> idx(N_LANDMARKS);
+    for (int j = 0; j < N_LANDMARKS; j++) idx[j] = j;
     for (int i = 0; i < N_POSES; i++) {
+        // partial shuffle is enough since SENSOR_RANGE prunes most
+        std::shuffle(idx.begin(), idx.end(), rng);
         int added = 0;
-        // pick the closest landmarks within sensor range
-        for (int j = 0; j < N_LANDMARKS && added < obs_per_pose; j++) {
+        // pick landmarks within sensor range
+        for (int k = 0; k < N_LANDMARKS && added < obs_per_pose; k++) {
+            int j = idx[k];
             float dx = d.landmarks_gt[j * 2 + 0] - d.poses_gt[i * 3 + 0];
             float dy = d.landmarks_gt[j * 2 + 1] - d.poses_gt[i * 3 + 1];
             float r2 = dx * dx + dy * dy;
@@ -461,34 +470,36 @@ static cv::Mat render(const std::vector<float>& poses,
     cv::Mat img(PANEL_H, PANEL_W, CV_8UC3, cv::Scalar(15, 15, 15));
     auto X = [&](float x) { return static_cast<int>(x / WORLD * PANEL_W); };
     auto Y = [&](float y) { return static_cast<int>((1.0f - y / WORLD) * PANEL_H); };
-    // landmark GT
+    // landmark GT (faint, 1px)
     for (int j = 0; j < N_LANDMARKS; j++) {
-        cv::circle(img, cv::Point(X(lms_gt[j * 2 + 0]), Y(lms_gt[j * 2 + 1])),
-                   2, cv::Scalar(60, 60, 60), cv::FILLED);
+        int px = X(lms_gt[j * 2 + 0]), py = Y(lms_gt[j * 2 + 1]);
+        if ((unsigned)px < (unsigned)PANEL_W && (unsigned)py < (unsigned)PANEL_H) {
+            img.at<cv::Vec3b>(py, px) = cv::Vec3b(70, 70, 70);
+        }
     }
-    // landmark current
+    // landmark current (small 1-2 px point)
     for (int j = 0; j < N_LANDMARKS; j++) {
         cv::circle(img, cv::Point(X(landmarks[j * 2 + 0]), Y(landmarks[j * 2 + 1])),
-                   3, cv::Scalar(220, 200, 50), cv::FILLED);
+                   1, cv::Scalar(220, 200, 50), cv::FILLED);
     }
-    // pose GT path
+    // pose GT path (thin)
     for (int i = 1; i < N_POSES; i++) {
         cv::line(img,
                  cv::Point(X(poses_gt[(i - 1) * 3 + 0]), Y(poses_gt[(i - 1) * 3 + 1])),
                  cv::Point(X(poses_gt[i * 3 + 0]),       Y(poses_gt[i * 3 + 1])),
-                 cv::Scalar(80, 80, 80), 1, cv::LINE_AA);
+                 cv::Scalar(90, 90, 90), 1, cv::LINE_AA);
     }
     // pose current path
     for (int i = 1; i < N_POSES; i++) {
         cv::line(img,
                  cv::Point(X(poses[(i - 1) * 3 + 0]), Y(poses[(i - 1) * 3 + 1])),
                  cv::Point(X(poses[i * 3 + 0]),       Y(poses[i * 3 + 1])),
-                 cv::Scalar(80, 220, 80), 2, cv::LINE_AA);
+                 cv::Scalar(80, 220, 80), 1, cv::LINE_AA);
     }
-    // pose marks
-    for (int i = 0; i < N_POSES; i += 5) {
+    // pose marks (sparser at higher N)
+    for (int i = 0; i < N_POSES; i += 25) {
         cv::circle(img, cv::Point(X(poses[i * 3 + 0]), Y(poses[i * 3 + 1])),
-                   3, cv::Scalar(255, 255, 255), cv::FILLED);
+                   2, cv::Scalar(255, 255, 255), cv::FILLED);
     }
     cv::rectangle(img, cv::Rect(0, 0, PANEL_W, 30), cv::Scalar(0, 0, 0), cv::FILLED);
     char buf[256];

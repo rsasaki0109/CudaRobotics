@@ -32,7 +32,7 @@ Same algorithm on CPU and GPU — GPU enables orders of magnitude more particles
 
 | | |
 |---|---|
-| **GPU Bundle Adjustment (200 poses x 400 LM, GN+Schur+PCG)** | **GPU LiDAR SLAM frontend (scan-to-scan ICP, 0.68 ms/frame)** |
+| **GPU Bundle Adjustment (1000 poses × 8000 LM, 60k obs, 0.5 ms/iter)** | **GPU LiDAR SLAM frontend (scan-to-scan ICP, 0.68 ms/frame)** |
 | <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_bundle_adjustment.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_lidar_slam.gif" width="400"/> |
 | **GPU Pose-Graph SLAM backend (GN+Jacobi-PCG, RMSE 4.88→0.56 m)** | **GPU 3D Gaussian Splatting renderer (~1k Gaussians, 0.94 ms/frame)** |
 | <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_pose_graph_slam.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_gaussian_splatting.gif" width="400"/> |
