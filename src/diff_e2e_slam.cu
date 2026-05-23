@@ -41,15 +41,8 @@
 #include <random>
 #include <vector>
 
-#define CUDA_CHECK(call)                                                  \
-    do {                                                                  \
-        cudaError_t err = (call);                                         \
-        if (err != cudaSuccess) {                                         \
-            std::fprintf(stderr, "CUDA error %s at %s:%d\n",              \
-                         cudaGetErrorString(err), __FILE__, __LINE__);    \
-            std::exit(1);                                                 \
-        }                                                                 \
-    } while (0)
+#include "cuda_check.cuh"
+#include "cuda_video.h"
 
 namespace cudabot {
 
@@ -406,14 +399,7 @@ static cv::Mat draw_curve_panel(const std::vector<float>& sigma_hist,
     return img;
 }
 
-static void convert_avi_to_gif(const std::string& avi, const std::string& gif, int fps) {
-    char cmd[1024];
-    std::snprintf(cmd, sizeof(cmd),
-                  "ffmpeg -y -i %s -vf \"fps=%d,scale=900:-1:flags=lanczos,split[a][b];[a]palettegen=stats_mode=diff[p];[b][p]paletteuse=dither=bayer:bayer_scale=5:diff_mode=rectangle\" %s 2>/dev/null",
-                  avi.c_str(), fps, gif.c_str());
-    int rc = std::system(cmd);
-    if (rc != 0) std::fprintf(stderr, "ffmpeg failed (%d)\n", rc);
-}
+// convert_avi_to_gif lives in include/cuda_video.h (avi_to_gif).
 
 }  // namespace cudabot
 
@@ -550,7 +536,7 @@ int main() {
     std::printf("Reduction from naive -> tuned = %.4f m (%.1f%%)\n",
                 initial_rmse - best_rmse,
                 100.0f * (initial_rmse - best_rmse) / std::max(1e-6f, initial_rmse));
-    convert_avi_to_gif("gif/diff_e2e_slam.avi", "gif/diff_e2e_slam.gif", 12);
+    cudabot::avi_to_gif("gif/diff_e2e_slam.avi", "gif/diff_e2e_slam.gif", 12, 900);
     std::printf("GIF saved to gif/diff_e2e_slam.gif\n");
     return 0;
 }
