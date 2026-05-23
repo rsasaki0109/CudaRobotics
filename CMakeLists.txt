@@ -330,6 +330,10 @@ add_executable(gpu_multi_robot_planner src/gpu_multi_robot_planner.cu)
 target_link_libraries(gpu_multi_robot_planner ${OpenCV_LIBS})
 target_compile_options(gpu_multi_robot_planner PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
 
+add_executable(gpu_diffusion_planner src/gpu_diffusion_planner.cu)
+target_link_libraries(gpu_diffusion_planner ${OpenCV_LIBS})
+target_compile_options(gpu_diffusion_planner PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
+
 add_executable(diff_e2e_slam src/diff_e2e_slam.cu)
 target_link_libraries(diff_e2e_slam ${OpenCV_LIBS})
 target_compile_options(diff_e2e_slam PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
