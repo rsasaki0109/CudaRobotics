@@ -322,6 +322,10 @@ add_executable(gpu_online_slam src/gpu_online_slam.cu)
 target_link_libraries(gpu_online_slam ${OpenCV_LIBS})
 target_compile_options(gpu_online_slam PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
 
+add_executable(gpu_ndt_2d src/gpu_ndt_2d.cu)
+target_link_libraries(gpu_ndt_2d ${OpenCV_LIBS})
+target_compile_options(gpu_ndt_2d PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
+
 add_executable(gpu_gaussian_splatting src/gpu_gaussian_splatting.cu)
 target_link_libraries(gpu_gaussian_splatting ${OpenCV_LIBS})
 target_compile_options(gpu_gaussian_splatting PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
