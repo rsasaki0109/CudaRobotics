@@ -326,6 +326,10 @@ add_executable(gpu_gaussian_splatting src/gpu_gaussian_splatting.cu)
 target_link_libraries(gpu_gaussian_splatting ${OpenCV_LIBS})
 target_compile_options(gpu_gaussian_splatting PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
 
+add_executable(gpu_nerf_volume src/gpu_nerf_volume.cu)
+target_link_libraries(gpu_nerf_volume ${OpenCV_LIBS})
+target_compile_options(gpu_nerf_volume PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
+
 add_executable(gpu_multi_robot_planner src/gpu_multi_robot_planner.cu)
 target_link_libraries(gpu_multi_robot_planner ${OpenCV_LIBS})
 target_compile_options(gpu_multi_robot_planner PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
