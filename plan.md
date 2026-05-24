@@ -37,7 +37,7 @@ separate parked work, not active blockers for new feature work.
 - PR #78 / branch `feat/gpu-sfm-mini` added a compact multi-view geometry
   demo: 2048 synthetic ORB-like features across 4 views, GPU descriptor
   matching, stereo triangulation, and point-only BA.
-- Current branch `feat/gpu-pcg` adds a generic CSR Jacobi-PCG sparse SPD
+- PR #79 / branch `feat/gpu-pcg` adds a generic CSR Jacobi-PCG sparse SPD
   solver demo: 262K unknowns, 1.31M nonzeros, 33 iterations, 13.4x vs CPU.
 - The "scan matching 4 siblings" are NDT 2D (#67), NDT 3D (#68), GICP 2D
   (#69), GICP 3D (#70). All present and merged.
@@ -348,8 +348,8 @@ any new scan-matching / SLAM / optimisation work.
 ## Recommended Next Session
 
 After GPU CMA-ES, GPU MCTS, assignment tracking, crowd swarm, PR #78 GPU
-SfM mini, and the current GPU PCG branch, the natural next move depends
-on user goal:
+SfM mini, and PR #79 GPU PCG, the natural next move depends on user
+goal:
 
 - **Hard but high value**: retry 3D pose-graph SLAM with FD-verified
   Jacobians (B1). This unblocks any future global SLAM work and
@@ -425,7 +425,7 @@ rtk git switch -c chore/shared-cuda-cleanup    # A: cleanup
   global pass on loop closure.
 
 ### Solver / infrastructure
-- `src/gpu_pcg_solver.cu` (current branch) — generic CSR Jacobi-PCG for
+- `src/gpu_pcg_solver.cu` (PR #79) — generic CSR Jacobi-PCG for
   sparse SPD systems; 262K unknowns, 1.31M nonzeros, convergence GIF, and
   direct CPU PCG comparison.
 
