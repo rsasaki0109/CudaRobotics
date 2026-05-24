@@ -362,6 +362,10 @@ add_executable(gpu_sfm_mini src/gpu_sfm_mini.cu)
 target_link_libraries(gpu_sfm_mini ${OpenCV_LIBS})
 target_compile_options(gpu_sfm_mini PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
 
+add_executable(gpu_pcg_solver src/gpu_pcg_solver.cu)
+target_link_libraries(gpu_pcg_solver ${OpenCV_LIBS})
+target_compile_options(gpu_pcg_solver PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
+
 add_executable(gpu_hungarian_assignment src/gpu_hungarian_assignment.cu)
 target_link_libraries(gpu_hungarian_assignment ${OpenCV_LIBS})
 target_compile_options(gpu_hungarian_assignment PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
