@@ -10,12 +10,12 @@ a prioritised menu of candidate next tasks with enough specificity that a
 fresh agent can pick one and start.
 
 Mainline was in sync with `origin/master` at commit
-`83c13e5 Add GPU CMA-ES optimizer demo` before the current GPU MCTS
+`63661d0 Add GPU MCTS planner demo` before the current assignment tracking
 feature branch.
 
-There were no open GitHub PRs at the start of the GPU MCTS branch. Parked
-local branches remain for `feat/gaussian-splat-renderer` (checked out in
-`/tmp/CudaRobotics-gaussian`) and `feat/repro-report`; treat them as
+There were no open GitHub PRs at the start of the assignment tracking
+branch. Parked local branches remain for `feat/gaussian-splat-renderer`
+(checked out in `/tmp/CudaRobotics-gaussian`) and `feat/repro-report`; treat them as
 separate parked work, not active blockers for new feature work.
 
 ---
@@ -24,39 +24,41 @@ separate parked work, not active blockers for new feature work.
 
 - Repo is in a clean, "between sprints" state. **No mandatory cleanup
   before starting new work.**
-- The 2026-05-21..24 sprint added 35 PRs (#40 → #74): ESDF JFA (2D + 3D),
+- The 2026-05-21..24 sprint added 36 PRs (#40 → #75): ESDF JFA (2D + 3D),
   3D voxel map, massive collision check, realistic 3D LiDAR, ROS2 nodes,
   Bundle Adjustment, 2D pose-graph SLAM backend, LiDAR SLAM frontend,
   Multi-robot planner, Gaussian Splatting, NeRF volume, diffusion planner,
   online SLAM, shared headers refactor, **and the full 2D/3D NDT + 2D/3D
   GICP scan matching family**, followed by **multi-resolution NDT 3D** and
   **GPU Hungarian-class assignment**, then **GPU CMA-ES**. PR #75 adds
-  **GPU MCTS kinodynamic planning**.
+  **GPU MCTS kinodynamic planning**. PR #76 adds **GPU assignment
+  tracking**.
 - The "scan matching 4 siblings" are NDT 2D (#67), NDT 3D (#68), GICP 2D
   (#69), GICP 3D (#70). All present and merged.
 - Follow-up #71 adds coarse-to-fine NDT 3D and fixes the old #68 outlier
   frame; #72 opens the combinatorial optimisation chapter with batched
-  64x64 dense assignment; #74 adds GPU CMA-ES black-box optimisation.
+  64x64 dense assignment; #74 adds GPU CMA-ES black-box optimisation; #75
+  adds root-parallel GPU MCTS.
 - Two attempts during the sprint were aborted: **3D pose-graph SLAM**
   (Gauss-Newton step direction uphill at GT, root cause not identified,
   file deleted) and **LiDAR SLAM with constant-velocity ICP init**
   (Lissajous reversal made drift 9x worse, change reverted).
 - Recommended next directions are listed at the bottom; safe defaults are
-  now **assignment tracking**, **10K-agent Boids / crowd swarm**, or a
-  mechanical shared-header cleanup.
+  now **10K-agent Boids / crowd swarm**, **GPU SfM mini**, or a mechanical
+  shared-header cleanup.
 
 ---
 
 ## Repo State (2026-05-24)
 
-- **Main branch**: `master`, currently at `83c13e5` before the GPU MCTS
-  feature branch.
+- **Main branch**: `master`, currently at `63661d0` before the assignment
+  tracking feature branch.
 - **gh-pages branch**: hosts gif assets referenced from `readme.md`.
   Files live at the branch ROOT (not `gif/`), so the URL
   `https://rsasaki0109.github.io/CudaRobotics/<name>.gif` resolves.
   Every new gif must be pushed there to render in the readme.
-- 121 CUDA source files (`src/*.cu`), 15 C++ files (`src/*.cpp`) on the
-  GPU MCTS branch.
+- 122 CUDA source files (`src/*.cu`), 15 C++ files (`src/*.cpp`) on the
+  assignment tracking branch.
 - Build:
   ```bash
   rtk bash -lc 'cd build && cmake .. && make -j$(nproc)'
@@ -131,8 +133,9 @@ Compact PR list. Format: `#PR  Title  | headline number`.
 | #73 | Update handoff plan | Refreshed `plan.md` after #72 |
 | #74 | GPU CMA-ES optimiser demo | 3 x 32768 candidates x 10D, 0.025 ms/generation eval, **1254x** objective eval |
 | #75 | GPU MCTS planner | 64 scenes x 4096 rollouts x 48 horizon, 1.82 ms/plan, **712x** vs CPU |
+| #76 | GPU assignment tracking | 128 scenes x 48 tracks x 72 detections, 0.093 ms/update, **14.0x** vs CPU |
 
-(35 merged PRs in 4 days, plus PR #75; cadence was sustained because each demo was a single
+(36 merged PRs in 4 days, plus PR #76; cadence was sustained because each demo was a single
 ~500-700 LOC `.cu` file plus a few lines in `CMakeLists.txt` and
 `readme.md`.)
 
@@ -144,8 +147,9 @@ Compact PR list. Format: `#PR  Title  | headline number`.
   open threads list.
 - **`readme.md` Sensors / perception section** now has the scan matching
   family plus the multi-resolution NDT 3D tile. The Planning / Control
-  section has Hungarian assignment, CMA-ES, and MCTS tiles, and the
-  capability matrix includes the assignment / optimisation / MCTS rows.
+  section has Hungarian assignment, CMA-ES, MCTS, and assignment tracking
+  tiles, and the capability matrix includes the assignment / tracking /
+  optimisation / MCTS rows.
 
 ### Attempts that did NOT land (for context, so we do not repeat)
 - **3D pose-graph SLAM** — Wrote `src/gpu_pose_graph_slam_3d.cu` (~700
@@ -315,22 +319,19 @@ any new scan-matching / SLAM / optimisation work.
 
 ### B. New algorithm candidates (ranked rough order, see "Recommended Next" below)
 
-1. **GPU assignment follow-up** — rectangular assignment, gating, or
-   multi-frame tracking on top of #72. This would turn the batch solver
-   into a more robotics-shaped data-association demo.
-2. **10K-agent Boids / Crowd Swarm** — visual scale-up of #60 (200
+1. **10K-agent Boids / Crowd Swarm** — visual scale-up of #60 (200
    robots). Quick win for one more order-of-magnitude visual hit. ~400 LOC.
+2. **GPU SfM mini** — feature matching + BA on a small image set. Builds
+   on #62 (1000-pose BA). Need image I/O via OpenCV. ~1000 LOC.
 3. **Retry 3D pose-graph SLAM** — this time with finite-difference
    verification of the Jacobians + H matrix before launching GN. The
    abandoned file was ~700 LOC; expect ~1000 LOC including the FD scaffold.
    The unidentified H-matrix bug is the only thing blocking this.
-4. **GPU SfM mini** — feature matching + BA on a small image set. Builds
-   on #62 (1000-pose BA). Need image I/O via OpenCV. ~1000 LOC.
-5. **GPU PCG / preconditioned conjugate gradient for large sparse SPD
+4. **GPU PCG / preconditioned conjugate gradient for large sparse SPD
    systems** — would be reusable infrastructure (BA solver, pose-graph
    solver). The BA stack uses Jacobi-PCG already; would generalise.
-6. **GPU EM clustering (GMM)** — classical clustering demo. ~400 LOC.
-7. **GPU diffusion policy / behaviour cloning** — extension of #65
+5. **GPU EM clustering (GMM)** — classical clustering demo. ~400 LOC.
+6. **GPU diffusion policy / behaviour cloning** — extension of #65
     (motion planner) into a learned planner. ~800 LOC.
 
 ### C. Older items still parked (carried over from previous handoff)
@@ -343,12 +344,13 @@ any new scan-matching / SLAM / optimisation work.
 
 ## Recommended Next Session
 
-After GPU CMA-ES and GPU MCTS, the natural next move depends on user goal:
+After GPU CMA-ES, GPU MCTS, and assignment tracking, the natural next move
+depends on user goal:
 
-- **Robotics data association**: assignment follow-up (B1), e.g.
-  rectangular/gated tracking, if the user wants to build directly on #72.
-- **Visual / interactive showcase**: 10K-agent Boids / Crowd Swarm (B2).
+- **Visual / interactive showcase**: 10K-agent Boids / Crowd Swarm (B1).
   It can produce a strong GIF without touching the older SLAM code paths.
+- **Multi-view geometry breadth**: GPU SfM mini (B2), if the user wants
+  to build on BA / rendering rather than planning.
 - **Tying off loose ends**: refresh the lower headline benchmark table
   and back-migrate to shared headers (Open Threads A). One PR,
   mechanical, removes drift.
@@ -357,14 +359,14 @@ After GPU CMA-ES and GPU MCTS, the natural next move depends on user goal:
   completes the 2D / 3D pose-graph pair (only the 2D backend exists,
   PR #58).
 
-If unsure, start with **assignment tracking** if the user wants a robotics
-thread, or **10K-agent Boids** if the user wants a visual scale demo.
+If unsure, start with **10K-agent Boids** if the user wants a visual scale
+demo, or **GPU SfM mini** if they want more perception / geometry depth.
 
 Suggested starting commands:
 
 ```bash
-rtk git switch -c feat/assignment-tracking     # B1
-rtk git switch -c feat/crowd-swarm             # B2
+rtk git switch -c feat/crowd-swarm             # B1
+rtk git switch -c feat/gpu-sfm-mini            # B2
 rtk git switch -c feat/gpu-pose-graph-3d-v2    # B3
 rtk git switch -c chore/shared-cuda-cleanup    # A: cleanup
 ```
@@ -427,6 +429,9 @@ rtk git switch -c chore/shared-cuda-cleanup    # A: cleanup
 - `src/gpu_hungarian_assignment.cu` (PR #72) — 512 batched 64x64 dense
   assignments solved with a shared-memory parallel auction kernel and
   checked against CPU Hungarian.
+- `src/gpu_assignment_tracking.cu` (PR #76) — 128 batched
+  multi-object tracking scenes with gated assignment, missed detections,
+  and clutter.
 - `src/gpu_cma_es.cu` (PR #74) — 3 objective families x 32768 candidates
   x 10D, host covariance update with GPU objective evaluation.
 - `src/gpu_mcts_planner.cu` (PR #75) — root-parallel MCTS for 64
