@@ -362,6 +362,10 @@ add_executable(gpu_cma_es src/gpu_cma_es.cu)
 target_link_libraries(gpu_cma_es ${OpenCV_LIBS})
 target_compile_options(gpu_cma_es PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
 
+add_executable(gpu_mcts_planner src/gpu_mcts_planner.cu)
+target_link_libraries(gpu_mcts_planner ${OpenCV_LIBS})
+target_compile_options(gpu_mcts_planner PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
+
 add_executable(gpu_diffusion_planner src/gpu_diffusion_planner.cu)
 target_link_libraries(gpu_diffusion_planner ${OpenCV_LIBS})
 target_compile_options(gpu_diffusion_planner PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
