@@ -370,6 +370,10 @@ add_executable(gpu_em_gmm src/gpu_em_gmm.cu)
 target_link_libraries(gpu_em_gmm ${OpenCV_LIBS})
 target_compile_options(gpu_em_gmm PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
 
+add_executable(gpu_spectral_clustering src/gpu_spectral_clustering.cu)
+target_link_libraries(gpu_spectral_clustering ${OpenCV_LIBS})
+target_compile_options(gpu_spectral_clustering PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
+
 add_executable(gpu_hungarian_assignment src/gpu_hungarian_assignment.cu)
 target_link_libraries(gpu_hungarian_assignment ${OpenCV_LIBS})
 target_compile_options(gpu_hungarian_assignment PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
