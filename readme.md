@@ -26,6 +26,7 @@ Same algorithm on CPU and GPU — GPU enables orders of magnitude more particles
 | RRT family | `comparison_rrt*`, `comparison_rrtstar_rewire` | 1M paths / 200K nodes | 5,000x per-path; 62x rewire |
 | Assignment | `gpu_hungarian_assignment` | 512 x 64x64 dense assignments | 158x vs CPU Hungarian |
 | Black-box optimization | `gpu_cma_es` | 3 x 32,768 candidates x 10D | 1,254x objective eval |
+| Monte Carlo planning | `gpu_mcts_planner` | 64 scenes x 4096 rollouts x 48 horizon | 712x vs CPU |
 | Voxel map (3D) | `comparison_voxel_map` | 256x256x32 | 58x per ray |
 | ESDF (2D/3D) | `comparison_esdf`, `comparison_esdf_3d` | 640K cells / 1.05M voxels | 53,404x / 86,613x |
 | LiDAR sim | `comparison_lidar_sim`, `comparison_lidar3d_sim`, `comparison_lidar3d_realistic` | 1M 2D / 131K 3D rays | + 5 physical effects (realistic) |
@@ -53,8 +54,8 @@ Same algorithm on CPU and GPU — GPU enables orders of magnitude more particles
 | <img src="https://rsasaki0109.github.io/CudaRobotics/comparison_rrtstar_rewire.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/comparison_esdf_3d.gif" width="400"/> |
 | **GPU diffusion planner (512 trajectories × 64 waypoints, 120 Langevin steps, 0.03 ms/step)** | **GPU Hungarian-class assignment (512 × 64x64 dense assignments, 0.082 ms/batch, 158x vs CPU Hungarian)** |
 | <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_diffusion_planner.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_hungarian_assignment.gif" width="400"/> |
-| **GPU CMA-ES black-box optimization (3 x 32,768 candidates x 10D, 0.025 ms/generation eval, 1,254x objective eval)** | |
-| <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_cma_es.gif" width="400"/> | |
+| **GPU CMA-ES black-box optimization (3 x 32,768 candidates x 10D, 0.025 ms/generation eval, 1,254x objective eval)** | **GPU MCTS planner (64 scenes x 4096 rollouts x 48 horizon, 1.8 ms/plan, 712x vs CPU)** |
+| <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_cma_es.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_mcts_planner.gif" width="400"/> |
 
 ## Differentiable / learning
 
@@ -135,6 +136,7 @@ cd ros2_ws && colcon build --packages-select cuda_robotics
 | Pose-graph SLAM (200 nodes) | ~200 ms total, RMSE 4.88 → 0.56 m |
 | 3D Gaussian Splatting (~1k Gaussians, 720x480) | **0.94 ms / frame** |
 | GPU CMA-ES objective evaluation | 3 x 32,768 candidates x 10D, **1,254x** vs CPU eval |
+| GPU MCTS kinodynamic planning | 64 scenes x 4096 rollouts x 48 horizon, **712x** vs CPU |
 
 ## References
 
