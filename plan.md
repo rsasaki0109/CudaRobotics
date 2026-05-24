@@ -10,11 +10,11 @@ a prioritised menu of candidate next tasks with enough specificity that a
 fresh agent can pick one and start.
 
 Mainline was in sync with `origin/master` at commit
-`3fda87f Add GPU EM GMM clustering demo` before the current GPU spectral
-clustering feature branch.
+`a7f9013 Add GPU spectral clustering demo` before the current GPU 3D
+pose-graph SLAM v2 feature branch.
 
-There were no open GitHub PRs at the start of the GPU spectral clustering
-branch.
+There were no open GitHub PRs at the start of the GPU 3D pose-graph SLAM
+v2 branch.
 Parked local branches remain for `feat/gaussian-splat-renderer`
 (checked out in `/tmp/CudaRobotics-gaussian`) and `feat/repro-report`; treat them as
 separate parked work, not active blockers for new feature work.
@@ -25,7 +25,7 @@ separate parked work, not active blockers for new feature work.
 
 - Repo is in a clean, "between sprints" state. **No mandatory cleanup
   before starting new work.**
-- The 2026-05-21..25 sprint added 41 PRs (#40 → #80): ESDF JFA (2D + 3D),
+- The 2026-05-21..25 sprint added 42 PRs (#40 → #81): ESDF JFA (2D + 3D),
   3D voxel map, massive collision check, realistic 3D LiDAR, ROS2 nodes,
   Bundle Adjustment, 2D pose-graph SLAM backend, LiDAR SLAM frontend,
   Multi-robot planner, Gaussian Splatting, NeRF volume, diffusion planner,
@@ -35,7 +35,7 @@ separate parked work, not active blockers for new feature work.
   **GPU MCTS kinodynamic planning**. PR #76 adds **GPU assignment
   tracking**. PR #77 adds **10K-agent GPU crowd swarm**. PR #78 adds
   **GPU SfM mini**. PR #79 adds **GPU PCG sparse solver**. PR #80 adds
-  **GPU EM GMM clustering**.
+  **GPU EM GMM clustering**. PR #81 adds **GPU spectral clustering**.
 - PR #78 / branch `feat/gpu-sfm-mini` added a compact multi-view geometry
   demo: 2048 synthetic ORB-like features across 4 views, GPU descriptor
   matching, stereo triangulation, and point-only BA.
@@ -47,33 +47,34 @@ separate parked work, not active blockers for new feature work.
 - PR #81 / branch `feat/gpu-spectral-clustering` adds normalized-affinity
   GPU spectral clustering on a 3072-point dense RBF graph: 40 subspace
   iterations, 193x vs CPU, 100% mapped cluster accuracy.
+- Current branch `feat/gpu-pose-graph-3d-v2` adds GPU 3D pose-graph SLAM
+  with central finite-difference SE(3) Jacobians: 384 poses, 575 edges,
+  translation RMSE 1.64 m -> 0.28 m, rotation RMSE 11.29 deg -> 2.12 deg.
 - The "scan matching 4 siblings" are NDT 2D (#67), NDT 3D (#68), GICP 2D
   (#69), GICP 3D (#70). All present and merged.
 - Follow-up #71 adds coarse-to-fine NDT 3D and fixes the old #68 outlier
   frame; #72 opens the combinatorial optimisation chapter with batched
   64x64 dense assignment; #74 adds GPU CMA-ES black-box optimisation; #75
   adds root-parallel GPU MCTS; #76 adds gated multi-object tracking.
-- Two attempts during the sprint were aborted: **3D pose-graph SLAM**
-  (Gauss-Newton step direction uphill at GT, root cause not identified,
-  file deleted) and **LiDAR SLAM with constant-velocity ICP init**
+- One attempt during the sprint was aborted: **LiDAR SLAM with
+  constant-velocity ICP init**
   (Lissajous reversal made drift 9x worse, change reverted).
 - Recommended next directions are listed at the bottom; safe defaults
-  after this branch are a finite-difference verified retry of 3D
-  pose-graph SLAM, GPU diffusion policy / behaviour cloning, or a
-  mechanical shared-header cleanup.
+  after this branch are GPU diffusion policy / behaviour cloning, a
+  graph-ML follow-up, or a mechanical shared-header cleanup.
 
 ---
 
 ## Repo State (2026-05-25)
 
-- **Main branch**: `master`, currently at `3fda87f` before the GPU
-  spectral clustering feature branch.
+- **Main branch**: `master`, currently at `a7f9013` before the GPU 3D
+  pose-graph SLAM v2 feature branch.
 - **gh-pages branch**: hosts gif assets referenced from `readme.md`.
   Files live at the branch ROOT (not `gif/`), so the URL
   `https://rsasaki0109.github.io/CudaRobotics/<name>.gif` resolves.
   Every new gif must be pushed there to render in the readme.
-- 127 CUDA source files (`src/*.cu`), 15 C++ files (`src/*.cpp`) on the
-  GPU spectral clustering branch.
+- 128 CUDA source files (`src/*.cu`), 15 C++ files (`src/*.cpp`) on the
+  GPU 3D pose-graph SLAM v2 branch.
 - Build:
   ```bash
   rtk bash -lc 'cd build && cmake .. && make -j$(nproc)'
@@ -162,6 +163,7 @@ Compact PR list. Format: `#PR  Title  | headline number`.
 | PR | Title | Headline |
 |---|---|---|
 | #81 | GPU spectral clustering | 3072-point dense RBF graph, 40 subspace iterations, **193x** vs CPU, 100% mapped accuracy |
+| TBD | GPU 3D pose-graph SLAM v2 | 384 poses, 575 SE(3) edges, finite-difference Jacobians, RMSE 1.64 m -> 0.28 m |
 
 ### Bigger architectural things landed in this sprint
 - **Shared CUDA headers (`include/`)** — #66. New `.cu` files should
@@ -169,6 +171,10 @@ Compact PR list. Format: `#PR  Title  | headline number`.
   re-defining the wrappers locally. Older files have not been
   back-migrated yet — that is a small mechanical cleanup waiting in the
   open threads list.
+- **`readme.md` SLAM / Multi-view geometry section** now includes the 2D
+  and 3D pose-graph SLAM pair. The 3D version uses central
+  finite-difference SE(3) Jacobians to avoid the aborted hand-Jacobian
+  failure mode.
 - **`readme.md` Sensors / perception section** now has the scan matching
   family plus the multi-resolution NDT 3D tile and the EM / spectral
   clustering tiles. The Planning / Control section has Hungarian
@@ -177,13 +183,14 @@ Compact PR list. Format: `#PR  Title  | headline number`.
   optimisation / MCTS / clustering rows.
 
 ### Attempts that did NOT land (for context, so we do not repeat)
-- **3D pose-graph SLAM** — Wrote `src/gpu_pose_graph_slam_3d.cu` (~700
-  LOC, SE(3) GN + Jacobi-PCG, right-perturbation Jacobians, Levenberg-
-  Marquardt). At GT initialisation the GN step direction was uphill
-  (cost 2525 → 293199) regardless of sign of the b vector. Tried sign
-  flips, did not isolate the H-matrix construction bug. **File was
-  deleted.** Verified Jacobians but not via finite differences — that
-  is the recommended next move if anyone retries this.
+- **3D pose-graph SLAM hand-Jacobian attempt** — The first attempt wrote
+  `src/gpu_pose_graph_slam_3d.cu` (~700 LOC, SE(3) GN + Jacobi-PCG,
+  right-perturbation Jacobians, Levenberg-Marquardt). At GT
+  initialisation the GN step direction was uphill (cost 2525 → 293199)
+  regardless of sign of the b vector. Tried sign flips, did not isolate
+  the H-matrix construction bug, and deleted the file. The current v2
+  branch fixes this by generating central finite-difference Jacobians from
+  the scoring residual instead of trusting hand-derived Jacobians.
 - **LiDAR SLAM with constant-velocity ICP init** — Edit to
   `src/gpu_lidar_slam.cu` to cache prev `(dx, dy, dyaw)` and use it as
   ICP init. The demo trajectory is a Lissajous figure whose velocity
@@ -340,20 +347,19 @@ any new scan-matching / SLAM / optimisation work.
 - **Lift `cholesky_solve_6` + `H_OFF` + `so3_exp` + `mat3_mul` into a
   shared header** (`include/se3_helpers.cuh` perhaps). Currently
   duplicated across `gpu_ndt_3d.cu`, `gpu_ndt_3d_multires.cu`, and
-  `gpu_gicp_3d.cu`, and would be needed in any retried 3D pose-graph
-  SLAM.
+  `gpu_gicp_3d.cu`, and can still be shared with future 3D SLAM /
+  registration work.
 
 ### B. New algorithm candidates (ranked rough order, see "Recommended Next" below)
 
-1. **Retry 3D pose-graph SLAM** — this time with finite-difference
-   verification of the Jacobians + H matrix before launching GN. The
-   abandoned file was ~700 LOC; expect ~1000 LOC including the FD scaffold.
-   The unidentified H-matrix bug is the only thing blocking this.
-2. **GPU diffusion policy / behaviour cloning** — extension of #65
+1. **GPU diffusion policy / behaviour cloning** — extension of #65
     (motion planner) into a learned planner. ~800 LOC.
-3. **Graph ML follow-up** — spectral clustering is now the active branch;
-   possible follow-ups are GPU label propagation, graph cuts, or
-   semi-supervised graph classification.
+2. **Graph ML follow-up** — spectral clustering is merged; possible
+   follow-ups are GPU label propagation, graph cuts, or semi-supervised
+   graph classification.
+3. **3D SLAM follow-up** — now that 3D pose-graph v2 exists, possible
+   follow-ups are robust kernels, switchable loop closures, or integrating
+   it with the online SLAM demo.
 
 ### C. Older items still parked (carried over from previous handoff)
 - DPF research line — from-scratch tracking-loss MLP training, harder
@@ -366,13 +372,13 @@ any new scan-matching / SLAM / optimisation work.
 ## Recommended Next Session
 
 After GPU CMA-ES, GPU MCTS, assignment tracking, crowd swarm, PR #78 GPU
-SfM mini, PR #79 GPU PCG, PR #80 GPU EM GMM, and PR #81 GPU spectral
-clustering, the natural next move depends on user goal:
+SfM mini, PR #79 GPU PCG, PR #80 GPU EM GMM, PR #81 GPU spectral
+clustering, and the current 3D pose-graph SLAM v2 branch, the natural next
+move depends on user goal:
 
-- **Hard but high value**: retry 3D pose-graph SLAM with FD-verified
-  Jacobians (B1). This unblocks any future global SLAM work and
-  completes the 2D / 3D pose-graph pair (only the 2D backend exists,
-  PR #58).
+- **Hard but high value**: add robust-kernel / switchable-loop support to
+  3D pose-graph SLAM, or wire the 3D backend into an online SLAM-style
+  frontend.
 - **Tying off loose ends**: refresh the lower headline benchmark table
   and back-migrate to shared headers (Open Threads A). One PR,
   mechanical, removes drift.
@@ -386,9 +392,9 @@ want another compact visual algorithm.
 Suggested starting commands:
 
 ```bash
-rtk git switch -c feat/gpu-pose-graph-3d-v2    # B1
-rtk git switch -c feat/gpu-diffusion-policy    # B2
-rtk git switch -c feat/gpu-label-propagation   # B3 follow-up idea
+rtk git switch -c feat/gpu-diffusion-policy    # B1
+rtk git switch -c feat/gpu-label-propagation   # B2
+rtk git switch -c feat/gpu-pose-graph-3d-robust
 rtk git switch -c chore/shared-cuda-cleanup    # A: cleanup
 ```
 
@@ -438,8 +444,10 @@ rtk git switch -c chore/shared-cuda-cleanup    # A: cleanup
 - `src/gpu_bundle_adjustment.cu` (PR #62) — 1000 poses × 8000 LM,
   Schur + Jacobi-PCG.
 - `src/gpu_lidar_slam.cu` (PR #54) — scan-to-scan ICP + log-odds map.
-- `src/gpu_pose_graph_slam.cu` (PR #58) — 2D GN + Jacobi-PCG. **3D
-  version does not exist** (see Lessons #6, Threads B2).
+- `src/gpu_pose_graph_slam.cu` (PR #58) — 2D GN + Jacobi-PCG.
+- `src/gpu_pose_graph_slam_3d.cu` (current branch) — 3D SE(3) GN +
+  Jacobi-PCG with central finite-difference Jacobians; 384 poses, 575
+  edges, 1.64 m -> 0.28 m translation RMSE.
 - `src/gpu_online_slam.cu` (PR #63) — sliding-window W=60 + iSAM-style
   global pass on loop closure.
 
