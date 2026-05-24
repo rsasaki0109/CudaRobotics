@@ -28,7 +28,7 @@ Same algorithm on CPU and GPU — GPU enables orders of magnitude more particles
 | Assignment / tracking | `gpu_hungarian_assignment`, `gpu_assignment_tracking` | 512 x 64x64 assignment / 128 tracking scenes | 158x Hungarian; 14.0x tracking |
 | SfM / multi-view | `gpu_sfm_mini` | 2048 features x 4 views | 217.0x match + BA vs CPU |
 | Sparse linear solvers | `gpu_pcg_solver` | 262K unknowns / 1.31M CSR nnz | 13.4x Jacobi-PCG vs CPU |
-| Clustering / EM | `gpu_em_gmm` | 262K points x 5 full-cov Gaussians | 90.2x vs CPU |
+| Clustering / graph ML | `gpu_em_gmm`, `gpu_spectral_clustering` | 262K GMM points / 3K dense RBF graph | 90.2x EM; 193x spectral |
 | Black-box optimization | `gpu_cma_es` | 3 x 32,768 candidates x 10D | 1,254x objective eval |
 | Monte Carlo planning | `gpu_mcts_planner` | 64 scenes x 4096 rollouts x 48 horizon | 712x vs CPU |
 | Voxel map (3D) | `comparison_voxel_map` | 256x256x32 | 58x per ray |
@@ -99,8 +99,8 @@ Same algorithm on CPU and GPU — GPU enables orders of magnitude more particles
 | <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_ndt_2d.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_gicp_2d.gif" width="400"/> |
 | **GPU GICP 3D point cloud registration (per-point cov via Cardano eigendecomp + 6-DOF GN on SE(3), 4.7 ms/scenario, ~1 mm typical)** | |
 | <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_gicp_3d.gif" width="400"/> | |
-| **GPU EM GMM clustering (262K points × 5 full-cov Gaussians, 42 EM iterations, 90.2x vs CPU)** | |
-| <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_em_gmm.gif" width="400"/> | |
+| **GPU EM GMM clustering (262K points × 5 full-cov Gaussians, 42 EM iterations, 90.2x vs CPU)** | **GPU spectral clustering (3072-point dense RBF graph, 40 subspace iterations, 193x vs CPU)** |
+| <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_em_gmm.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_spectral_clustering.gif" width="400"/> |
 
 <details>
 <summary>More classical-algorithm GIFs</summary>
@@ -159,6 +159,7 @@ cd ros2_ws && colcon build --packages-select cuda_robotics
 | GPU SfM mini | 2048 features x 4 views, match + point BA, **217.0x** vs CPU |
 | GPU Jacobi-PCG sparse solver | 262K unknowns / 1.31M CSR nnz, **13.4x** vs CPU |
 | GPU EM GMM clustering | 262K points x 5 full-cov Gaussians, **90.2x** vs CPU |
+| GPU spectral clustering | 3072-point dense RBF graph, 40 subspace iterations, **193x** vs CPU |
 
 ## References
 

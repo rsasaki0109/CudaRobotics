@@ -1,19 +1,20 @@
 # CudaRobotics Plan / Handoff (for Codex / Claude)
 
-Last updated: 2026-05-24 JST
+Last updated: 2026-05-25 JST
 
 This document is the long-form handoff for the next coding agent (Codex).
 It captures: (1) where the repo is right now, (2) what was just done over
-the 2026-05-21 → 2026-05-24 sprint, (3) house rules and conventions, (4)
+the 2026-05-21 → 2026-05-25 sprint, (3) house rules and conventions, (4)
 known sharp edges and lessons learned from the last few attempts, and (5)
 a prioritised menu of candidate next tasks with enough specificity that a
 fresh agent can pick one and start.
 
 Mainline was in sync with `origin/master` at commit
-`b2a1e18 Add GPU PCG solver demo` before the current GPU EM GMM feature
-branch.
+`3fda87f Add GPU EM GMM clustering demo` before the current GPU spectral
+clustering feature branch.
 
-There were no open GitHub PRs at the start of the GPU EM GMM branch.
+There were no open GitHub PRs at the start of the GPU spectral clustering
+branch.
 Parked local branches remain for `feat/gaussian-splat-renderer`
 (checked out in `/tmp/CudaRobotics-gaussian`) and `feat/repro-report`; treat them as
 separate parked work, not active blockers for new feature work.
@@ -24,7 +25,7 @@ separate parked work, not active blockers for new feature work.
 
 - Repo is in a clean, "between sprints" state. **No mandatory cleanup
   before starting new work.**
-- The 2026-05-21..25 sprint added 40 PRs (#40 → #79): ESDF JFA (2D + 3D),
+- The 2026-05-21..25 sprint added 41 PRs (#40 → #80): ESDF JFA (2D + 3D),
   3D voxel map, massive collision check, realistic 3D LiDAR, ROS2 nodes,
   Bundle Adjustment, 2D pose-graph SLAM backend, LiDAR SLAM frontend,
   Multi-robot planner, Gaussian Splatting, NeRF volume, diffusion planner,
@@ -33,7 +34,8 @@ separate parked work, not active blockers for new feature work.
   **GPU Hungarian-class assignment**, then **GPU CMA-ES**. PR #75 adds
   **GPU MCTS kinodynamic planning**. PR #76 adds **GPU assignment
   tracking**. PR #77 adds **10K-agent GPU crowd swarm**. PR #78 adds
-  **GPU SfM mini**. PR #79 adds **GPU PCG sparse solver**.
+  **GPU SfM mini**. PR #79 adds **GPU PCG sparse solver**. PR #80 adds
+  **GPU EM GMM clustering**.
 - PR #78 / branch `feat/gpu-sfm-mini` added a compact multi-view geometry
   demo: 2048 synthetic ORB-like features across 4 views, GPU descriptor
   matching, stereo triangulation, and point-only BA.
@@ -42,6 +44,9 @@ separate parked work, not active blockers for new feature work.
 - PR #80 / branch `feat/gpu-em-gmm` adds GPU EM clustering for a 2D
   full-covariance Gaussian mixture: 262K points, 5 components, 42 EM
   iterations, 90.2x vs CPU.
+- PR #81 / branch `feat/gpu-spectral-clustering` adds normalized-affinity
+  GPU spectral clustering on a 3072-point dense RBF graph: 40 subspace
+  iterations, 193x vs CPU, 100% mapped cluster accuracy.
 - The "scan matching 4 siblings" are NDT 2D (#67), NDT 3D (#68), GICP 2D
   (#69), GICP 3D (#70). All present and merged.
 - Follow-up #71 adds coarse-to-fine NDT 3D and fixes the old #68 outlier
@@ -59,16 +64,16 @@ separate parked work, not active blockers for new feature work.
 
 ---
 
-## Repo State (2026-05-24)
+## Repo State (2026-05-25)
 
-- **Main branch**: `master`, currently at `b2a1e18` before the GPU EM
-  GMM feature branch.
+- **Main branch**: `master`, currently at `3fda87f` before the GPU
+  spectral clustering feature branch.
 - **gh-pages branch**: hosts gif assets referenced from `readme.md`.
   Files live at the branch ROOT (not `gif/`), so the URL
   `https://rsasaki0109.github.io/CudaRobotics/<name>.gif` resolves.
   Every new gif must be pushed there to render in the readme.
-- 126 CUDA source files (`src/*.cu`), 15 C++ files (`src/*.cpp`) on the
-  GPU EM GMM branch.
+- 127 CUDA source files (`src/*.cu`), 15 C++ files (`src/*.cpp`) on the
+  GPU spectral clustering branch.
 - Build:
   ```bash
   rtk bash -lc 'cd build && cmake .. && make -j$(nproc)'
@@ -88,7 +93,7 @@ separate parked work, not active blockers for new feature work.
 
 ---
 
-## What Was Done (2026-05-21 → 2026-05-24)
+## What Was Done (2026-05-21 → 2026-05-25)
 
 Compact PR list. Format: `#PR  Title  | headline number`.
 
@@ -147,10 +152,16 @@ Compact PR list. Format: `#PR  Title  | headline number`.
 | #77 | GPU crowd swarm | 10,000 agents, 120x80 uniform grid, 0.275 ms/step, **105x** vs CPU |
 | #78 | GPU SfM mini | 2048 features x 4 views, match + point BA, **217x** vs CPU |
 | #79 | GPU PCG solver | 262K unknowns, 1.31M CSR nnz, 33 iterations, **13.4x** vs CPU |
+| #80 | GPU EM GMM clustering | 262K points, 5 full-cov Gaussians, 42 EM iterations, **90.2x** vs CPU |
 
-(40 merged PRs in 5 days; cadence was sustained because each demo was a single
+(41 merged PRs in 5 days; cadence was sustained because each demo was a single
 ~500-700 LOC `.cu` file plus a few lines in `CMakeLists.txt` and
 `readme.md`.)
+
+### 2026-05-25 — clustering / graph ML
+| PR | Title | Headline |
+|---|---|---|
+| #81 | GPU spectral clustering | 3072-point dense RBF graph, 40 subspace iterations, **193x** vs CPU, 100% mapped accuracy |
 
 ### Bigger architectural things landed in this sprint
 - **Shared CUDA headers (`include/`)** — #66. New `.cu` files should
@@ -159,10 +170,11 @@ Compact PR list. Format: `#PR  Title  | headline number`.
   back-migrated yet — that is a small mechanical cleanup waiting in the
   open threads list.
 - **`readme.md` Sensors / perception section** now has the scan matching
-  family plus the multi-resolution NDT 3D tile. The Planning / Control
-  section has Hungarian assignment, CMA-ES, MCTS, assignment tracking, and
-  crowd swarm tiles, and the capability matrix includes the swarm /
-  assignment / tracking / optimisation / MCTS rows.
+  family plus the multi-resolution NDT 3D tile and the EM / spectral
+  clustering tiles. The Planning / Control section has Hungarian
+  assignment, CMA-ES, MCTS, assignment tracking, and crowd swarm tiles, and
+  the capability matrix includes the swarm / assignment / tracking /
+  optimisation / MCTS / clustering rows.
 
 ### Attempts that did NOT land (for context, so we do not repeat)
 - **3D pose-graph SLAM** — Wrote `src/gpu_pose_graph_slam_3d.cu` (~700
@@ -339,9 +351,9 @@ any new scan-matching / SLAM / optimisation work.
    The unidentified H-matrix bug is the only thing blocking this.
 2. **GPU diffusion policy / behaviour cloning** — extension of #65
     (motion planner) into a learned planner. ~800 LOC.
-3. **GPU spectral clustering / graph clustering** — a follow-on
-   clustering demo if the user wants to keep the perception / ML line
-   moving.
+3. **Graph ML follow-up** — spectral clustering is now the active branch;
+   possible follow-ups are GPU label propagation, graph cuts, or
+   semi-supervised graph classification.
 
 ### C. Older items still parked (carried over from previous handoff)
 - DPF research line — from-scratch tracking-loss MLP training, harder
@@ -354,8 +366,8 @@ any new scan-matching / SLAM / optimisation work.
 ## Recommended Next Session
 
 After GPU CMA-ES, GPU MCTS, assignment tracking, crowd swarm, PR #78 GPU
-SfM mini, PR #79 GPU PCG, and PR #80 GPU EM GMM, the natural next move
-depends on user goal:
+SfM mini, PR #79 GPU PCG, PR #80 GPU EM GMM, and PR #81 GPU spectral
+clustering, the natural next move depends on user goal:
 
 - **Hard but high value**: retry 3D pose-graph SLAM with FD-verified
   Jacobians (B1). This unblocks any future global SLAM work and
@@ -368,15 +380,15 @@ depends on user goal:
   cloning (B2), if the user wants to build on the diffusion planner line.
 
 If unsure after this branch, start with a mechanical shared-header cleanup
-if they want a low-risk maintenance PR, or GPU spectral clustering if
-they want another compact visual algorithm.
+if they want a low-risk maintenance PR, or a graph-ML follow-up if they
+want another compact visual algorithm.
 
 Suggested starting commands:
 
 ```bash
 rtk git switch -c feat/gpu-pose-graph-3d-v2    # B1
 rtk git switch -c feat/gpu-diffusion-policy    # B2
-rtk git switch -c feat/gpu-spectral-clustering # B3
+rtk git switch -c feat/gpu-label-propagation   # B3 follow-up idea
 rtk git switch -c chore/shared-cuda-cleanup    # A: cleanup
 ```
 
@@ -440,6 +452,9 @@ rtk git switch -c chore/shared-cuda-cleanup    # A: cleanup
 - `src/gpu_em_gmm.cu` (PR #80) — GPU EM for 2D full-covariance
   Gaussian mixtures; 262K points, 5 components, 42 iterations, direct
   CPU comparison, and convergence GIF.
+- `src/gpu_spectral_clustering.cu` (PR #81) — normalized RBF
+  graph spectral clustering without materializing the dense matrix; 3072
+  points, 40 subspace iterations, 193x vs CPU, 100% mapped accuracy.
 
 ### Visualisation / rendering
 - `src/gpu_gaussian_splatting.cu` (PR #59) — isotropic alpha-composite.
