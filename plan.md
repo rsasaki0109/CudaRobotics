@@ -39,7 +39,7 @@ separate parked work, not active blockers for new feature work.
   matching, stereo triangulation, and point-only BA.
 - PR #79 / branch `feat/gpu-pcg` adds a generic CSR Jacobi-PCG sparse SPD
   solver demo: 262K unknowns, 1.31M nonzeros, 33 iterations, 13.4x vs CPU.
-- Current branch `feat/gpu-em-gmm` adds GPU EM clustering for a 2D
+- PR #80 / branch `feat/gpu-em-gmm` adds GPU EM clustering for a 2D
   full-covariance Gaussian mixture: 262K points, 5 components, 42 EM
   iterations, 90.2x vs CPU.
 - The "scan matching 4 siblings" are NDT 2D (#67), NDT 3D (#68), GICP 2D
@@ -354,8 +354,8 @@ any new scan-matching / SLAM / optimisation work.
 ## Recommended Next Session
 
 After GPU CMA-ES, GPU MCTS, assignment tracking, crowd swarm, PR #78 GPU
-SfM mini, PR #79 GPU PCG, and the current GPU EM GMM branch, the natural
-next move depends on user goal:
+SfM mini, PR #79 GPU PCG, and PR #80 GPU EM GMM, the natural next move
+depends on user goal:
 
 - **Hard but high value**: retry 3D pose-graph SLAM with FD-verified
   Jacobians (B1). This unblocks any future global SLAM work and
@@ -437,7 +437,7 @@ rtk git switch -c chore/shared-cuda-cleanup    # A: cleanup
   direct CPU PCG comparison.
 
 ### Clustering / ML
-- `src/gpu_em_gmm.cu` (current branch) — GPU EM for 2D full-covariance
+- `src/gpu_em_gmm.cu` (PR #80) — GPU EM for 2D full-covariance
   Gaussian mixtures; 262K points, 5 components, 42 iterations, direct
   CPU comparison, and convergence GIF.
 
