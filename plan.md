@@ -31,8 +31,8 @@ separate parked work, not active blockers for new feature work.
   online SLAM, shared headers refactor, **and the full 2D/3D NDT + 2D/3D
   GICP scan matching family**, followed by **multi-resolution NDT 3D** and
   **GPU Hungarian-class assignment**, then **GPU CMA-ES**. PR #75 adds
-  **GPU MCTS kinodynamic planning**. The current branch adds **GPU
-  assignment tracking**.
+  **GPU MCTS kinodynamic planning**. PR #76 adds **GPU assignment
+  tracking**.
 - The "scan matching 4 siblings" are NDT 2D (#67), NDT 3D (#68), GICP 2D
   (#69), GICP 3D (#70). All present and merged.
 - Follow-up #71 adds coarse-to-fine NDT 3D and fixes the old #68 outlier
@@ -133,9 +133,9 @@ Compact PR list. Format: `#PR  Title  | headline number`.
 | #73 | Update handoff plan | Refreshed `plan.md` after #72 |
 | #74 | GPU CMA-ES optimiser demo | 3 x 32768 candidates x 10D, 0.025 ms/generation eval, **1254x** objective eval |
 | #75 | GPU MCTS planner | 64 scenes x 4096 rollouts x 48 horizon, 1.82 ms/plan, **712x** vs CPU |
-| current branch | GPU assignment tracking | 128 scenes x 48 tracks x 72 detections, 0.093 ms/update, **14.0x** vs CPU |
+| #76 | GPU assignment tracking | 128 scenes x 48 tracks x 72 detections, 0.093 ms/update, **14.0x** vs CPU |
 
-(36 merged PRs in 4 days, plus the current assignment tracking branch; cadence was sustained because each demo was a single
+(36 merged PRs in 4 days, plus PR #76; cadence was sustained because each demo was a single
 ~500-700 LOC `.cu` file plus a few lines in `CMakeLists.txt` and
 `readme.md`.)
 
@@ -429,7 +429,7 @@ rtk git switch -c chore/shared-cuda-cleanup    # A: cleanup
 - `src/gpu_hungarian_assignment.cu` (PR #72) — 512 batched 64x64 dense
   assignments solved with a shared-memory parallel auction kernel and
   checked against CPU Hungarian.
-- `src/gpu_assignment_tracking.cu` (current branch) — 128 batched
+- `src/gpu_assignment_tracking.cu` (PR #76) — 128 batched
   multi-object tracking scenes with gated assignment, missed detections,
   and clutter.
 - `src/gpu_cma_es.cu` (PR #74) — 3 objective families x 32768 candidates
