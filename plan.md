@@ -10,10 +10,10 @@ a prioritised menu of candidate next tasks with enough specificity that a
 fresh agent can pick one and start.
 
 Mainline was in sync with `origin/master` at commit
-`0b76b4b Add GPU crowd swarm demo` before the current GPU SfM mini
-feature branch.
+`1c06801 Add GPU SfM mini demo` before the current GPU PCG feature
+branch.
 
-There were no open GitHub PRs at the start of the GPU SfM mini branch.
+There were no open GitHub PRs at the start of the GPU PCG branch.
 Parked local branches remain for `feat/gaussian-splat-renderer`
 (checked out in `/tmp/CudaRobotics-gaussian`) and `feat/repro-report`; treat them as
 separate parked work, not active blockers for new feature work.
@@ -24,7 +24,7 @@ separate parked work, not active blockers for new feature work.
 
 - Repo is in a clean, "between sprints" state. **No mandatory cleanup
   before starting new work.**
-- The 2026-05-21..24 sprint added 38 PRs (#40 → #77): ESDF JFA (2D + 3D),
+- The 2026-05-21..24 sprint added 39 PRs (#40 → #78): ESDF JFA (2D + 3D),
   3D voxel map, massive collision check, realistic 3D LiDAR, ROS2 nodes,
   Bundle Adjustment, 2D pose-graph SLAM backend, LiDAR SLAM frontend,
   Multi-robot planner, Gaussian Splatting, NeRF volume, diffusion planner,
@@ -32,10 +32,13 @@ separate parked work, not active blockers for new feature work.
   GICP scan matching family**, followed by **multi-resolution NDT 3D** and
   **GPU Hungarian-class assignment**, then **GPU CMA-ES**. PR #75 adds
   **GPU MCTS kinodynamic planning**. PR #76 adds **GPU assignment
-  tracking**. PR #77 adds **10K-agent GPU crowd swarm**.
-- PR #78 / branch `feat/gpu-sfm-mini` adds a compact multi-view geometry
+  tracking**. PR #77 adds **10K-agent GPU crowd swarm**. PR #78 adds
+  **GPU SfM mini**.
+- PR #78 / branch `feat/gpu-sfm-mini` added a compact multi-view geometry
   demo: 2048 synthetic ORB-like features across 4 views, GPU descriptor
   matching, stereo triangulation, and point-only BA.
+- Current branch `feat/gpu-pcg` adds a generic CSR Jacobi-PCG sparse SPD
+  solver demo: 262K unknowns, 1.31M nonzeros, 33 iterations, 13.4x vs CPU.
 - The "scan matching 4 siblings" are NDT 2D (#67), NDT 3D (#68), GICP 2D
   (#69), GICP 3D (#70). All present and merged.
 - Follow-up #71 adds coarse-to-fine NDT 3D and fixes the old #68 outlier
@@ -47,21 +50,22 @@ separate parked work, not active blockers for new feature work.
   file deleted) and **LiDAR SLAM with constant-velocity ICP init**
   (Lissajous reversal made drift 9x worse, change reverted).
 - Recommended next directions are listed at the bottom; safe defaults
-  after this branch are **GPU PCG**, a mechanical shared-header cleanup,
-  or a finite-difference verified retry of 3D pose-graph SLAM.
+  after this branch are a finite-difference verified retry of 3D
+  pose-graph SLAM, **GPU EM clustering**, or a mechanical shared-header
+  cleanup.
 
 ---
 
 ## Repo State (2026-05-24)
 
-- **Main branch**: `master`, currently at `0b76b4b` before the GPU SfM
-  mini feature branch.
+- **Main branch**: `master`, currently at `1c06801` before the GPU PCG
+  feature branch.
 - **gh-pages branch**: hosts gif assets referenced from `readme.md`.
   Files live at the branch ROOT (not `gif/`), so the URL
   `https://rsasaki0109.github.io/CudaRobotics/<name>.gif` resolves.
   Every new gif must be pushed there to render in the readme.
-- 124 CUDA source files (`src/*.cu`), 15 C++ files (`src/*.cpp`) on the
-  GPU SfM mini branch.
+- 125 CUDA source files (`src/*.cu`), 15 C++ files (`src/*.cpp`) on the
+  GPU PCG branch.
 - Build:
   ```bash
   rtk bash -lc 'cd build && cmake .. && make -j$(nproc)'
@@ -138,8 +142,9 @@ Compact PR list. Format: `#PR  Title  | headline number`.
 | #75 | GPU MCTS planner | 64 scenes x 4096 rollouts x 48 horizon, 1.82 ms/plan, **712x** vs CPU |
 | #76 | GPU assignment tracking | 128 scenes x 48 tracks x 72 detections, 0.093 ms/update, **14.0x** vs CPU |
 | #77 | GPU crowd swarm | 10,000 agents, 120x80 uniform grid, 0.275 ms/step, **105x** vs CPU |
+| #78 | GPU SfM mini | 2048 features x 4 views, match + point BA, **217x** vs CPU |
 
-(38 merged PRs in 4 days; cadence was sustained because each demo was a single
+(39 merged PRs in 4 days; cadence was sustained because each demo was a single
 ~500-700 LOC `.cu` file plus a few lines in `CMakeLists.txt` and
 `readme.md`.)
 
@@ -311,8 +316,8 @@ any new scan-matching / SLAM / optimisation work.
 - **Refresh the `readme.md` Headline benchmarks table** for the newer
   demos: NeRF, online SLAM, diffusion planner, multi-resolution NDT 3D,
   GICP 2D/3D, and Hungarian assignment. CMA-ES, MCTS, assignment
-  tracking, crowd swarm, and SfM mini are now present, but the lower
-  headline table still lags several perception / SLAM demos.
+  tracking, crowd swarm, SfM mini, and PCG are now present, but the
+  lower headline table still lags several perception / SLAM demos.
 - **Back-migrate older `.cu` files to use `include/cuda_check.cuh`** and
   friends from #66, instead of their private wrappers. Mechanical, low
   risk, good first task.
@@ -324,15 +329,12 @@ any new scan-matching / SLAM / optimisation work.
 
 ### B. New algorithm candidates (ranked rough order, see "Recommended Next" below)
 
-1. **GPU PCG / preconditioned conjugate gradient for large sparse SPD
-   systems** — would be reusable infrastructure (BA solver, pose-graph
-   solver). The BA stack uses Jacobi-PCG already; would generalise.
-2. **Retry 3D pose-graph SLAM** — this time with finite-difference
+1. **Retry 3D pose-graph SLAM** — this time with finite-difference
    verification of the Jacobians + H matrix before launching GN. The
    abandoned file was ~700 LOC; expect ~1000 LOC including the FD scaffold.
    The unidentified H-matrix bug is the only thing blocking this.
-3. **GPU EM clustering (GMM)** — classical clustering demo. ~400 LOC.
-4. **GPU diffusion policy / behaviour cloning** — extension of #65
+2. **GPU EM clustering (GMM)** — classical clustering demo. ~400 LOC.
+3. **GPU diffusion policy / behaviour cloning** — extension of #65
     (motion planner) into a learned planner. ~800 LOC.
 
 ### C. Older items still parked (carried over from previous handoff)
@@ -345,28 +347,29 @@ any new scan-matching / SLAM / optimisation work.
 
 ## Recommended Next Session
 
-After GPU CMA-ES, GPU MCTS, assignment tracking, crowd swarm, and PR #78
-GPU SfM mini, the natural next move depends on user goal:
+After GPU CMA-ES, GPU MCTS, assignment tracking, crowd swarm, PR #78 GPU
+SfM mini, and the current GPU PCG branch, the natural next move depends
+on user goal:
 
-- **Reusable solver infrastructure**: GPU PCG (B1), useful for BA and
-  pose-graph backends.
+- **Hard but high value**: retry 3D pose-graph SLAM with FD-verified
+  Jacobians (B1). This unblocks any future global SLAM work and
+  completes the 2D / 3D pose-graph pair (only the 2D backend exists,
+  PR #58).
 - **Tying off loose ends**: refresh the lower headline benchmark table
   and back-migrate to shared headers (Open Threads A). One PR,
   mechanical, removes drift.
-- **Hard but high value**: retry 3D pose-graph SLAM with FD-verified
-  Jacobians (B2). This unblocks any future global SLAM work and
-  completes the 2D / 3D pose-graph pair (only the 2D backend exists,
-  PR #58).
+- **Small classical demo**: GPU EM clustering (B2), if the user wants
+  another compact algorithm PR rather than backend work.
 
-If unsure after this branch, start with **GPU PCG** if the user wants
-solver infrastructure, or a mechanical shared-header cleanup if they want
-a low-risk maintenance PR.
+If unsure after this branch, start with a mechanical shared-header cleanup
+if they want a low-risk maintenance PR, or GPU EM clustering if they want
+another compact visual algorithm.
 
 Suggested starting commands:
 
 ```bash
-rtk git switch -c feat/gpu-pcg                 # B1
-rtk git switch -c feat/gpu-pose-graph-3d-v2    # B2
+rtk git switch -c feat/gpu-pose-graph-3d-v2    # B1
+rtk git switch -c feat/gpu-em-gmm              # B2
 rtk git switch -c chore/shared-cuda-cleanup    # A: cleanup
 ```
 
@@ -420,6 +423,11 @@ rtk git switch -c chore/shared-cuda-cleanup    # A: cleanup
   version does not exist** (see Lessons #6, Threads B2).
 - `src/gpu_online_slam.cu` (PR #63) — sliding-window W=60 + iSAM-style
   global pass on loop closure.
+
+### Solver / infrastructure
+- `src/gpu_pcg_solver.cu` (current branch) — generic CSR Jacobi-PCG for
+  sparse SPD systems; 262K unknowns, 1.31M nonzeros, convergence GIF, and
+  direct CPU PCG comparison.
 
 ### Visualisation / rendering
 - `src/gpu_gaussian_splatting.cu` (PR #59) — isotropic alpha-composite.
