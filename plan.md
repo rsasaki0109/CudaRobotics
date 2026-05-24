@@ -44,7 +44,7 @@ separate parked work, not active blockers for new feature work.
 - PR #80 / branch `feat/gpu-em-gmm` adds GPU EM clustering for a 2D
   full-covariance Gaussian mixture: 262K points, 5 components, 42 EM
   iterations, 90.2x vs CPU.
-- Current branch `feat/gpu-spectral-clustering` adds normalized-affinity
+- PR #81 / branch `feat/gpu-spectral-clustering` adds normalized-affinity
   GPU spectral clustering on a 3072-point dense RBF graph: 40 subspace
   iterations, 193x vs CPU, 100% mapped cluster accuracy.
 - The "scan matching 4 siblings" are NDT 2D (#67), NDT 3D (#68), GICP 2D
@@ -161,7 +161,7 @@ Compact PR list. Format: `#PR  Title  | headline number`.
 ### 2026-05-25 — clustering / graph ML
 | PR | Title | Headline |
 |---|---|---|
-| TBD | GPU spectral clustering | 3072-point dense RBF graph, 40 subspace iterations, **193x** vs CPU, 100% mapped accuracy |
+| #81 | GPU spectral clustering | 3072-point dense RBF graph, 40 subspace iterations, **193x** vs CPU, 100% mapped accuracy |
 
 ### Bigger architectural things landed in this sprint
 - **Shared CUDA headers (`include/`)** — #66. New `.cu` files should
@@ -366,8 +366,8 @@ any new scan-matching / SLAM / optimisation work.
 ## Recommended Next Session
 
 After GPU CMA-ES, GPU MCTS, assignment tracking, crowd swarm, PR #78 GPU
-SfM mini, PR #79 GPU PCG, PR #80 GPU EM GMM, and the current GPU spectral
-clustering branch, the natural next move depends on user goal:
+SfM mini, PR #79 GPU PCG, PR #80 GPU EM GMM, and PR #81 GPU spectral
+clustering, the natural next move depends on user goal:
 
 - **Hard but high value**: retry 3D pose-graph SLAM with FD-verified
   Jacobians (B1). This unblocks any future global SLAM work and
@@ -452,7 +452,7 @@ rtk git switch -c chore/shared-cuda-cleanup    # A: cleanup
 - `src/gpu_em_gmm.cu` (PR #80) — GPU EM for 2D full-covariance
   Gaussian mixtures; 262K points, 5 components, 42 iterations, direct
   CPU comparison, and convergence GIF.
-- `src/gpu_spectral_clustering.cu` (current branch) — normalized RBF
+- `src/gpu_spectral_clustering.cu` (PR #81) — normalized RBF
   graph spectral clustering without materializing the dense matrix; 3072
   points, 40 subspace iterations, 193x vs CPU, 100% mapped accuracy.
 
