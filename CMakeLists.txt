@@ -358,6 +358,10 @@ add_executable(gpu_hungarian_assignment src/gpu_hungarian_assignment.cu)
 target_link_libraries(gpu_hungarian_assignment ${OpenCV_LIBS})
 target_compile_options(gpu_hungarian_assignment PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
 
+add_executable(gpu_assignment_tracking src/gpu_assignment_tracking.cu)
+target_link_libraries(gpu_assignment_tracking ${OpenCV_LIBS})
+target_compile_options(gpu_assignment_tracking PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
+
 add_executable(gpu_cma_es src/gpu_cma_es.cu)
 target_link_libraries(gpu_cma_es ${OpenCV_LIBS})
 target_compile_options(gpu_cma_es PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
