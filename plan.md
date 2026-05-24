@@ -32,7 +32,7 @@ separate parked work, not active blockers for new feature work.
   GICP scan matching family**, followed by **multi-resolution NDT 3D** and
   **GPU Hungarian-class assignment**, then **GPU CMA-ES**. PR #75 adds
   **GPU MCTS kinodynamic planning**. PR #76 adds **GPU assignment
-  tracking**. The current branch adds **10K-agent GPU crowd swarm**.
+  tracking**. PR #77 adds **10K-agent GPU crowd swarm**.
 - The "scan matching 4 siblings" are NDT 2D (#67), NDT 3D (#68), GICP 2D
   (#69), GICP 3D (#70). All present and merged.
 - Follow-up #71 adds coarse-to-fine NDT 3D and fixes the old #68 outlier
@@ -134,9 +134,9 @@ Compact PR list. Format: `#PR  Title  | headline number`.
 | #74 | GPU CMA-ES optimiser demo | 3 x 32768 candidates x 10D, 0.025 ms/generation eval, **1254x** objective eval |
 | #75 | GPU MCTS planner | 64 scenes x 4096 rollouts x 48 horizon, 1.82 ms/plan, **712x** vs CPU |
 | #76 | GPU assignment tracking | 128 scenes x 48 tracks x 72 detections, 0.093 ms/update, **14.0x** vs CPU |
-| current branch | GPU crowd swarm | 10,000 agents, 120x80 uniform grid, 0.275 ms/step, **105x** vs CPU |
+| #77 | GPU crowd swarm | 10,000 agents, 120x80 uniform grid, 0.275 ms/step, **105x** vs CPU |
 
-(37 merged PRs in 4 days, plus the current crowd swarm branch; cadence was sustained because each demo was a single
+(37 merged PRs in 4 days, plus PR #77; cadence was sustained because each demo was a single
 ~500-700 LOC `.cu` file plus a few lines in `CMakeLists.txt` and
 `readme.md`.)
 
@@ -435,7 +435,7 @@ rtk git switch -c chore/shared-cuda-cleanup    # A: cleanup
   kinodynamic planning scenes, 4096 rollouts x 48 horizon per scene.
 - `src/gpu_multi_robot_planner.cu` (PR #60) — 200 robots, parallel BF
   distance fields.
-- `src/gpu_crowd_swarm.cu` (current branch) — 10,000 boids with
+- `src/gpu_crowd_swarm.cu` (PR #77) — 10,000 boids with
   uniform-grid neighbour search, group goals, and obstacle avoidance.
 - `src/visibility_mppi.cu` (PR #56) — visibility-aware MPPI variant.
 - `src/esdf_mppi.cu` (PR #45) — ESDF-aware MPPI variant.
