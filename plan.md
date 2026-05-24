@@ -47,7 +47,7 @@ separate parked work, not active blockers for new feature work.
 - PR #81 / branch `feat/gpu-spectral-clustering` adds normalized-affinity
   GPU spectral clustering on a 3072-point dense RBF graph: 40 subspace
   iterations, 193x vs CPU, 100% mapped cluster accuracy.
-- Current branch `feat/gpu-pose-graph-3d-v2` adds GPU 3D pose-graph SLAM
+- PR #82 / branch `feat/gpu-pose-graph-3d-v2` adds GPU 3D pose-graph SLAM
   with central finite-difference SE(3) Jacobians: 384 poses, 575 edges,
   translation RMSE 1.64 m -> 0.28 m, rotation RMSE 11.29 deg -> 2.12 deg.
 - The "scan matching 4 siblings" are NDT 2D (#67), NDT 3D (#68), GICP 2D
@@ -163,7 +163,7 @@ Compact PR list. Format: `#PR  Title  | headline number`.
 | PR | Title | Headline |
 |---|---|---|
 | #81 | GPU spectral clustering | 3072-point dense RBF graph, 40 subspace iterations, **193x** vs CPU, 100% mapped accuracy |
-| TBD | GPU 3D pose-graph SLAM v2 | 384 poses, 575 SE(3) edges, finite-difference Jacobians, RMSE 1.64 m -> 0.28 m |
+| #82 | GPU 3D pose-graph SLAM v2 | 384 poses, 575 SE(3) edges, finite-difference Jacobians, RMSE 1.64 m -> 0.28 m |
 
 ### Bigger architectural things landed in this sprint
 - **Shared CUDA headers (`include/`)** — #66. New `.cu` files should
@@ -373,7 +373,7 @@ any new scan-matching / SLAM / optimisation work.
 
 After GPU CMA-ES, GPU MCTS, assignment tracking, crowd swarm, PR #78 GPU
 SfM mini, PR #79 GPU PCG, PR #80 GPU EM GMM, PR #81 GPU spectral
-clustering, and the current 3D pose-graph SLAM v2 branch, the natural next
+clustering, and PR #82 GPU 3D pose-graph SLAM v2, the natural next
 move depends on user goal:
 
 - **Hard but high value**: add robust-kernel / switchable-loop support to
@@ -445,7 +445,7 @@ rtk git switch -c chore/shared-cuda-cleanup    # A: cleanup
   Schur + Jacobi-PCG.
 - `src/gpu_lidar_slam.cu` (PR #54) — scan-to-scan ICP + log-odds map.
 - `src/gpu_pose_graph_slam.cu` (PR #58) — 2D GN + Jacobi-PCG.
-- `src/gpu_pose_graph_slam_3d.cu` (current branch) — 3D SE(3) GN +
+- `src/gpu_pose_graph_slam_3d.cu` (PR #82) — 3D SE(3) GN +
   Jacobi-PCG with central finite-difference Jacobians; 384 poses, 575
   edges, 1.64 m -> 0.28 m translation RMSE.
 - `src/gpu_online_slam.cu` (PR #63) — sliding-window W=60 + iSAM-style
