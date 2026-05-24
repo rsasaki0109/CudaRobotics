@@ -33,7 +33,7 @@ separate parked work, not active blockers for new feature work.
   **GPU Hungarian-class assignment**, then **GPU CMA-ES**. PR #75 adds
   **GPU MCTS kinodynamic planning**. PR #76 adds **GPU assignment
   tracking**. PR #77 adds **10K-agent GPU crowd swarm**.
-- Current branch `feat/gpu-sfm-mini` adds a compact multi-view geometry
+- PR #78 / branch `feat/gpu-sfm-mini` adds a compact multi-view geometry
   demo: 2048 synthetic ORB-like features across 4 views, GPU descriptor
   matching, stereo triangulation, and point-only BA.
 - The "scan matching 4 siblings" are NDT 2D (#67), NDT 3D (#68), GICP 2D
@@ -345,8 +345,8 @@ any new scan-matching / SLAM / optimisation work.
 
 ## Recommended Next Session
 
-After GPU CMA-ES, GPU MCTS, assignment tracking, crowd swarm, and the
-current SfM mini branch, the natural next move depends on user goal:
+After GPU CMA-ES, GPU MCTS, assignment tracking, crowd swarm, and PR #78
+GPU SfM mini, the natural next move depends on user goal:
 
 - **Reusable solver infrastructure**: GPU PCG (B1), useful for BA and
   pose-graph backends.
@@ -410,7 +410,7 @@ rtk git switch -c chore/shared-cuda-cleanup    # A: cleanup
   scaffold.
 
 ### SLAM / multi-view geometry (this sprint)
-- `src/gpu_sfm_mini.cu` (current branch) — 2048 ORB-like feature tracks
+- `src/gpu_sfm_mini.cu` (PR #78) — 2048 ORB-like feature tracks
   across 4 views, GPU brute-force descriptor matching, stereo
   triangulation, and fixed-camera point-only BA.
 - `src/gpu_bundle_adjustment.cu` (PR #62) — 1000 poses × 8000 LM,
