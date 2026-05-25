@@ -10,11 +10,27 @@ a prioritised menu of candidate next tasks with enough specificity that a
 fresh agent can pick one and start.
 
 Mainline is in sync with `origin/master` at commit
-`5570ab3 Add GPU augmented KLD-sampling AMCL demo (#95)`. The current feature
-branch `feat/gpu-pose-graph-3d-switchable` adds a GPU switchable-constraint 3D
-pose-graph SLAM demo (3D SLAM follow-up: replaces the frozen front-end trim
-gate of #83 with explicit per-loop switch variables jointly optimised with the
-SE(3) poses). PR pending.
+`a4dab88 Add GPU switchable-constraint 3D pose-graph SLAM demo (#98)`.
+The current feature branch `feat/gpu-megaparticles-lsh` adds a GPU
+MegaParticles-style relocalization demo with an explicit p-stable LSH
+neighbor index (localization-depth follow-up: replaces the fixed-grid
+neighbor stand-in of #86 with L random hash tables of K Gaussian
+projections, the actual Datar et al. 2004 LSH scheme). Head-to-head
+controlled comparison (1M particles each, identical Stein machinery, only
+the neighbor structure differs): neighbor recall vs brute-force kNN
+58.2% -> 87.8%, post-kidnap RMSE 0.099 -> 0.088 m. PR pending.
+
+PR #98 (`feat/gpu-pose-graph-3d-switchable` -> `master`) was **MERGED**
+(squash) on 2026-05-25; CI Build passed in 13m11s (Build + Python tests +
+CPU tests all green; only the Node.js 20 deprecation annotation), the draft
+was marked ready, and the remote feature branch was deleted. The demo is the
+3D SLAM follow-up that replaces the frozen front-end trim gate of #83 with
+explicit per-loop switch variables jointly optimised with the SE(3) poses.
+The squash diff touched only its four files (CMakeLists.txt, plan.md,
+readme.md, src/gpu_pose_graph_slam_3d_switchable.cu); the concurrent agent
+session landed GPU anytime / multi-goal neural A* traversability demos
+(`6b972fa`, `a293804`) on master just before it. There is **no active feature
+branch** now — the next agent starts fresh from `master`.
 
 PR #95 (`feat/gpu-kld-amcl-kidnap` -> `master`) was **MERGED** on
 2026-05-25 (squash). CI Build passed (11m56s; Build + Python tests +
@@ -260,7 +276,8 @@ Compact PR list. Format: `#PR  Title  | headline number`.
 | #86 | GPU MegaParticles-style Stein MCL | 1,048,576 range particles, distance-field likelihoods; local bootstrap 14.61 m -> Stein/bucket posterior 0.097 m post-kidnap RMSE |
 | #89 | GPU semi-supervised label propagation | 3072-node RBF graph, K=3, 12 clamped seeds, 50 iterations; **123x** vs CPU (55.3 ms vs 6.8 s), 100% unlabeled accuracy, 100% GPU/CPU label agreement |
 | #95 | GPU augmented KLD-sampling AMCL | KLD-sampling adapts 400→65,536 particles; augmented w_fast/w_slow injection (deadband 0.4) reacquires hidden kidnap in 13 steps, settled RMSE 0.014 m, **15.2x** vs CPU (0.35 ms vs 5.28 ms/step) |
-| (this branch) | GPU switchable-constraint 3D pose-graph SLAM | per-loop switch variables jointly optimised with SE(3) poses (Sünderhauf 2012, block coordinate descent, asymmetric switch damping); 384 poses / 611 edges / 36 false loops; plain GN 6.95 m / 39.89 deg → switchable 0.29 m / 2.23 deg, learns 36/36 false-loop rejection with no hand-set trim fraction; GPU/CPU agree to <1 mm |
+| #98 | GPU switchable-constraint 3D pose-graph SLAM | per-loop switch variables jointly optimised with SE(3) poses (Sünderhauf 2012, block coordinate descent, asymmetric switch damping); 384 poses / 611 edges / 36 false loops; plain GN 6.95 m / 39.89 deg → switchable 0.29 m / 2.23 deg, learns 36/36 false-loop rejection with no hand-set trim fraction; GPU/CPU agree to <1 mm |
+| (this branch) | GPU MegaParticles LSH neighbor index | explicit p-stable LSH (8 tables × 3 Gaussian projections, Datar 2004) replaces the fixed-grid neighbor stand-in of #86; controlled comparison at 2 × 1,048,576 particles with identical Stein machinery; neighbor recall vs brute-force kNN 58.2% → 87.8%, post-kidnap RMSE 0.099 → 0.088 m, both reacquire in 0 frames; LSH 9.6 ms vs grid 4.9 ms / step (8-table OR cost) |
 
 ### Current branch deep notes: MegaParticles-style Stein MCL (#86)
 
@@ -544,18 +561,24 @@ any new scan-matching / SLAM / optimisation work.
 
 ## Recommended Next Session
 
-Immediate next action: the current branch `feat/gpu-pose-graph-3d-switchable`
-adds the GPU switchable-constraint 3D pose-graph SLAM demo (the "explicit
-switch variables optimised alongside poses" slice of the 3D SLAM follow-up).
-Once its PR merges, the remaining strong candidates are the localization-depth
-follow-ups (MegaParticles 3D/6-DoF or explicit LSH neighbor list), the *other*
-3D SLAM follow-up (wire the robust/switchable backend into an online frontend),
-or the Open Threads A shared-header cleanup (now especially worthwhile: the
-SE(3) GN + Jacobi-PCG scaffold is duplicated across
-`gpu_pose_graph_slam_3d.cu` and `gpu_pose_graph_slam_3d_switchable.cu`).
-Done so far: B1 (diffusion policy), B2 (graph-ML / label propagation), the
-KLD-AMCL slice of B3, and now the switch-variable slice of the 3D SLAM
-follow-up. Coordinate with the concurrent session, which is working the
+Immediate next action: PR #98 (GPU switchable-constraint 3D pose-graph SLAM,
+the "explicit switch variables optimised alongside poses" slice of the 3D SLAM
+follow-up) is already merged (squash) and its branch deleted; local `master`
+is at `a4dab88` and in sync with origin. There is no in-flight PR to babysit.
+The current branch `feat/gpu-megaparticles-lsh` takes the explicit-LSH slice
+of the localization-depth follow-up (replacing #86's fixed-grid neighbor
+stand-in with a real p-stable LSH index). Once its PR merges, the remaining
+strong candidates are the *other* localization-depth follow-up (MegaParticles
+3D/6-DoF poses), the *other* 3D SLAM follow-up (wire the robust/switchable
+backend into an online frontend, e.g. switchable constraints inside the
+sliding-window backend of #63), or the Open Threads A shared-header cleanup
+(now especially worthwhile: the SE(3) GN + Jacobi-PCG + Cholesky scaffold is
+duplicated across `gpu_pose_graph_slam_3d.cu`,
+`gpu_pose_graph_slam_3d_switchable.cu`, `gpu_ndt_3d.cu`, and `gpu_gicp_3d.cu`
+— a clean `include/se3_helpers.cuh` lift). Done so far: B1 (diffusion policy),
+B2 (graph-ML / label propagation), the KLD-AMCL slice of B3, the
+switch-variable slice of the 3D SLAM follow-up (#98), and now the explicit-LSH
+slice of B3. Coordinate with the concurrent session, which is working the
 graph/traversability line on this same checkout.
 
 After GPU CMA-ES, GPU MCTS, assignment tracking, crowd swarm, PR #78 GPU
