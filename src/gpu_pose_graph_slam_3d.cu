@@ -9,6 +9,9 @@
 // linearizes all edges, assembles the normal-equation vector and Jacobi
 // preconditioner, and solves the damped sparse system with PCG.
 //
+// Compile with GPU_POSE_GRAPH_3D_ROBUST=1 to add deliberately false loop
+// closures and solve the same graph with trimmed switchable constraints.
+//
 // Residual for edge i->j:
 //   z_ij = (Rz, tz),  pred = T_i^-1 T_j
 //   r_t = pred_t - tz
@@ -40,6 +43,10 @@
 
 namespace cudabot {
 
+#ifndef GPU_POSE_GRAPH_3D_ROBUST
+#define GPU_POSE_GRAPH_3D_ROBUST 0
+#endif
+
 using blas::axpy_kernel;
 using blas::copy_kernel;
 using blas::dot_kernel;
@@ -51,6 +58,7 @@ constexpr int GN_ITERS = 52;
 constexpr int PCG_ITERS = 90;
 constexpr int THREADS = 256;
 constexpr int MAX_LOOP_EDGES = 192;
+constexpr int OUTLIER_LOOP_EDGES = GPU_POSE_GRAPH_3D_ROBUST ? 36 : 0;
 constexpr int SNAP_STRIDE = 1;
 constexpr int PANEL_W = 960;
 constexpr int PANEL_H = 620;
@@ -66,6 +74,20 @@ constexpr float FD_EPS_T = 1.0e-3f;
 constexpr float FD_EPS_R = 2.0e-4f;
 constexpr float DAMPING = 4.0e-3f;
 
+#if GPU_POSE_GRAPH_3D_ROBUST
+constexpr float SWITCH_TRIM_FRACTION = 0.16f;
+constexpr float SWITCH_REJECT_WEIGHT = 0.0f;
+static const char* DEMO_TITLE = "GPU robust 3D pose-graph SLAM";
+static const char* DEMO_SUBTITLE =
+    "false loop closures + trimmed switchable constraints + damped Jacobi-PCG";
+static const char* OUTPUT_STEM = "gpu_pose_graph_slam_3d_robust";
+#else
+static const char* DEMO_TITLE = "GPU 3D pose-graph SLAM v2";
+static const char* DEMO_SUBTITLE =
+    "central finite-difference SE(3) Jacobians + damped Jacobi-PCG";
+static const char* OUTPUT_STEM = "gpu_pose_graph_slam_3d";
+#endif
+
 struct Pose {
     float t[3];
     float R[9];
@@ -78,7 +100,9 @@ struct Edge {
     float R[9];
     float wt;
     float wr;
+    float switch_weight;
     int loop;
+    int outlier;
 };
 
 struct EdgeLinearization {
@@ -99,13 +123,22 @@ struct BenchResult {
     double gpu_ms = 0.0;
     double cpu_ms = 0.0;
     double speedup = 0.0;
+    double plain_gpu_ms = 0.0;
     float init_trans_rmse = 0.0f;
     float final_trans_rmse = 0.0f;
     float init_rot_rmse_deg = 0.0f;
     float final_rot_rmse_deg = 0.0f;
     float final_cost = 0.0f;
+    float plain_trans_rmse = 0.0f;
+    float plain_rot_rmse_deg = 0.0f;
+    float plain_cost = 0.0f;
+    float clean_loop_weight = 1.0f;
+    float outlier_loop_weight = 1.0f;
+    int rejected_outliers = 0;
+    int switched_loop_edges = 0;
     int odom_edges = 0;
     int loop_edges = 0;
+    int outlier_edges = 0;
 };
 
 __host__ __device__ static inline float clampf(float x, float lo, float hi) {
@@ -213,6 +246,56 @@ __host__ __device__ static inline void residual_edge(const Pose& pi,
     so3_log(Rerr, r + 3);
 }
 
+__host__ __device__ static inline float edge_chi2(float wt,
+                                                  float wr,
+                                                  const float* r) {
+    float trans = r[0] * r[0] + r[1] * r[1] + r[2] * r[2];
+    float rot = r[3] * r[3] + r[4] * r[4] + r[5] * r[5];
+    return wt * trans + wr * rot;
+}
+
+__host__ __device__ static inline float edge_weight_scale(int loop,
+                                                          int robust_enabled,
+                                                          float switch_weight,
+                                                          float wt,
+                                                          float wr,
+                                                          const float* r) {
+#if GPU_POSE_GRAPH_3D_ROBUST
+    if (!robust_enabled || !loop) return 1.0f;
+    (void)wt;
+    (void)wr;
+    (void)r;
+    return clampf(switch_weight, 0.0f, 1.0f);
+#else
+    (void)loop;
+    (void)robust_enabled;
+    (void)switch_weight;
+    (void)wt;
+    (void)wr;
+    (void)r;
+    return 1.0f;
+#endif
+}
+
+__host__ __device__ static inline float edge_cost_value(int loop,
+                                                        int robust_enabled,
+                                                        float switch_weight,
+                                                        float wt,
+                                                        float wr,
+                                                        const float* r) {
+    float chi2 = edge_chi2(wt, wr, r);
+#if GPU_POSE_GRAPH_3D_ROBUST
+    if (robust_enabled && loop) {
+        return 0.5f * clampf(switch_weight, 0.0f, 1.0f) * chi2;
+    }
+#else
+    (void)loop;
+    (void)robust_enabled;
+    (void)switch_weight;
+#endif
+    return 0.5f * chi2;
+}
+
 __host__ __device__ static inline void perturb_pose(const Pose& in,
                                                     int axis,
                                                     float eps,
@@ -297,13 +380,39 @@ static Edge make_edge_from_gt(const std::vector<Pose>& gt,
     add_noise_to_edge(e, sigma_t, sigma_r, rng);
     e.wt = 1.0f / (sigma_t * sigma_t);
     e.wr = 1.0f / (sigma_r * sigma_r);
+    e.switch_weight = 1.0f;
     e.loop = loop ? 1 : 0;
+    e.outlier = 0;
+    return e;
+}
+
+static Edge make_outlier_loop_edge(const std::vector<Pose>& gt,
+                                   int i,
+                                   int j,
+                                   int k,
+                                   std::mt19937& rng) {
+    Edge e = make_edge_from_gt(gt, i, j, LOOP_SIGMA_T, LOOP_SIGMA_R, true, rng);
+    float phase = 0.73f * static_cast<float>(k) + 0.31f;
+    e.t[0] += 5.20f + 1.35f * std::sin(phase);
+    e.t[1] += -4.15f + 1.10f * std::cos(1.7f * phase);
+    e.t[2] += 1.85f + 0.90f * std::sin(0.6f * phase + 0.4f);
+    float w[3] = {
+        0.48f * std::sin(0.9f * phase),
+        -0.62f + 0.16f * std::cos(phase),
+        0.72f * std::sin(1.3f * phase + 0.2f),
+    };
+    float E[9], Rnew[9];
+    so3_exp(w, E);
+    mat3_mul(E, e.R, Rnew);
+    for (int r = 0; r < 9; r++) e.R[r] = Rnew[r];
+    e.outlier = 1;
     return e;
 }
 
 static std::vector<Edge> make_edges(const std::vector<Pose>& gt,
                                     int& odom_edges,
-                                    int& loop_edges) {
+                                    int& loop_edges,
+                                    int& outlier_edges) {
     std::mt19937 rng(25052026);
     std::vector<Edge> edges;
     for (int i = 0; i < N_POSES - 1; i++) {
@@ -313,6 +422,7 @@ static std::vector<Edge> make_edges(const std::vector<Pose>& gt,
     odom_edges = static_cast<int>(edges.size());
 
     loop_edges = 0;
+    outlier_edges = 0;
     int lap_gap = N_POSES / 2;
     for (int i = 0; i < lap_gap && loop_edges < MAX_LOOP_EDGES; i += 1) {
         edges.push_back(make_edge_from_gt(gt, i, i + lap_gap, LOOP_SIGMA_T, LOOP_SIGMA_R,
@@ -348,7 +458,48 @@ static std::vector<Edge> make_edges(const std::vector<Pose>& gt,
         used[j]++;
         loop_edges++;
     }
+
+    for (int k = 0; k < OUTLIER_LOOP_EDGES; k++) {
+        int i = (17 * k + 23) % (N_POSES - LOOP_MIN_GAP - 1);
+        int gap = LOOP_MIN_GAP + 24 + ((31 * k) % 140);
+        int j = (i + gap) % N_POSES;
+        if (j == i) j = (j + N_POSES / 3) % N_POSES;
+        edges.push_back(make_outlier_loop_edge(gt, i, j, k, rng));
+        loop_edges++;
+        outlier_edges++;
+    }
     return edges;
+}
+
+static int assign_initial_loop_switches(const std::vector<Pose>& poses,
+                                        std::vector<Edge>& edges) {
+#if GPU_POSE_GRAPH_3D_ROBUST
+    std::vector<std::pair<float, int> > scored_loops;
+    for (int e = 0; e < static_cast<int>(edges.size()); e++) {
+        edges[e].switch_weight = 1.0f;
+        if (!edges[e].loop) continue;
+        float r[6];
+        residual_edge(poses[edges[e].i], poses[edges[e].j], edges[e], r);
+        scored_loops.push_back(std::make_pair(edge_chi2(edges[e].wt, edges[e].wr, r), e));
+    }
+    if (scored_loops.empty()) return 0;
+    std::sort(scored_loops.begin(), scored_loops.end(),
+              [](const std::pair<float, int>& a, const std::pair<float, int>& b) {
+                  return a.first < b.first;
+              });
+    int reject_count = static_cast<int>(
+        std::lround(SWITCH_TRIM_FRACTION * static_cast<float>(scored_loops.size())));
+    reject_count = std::max(1, std::min(reject_count, static_cast<int>(scored_loops.size()) - 1));
+    for (int k = 0; k < reject_count; k++) {
+        int idx = scored_loops[scored_loops.size() - 1 - k].second;
+        edges[idx].switch_weight = SWITCH_REJECT_WEIGHT;
+    }
+    return reject_count;
+#else
+    (void)poses;
+    (void)edges;
+    return 0;
+#endif
 }
 
 static std::vector<Pose> chain_initial(const std::vector<Pose>& gt,
@@ -384,20 +535,26 @@ static void flatten_poses(const std::vector<Pose>& poses, std::vector<float>& fl
 static void flatten_edges(const std::vector<Edge>& edges,
                           std::vector<int>& ei,
                           std::vector<int>& ej,
+                          std::vector<int>& eloop,
                           std::vector<float>& et,
                           std::vector<float>& eR,
+                          std::vector<float>& eswitch,
                           std::vector<float>& ew) {
     int n = static_cast<int>(edges.size());
     ei.resize(n);
     ej.resize(n);
+    eloop.resize(n);
     et.resize(n * 3);
     eR.resize(n * 9);
+    eswitch.resize(n);
     ew.resize(n * 2);
     for (int e = 0; e < n; e++) {
         ei[e] = edges[e].i;
         ej[e] = edges[e].j;
+        eloop[e] = edges[e].loop;
         for (int k = 0; k < 3; k++) et[3 * e + k] = edges[e].t[k];
         for (int k = 0; k < 9; k++) eR[9 * e + k] = edges[e].R[k];
+        eswitch[e] = edges[e].switch_weight;
         ew[2 * e + 0] = edges[e].wt;
         ew[2 * e + 1] = edges[e].wr;
     }
@@ -427,15 +584,46 @@ static float rmse_rotation_deg(const std::vector<Pose>& poses, const std::vector
     return static_cast<float>(std::sqrt(sum / N_POSES) * 180.0 / PI_F);
 }
 
-static float graph_cost_host(const std::vector<Pose>& poses, const std::vector<Edge>& edges) {
+static float graph_cost_host(const std::vector<Pose>& poses,
+                             const std::vector<Edge>& edges,
+                             int robust_enabled) {
     double cost = 0.0;
     for (const Edge& e : edges) {
         float r[6];
         residual_edge(poses[e.i], poses[e.j], e, r);
-        cost += 0.5 * e.wt * (r[0] * r[0] + r[1] * r[1] + r[2] * r[2]);
-        cost += 0.5 * e.wr * (r[3] * r[3] + r[4] * r[4] + r[5] * r[5]);
+        cost += edge_cost_value(e.loop, robust_enabled, e.switch_weight, e.wt, e.wr, r);
     }
     return static_cast<float>(cost);
+}
+
+static void loop_weight_stats(const std::vector<Pose>& poses,
+                              const std::vector<Edge>& edges,
+                              int robust_enabled,
+                              BenchResult& bench) {
+    double clean_sum = 0.0;
+    double outlier_sum = 0.0;
+    int clean_count = 0;
+    int outlier_count = 0;
+    int rejected = 0;
+    for (const Edge& e : edges) {
+        if (!e.loop) continue;
+        float r[6];
+        residual_edge(poses[e.i], poses[e.j], e, r);
+        float w = edge_weight_scale(e.loop, robust_enabled, e.switch_weight, e.wt, e.wr, r);
+        if (e.outlier) {
+            outlier_sum += w;
+            outlier_count++;
+            if (w < 0.20f) rejected++;
+        } else {
+            clean_sum += w;
+            clean_count++;
+        }
+    }
+    bench.clean_loop_weight =
+        clean_count > 0 ? static_cast<float>(clean_sum / clean_count) : 1.0f;
+    bench.outlier_loop_weight =
+        outlier_count > 0 ? static_cast<float>(outlier_sum / outlier_count) : 1.0f;
+    bench.rejected_outliers = rejected;
 }
 
 static void apply_update_host(const std::vector<Pose>& in,
@@ -529,20 +717,26 @@ __global__ void linearize_fd_kernel(int n_edges,
 __global__ void assemble_kernel(int n_edges,
                                 const int* __restrict__ ei,
                                 const int* __restrict__ ej,
+                                const int* __restrict__ eloop,
+                                const float* __restrict__ eswitch,
                                 const float* __restrict__ ew,
                                 const float* __restrict__ residuals,
                                 const float* __restrict__ Ji_all,
                                 const float* __restrict__ Jj_all,
+                                int robust_enabled,
                                 float* __restrict__ b,
                                 float* __restrict__ diag) {
     int e = blockIdx.x * blockDim.x + threadIdx.x;
     if (e >= n_edges) return;
     int i = ei[e], j = ej[e];
-    float wt[6] = {
-        ew[2 * e + 0], ew[2 * e + 0], ew[2 * e + 0],
-        ew[2 * e + 1], ew[2 * e + 1], ew[2 * e + 1],
-    };
     const float* r = residuals + 6 * e;
+    float scale = edge_weight_scale(eloop[e], robust_enabled,
+                                    eswitch[e],
+                                    ew[2 * e + 0], ew[2 * e + 1], r);
+    float wt[6] = {
+        scale * ew[2 * e + 0], scale * ew[2 * e + 0], scale * ew[2 * e + 0],
+        scale * ew[2 * e + 1], scale * ew[2 * e + 1], scale * ew[2 * e + 1],
+    };
     const float* Ji = Ji_all + 36 * e;
     const float* Jj = Jj_all + 36 * e;
 
@@ -572,17 +766,25 @@ __global__ void assemble_kernel(int n_edges,
 __global__ void matvec_kernel(int n_edges,
                               const int* __restrict__ ei,
                               const int* __restrict__ ej,
+                              const int* __restrict__ eloop,
+                              const float* __restrict__ eswitch,
                               const float* __restrict__ ew,
+                              const float* __restrict__ residuals,
                               const float* __restrict__ Ji_all,
                               const float* __restrict__ Jj_all,
+                              int robust_enabled,
                               const float* __restrict__ x,
                               float* __restrict__ y) {
     int e = blockIdx.x * blockDim.x + threadIdx.x;
     if (e >= n_edges) return;
     int i = ei[e], j = ej[e];
+    const float* r0 = residuals + 6 * e;
+    float scale = edge_weight_scale(eloop[e], robust_enabled,
+                                    eswitch[e],
+                                    ew[2 * e + 0], ew[2 * e + 1], r0);
     float wt[6] = {
-        ew[2 * e + 0], ew[2 * e + 0], ew[2 * e + 0],
-        ew[2 * e + 1], ew[2 * e + 1], ew[2 * e + 1],
+        scale * ew[2 * e + 0], scale * ew[2 * e + 0], scale * ew[2 * e + 0],
+        scale * ew[2 * e + 1], scale * ew[2 * e + 1], scale * ew[2 * e + 1],
     };
     const float* Ji = Ji_all + 36 * e;
     const float* Jj = Jj_all + 36 * e;
@@ -709,11 +911,17 @@ static void compute_cpu_linearization(const std::vector<Pose>& poses,
 static void cpu_matvec(const std::vector<Edge>& edges,
                        const std::vector<EdgeLinearization>& lin,
                        const std::vector<float>& x,
+                       int robust_enabled,
                        std::vector<float>& y) {
     std::fill(y.begin(), y.end(), 0.0f);
     for (int e = 0; e < static_cast<int>(edges.size()); e++) {
         const Edge& edge = edges[e];
-        float wt[6] = {edge.wt, edge.wt, edge.wt, edge.wr, edge.wr, edge.wr};
+        float scale = edge_weight_scale(edge.loop, robust_enabled, edge.switch_weight,
+                                        edge.wt, edge.wr, lin[e].r);
+        float wt[6] = {
+            scale * edge.wt, scale * edge.wt, scale * edge.wt,
+            scale * edge.wr, scale * edge.wr, scale * edge.wr
+        };
         float u[6];
         for (int r = 0; r < 6; r++) {
             float v = 0.0f;
@@ -769,13 +977,19 @@ static bool solve6_spd_host(const float* A_in, const float* rhs, float damping, 
 
 static void assemble_cpu(const std::vector<Edge>& edges,
                          const std::vector<EdgeLinearization>& lin,
+                         int robust_enabled,
                          std::vector<float>& b,
                          std::vector<float>& diag) {
     std::fill(b.begin(), b.end(), 0.0f);
     std::fill(diag.begin(), diag.end(), 0.0f);
     for (int e = 0; e < static_cast<int>(edges.size()); e++) {
         const Edge& edge = edges[e];
-        float wt[6] = {edge.wt, edge.wt, edge.wt, edge.wr, edge.wr, edge.wr};
+        float scale = edge_weight_scale(edge.loop, robust_enabled, edge.switch_weight,
+                                        edge.wt, edge.wr, lin[e].r);
+        float wt[6] = {
+            scale * edge.wt, scale * edge.wt, scale * edge.wt,
+            scale * edge.wr, scale * edge.wr, scale * edge.wr
+        };
         for (int c = 0; c < 6; c++) {
             float bi = 0.0f, bj = 0.0f;
             for (int r = 0; r < 6; r++) {
@@ -824,6 +1038,7 @@ static void cpu_pcg_solve(const std::vector<Edge>& edges,
                           const std::vector<EdgeLinearization>& lin,
                           const std::vector<float>& b,
                           const std::vector<float>& diag,
+                          int robust_enabled,
                           std::vector<float>& dx) {
     const int n = N_POSES * 6;
     dx.assign(n, 0.0f);
@@ -840,7 +1055,7 @@ static void cpu_pcg_solve(const std::vector<Edge>& edges,
     float rz_old = dot(r, z);
     float rr0 = std::max(1.0e-12f, dot(r, r));
     for (int it = 0; it < PCG_ITERS; it++) {
-        cpu_matvec(edges, lin, p, Ap);
+        cpu_matvec(edges, lin, p, robust_enabled, Ap);
         float pAp = dot(p, Ap);
         if (pAp <= 1.0e-20f) break;
         float alpha = rz_old / pAp;
@@ -863,6 +1078,7 @@ static void cpu_pcg_solve(const std::vector<Edge>& edges,
 static double run_cpu_reference(const std::vector<Pose>& initial,
                                 const std::vector<Pose>& gt,
                                 const std::vector<Edge>& edges,
+                                int robust_enabled,
                                 std::vector<Pose>& out) {
     std::vector<Pose> poses = initial;
     std::vector<EdgeLinearization> lin;
@@ -870,14 +1086,14 @@ static double run_cpu_reference(const std::vector<Pose>& initial,
     auto t0 = std::chrono::high_resolution_clock::now();
     for (int iter = 0; iter < GN_ITERS; iter++) {
         compute_cpu_linearization(poses, edges, lin);
-        assemble_cpu(edges, lin, b, diag);
-        cpu_pcg_solve(edges, lin, b, diag, dx);
-        float current_cost = graph_cost_host(poses, edges);
+        assemble_cpu(edges, lin, robust_enabled, b, diag);
+        cpu_pcg_solve(edges, lin, b, diag, robust_enabled, dx);
+        float current_cost = graph_cost_host(poses, edges, robust_enabled);
         std::vector<Pose> trial;
         bool accepted = false;
         for (float step : {1.0f, 0.5f, 0.25f, 0.125f, 0.0625f}) {
             apply_update_host(poses, dx, step, trial);
-            float trial_cost = graph_cost_host(trial, edges);
+            float trial_cost = graph_cost_host(trial, edges, robust_enabled);
             if (trial_cost < current_cost) {
                 poses.swap(trial);
                 accepted = true;
@@ -895,28 +1111,32 @@ static double run_cpu_reference(const std::vector<Pose>& initial,
 static double run_gpu_solver(const std::vector<Pose>& initial,
                              const std::vector<Pose>& gt,
                              const std::vector<Edge>& edges,
+                             int robust_enabled,
+                             const char* run_label,
                              std::vector<Pose>& out,
                              std::vector<Snapshot>& snapshots) {
     const int n_edges = static_cast<int>(edges.size());
     const int n_state = N_POSES * 6;
     const int n_pose_floats = N_POSES * 12;
-    std::vector<int> ei, ej;
-    std::vector<float> et, eR, ew;
-    flatten_edges(edges, ei, ej, et, eR, ew);
+    std::vector<int> ei, ej, eloop;
+    std::vector<float> et, eR, eswitch, ew;
+    flatten_edges(edges, ei, ej, eloop, et, eR, eswitch, ew);
     std::vector<float> poses_flat;
     flatten_poses(initial, poses_flat);
     std::vector<Pose> poses_host = initial;
     std::vector<float> dx_host(n_state);
 
-    int *d_ei = nullptr, *d_ej = nullptr;
-    float *d_et = nullptr, *d_eR = nullptr, *d_ew = nullptr;
+    int *d_ei = nullptr, *d_ej = nullptr, *d_eloop = nullptr;
+    float *d_et = nullptr, *d_eR = nullptr, *d_eswitch = nullptr, *d_ew = nullptr;
     float *d_poses = nullptr, *d_residuals = nullptr, *d_Ji = nullptr, *d_Jj = nullptr;
     float *d_b = nullptr, *d_diag = nullptr, *d_dx = nullptr, *d_r = nullptr;
     float *d_z = nullptr, *d_p = nullptr, *d_Ap = nullptr, *d_scratch = nullptr;
     CUDA_CHECK(cudaMalloc(&d_ei, n_edges * sizeof(int)));
     CUDA_CHECK(cudaMalloc(&d_ej, n_edges * sizeof(int)));
+    CUDA_CHECK(cudaMalloc(&d_eloop, n_edges * sizeof(int)));
     CUDA_CHECK(cudaMalloc(&d_et, n_edges * 3 * sizeof(float)));
     CUDA_CHECK(cudaMalloc(&d_eR, n_edges * 9 * sizeof(float)));
+    CUDA_CHECK(cudaMalloc(&d_eswitch, n_edges * sizeof(float)));
     CUDA_CHECK(cudaMalloc(&d_ew, n_edges * 2 * sizeof(float)));
     CUDA_CHECK(cudaMalloc(&d_poses, n_pose_floats * sizeof(float)));
     CUDA_CHECK(cudaMalloc(&d_residuals, n_edges * 6 * sizeof(float)));
@@ -933,14 +1153,17 @@ static double run_gpu_solver(const std::vector<Pose>& initial,
 
     CUDA_CHECK(cudaMemcpy(d_ei, ei.data(), n_edges * sizeof(int), cudaMemcpyHostToDevice));
     CUDA_CHECK(cudaMemcpy(d_ej, ej.data(), n_edges * sizeof(int), cudaMemcpyHostToDevice));
+    CUDA_CHECK(cudaMemcpy(d_eloop, eloop.data(), n_edges * sizeof(int), cudaMemcpyHostToDevice));
     CUDA_CHECK(cudaMemcpy(d_et, et.data(), n_edges * 3 * sizeof(float), cudaMemcpyHostToDevice));
     CUDA_CHECK(cudaMemcpy(d_eR, eR.data(), n_edges * 9 * sizeof(float), cudaMemcpyHostToDevice));
+    CUDA_CHECK(cudaMemcpy(d_eswitch, eswitch.data(), n_edges * sizeof(float), cudaMemcpyHostToDevice));
     CUDA_CHECK(cudaMemcpy(d_ew, ew.data(), n_edges * 2 * sizeof(float), cudaMemcpyHostToDevice));
     CUDA_CHECK(cudaMemcpy(d_poses, poses_flat.data(), n_pose_floats * sizeof(float), cudaMemcpyHostToDevice));
 
     snapshots.clear();
     snapshots.push_back({0, poses_host, rmse_translation(poses_host, gt),
-                         rmse_rotation_deg(poses_host, gt), graph_cost_host(poses_host, edges)});
+                         rmse_rotation_deg(poses_host, gt),
+                         graph_cost_host(poses_host, edges, robust_enabled)});
 
     int blocks_e = (n_edges + THREADS - 1) / THREADS;
     int blocks_state = (n_state + THREADS - 1) / THREADS;
@@ -958,8 +1181,10 @@ static double run_gpu_solver(const std::vector<Pose>& initial,
                                                    d_Ji, d_Jj);
         zero_kernel<<<blocks_state, THREADS>>>(n_state, d_b);
         zero_kernel<<<blocks_diag, THREADS>>>(N_POSES * 36, d_diag);
-        assemble_kernel<<<blocks_e, THREADS>>>(n_edges, d_ei, d_ej, d_ew, d_residuals,
-                                               d_Ji, d_Jj, d_b, d_diag);
+        assemble_kernel<<<blocks_e, THREADS>>>(n_edges, d_ei, d_ej, d_eloop,
+                                               d_eswitch, d_ew,
+                                               d_residuals, d_Ji, d_Jj, robust_enabled,
+                                               d_b, d_diag);
         anchor_diag_kernel<<<1, 36>>>(d_b, d_diag);
 
         zero_kernel<<<blocks_state, THREADS>>>(n_state, d_dx);
@@ -982,7 +1207,9 @@ static double run_gpu_solver(const std::vector<Pose>& initial,
 
         for (int pcg = 0; pcg < PCG_ITERS; pcg++) {
             zero_kernel<<<blocks_state, THREADS>>>(n_state, d_Ap);
-            matvec_kernel<<<blocks_e, THREADS>>>(n_edges, d_ei, d_ej, d_ew, d_Ji, d_Jj,
+            matvec_kernel<<<blocks_e, THREADS>>>(n_edges, d_ei, d_ej, d_eloop,
+                                                 d_eswitch, d_ew,
+                                                 d_residuals, d_Ji, d_Jj, robust_enabled,
                                                  d_p, d_Ap);
             add_damping_kernel<<<blocks_state, THREADS>>>(n_state, DAMPING, d_p, d_Ap);
             zero_anchor6_kernel<<<1, 6>>>(d_Ap);
@@ -1015,13 +1242,13 @@ static double run_gpu_solver(const std::vector<Pose>& initial,
         }
 
         CUDA_CHECK(cudaMemcpy(dx_host.data(), d_dx, n_state * sizeof(float), cudaMemcpyDeviceToHost));
-        float current_cost = graph_cost_host(poses_host, edges);
+        float current_cost = graph_cost_host(poses_host, edges, robust_enabled);
         std::vector<Pose> trial;
         bool accepted = false;
         float accepted_cost = current_cost;
         for (float step : {1.0f, 0.5f, 0.25f, 0.125f, 0.0625f}) {
             apply_update_host(poses_host, dx_host, step, trial);
-            float trial_cost = graph_cost_host(trial, edges);
+            float trial_cost = graph_cost_host(trial, edges, robust_enabled);
             if (trial_cost < current_cost) {
                 poses_host.swap(trial);
                 accepted_cost = trial_cost;
@@ -1030,7 +1257,8 @@ static double run_gpu_solver(const std::vector<Pose>& initial,
             }
         }
         if (!accepted) {
-            std::printf("  iter %02d rejected: cost %.2f\n", iter + 1, current_cost);
+            std::printf("  %s iter %02d rejected: cost %.2f\n",
+                        run_label, iter + 1, current_cost);
             break;
         }
         flatten_poses(poses_host, poses_flat);
@@ -1046,8 +1274,8 @@ static double run_gpu_solver(const std::vector<Pose>& initial,
             snapshots.push_back(std::move(s));
         }
         if (iter < 5 || iter % 4 == 3) {
-            std::printf("  gpu iter %02d  cost %.2f  trans RMSE %.3f m  rot %.3f deg\n",
-                        iter + 1, accepted_cost,
+            std::printf("  %s iter %02d  cost %.2f  trans RMSE %.3f m  rot %.3f deg\n",
+                        run_label, iter + 1, accepted_cost,
                         rmse_translation(poses_host, gt),
                         rmse_rotation_deg(poses_host, gt));
         }
@@ -1061,8 +1289,10 @@ static double run_gpu_solver(const std::vector<Pose>& initial,
 
     CUDA_CHECK(cudaFree(d_ei));
     CUDA_CHECK(cudaFree(d_ej));
+    CUDA_CHECK(cudaFree(d_eloop));
     CUDA_CHECK(cudaFree(d_et));
     CUDA_CHECK(cudaFree(d_eR));
+    CUDA_CHECK(cudaFree(d_eswitch));
     CUDA_CHECK(cudaFree(d_ew));
     CUDA_CHECK(cudaFree(d_poses));
     CUDA_CHECK(cudaFree(d_residuals));
@@ -1122,11 +1352,10 @@ static cv::Mat draw_frame(const Snapshot& snap,
     float yaw = -0.72f + 0.018f * snap.iter;
     float pitch = 0.58f;
     cv::putText(img,
-                cv::format("GPU 3D pose-graph SLAM v2  iter %02d / %d",
-                           snap.iter, GN_ITERS),
+                cv::format("%s  iter %02d / %d", DEMO_TITLE, snap.iter, GN_ITERS),
                 cv::Point(28, 36), cv::FONT_HERSHEY_SIMPLEX, 0.78,
                 cv::Scalar(245, 245, 245), 2, cv::LINE_AA);
-    cv::putText(img, "central finite-difference SE(3) Jacobians + damped Jacobi-PCG",
+    cv::putText(img, DEMO_SUBTITLE,
                 cv::Point(31, 60), cv::FONT_HERSHEY_SIMPLEX, 0.42,
                 cv::Scalar(165, 170, 180), 1, cv::LINE_AA);
 
@@ -1145,17 +1374,19 @@ static cv::Mat draw_frame(const Snapshot& snap,
     draw_traj(img, initial, cv::Scalar(80, 90, 110), 1, yaw, pitch);
     for (const Edge& e : edges) {
         if (!e.loop) continue;
+        cv::Scalar color = e.outlier ? cv::Scalar(70, 85, 235) : cv::Scalar(80, 140, 180);
+        int thickness = e.outlier ? 2 : 1;
         cv::line(img,
                  project(snap.poses[e.i].t[0], snap.poses[e.i].t[1], snap.poses[e.i].t[2], yaw, pitch),
                  project(snap.poses[e.j].t[0], snap.poses[e.j].t[1], snap.poses[e.j].t[2], yaw, pitch),
-                 cv::Scalar(80, 140, 180), 1, cv::LINE_AA);
+                 color, thickness, cv::LINE_AA);
     }
     draw_traj(img, snap.poses, cv::Scalar(70, 210, 255), 2, yaw, pitch);
     for (int i = 0; i < N_POSES; i += 12) {
         cv::circle(img, project(snap.poses[i].t[0], snap.poses[i].t[1], snap.poses[i].t[2], yaw, pitch),
                    2, interp_color(static_cast<float>(i) / N_POSES), -1, cv::LINE_AA);
     }
-    cv::putText(img, "gray=GT  dim=odometry  cyan=optimized",
+    cv::putText(img, "gray=GT  dim=odometry  cyan=optimized  red=false loops",
                 cv::Point(scene.x + 14, scene.y + scene.height - 18),
                 cv::FONT_HERSHEY_SIMPLEX, 0.40, cv::Scalar(225, 225, 225), 1,
                 cv::LINE_AA);
@@ -1170,6 +1401,11 @@ static cv::Mat draw_frame(const Snapshot& snap,
                                 bench.odom_edges, bench.loop_edges),
                 cv::Point(info.x + 14, info.y + 64), cv::FONT_HERSHEY_SIMPLEX,
                 0.40, cv::Scalar(205, 210, 218), 1, cv::LINE_AA);
+#if GPU_POSE_GRAPH_3D_ROBUST
+    cv::putText(img, cv::format("%d false loop closures", bench.outlier_edges),
+                cv::Point(info.x + 14, info.y + 88), cv::FONT_HERSHEY_SIMPLEX,
+                0.40, cv::Scalar(205, 210, 218), 1, cv::LINE_AA);
+#endif
     cv::putText(img, cv::format("trans %.3f -> %.3f m",
                                 bench.init_trans_rmse, snap.trans_rmse),
                 cv::Point(info.x + 14, info.y + 112), cv::FONT_HERSHEY_SIMPLEX,
@@ -1181,6 +1417,12 @@ static cv::Mat draw_frame(const Snapshot& snap,
     cv::putText(img, cv::format("cost %.1f", snap.cost),
                 cv::Point(info.x + 14, info.y + 172), cv::FONT_HERSHEY_SIMPLEX,
                 0.48, cv::Scalar(220, 225, 232), 1, cv::LINE_AA);
+#if GPU_POSE_GRAPH_3D_ROBUST
+    cv::putText(img, cv::format("plain %.3f m / %.2f deg",
+                                bench.plain_trans_rmse, bench.plain_rot_rmse_deg),
+                cv::Point(info.x + 14, info.y + 202), cv::FONT_HERSHEY_SIMPLEX,
+                0.43, cv::Scalar(105, 125, 235), 1, cv::LINE_AA);
+#endif
     cv::putText(img, cv::format("GPU %.2f ms", bench.gpu_ms),
                 cv::Point(info.x + 14, info.y + 226), cv::FONT_HERSHEY_SIMPLEX,
                 0.56, cv::Scalar(90, 225, 135), 1, cv::LINE_AA);
@@ -1190,6 +1432,21 @@ static cv::Mat draw_frame(const Snapshot& snap,
     cv::putText(img, cv::format("speedup %.1fx", bench.speedup),
                 cv::Point(info.x + 14, info.y + 294), cv::FONT_HERSHEY_SIMPLEX,
                 0.56, cv::Scalar(250, 190, 70), 1, cv::LINE_AA);
+#if GPU_POSE_GRAPH_3D_ROBUST
+    cv::putText(img, cv::format("loop weights %.2f clean",
+                                bench.clean_loop_weight),
+                cv::Point(info.x + 14, info.y + 342), cv::FONT_HERSHEY_SIMPLEX,
+                0.40, cv::Scalar(220, 225, 232), 1, cv::LINE_AA);
+    cv::putText(img, cv::format("%.2f false, rejected %d/%d",
+                                bench.outlier_loop_weight,
+                                bench.rejected_outliers,
+                                bench.outlier_edges),
+                cv::Point(info.x + 14, info.y + 366), cv::FONT_HERSHEY_SIMPLEX,
+                0.40, cv::Scalar(220, 225, 232), 1, cv::LINE_AA);
+    cv::putText(img, "trimmed switch gate on loops",
+                cv::Point(info.x + 14, info.y + 410), cv::FONT_HERSHEY_SIMPLEX,
+                0.39, cv::Scalar(165, 170, 180), 1, cv::LINE_AA);
+#else
     cv::putText(img, "FD Jacobian check", cv::Point(info.x + 14, info.y + 360),
                 cv::FONT_HERSHEY_SIMPLEX, 0.44, cv::Scalar(220, 225, 232), 1,
                 cv::LINE_AA);
@@ -1199,6 +1456,7 @@ static cv::Mat draw_frame(const Snapshot& snap,
     cv::putText(img, "central +/- perturbations",
                 cv::Point(info.x + 14, info.y + 410), cv::FONT_HERSHEY_SIMPLEX,
                 0.39, cv::Scalar(165, 170, 180), 1, cv::LINE_AA);
+#endif
     return img;
 }
 
@@ -1212,8 +1470,8 @@ static void write_video(const std::vector<Snapshot>& snapshots,
         std::fprintf(stderr, "Failed to create gif directory\n");
         std::exit(1);
     }
-    const std::string avi_path = "gif/gpu_pose_graph_slam_3d.avi";
-    const std::string gif_path = "gif/gpu_pose_graph_slam_3d.gif";
+    const std::string avi_path = std::string("gif/") + OUTPUT_STEM + ".avi";
+    const std::string gif_path = std::string("gif/") + OUTPUT_STEM + ".gif";
     cv::VideoWriter writer(
         avi_path,
         cv::VideoWriter::fourcc('M', 'J', 'P', 'G'),
@@ -1237,33 +1495,64 @@ int main() {
     using namespace cudabot;
 
     std::vector<Pose> gt = make_ground_truth();
-    int odom_edges = 0, loop_edges = 0;
-    std::vector<Edge> edges = make_edges(gt, odom_edges, loop_edges);
+    int odom_edges = 0, loop_edges = 0, outlier_edges = 0;
+    std::vector<Edge> edges = make_edges(gt, odom_edges, loop_edges, outlier_edges);
     std::vector<Pose> initial = chain_initial(gt, edges, odom_edges);
+    int switched_loop_edges = assign_initial_loop_switches(initial, edges);
 
     BenchResult bench;
     bench.odom_edges = odom_edges;
     bench.loop_edges = loop_edges;
+    bench.outlier_edges = outlier_edges;
+    bench.switched_loop_edges = switched_loop_edges;
     bench.init_trans_rmse = rmse_translation(initial, gt);
     bench.init_rot_rmse_deg = rmse_rotation_deg(initial, gt);
 
-    std::printf("GPU 3D pose-graph SLAM v2\n");
-    std::printf("poses: %d, odom edges: %d, loop edges: %d, total edges: %zu\n",
-                N_POSES, odom_edges, loop_edges, edges.size());
-    std::printf("initial RMSE: %.4f m, %.4f deg, cost %.2f\n",
+    std::printf("%s\n", DEMO_TITLE);
+    std::printf("poses: %d, odom edges: %d, loop edges: %d, false loops: %d, total edges: %zu\n",
+                N_POSES, odom_edges, loop_edges, outlier_edges, edges.size());
+#if GPU_POSE_GRAPH_3D_ROBUST
+    std::printf("initial switch gate: %d loop edges set to %.2f weight\n",
+                switched_loop_edges, SWITCH_REJECT_WEIGHT);
+#endif
+    std::printf("initial RMSE: %.4f m, %.4f deg, plain cost %.2f\n",
                 bench.init_trans_rmse, bench.init_rot_rmse_deg,
-                graph_cost_host(initial, edges));
+                graph_cost_host(initial, edges, 0));
 
+#if GPU_POSE_GRAPH_3D_ROBUST
+    BenchResult initial_weights;
+    initial_weights.outlier_edges = outlier_edges;
+    loop_weight_stats(initial, edges, 1, initial_weights);
+    std::printf("initial loop switch weights: clean avg %.3f, false avg %.3f, rejected false %d/%d\n",
+                initial_weights.clean_loop_weight, initial_weights.outlier_loop_weight,
+                initial_weights.rejected_outliers, initial_weights.outlier_edges);
+
+    std::vector<Pose> plain_gpu_out;
+    std::vector<Snapshot> plain_snapshots;
+    bench.plain_gpu_ms =
+        run_gpu_solver(initial, gt, edges, 0, "plain", plain_gpu_out, plain_snapshots);
+    bench.plain_trans_rmse = rmse_translation(plain_gpu_out, gt);
+    bench.plain_rot_rmse_deg = rmse_rotation_deg(plain_gpu_out, gt);
+    bench.plain_cost = graph_cost_host(plain_gpu_out, edges, 0);
+    std::printf("plain GPU final RMSE: %.4f m, %.4f deg, cost %.2f\n",
+                bench.plain_trans_rmse, bench.plain_rot_rmse_deg, bench.plain_cost);
+#endif
+
+    constexpr int robust_enabled = GPU_POSE_GRAPH_3D_ROBUST ? 1 : 0;
     std::vector<Pose> gpu_out;
     std::vector<Snapshot> snapshots;
-    bench.gpu_ms = run_gpu_solver(initial, gt, edges, gpu_out, snapshots);
+    bench.gpu_ms =
+        run_gpu_solver(initial, gt, edges, robust_enabled,
+                       GPU_POSE_GRAPH_3D_ROBUST ? "robust" : "gpu",
+                       gpu_out, snapshots);
 
     std::vector<Pose> cpu_out;
-    bench.cpu_ms = run_cpu_reference(initial, gt, edges, cpu_out);
+    bench.cpu_ms = run_cpu_reference(initial, gt, edges, robust_enabled, cpu_out);
     bench.speedup = bench.cpu_ms / std::max(1.0e-9, bench.gpu_ms);
     bench.final_trans_rmse = rmse_translation(gpu_out, gt);
     bench.final_rot_rmse_deg = rmse_rotation_deg(gpu_out, gt);
-    bench.final_cost = graph_cost_host(gpu_out, edges);
+    bench.final_cost = graph_cost_host(gpu_out, edges, robust_enabled);
+    loop_weight_stats(gpu_out, edges, robust_enabled, bench);
     if (!snapshots.empty()) {
         snapshots.back().trans_rmse = bench.final_trans_rmse;
         snapshots.back().rot_rmse_deg = bench.final_rot_rmse_deg;
@@ -1280,7 +1569,12 @@ int main() {
     std::printf("GPU final RMSE: %.4f m, %.4f deg, cost %.2f\n",
                 bench.final_trans_rmse, bench.final_rot_rmse_deg, bench.final_cost);
     std::printf("CPU final RMSE: %.4f m, %.4f deg, cost %.2f\n",
-                cpu_trans, cpu_rot, graph_cost_host(cpu_out, edges));
-    std::printf("Wrote gif/gpu_pose_graph_slam_3d.gif\n");
+                cpu_trans, cpu_rot, graph_cost_host(cpu_out, edges, robust_enabled));
+#if GPU_POSE_GRAPH_3D_ROBUST
+    std::printf("Loop switch weights: clean avg %.3f, false avg %.3f, rejected false %d/%d\n",
+                bench.clean_loop_weight, bench.outlier_loop_weight,
+                bench.rejected_outliers, bench.outlier_edges);
+#endif
+    std::printf("Wrote gif/%s.gif\n", OUTPUT_STEM);
     return 0;
 }
