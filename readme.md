@@ -18,6 +18,8 @@ Same algorithm on CPU and GPU — GPU enables orders of magnitude more particles
 | <img src="https://rsasaki0109.github.io/CudaRobotics/comparison_dwa_visual.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/comparison_lidar3d_sim.gif" width="400"/> |
 | **Reeds-Shepp Fan: 1M candidate paths / frame** | **Augmented KLD-AMCL: adaptive 400→65,536 particles, kidnap recovery** |
 | <img src="https://rsasaki0109.github.io/CudaRobotics/comparison_reeds_shepp_fan.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_kld_amcl.gif" width="400"/> |
+| **MegaParticles + explicit p-stable LSH neighbor index: fixed grid 58% vs LSH 88% neighbor recall (1M particles)** | |
+| <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_megaparticles_lsh.gif" width="400"/> | |
 
 ## Capability matrix
 
@@ -27,7 +29,7 @@ Same algorithm on CPU and GPU — GPU enables orders of magnitude more particles
 | Collision check | `comparison_collision_check` | 1M segments/scan | 1,277x per candidate |
 | Scan matching | `comparison_icp`, `comparison_ndt`, `gpu_ndt_3d_multires`, `gicp` | 10K+ points | parallel correspondences |
 | Pose-graph SLAM | `gpu_pose_graph_slam`, `gpu_pose_graph_slam_3d`, `gpu_pose_graph_slam_3d_robust`, `gpu_pose_graph_slam_3d_switchable` | 2D 200 poses / 3D 384 poses | robust 3D rejects 36/36 false loops, 6.95→0.28 m; switchable constraints learn per-loop switches jointly with poses, 6.95→0.29 m |
-| Particle filter | `comparison_pf`, `gpu_global_localization_mcl`, `gpu_megaparticles_stein_mcl`, `gpu_kld_amcl`, `diff_pf`, `diff_pf_mlp` | 10K-1M particles | MegaParticles-style range SPF: 14.61 m bootstrap vs 0.097 m recovery; KLD-AMCL adapts 400→65,536 particles, 15.2x vs CPU |
+| Particle filter | `comparison_pf`, `gpu_global_localization_mcl`, `gpu_megaparticles_stein_mcl`, `gpu_megaparticles_lsh`, `gpu_kld_amcl`, `diff_pf`, `diff_pf_mlp` | 10K-1M particles | MegaParticles-style range SPF: 14.61 m bootstrap vs 0.097 m recovery; explicit p-stable LSH neighbor index lifts neighbor recall 58%→88% over a fixed grid; KLD-AMCL adapts 400→65,536 particles, 15.2x vs CPU |
 | RRT family | `comparison_rrt*`, `comparison_rrtstar_rewire` | 1M paths / 200K nodes | 5,000x per-path; 62x rewire |
 | Crowd / swarm | `gpu_crowd_swarm` | 10,000 boids with uniform-grid neighbours | 105x vs CPU |
 | Graph policy control | `gpu_gnn_swarm_controller`, `gpu_gat_traversability_policy` | 2048 agents / 3072 terrain nodes x 3 heads | 2.88 ms/control; 99.4x GAT policy |
@@ -171,6 +173,7 @@ cd ros2_ws && colcon build --packages-select cuda_robotics
 | Dynamic Window (8K samples) | CPU 1.2 s → CUDA 1.7 ms — **705x** |
 | Global Localization MCL | 32,768 particles, hidden kidnap; local-only post RMSE 20.24 m → sensor-reset recovery 0.022 m |
 | MegaParticles-style Stein MCL | 1,048,576 range particles; local bootstrap post RMSE 14.61 m → Stein/bucket posterior recovery 0.097 m |
+| MegaParticles LSH neighbor index | 2 × 1,048,576 particles; explicit p-stable LSH (8 tables × 3 projections) vs fixed grid; neighbor recall vs brute-force kNN 58.2% → 87.8%, post-kidnap RMSE 0.099 → 0.088 m |
 | Augmented KLD-AMCL | KLD-sampling adapts 400→65,536 particles, augmented injection reacquires hidden kidnap in 13 steps, settled RMSE 0.014 m, **15.2x** vs CPU |
 | 2D ESDF (640K cells) | **53,404x** per cell (JFA) |
 | 3D ESDF (1M voxels) | **86,613x** per voxel (JFA-3D) |
@@ -207,6 +210,7 @@ cd ros2_ws && colcon build --packages-select cuda_robotics
 - [PythonRobotics](https://github.com/AtsushiSakai/PythonRobotics)
 - [Probabilistic Robotics](http://www.probabilistic-robotics.org/)
 - Koide et al., [MegaParticles: Range-based 6-DoF Monte Carlo Localization](https://arxiv.org/abs/2404.16370)
+- Datar, Immorlica, Indyk, Mirrokni, [Locality-Sensitive Hashing Scheme Based on p-Stable Distributions](https://www.cs.princeton.edu/courses/archive/spring05/cos598E/bib/p253-datar.pdf) (SoCG 2004)
 - Fox, [Adapting the Sample Size in Particle Filters Through KLD-Sampling](https://www.ri.cmu.edu/pub_files/pub2/fox_dieter_2003_1/fox_dieter_2003_1.pdf) (IJRR 2003); Augmented MCL: Thrun/Burgard/Fox, *Probabilistic Robotics*, Table 8.3
 - Sünderhauf & Protzel, [Switchable Constraints for Robust Pose Graph SLAM](https://www.tu-chemnitz.de/etit/proaut/publications/suenderhauf12_iros.pdf) (IROS 2012)
 - Diff-MPPI write-up: `paper/`, ablations: `paper/diff_mppi_*_followup.md`
