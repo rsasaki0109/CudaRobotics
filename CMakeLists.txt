@@ -387,6 +387,10 @@ add_executable(gpu_spectral_clustering src/gpu_spectral_clustering.cu)
 target_link_libraries(gpu_spectral_clustering ${OpenCV_LIBS})
 target_compile_options(gpu_spectral_clustering PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
 
+add_executable(gpu_interaction_graph_risk src/gpu_interaction_graph_risk.cu)
+target_link_libraries(gpu_interaction_graph_risk ${OpenCV_LIBS})
+target_compile_options(gpu_interaction_graph_risk PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
+
 add_executable(gpu_hungarian_assignment src/gpu_hungarian_assignment.cu)
 target_link_libraries(gpu_hungarian_assignment ${OpenCV_LIBS})
 target_compile_options(gpu_hungarian_assignment PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
@@ -406,6 +410,10 @@ target_compile_options(gpu_mcts_planner PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--exp
 add_executable(gpu_diffusion_planner src/gpu_diffusion_planner.cu)
 target_link_libraries(gpu_diffusion_planner ${OpenCV_LIBS})
 target_compile_options(gpu_diffusion_planner PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
+
+add_executable(gpu_diffusion_policy src/gpu_diffusion_policy.cu)
+target_link_libraries(gpu_diffusion_policy ${OpenCV_LIBS})
+target_compile_options(gpu_diffusion_policy PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
 
 add_executable(diff_e2e_slam src/diff_e2e_slam.cu)
 target_link_libraries(diff_e2e_slam ${OpenCV_LIBS})
