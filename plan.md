@@ -10,14 +10,22 @@ a prioritised menu of candidate next tasks with enough specificity that a
 fresh agent can pick one and start.
 
 Mainline is now in sync with `origin/master` at commit
-`af4d5ee Add MegaParticles-style Stein MCL demo (#86)`.
+`9d6f902 Add GPU semi-supervised label propagation demo (#89)`.
 
-PR #86 (`feat/gpu-megaparticles-stein-mcl` -> `master`) was **MERGED**
-on 2026-05-25 (squash). CI Build passed (10m51s; Build + Python tests +
-CPU tests all green), the draft was marked ready, and the PR was
-squash-merged with the remote feature branch deleted. Local `master`
-fast-forwarded to `af4d5ee`. There is **no active feature branch** right
-now — the next agent starts a fresh branch from `master`.
+PR #89 (`feat/gpu-label-propagation` -> `master`) was **MERGED** on
+2026-05-25 (squash). CI Build passed (11m29s; Build + Python tests +
+CPU tests all green; only the Node.js 20 deprecation annotation), the
+draft was marked ready, and the PR was squash-merged with the remote
+feature branch deleted. Local `master` is at `9d6f902` and in sync with
+origin. There is **no active feature branch** right now — the next agent
+starts a fresh branch from `master`.
+
+PR #86 (MegaParticles-style Stein MCL) merged earlier the same day at
+`af4d5ee`. Between #86 and #89, two more demos landed on `master` via
+direct commits (concurrent work): `f34c22d Add GPU GNN swarm controller
+demo` and `b4cff2e Add GPU reciprocal risk planner demo`. PR #89's squash
+diff touched only its own four files (CMakeLists.txt, plan.md, readme.md,
+src/gpu_label_propagation.cu); the other demos were not part of it.
 
 There were no open GitHub PRs at the start of the MegaParticles-style
 Stein MCL branch; #86 was opened from this branch after the local demo,
@@ -30,10 +38,12 @@ separate parked work, not active blockers for new feature work.
 
 ## TL;DR for the impatient
 
-- Repo is on `master` at `af4d5ee`, in sync with origin. PR #86
-  (MegaParticles-style Stein MCL) was squash-merged on 2026-05-25 and its
-  remote feature branch deleted. No active feature branch; start the next
-  task from a fresh branch off `master`.
+- Repo is on `master` at `9d6f902`, in sync with origin. PR #89 (GPU
+  semi-supervised label propagation) was squash-merged on 2026-05-25 and
+  its remote feature branch deleted. No active feature branch; start the
+  next task from a fresh branch off `master`. (PR #86 MegaParticles Stein
+  MCL merged earlier the same day; gnn_swarm_controller + reciprocal_risk
+  _planner also landed via direct commits in between.)
 - The 2026-05-21..25 sprint added 45 PRs (#40 → #84): ESDF JFA (2D + 3D),
   3D voxel map, massive collision check, realistic 3D LiDAR, ROS2 nodes,
   Bundle Adjustment, 2D pose-graph SLAM backend, LiDAR SLAM frontend,
@@ -98,12 +108,15 @@ separate parked work, not active blockers for new feature work.
 ## Repo State (2026-05-25)
 
 - **Main branch**: `master`, currently at
-  `af4d5ee Add MegaParticles-style Stein MCL demo (#86)`, in sync with
-  origin.
+  `9d6f902 Add GPU semi-supervised label propagation demo (#89)`, in sync
+  with origin.
 - **Active branch**: none (last feature branch
-  `feat/gpu-megaparticles-stein-mcl` merged and deleted).
-- **Active PR**: #86 **MERGED** (squash) on 2026-05-25; target `master`.
-- **Last CI**: GitHub Actions Build passed in 10m51s (Build + Python
+  `feat/gpu-label-propagation` merged and deleted).
+- **Active PR**: #89 **MERGED** (squash) on 2026-05-25; target `master`.
+  (#86 MegaParticles Stein MCL merged earlier the same day; `f34c22d` GNN
+  swarm controller + `b4cff2e` reciprocal risk planner landed via direct
+  commits in between.)
+- **Last CI**: GitHub Actions Build passed in 11m29s (Build + Python
   tests + CPU tests all green; only a Node.js 20 deprecation annotation,
   not a failure).
 - **gh-pages branch**: hosts gif assets referenced from `readme.md`.
@@ -111,7 +124,7 @@ separate parked work, not active blockers for new feature work.
   `https://rsasaki0109.github.io/CudaRobotics/<name>.gif` resolves.
   Every new gif must be pushed there to render in the readme.
 - **Current Pages asset**:
-  `https://rsasaki0109.github.io/CudaRobotics/gpu_megaparticles_stein_mcl.gif`
+  `https://rsasaki0109.github.io/CudaRobotics/gpu_label_propagation.gif`
   returned HTTP 200 after the gh-pages deployment completed.
 - 130 CUDA source files (`src/*.cu`), 15 C++ files (`src/*.cpp`) on the
   MegaParticles-style Stein MCL branch.
@@ -238,6 +251,7 @@ Compact PR list. Format: `#PR  Title  | headline number`.
 | #83 | GPU robust 3D pose-graph SLAM | 384 poses, 611 SE(3) edges, 36 false loops; plain 6.95 m / 39.89 deg -> switched 0.284 m / 2.11 deg |
 | #84 | GPU global-localization MCL | 32,768 particles, 72 landmarks, hidden kidnap; local-only 20.24 m -> sensor-reset 0.022 m post-kidnap RMSE |
 | #86 | GPU MegaParticles-style Stein MCL | 1,048,576 range particles, distance-field likelihoods; local bootstrap 14.61 m -> Stein/bucket posterior 0.097 m post-kidnap RMSE |
+| #89 | GPU semi-supervised label propagation | 3072-node RBF graph, K=3, 12 clamped seeds, 50 iterations; **123x** vs CPU (55.3 ms vs 6.8 s), 100% unlabeled accuracy, 100% GPU/CPU label agreement |
 
 ### Current branch deep notes: MegaParticles-style Stein MCL (#86)
 
@@ -521,10 +535,14 @@ any new scan-matching / SLAM / optimisation work.
 
 ## Recommended Next Session
 
-Immediate next action: PR #86 is already merged (squash) and its branch
-deleted; local `master` is at `af4d5ee` and in sync with origin. There is
-no in-flight PR to babysit. Pick a fresh task from the menu below and
-start it on a new branch off `master`.
+Immediate next action: PR #89 (GPU label propagation, B2 graph-ML
+follow-up) is already merged (squash) and its branch deleted; local
+`master` is at `9d6f902` and in sync with origin. There is no in-flight PR
+to babysit. Pick a fresh task from the menu below and start it on a new
+branch off `master`. Note B1 (diffusion policy) and B2 (graph-ML, now
+label propagation) are both done; the remaining strong candidates are the
+localization-depth follow-ups (MegaParticles 3D/LSH, KLD-AMCL comparison),
+the 3D SLAM follow-up, or the Open Threads A shared-header cleanup.
 
 After GPU CMA-ES, GPU MCTS, assignment tracking, crowd swarm, PR #78 GPU
 SfM mini, PR #79 GPU PCG, PR #80 GPU EM GMM, PR #81 GPU spectral
