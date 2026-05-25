@@ -10,11 +10,11 @@ a prioritised menu of candidate next tasks with enough specificity that a
 fresh agent can pick one and start.
 
 Mainline was in sync with `origin/master` at commit
-`53566f8 Add robust 3D pose graph SLAM demo` before the current GPU
-global-localization MCL feature branch.
+`bbfcaf2 Add GPU global localization MCL demo` before the current
+MegaParticles-style Stein MCL feature branch.
 
-There were no open GitHub PRs at the start of the GPU global-localization
-MCL branch.
+There were no open GitHub PRs at the start of the MegaParticles-style
+Stein MCL branch.
 Parked local branches remain for `feat/gaussian-splat-renderer`
 (checked out in `/tmp/CudaRobotics-gaussian`) and `feat/repro-report`; treat them as
 separate parked work, not active blockers for new feature work.
@@ -25,7 +25,7 @@ separate parked work, not active blockers for new feature work.
 
 - Repo is in a clean, "between sprints" state. **No mandatory cleanup
   before starting new work.**
-- The 2026-05-21..25 sprint added 42 PRs (#40 → #81): ESDF JFA (2D + 3D),
+- The 2026-05-21..25 sprint added 45 PRs (#40 → #84): ESDF JFA (2D + 3D),
   3D voxel map, massive collision check, realistic 3D LiDAR, ROS2 nodes,
   Bundle Adjustment, 2D pose-graph SLAM backend, LiDAR SLAM frontend,
   Multi-robot planner, Gaussian Splatting, NeRF volume, diffusion planner,
@@ -59,6 +59,12 @@ separate parked work, not active blockers for new feature work.
   10 range-bearing observations, hidden kidnap at step 70. Local-only MCL
   has 20.24 m post-kidnap RMSE; sensor-reset MCL triggers once and
   recovers to 0.022 m post-kidnap RMSE.
+- Current branch `feat/gpu-megaparticles-stein-mcl` adds a compact
+  MegaParticles-inspired SE(2) range-localization demo: 1,048,576
+  particles, distance-field scan likelihoods, bucket-neighbor
+  Stein-style updates, posterior propagation, and hidden kidnap recovery.
+  Local bootstrap MCL has 14.61 m post-kidnap RMSE; the MegaParticles
+  path recovers to 0.097 m post-kidnap RMSE and 0.041 m final error.
 - The "scan matching 4 siblings" are NDT 2D (#67), NDT 3D (#68), GICP 2D
   (#69), GICP 3D (#70). All present and merged.
 - Follow-up #71 adds coarse-to-fine NDT 3D and fixes the old #68 outlier
@@ -76,14 +82,14 @@ separate parked work, not active blockers for new feature work.
 
 ## Repo State (2026-05-25)
 
-- **Main branch**: `master`, currently at `53566f8` before the GPU
-  global-localization MCL feature branch.
+- **Main branch**: `master`, currently at `bbfcaf2` before the
+  MegaParticles-style Stein MCL feature branch.
 - **gh-pages branch**: hosts gif assets referenced from `readme.md`.
   Files live at the branch ROOT (not `gif/`), so the URL
   `https://rsasaki0109.github.io/CudaRobotics/<name>.gif` resolves.
   Every new gif must be pushed there to render in the readme.
-- 129 CUDA source files (`src/*.cu`), 15 C++ files (`src/*.cpp`) on the
-  GPU global-localization MCL branch.
+- 130 CUDA source files (`src/*.cu`), 15 C++ files (`src/*.cpp`) on the
+  MegaParticles-style Stein MCL branch.
 - Build:
   ```bash
   rtk bash -lc 'cd build && cmake .. && make -j$(nproc)'
@@ -175,6 +181,7 @@ Compact PR list. Format: `#PR  Title  | headline number`.
 | #82 | GPU 3D pose-graph SLAM v2 | 384 poses, 575 SE(3) edges, finite-difference Jacobians, RMSE 1.64 m -> 0.28 m |
 | #83 | GPU robust 3D pose-graph SLAM | 384 poses, 611 SE(3) edges, 36 false loops; plain 6.95 m / 39.89 deg -> switched 0.284 m / 2.11 deg |
 | #84 | GPU global-localization MCL | 32,768 particles, 72 landmarks, hidden kidnap; local-only 20.24 m -> sensor-reset 0.022 m post-kidnap RMSE |
+| WIP | GPU MegaParticles-style Stein MCL | 1,048,576 range particles, distance-field likelihoods; local bootstrap 14.61 m -> Stein/bucket posterior 0.097 m post-kidnap RMSE |
 
 ### Bigger architectural things landed in this sprint
 - **Shared CUDA headers (`include/`)** — #66. New `.cu` files should
@@ -392,12 +399,13 @@ any new scan-matching / SLAM / optimisation work.
 After GPU CMA-ES, GPU MCTS, assignment tracking, crowd swarm, PR #78 GPU
 SfM mini, PR #79 GPU PCG, PR #80 GPU EM GMM, PR #81 GPU spectral
 clustering, PR #82 GPU 3D pose-graph SLAM v2, PR #83 robust switched
-3D pose-graph SLAM, and the GPU global-localization MCL recovery branch,
-the natural next move depends on user goal:
+3D pose-graph SLAM, the GPU global-localization MCL recovery branch, and
+the MegaParticles-style Stein MCL branch, the natural next move depends
+on user goal:
 
-- **Localization depth**: extend global-localization MCL to ambiguous
-  landmark IDs or a likelihood-field LiDAR scan model, or compare against
-  KLD-AMCL particle adaptation under the same hidden kidnap.
+- **Localization depth**: push the MegaParticles branch closer to the
+  paper with 3D/6-DoF poses, an explicit LSH neighbor list, or a direct
+  KLD-AMCL comparison under the same hidden kidnap.
 - **Hard but high value**: wire the robust 3D backend into an online
   SLAM-style frontend, or replace the trimmed loop gate with explicit
   switch variables optimised alongside poses.
@@ -479,6 +487,12 @@ rtk git switch -c chore/shared-cuda-cleanup    # A: cleanup
   global pass on loop closure.
 
 ### Localization / state estimation
+- `src/gpu_megaparticles_stein_mcl.cu` (current branch) —
+  MegaParticles-inspired SE(2) range-localization demo with 1,048,576
+  particles, distance-field scan likelihoods, bucket-neighbor
+  Stein-style particle updates, posterior propagation, and a hidden
+  kidnap blackout. Local bootstrap MCL has 14.61 m post-kidnap RMSE,
+  while the MegaParticles-style path recovers to 0.097 m post-kidnap RMSE.
 - `src/gpu_global_localization_mcl.cu` (PR #84) — 32,768-particle
   MCL recovery demo with 72 mapped landmarks and 10 range-bearing
   observations. A hidden kidnap at step 70 leaves local-only MCL at
