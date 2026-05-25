@@ -375,6 +375,10 @@ add_executable(gpu_crowd_swarm src/gpu_crowd_swarm.cu)
 target_link_libraries(gpu_crowd_swarm ${OpenCV_LIBS})
 target_compile_options(gpu_crowd_swarm PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
 
+add_executable(gpu_gnn_swarm_controller src/gpu_gnn_swarm_controller.cu)
+target_link_libraries(gpu_gnn_swarm_controller ${OpenCV_LIBS})
+target_compile_options(gpu_gnn_swarm_controller PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
+
 add_executable(gpu_sfm_mini src/gpu_sfm_mini.cu)
 target_link_libraries(gpu_sfm_mini ${OpenCV_LIBS})
 target_compile_options(gpu_sfm_mini PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
