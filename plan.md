@@ -10,11 +10,11 @@ a prioritised menu of candidate next tasks with enough specificity that a
 fresh agent can pick one and start.
 
 Mainline was in sync with `origin/master` at commit
-`2c18b38 Add GPU 3D pose graph SLAM v2` before the current robust 3D
-pose-graph SLAM feature branch.
+`53566f8 Add robust 3D pose graph SLAM demo` before the current GPU
+global-localization MCL feature branch.
 
-There were no open GitHub PRs at the start of the robust 3D pose-graph
-SLAM branch.
+There were no open GitHub PRs at the start of the GPU global-localization
+MCL branch.
 Parked local branches remain for `feat/gaussian-splat-renderer`
 (checked out in `/tmp/CudaRobotics-gaussian`) and `feat/repro-report`; treat them as
 separate parked work, not active blockers for new feature work.
@@ -54,6 +54,11 @@ separate parked work, not active blockers for new feature work.
   with 36 deliberately false loop closures and a trimmed switch gate:
   plain GN is pulled to 6.95 m / 39.89 deg, while the switched solve
   rejects 36/36 false loops and returns to 0.284 m / 2.11 deg.
+- PR #84 / branch `feat/gpu-global-localization-recovery` adds a GPU
+  global-localization MCL recovery demo: 32,768 particles, 72 landmarks,
+  10 range-bearing observations, hidden kidnap at step 70. Local-only MCL
+  has 20.24 m post-kidnap RMSE; sensor-reset MCL triggers once and
+  recovers to 0.022 m post-kidnap RMSE.
 - The "scan matching 4 siblings" are NDT 2D (#67), NDT 3D (#68), GICP 2D
   (#69), GICP 3D (#70). All present and merged.
 - Follow-up #71 adds coarse-to-fine NDT 3D and fixes the old #68 outlier
@@ -71,14 +76,14 @@ separate parked work, not active blockers for new feature work.
 
 ## Repo State (2026-05-25)
 
-- **Main branch**: `master`, currently at `2c18b38` before the robust GPU
-  3D pose-graph SLAM feature branch.
+- **Main branch**: `master`, currently at `53566f8` before the GPU
+  global-localization MCL feature branch.
 - **gh-pages branch**: hosts gif assets referenced from `readme.md`.
   Files live at the branch ROOT (not `gif/`), so the URL
   `https://rsasaki0109.github.io/CudaRobotics/<name>.gif` resolves.
   Every new gif must be pushed there to render in the readme.
-- 128 CUDA source files (`src/*.cu`), 15 C++ files (`src/*.cpp`) on the
-  robust GPU 3D pose-graph SLAM branch.
+- 129 CUDA source files (`src/*.cu`), 15 C++ files (`src/*.cpp`) on the
+  GPU global-localization MCL branch.
 - Build:
   ```bash
   rtk bash -lc 'cd build && cmake .. && make -j$(nproc)'
@@ -169,6 +174,7 @@ Compact PR list. Format: `#PR  Title  | headline number`.
 | #81 | GPU spectral clustering | 3072-point dense RBF graph, 40 subspace iterations, **193x** vs CPU, 100% mapped accuracy |
 | #82 | GPU 3D pose-graph SLAM v2 | 384 poses, 575 SE(3) edges, finite-difference Jacobians, RMSE 1.64 m -> 0.28 m |
 | #83 | GPU robust 3D pose-graph SLAM | 384 poses, 611 SE(3) edges, 36 false loops; plain 6.95 m / 39.89 deg -> switched 0.284 m / 2.11 deg |
+| #84 | GPU global-localization MCL | 32,768 particles, 72 landmarks, hidden kidnap; local-only 20.24 m -> sensor-reset 0.022 m post-kidnap RMSE |
 
 ### Bigger architectural things landed in this sprint
 - **Shared CUDA headers (`include/`)** — #66. New `.cu` files should
@@ -364,7 +370,11 @@ any new scan-matching / SLAM / optimisation work.
 2. **Graph ML follow-up** — spectral clustering is merged; possible
    follow-ups are GPU label propagation, graph cuts, or semi-supervised
    graph classification.
-3. **3D SLAM follow-up** — robust switched loop closures now exist; the
+3. **Localization follow-up** — global-localization MCL recovery now
+   exists; possible follow-ups are multi-modal/global initialisation,
+   ambiguous landmark IDs, kidnapped AMCL with KLD adaptation, or
+   likelihood-field range scans instead of landmark range-bearing obs.
+4. **3D SLAM follow-up** — robust switched loop closures now exist; the
    next deeper follow-ups are online integration, dynamic switch variables
    instead of a trimmed front-end gate, or robust kernels inside the
    nonlinear solve.
@@ -381,9 +391,13 @@ any new scan-matching / SLAM / optimisation work.
 
 After GPU CMA-ES, GPU MCTS, assignment tracking, crowd swarm, PR #78 GPU
 SfM mini, PR #79 GPU PCG, PR #80 GPU EM GMM, PR #81 GPU spectral
-clustering, PR #82 GPU 3D pose-graph SLAM v2, and the robust switched
-3D pose-graph follow-up, the natural next move depends on user goal:
+clustering, PR #82 GPU 3D pose-graph SLAM v2, PR #83 robust switched
+3D pose-graph SLAM, and the GPU global-localization MCL recovery branch,
+the natural next move depends on user goal:
 
+- **Localization depth**: extend global-localization MCL to ambiguous
+  landmark IDs or a likelihood-field LiDAR scan model, or compare against
+  KLD-AMCL particle adaptation under the same hidden kidnap.
 - **Hard but high value**: wire the robust 3D backend into an online
   SLAM-style frontend, or replace the trimmed loop gate with explicit
   switch variables optimised alongside poses.
@@ -402,6 +416,7 @@ Suggested starting commands:
 ```bash
 rtk git switch -c feat/gpu-diffusion-policy    # B1
 rtk git switch -c feat/gpu-label-propagation   # B2
+rtk git switch -c feat/gpu-kld-amcl-kidnap
 rtk git switch -c feat/gpu-online-slam-3d-robust
 rtk git switch -c chore/shared-cuda-cleanup    # A: cleanup
 ```
@@ -462,6 +477,17 @@ rtk git switch -c chore/shared-cuda-cleanup    # A: cleanup
   the corrupted graph lands at 6.95 m / 39.89 deg.
 - `src/gpu_online_slam.cu` (PR #63) — sliding-window W=60 + iSAM-style
   global pass on loop closure.
+
+### Localization / state estimation
+- `src/gpu_global_localization_mcl.cu` (PR #84) — 32,768-particle
+  MCL recovery demo with 72 mapped landmarks and 10 range-bearing
+  observations. A hidden kidnap at step 70 leaves local-only MCL at
+  20.24 m post-kidnap RMSE, while a GPU sensor-reset particle gate
+  triggers once and recovers to 0.022 m post-kidnap RMSE.
+- `src/expansion_reset_mcl.cu` / `src/comparison_expansion_reset_mcl.cu`
+  — expansion-reset MCL kidnap recovery baseline.
+- `src/amcl.cu` (older) — CUDA AMCL with KLD-sampling, likelihood field,
+  and augmented MCL.
 
 ### Solver / infrastructure
 - `src/gpu_pcg_solver.cu` (PR #79) — generic CSR Jacobi-PCG for
