@@ -50,7 +50,7 @@ separate parked work, not active blockers for new feature work.
 - PR #82 / branch `feat/gpu-pose-graph-3d-v2` adds GPU 3D pose-graph SLAM
   with central finite-difference SE(3) Jacobians: 384 poses, 575 edges,
   translation RMSE 1.64 m -> 0.28 m, rotation RMSE 11.29 deg -> 2.12 deg.
-- Current branch `feat/gpu-pose-graph-3d-robust` extends the 3D backend
+- PR #83 / branch `feat/gpu-pose-graph-3d-robust` extends the 3D backend
   with 36 deliberately false loop closures and a trimmed switch gate:
   plain GN is pulled to 6.95 m / 39.89 deg, while the switched solve
   rejects 36/36 false loops and returns to 0.284 m / 2.11 deg.
@@ -168,7 +168,7 @@ Compact PR list. Format: `#PR  Title  | headline number`.
 |---|---|---|
 | #81 | GPU spectral clustering | 3072-point dense RBF graph, 40 subspace iterations, **193x** vs CPU, 100% mapped accuracy |
 | #82 | GPU 3D pose-graph SLAM v2 | 384 poses, 575 SE(3) edges, finite-difference Jacobians, RMSE 1.64 m -> 0.28 m |
-| current | GPU robust 3D pose-graph SLAM | 384 poses, 611 SE(3) edges, 36 false loops; plain 6.95 m / 39.89 deg -> switched 0.284 m / 2.11 deg |
+| #83 | GPU robust 3D pose-graph SLAM | 384 poses, 611 SE(3) edges, 36 false loops; plain 6.95 m / 39.89 deg -> switched 0.284 m / 2.11 deg |
 
 ### Bigger architectural things landed in this sprint
 - **Shared CUDA headers (`include/`)** — #66. New `.cu` files should
