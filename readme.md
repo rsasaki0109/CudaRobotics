@@ -26,7 +26,7 @@ Same algorithm on CPU and GPU — GPU enables orders of magnitude more particles
 | Occupancy grid | `comparison_occupancy_grid` | 256x256 | log-odds raycast |
 | Collision check | `comparison_collision_check` | 1M segments/scan | 1,277x per candidate |
 | Scan matching | `comparison_icp`, `comparison_ndt`, `gpu_ndt_3d_multires`, `gicp` | 10K+ points | parallel correspondences |
-| Pose-graph SLAM | `gpu_pose_graph_slam`, `gpu_pose_graph_slam_3d`, `gpu_pose_graph_slam_3d_robust` | 2D 200 poses / 3D 384 poses | robust 3D rejects 36/36 false loops, 6.95→0.28 m |
+| Pose-graph SLAM | `gpu_pose_graph_slam`, `gpu_pose_graph_slam_3d`, `gpu_pose_graph_slam_3d_robust`, `gpu_pose_graph_slam_3d_switchable` | 2D 200 poses / 3D 384 poses | robust 3D rejects 36/36 false loops, 6.95→0.28 m; switchable constraints learn per-loop switches jointly with poses, 6.95→0.29 m |
 | Particle filter | `comparison_pf`, `gpu_global_localization_mcl`, `gpu_megaparticles_stein_mcl`, `gpu_kld_amcl`, `diff_pf`, `diff_pf_mlp` | 10K-1M particles | MegaParticles-style range SPF: 14.61 m bootstrap vs 0.097 m recovery; KLD-AMCL adapts 400→65,536 particles, 15.2x vs CPU |
 | RRT family | `comparison_rrt*`, `comparison_rrtstar_rewire` | 1M paths / 200K nodes | 5,000x per-path; 62x rewire |
 | Crowd / swarm | `gpu_crowd_swarm` | 10,000 boids with uniform-grid neighbours | 105x vs CPU |
@@ -56,8 +56,8 @@ Same algorithm on CPU and GPU — GPU enables orders of magnitude more particles
 | <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_pose_graph_slam_3d_robust.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_online_slam.gif" width="400"/> |
 | **GPU NeRF-style volumetric renderer (720×480, 128 samples/ray, 0.83 ms/frame)** | **GPU SfM mini (2048 features × 4 views, descriptor match + triangulate + point BA, 217.0x vs CPU)** |
 | <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_nerf_volume.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_sfm_mini.gif" width="400"/> |
-| **GPU 3D Gaussian Splatting renderer (~1k Gaussians, 0.94 ms/frame)** | |
-| <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_gaussian_splatting.gif" width="400"/> | |
+| **GPU 3D Gaussian Splatting renderer (~1k Gaussians, 0.94 ms/frame)** | **GPU switchable-constraint 3D Pose-Graph SLAM (per-loop switch variables optimised jointly with SE(3) poses, 36/36 false loops rejected, plain 6.95 m → switchable 0.29 m)** |
+| <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_gaussian_splatting.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_pose_graph_slam_3d_switchable.gif" width="400"/> |
 
 ## Solver infrastructure
 
@@ -179,6 +179,7 @@ cd ros2_ws && colcon build --packages-select cuda_robotics
 | Pose-graph SLAM (200 nodes) | ~200 ms total, RMSE 4.88 → 0.56 m |
 | 3D Pose-graph SLAM | 384 poses / 575 edges, finite-difference SE(3) Jacobians, RMSE 1.64 → 0.28 m |
 | Robust 3D Pose-graph SLAM | 384 poses / 611 edges, 36 false loop closures, switch gate rejects 36/36; plain 6.95 m → robust 0.28 m |
+| Switchable-constraint 3D Pose-graph SLAM | 384 poses / 611 edges, per-loop switch variables jointly optimised with poses; learns 36/36 false-loop rejection (no hand-set trim); plain 6.95 m → switchable 0.29 m / 2.2 deg |
 | 3D Gaussian Splatting (~1k Gaussians, 720x480) | **0.94 ms / frame** |
 | GPU diffusion policy | 768-sample behavior cloning MLP + 512 x 64 learned denoising trajectories |
 | GPU CMA-ES objective evaluation | 3 x 32,768 candidates x 10D, **1,254x** vs CPU eval |
@@ -207,5 +208,6 @@ cd ros2_ws && colcon build --packages-select cuda_robotics
 - [Probabilistic Robotics](http://www.probabilistic-robotics.org/)
 - Koide et al., [MegaParticles: Range-based 6-DoF Monte Carlo Localization](https://arxiv.org/abs/2404.16370)
 - Fox, [Adapting the Sample Size in Particle Filters Through KLD-Sampling](https://www.ri.cmu.edu/pub_files/pub2/fox_dieter_2003_1/fox_dieter_2003_1.pdf) (IJRR 2003); Augmented MCL: Thrun/Burgard/Fox, *Probabilistic Robotics*, Table 8.3
+- Sünderhauf & Protzel, [Switchable Constraints for Robust Pose Graph SLAM](https://www.tu-chemnitz.de/etit/proaut/publications/suenderhauf12_iros.pdf) (IROS 2012)
 - Diff-MPPI write-up: `paper/`, ablations: `paper/diff_mppi_*_followup.md`
 - GitHub Pages gallery: <https://rsasaki0109.github.io/CudaRobotics/>
