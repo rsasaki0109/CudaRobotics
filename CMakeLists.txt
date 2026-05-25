@@ -435,6 +435,10 @@ add_executable(gpu_multigoal_neural_astar_traversability src/gpu_multigoal_neura
 target_link_libraries(gpu_multigoal_neural_astar_traversability ${OpenCV_LIBS})
 target_compile_options(gpu_multigoal_neural_astar_traversability PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
 
+add_executable(gpu_spatiotemporal_neural_astar_traversability src/gpu_spatiotemporal_neural_astar_traversability.cu)
+target_link_libraries(gpu_spatiotemporal_neural_astar_traversability ${OpenCV_LIBS})
+target_compile_options(gpu_spatiotemporal_neural_astar_traversability PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
+
 add_executable(gpu_interaction_graph_risk src/gpu_interaction_graph_risk.cu)
 target_link_libraries(gpu_interaction_graph_risk ${OpenCV_LIBS})
 target_compile_options(gpu_interaction_graph_risk PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
