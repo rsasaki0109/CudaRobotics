@@ -9,18 +9,19 @@ known sharp edges and lessons learned from the last few attempts, and (5)
 a prioritised menu of candidate next tasks with enough specificity that a
 fresh agent can pick one and start.
 
-Mainline was in sync with `origin/master` at commit
-`bbfcaf2 Add GPU global localization MCL demo` before the current
-MegaParticles-style Stein MCL feature branch.
+Mainline is now in sync with `origin/master` at commit
+`af4d5ee Add MegaParticles-style Stein MCL demo (#86)`.
 
-The active PR is now #86:
-`https://github.com/rsasaki0109/CudaRobotics/pull/86`
-(`feat/gpu-megaparticles-stein-mcl` -> `master`). It is a draft PR while
-CI finishes.
+PR #86 (`feat/gpu-megaparticles-stein-mcl` -> `master`) was **MERGED**
+on 2026-05-25 (squash). CI Build passed (10m51s; Build + Python tests +
+CPU tests all green), the draft was marked ready, and the PR was
+squash-merged with the remote feature branch deleted. Local `master`
+fast-forwarded to `af4d5ee`. There is **no active feature branch** right
+now — the next agent starts a fresh branch from `master`.
 
 There were no open GitHub PRs at the start of the MegaParticles-style
 Stein MCL branch; #86 was opened from this branch after the local demo,
-GIF generation, and Pages publication were validated.
+GIF generation, and Pages publication were validated, and is now merged.
 Parked local branches remain for `feat/gaussian-splat-renderer`
 (checked out in `/tmp/CudaRobotics-gaussian`) and `feat/repro-report`; treat them as
 separate parked work, not active blockers for new feature work.
@@ -29,10 +30,10 @@ separate parked work, not active blockers for new feature work.
 
 ## TL;DR for the impatient
 
-- Repo is on active branch `feat/gpu-megaparticles-stein-mcl`, pushed to
-  origin with draft PR #86 open. The branch is scoped to one new demo plus
-  docs/GIF plumbing; no unrelated worktree changes were present when this
-  handoff was refreshed.
+- Repo is on `master` at `af4d5ee`, in sync with origin. PR #86
+  (MegaParticles-style Stein MCL) was squash-merged on 2026-05-25 and its
+  remote feature branch deleted. No active feature branch; start the next
+  task from a fresh branch off `master`.
 - The 2026-05-21..25 sprint added 45 PRs (#40 → #84): ESDF JFA (2D + 3D),
   3D voxel map, massive collision check, realistic 3D LiDAR, ROS2 nodes,
   Bundle Adjustment, 2D pose-graph SLAM backend, LiDAR SLAM frontend,
@@ -96,12 +97,15 @@ separate parked work, not active blockers for new feature work.
 
 ## Repo State (2026-05-25)
 
-- **Main branch**: `master`, currently at `bbfcaf2` before the
-  MegaParticles-style Stein MCL feature branch.
-- **Active branch**: `feat/gpu-megaparticles-stein-mcl`.
-- **Active PR**: #86, draft, target `master`.
-- **Current CI**: GitHub Actions Build was in progress at the time this
-  handoff was refreshed. Local validation passed before PR creation.
+- **Main branch**: `master`, currently at
+  `af4d5ee Add MegaParticles-style Stein MCL demo (#86)`, in sync with
+  origin.
+- **Active branch**: none (last feature branch
+  `feat/gpu-megaparticles-stein-mcl` merged and deleted).
+- **Active PR**: #86 **MERGED** (squash) on 2026-05-25; target `master`.
+- **Last CI**: GitHub Actions Build passed in 10m51s (Build + Python
+  tests + CPU tests all green; only a Node.js 20 deprecation annotation,
+  not a failure).
 - **gh-pages branch**: hosts gif assets referenced from `readme.md`.
   Files live at the branch ROOT (not `gif/`), so the URL
   `https://rsasaki0109.github.io/CudaRobotics/<name>.gif` resolves.
@@ -517,15 +521,10 @@ any new scan-matching / SLAM / optimisation work.
 
 ## Recommended Next Session
 
-Immediate next action if returning to this exact branch:
-- Check PR #86 CI. If Build passed and `mergeStateStatus` is clean, mark
-  the draft ready and squash merge when the user says "merge".
-- If CI failed, inspect the Actions log first. The local single-target
-  build and run passed, so likely failure points are full-repo build
-  pressure, CUDA architecture defaults, or a style/compile issue exposed
-  outside the single target.
-- After merge, switch local `master` to `origin/master`, verify the remote
-  feature branch deletion, and leave `plan.md` with #86 marked merged.
+Immediate next action: PR #86 is already merged (squash) and its branch
+deleted; local `master` is at `af4d5ee` and in sync with origin. There is
+no in-flight PR to babysit. Pick a fresh task from the menu below and
+start it on a new branch off `master`.
 
 After GPU CMA-ES, GPU MCTS, assignment tracking, crowd swarm, PR #78 GPU
 SfM mini, PR #79 GPU PCG, PR #80 GPU EM GMM, PR #81 GPU spectral

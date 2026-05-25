@@ -391,6 +391,10 @@ add_executable(gpu_spectral_clustering src/gpu_spectral_clustering.cu)
 target_link_libraries(gpu_spectral_clustering ${OpenCV_LIBS})
 target_compile_options(gpu_spectral_clustering PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
 
+add_executable(gpu_label_propagation src/gpu_label_propagation.cu)
+target_link_libraries(gpu_label_propagation ${OpenCV_LIBS})
+target_compile_options(gpu_label_propagation PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
+
 add_executable(gpu_interaction_graph_risk src/gpu_interaction_graph_risk.cu)
 target_link_libraries(gpu_interaction_graph_risk ${OpenCV_LIBS})
 target_compile_options(gpu_interaction_graph_risk PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
