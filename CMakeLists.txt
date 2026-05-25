@@ -407,6 +407,10 @@ add_executable(gpu_graph_crf_traversability src/gpu_graph_crf_traversability.cu)
 target_link_libraries(gpu_graph_crf_traversability ${OpenCV_LIBS})
 target_compile_options(gpu_graph_crf_traversability PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
 
+add_executable(gpu_gat_traversability_policy src/gpu_gat_traversability_policy.cu)
+target_link_libraries(gpu_gat_traversability_policy ${OpenCV_LIBS})
+target_compile_options(gpu_gat_traversability_policy PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
+
 add_executable(gpu_interaction_graph_risk src/gpu_interaction_graph_risk.cu)
 target_link_libraries(gpu_interaction_graph_risk ${OpenCV_LIBS})
 target_compile_options(gpu_interaction_graph_risk PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
