@@ -54,7 +54,7 @@ separate parked work, not active blockers for new feature work.
   with 36 deliberately false loop closures and a trimmed switch gate:
   plain GN is pulled to 6.95 m / 39.89 deg, while the switched solve
   rejects 36/36 false loops and returns to 0.284 m / 2.11 deg.
-- Current branch `feat/gpu-global-localization-recovery` adds a GPU
+- PR #84 / branch `feat/gpu-global-localization-recovery` adds a GPU
   global-localization MCL recovery demo: 32,768 particles, 72 landmarks,
   10 range-bearing observations, hidden kidnap at step 70. Local-only MCL
   has 20.24 m post-kidnap RMSE; sensor-reset MCL triggers once and
@@ -174,7 +174,7 @@ Compact PR list. Format: `#PR  Title  | headline number`.
 | #81 | GPU spectral clustering | 3072-point dense RBF graph, 40 subspace iterations, **193x** vs CPU, 100% mapped accuracy |
 | #82 | GPU 3D pose-graph SLAM v2 | 384 poses, 575 SE(3) edges, finite-difference Jacobians, RMSE 1.64 m -> 0.28 m |
 | #83 | GPU robust 3D pose-graph SLAM | 384 poses, 611 SE(3) edges, 36 false loops; plain 6.95 m / 39.89 deg -> switched 0.284 m / 2.11 deg |
-| current | GPU global-localization MCL | 32,768 particles, 72 landmarks, hidden kidnap; local-only 20.24 m -> sensor-reset 0.022 m post-kidnap RMSE |
+| #84 | GPU global-localization MCL | 32,768 particles, 72 landmarks, hidden kidnap; local-only 20.24 m -> sensor-reset 0.022 m post-kidnap RMSE |
 
 ### Bigger architectural things landed in this sprint
 - **Shared CUDA headers (`include/`)** — #66. New `.cu` files should
@@ -479,7 +479,7 @@ rtk git switch -c chore/shared-cuda-cleanup    # A: cleanup
   global pass on loop closure.
 
 ### Localization / state estimation
-- `src/gpu_global_localization_mcl.cu` (current branch) — 32,768-particle
+- `src/gpu_global_localization_mcl.cu` (PR #84) — 32,768-particle
   MCL recovery demo with 72 mapped landmarks and 10 range-bearing
   observations. A hidden kidnap at step 70 leaves local-only MCL at
   20.24 m post-kidnap RMSE, while a GPU sensor-reset particle gate
