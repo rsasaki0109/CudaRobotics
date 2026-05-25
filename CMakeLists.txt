@@ -327,6 +327,10 @@ target_link_libraries(gpu_pose_graph_slam_3d_robust ${OpenCV_LIBS})
 target_compile_definitions(gpu_pose_graph_slam_3d_robust PRIVATE GPU_POSE_GRAPH_3D_ROBUST=1)
 target_compile_options(gpu_pose_graph_slam_3d_robust PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
 
+add_executable(gpu_pose_graph_slam_3d_switchable src/gpu_pose_graph_slam_3d_switchable.cu)
+target_link_libraries(gpu_pose_graph_slam_3d_switchable ${OpenCV_LIBS})
+target_compile_options(gpu_pose_graph_slam_3d_switchable PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
+
 add_executable(gpu_global_localization_mcl src/gpu_global_localization_mcl.cu)
 target_link_libraries(gpu_global_localization_mcl ${OpenCV_LIBS})
 target_compile_options(gpu_global_localization_mcl PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
