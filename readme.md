@@ -41,7 +41,7 @@ Same algorithm on CPU and GPU — GPU enables orders of magnitude more particles
 | Clustering / graph ML | `gpu_em_gmm`, `gpu_spectral_clustering`, `gpu_label_propagation`, `gpu_label_propagation_traversability`, `gpu_graph_crf_traversability` | 262K GMM points / 3K graph nodes | 90.2x EM; 193x spectral; 123x propagation; 106x CRF |
 | Black-box optimization | `gpu_cma_es` | 3 x 32,768 candidates x 10D | 1,254x objective eval |
 | Monte Carlo planning | `gpu_mcts_planner` | 64 scenes x 4096 rollouts x 48 horizon | 712x vs CPU |
-| Learning-based planning | `gpu_diffusion_planner`, `gpu_diffusion_policy`, `gpu_diff_value_iteration_traversability`, `gpu_neural_astar_traversability`, `gpu_anytime_neural_astar_traversability`, `gpu_multigoal_neural_astar_traversability`, `gpu_spatiotemporal_neural_astar_traversability`, `gpu_experience_graph_neural_planner`, `gpu_graph_guided_neural_mppi` | 512 x 64 trajectories / 192x128 soft VI / 64x neural A* / 1536-node graph / 32768 MPPI rollouts | analytic score -> BC denoising policy; 747.4x learned-cost VI; 153.1x batched neural A*; 278.5x experience-graph A*; 1320.1x graph-guided MPPI |
+| Learning-based planning | `gpu_diffusion_planner`, `gpu_diffusion_policy`, `gpu_diff_value_iteration_traversability`, `gpu_neural_astar_traversability`, `gpu_anytime_neural_astar_traversability`, `gpu_multigoal_neural_astar_traversability`, `gpu_spatiotemporal_neural_astar_traversability`, `gpu_experience_graph_neural_planner`, `gpu_graph_guided_neural_mppi`, `gpu_kinodynamic_graph_neural_mppi` | 512 x 64 trajectories / 192x128 soft VI / 64x neural A* / 1536-node graph / 32768 MPPI rollouts | analytic score -> BC denoising policy; 747.4x learned-cost VI; 153.1x batched neural A*; 278.5x experience-graph A*; 1320.1x graph-guided MPPI; 49.9x kinodynamic graph MPPI |
 | Voxel map (3D) | `comparison_voxel_map` | 256x256x32 | 58x per ray |
 | ESDF (2D/3D) | `comparison_esdf`, `comparison_esdf_3d` | 640K cells / 1.05M voxels | 53,404x / 86,613x |
 | LiDAR sim | `comparison_lidar_sim`, `comparison_lidar3d_sim`, `comparison_lidar3d_realistic` | 1M 2D / 131K 3D rays | + 5 physical effects (realistic) |
@@ -80,8 +80,8 @@ Same algorithm on CPU and GPU — GPU enables orders of magnitude more particles
 | <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_anytime_neural_astar_traversability.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_multigoal_neural_astar_traversability.gif" width="400"/> |
 | **GPU spatiotemporal neural A* traversability (moving obstacle risk, max risk 1.94 -> 0.26, 106.5x vs CPU)** | **GPU learned experience graph planner (128 × 1536-node graph A*, 51.8% fewer expansions, 278.5x vs CPU)** |
 | <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_spatiotemporal_neural_astar_traversability.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_experience_graph_neural_planner.gif" width="400"/> |
-| **GPU graph-guided neural MPPI (32768 rollouts × H=72, cost 1430.31 -> 842.35, terminal 1.25 -> 0.15, 1320.1x vs CPU)** | |
-| <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_graph_guided_neural_mppi.gif" width="400"/> | |
+| **GPU graph-guided neural MPPI (32768 rollouts × H=72, cost 1430.31 -> 842.35, terminal 1.25 -> 0.15, 1320.1x vs CPU)** | **GPU kinodynamic graph-neural MPPI (32768 nonholonomic rollouts × H=72, cost 1516.74 -> 851.11, terminal 5.11 -> 0.88, 49.9x vs CPU)** |
+| <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_graph_guided_neural_mppi.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_kinodynamic_graph_neural_mppi.gif" width="400"/> |
 | **GPU Multi-Robot Planner (200 robots, parallel BF distance fields)** | **Massive Collision Check (1M segments, 1,277x)** |
 | <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_multi_robot_planner.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/comparison_collision_check.gif" width="400"/> |
 | **Massive RRT* Rewire (CPU 2K vs CUDA 200K nodes)** | **3D ESDF (32³ CPU vs 128²×64 CUDA, 86,613x)** |
@@ -198,6 +198,7 @@ cd ros2_ws && colcon build --packages-select cuda_robotics
 | GPU spatiotemporal neural A* traversability | 64 batched 192x128 dynamic-risk neural A* queries, moving-obstacle max risk 1.94 -> 0.26, 80.9% fewer expansions than dynamic Dijkstra, **106.5x** vs CPU sequential spatiotemporal A* |
 | GPU learned experience graph planner | 128 batched 1536-node learned experience-graph A* queries, all queries reachable, 51.8% fewer expansions than graph Dijkstra, **278.5x** vs CPU sequential graph A* |
 | GPU graph-guided neural MPPI | 32768 rollouts x H=72 x guided/unguided batches, cost 1430.31 -> 842.35, terminal error 1.25 -> 0.15, route error 0.491 -> 0.045, **1320.1x** vs CPU equivalent rollout evaluation |
+| GPU kinodynamic graph-neural MPPI | 32768 nonholonomic speed/steering rollouts x H=72 x guided/unguided batches, cost 1516.74 -> 851.11, terminal error 5.11 -> 0.88, route error 1.530 -> 0.252, **49.9x** vs CPU equivalent kinodynamic rollout evaluation |
 | GPU GNN swarm controller | 2048 agents x 3 message passes, 2.88 ms/control, **44.3x** vs CPU |
 | GPU reciprocal risk planner | 1024 agents x 9 actions x H=16, 4.05 ms/plan, **311.5x** vs CPU |
 | GPU assignment tracking | 128 scenes x 48 tracks x 72 detections, **14.0x** vs CPU |
