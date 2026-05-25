@@ -10,6 +10,8 @@ Same algorithm on CPU and GPU — GPU enables orders of magnitude more particles
 |---|---|
 | **Particle Filter: CPU 100 vs CUDA 10,000** | **Expansion Reset MCL: kidnap recovery (10,000 particles)** |
 | <img src="https://rsasaki0109.github.io/CudaRobotics/comparison_pf_visual.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/comparison_expansion_reset_mcl.gif" width="400"/> |
+| **GPU Global Localization MCL: sensor-reset kidnap recovery (32,768 particles)** | **PF + ESDF observation lookup (10,000 particles)** |
+| <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_global_localization_mcl.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/pf_esdf.gif" width="400"/> |
 | **Multi-Robot: CPU 5 vs CUDA 500** | **DWA: CPU 50 vs CUDA 50,000 samples** |
 | <img src="https://rsasaki0109.github.io/CudaRobotics/comparison_multi_robot_visual.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/comparison_dwa_visual.gif" width="400"/> |
 | **3D LiDAR Sim: CPU 16x512 vs CUDA 64x2048 rays** | **Reeds-Shepp Fan: 1M candidate paths / frame** |
@@ -23,7 +25,7 @@ Same algorithm on CPU and GPU — GPU enables orders of magnitude more particles
 | Collision check | `comparison_collision_check` | 1M segments/scan | 1,277x per candidate |
 | Scan matching | `comparison_icp`, `comparison_ndt`, `gpu_ndt_3d_multires`, `gicp` | 10K+ points | parallel correspondences |
 | Pose-graph SLAM | `gpu_pose_graph_slam`, `gpu_pose_graph_slam_3d`, `gpu_pose_graph_slam_3d_robust` | 2D 200 poses / 3D 384 poses | robust 3D rejects 36/36 false loops, 6.95→0.28 m |
-| Particle filter | `comparison_pf`, `diff_pf`, `diff_pf_mlp` | 10K particles | end-to-end differentiable |
+| Particle filter | `comparison_pf`, `gpu_global_localization_mcl`, `diff_pf`, `diff_pf_mlp` | 10K-32K particles | global recovery MCL: 20.24 m local-only vs 0.022 m sensor reset |
 | RRT family | `comparison_rrt*`, `comparison_rrtstar_rewire` | 1M paths / 200K nodes | 5,000x per-path; 62x rewire |
 | Crowd / swarm | `gpu_crowd_swarm` | 10,000 boids with uniform-grid neighbours | 105x vs CPU |
 | Assignment / tracking | `gpu_hungarian_assignment`, `gpu_assignment_tracking` | 512 x 64x64 assignment / 128 tracking scenes | 158x Hungarian; 14.0x tracking |
@@ -149,6 +151,7 @@ cd ros2_ws && colcon build --packages-select cuda_robotics
 |---|---|
 | Particle Filter (10K) | CPU 75 s → CUDA 27 ms — **2,776x** |
 | Dynamic Window (8K samples) | CPU 1.2 s → CUDA 1.7 ms — **705x** |
+| Global Localization MCL | 32,768 particles, hidden kidnap; local-only post RMSE 20.24 m → sensor-reset recovery 0.022 m |
 | 2D ESDF (640K cells) | **53,404x** per cell (JFA) |
 | 3D ESDF (1M voxels) | **86,613x** per voxel (JFA-3D) |
 | Massive collision check | **1,277x** per candidate (2D DDA) |
