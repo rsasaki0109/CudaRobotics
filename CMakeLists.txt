@@ -439,6 +439,10 @@ add_executable(gpu_spatiotemporal_neural_astar_traversability src/gpu_spatiotemp
 target_link_libraries(gpu_spatiotemporal_neural_astar_traversability ${OpenCV_LIBS})
 target_compile_options(gpu_spatiotemporal_neural_astar_traversability PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
 
+add_executable(gpu_experience_graph_neural_planner src/gpu_experience_graph_neural_planner.cu)
+target_link_libraries(gpu_experience_graph_neural_planner ${OpenCV_LIBS})
+target_compile_options(gpu_experience_graph_neural_planner PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
+
 add_executable(gpu_interaction_graph_risk src/gpu_interaction_graph_risk.cu)
 target_link_libraries(gpu_interaction_graph_risk ${OpenCV_LIBS})
 target_compile_options(gpu_interaction_graph_risk PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
