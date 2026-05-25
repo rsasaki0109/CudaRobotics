@@ -10,15 +10,36 @@ a prioritised menu of candidate next tasks with enough specificity that a
 fresh agent can pick one and start.
 
 Mainline is in sync with `origin/master` at commit
-`a4dab88 Add GPU switchable-constraint 3D pose-graph SLAM demo (#98)`.
-The current feature branch `feat/gpu-megaparticles-lsh` adds a GPU
-MegaParticles-style relocalization demo with an explicit p-stable LSH
-neighbor index (localization-depth follow-up: replaces the fixed-grid
-neighbor stand-in of #86 with L random hash tables of K Gaussian
-projections, the actual Datar et al. 2004 LSH scheme). Head-to-head
-controlled comparison (1M particles each, identical Stein machinery, only
-the neighbor structure differs): neighbor recall vs brute-force kNN
-58.2% -> 87.8%, post-kidnap RMSE 0.099 -> 0.088 m. PR pending.
+`2c125b1 Add GPU MegaParticles LSH neighbor index demo (#101)`.
+The current feature branch `feat/gpu-megaparticles-6dof` adds a GPU
+MegaParticles-style 6-DoF / SE(3) relocalization demo (the *other*
+localization-depth follow-up): a flying sensor in a 3D voxel world, range
+scans scored against a GPU 3D ESDF (built with the JFA-3D from
+`comparison_esdf_3d.cu`), quaternion-based Gauss-Newton SE(3) per-particle
+steps, and -- crucially -- the explicit p-stable LSH neighbor index from #101
+generalised to the 6-D pose feature (x, y, z, s*rotvec). In 6-DoF a dense grid
+is combinatorially infeasible, so the LSH consensus from #101 becomes essential
+rather than optional. Local bootstrap MCL has 5.97 m post-kidnap RMSE; the 1M
+6-DoF MegaParticles path re-localizes a hidden kidnap to 0.22 m / 1.9 deg,
+reacquiring in 0 frames (it re-seeds globally uniform over SE(3) during the scan
+blackout, the honest "lost -> search everywhere" relocalization behaviour). PR
+pending.
+
+PR #101 (`feat/gpu-megaparticles-lsh` -> `master`) was **MERGED** (squash)
+on 2026-05-25; CI Build passed in 11m53s (Build + Python tests + CPU tests
+all green; only the Node.js 20 deprecation annotation), the draft was marked
+ready, and the remote feature branch was deleted. The demo is the explicit-LSH
+slice of the localization-depth follow-up: it replaces the fixed-grid neighbor
+stand-in of #86 with L=8 random hash tables of K=3 Gaussian projections (the
+actual Datar et al. 2004 p-stable LSH scheme). A head-to-head controlled
+comparison (1M particles each, identical Stein machinery, only the neighbor
+structure differs) gives neighbor recall vs brute-force kNN 58.2% -> 87.8% and
+post-kidnap RMSE 0.099 -> 0.088 m. The squash diff touched only its four files
+(CMakeLists.txt, plan.md, readme.md, src/gpu_megaparticles_lsh.cu); the
+concurrent agent session landed GPU spatiotemporal neural A* and learned
+experience-graph planner demos (`902380e`, `7ba624a`) on master just before it.
+There is **no active feature branch** now — the next agent starts fresh from
+`master`.
 
 PR #98 (`feat/gpu-pose-graph-3d-switchable` -> `master`) was **MERGED**
 (squash) on 2026-05-25; CI Build passed in 13m11s (Build + Python tests +
@@ -277,7 +298,8 @@ Compact PR list. Format: `#PR  Title  | headline number`.
 | #89 | GPU semi-supervised label propagation | 3072-node RBF graph, K=3, 12 clamped seeds, 50 iterations; **123x** vs CPU (55.3 ms vs 6.8 s), 100% unlabeled accuracy, 100% GPU/CPU label agreement |
 | #95 | GPU augmented KLD-sampling AMCL | KLD-sampling adapts 400→65,536 particles; augmented w_fast/w_slow injection (deadband 0.4) reacquires hidden kidnap in 13 steps, settled RMSE 0.014 m, **15.2x** vs CPU (0.35 ms vs 5.28 ms/step) |
 | #98 | GPU switchable-constraint 3D pose-graph SLAM | per-loop switch variables jointly optimised with SE(3) poses (Sünderhauf 2012, block coordinate descent, asymmetric switch damping); 384 poses / 611 edges / 36 false loops; plain GN 6.95 m / 39.89 deg → switchable 0.29 m / 2.23 deg, learns 36/36 false-loop rejection with no hand-set trim fraction; GPU/CPU agree to <1 mm |
-| (this branch) | GPU MegaParticles LSH neighbor index | explicit p-stable LSH (8 tables × 3 Gaussian projections, Datar 2004) replaces the fixed-grid neighbor stand-in of #86; controlled comparison at 2 × 1,048,576 particles with identical Stein machinery; neighbor recall vs brute-force kNN 58.2% → 87.8%, post-kidnap RMSE 0.099 → 0.088 m, both reacquire in 0 frames; LSH 9.6 ms vs grid 4.9 ms / step (8-table OR cost) |
+| #101 | GPU MegaParticles LSH neighbor index | explicit p-stable LSH (8 tables × 3 Gaussian projections, Datar 2004) replaces the fixed-grid neighbor stand-in of #86; controlled comparison at 2 × 1,048,576 particles with identical Stein machinery; neighbor recall vs brute-force kNN 58.2% → 87.8%, post-kidnap RMSE 0.099 → 0.088 m, both reacquire in 0 frames; LSH 9.6 ms vs grid 4.9 ms / step (8-table OR cost) |
+| (this branch) | GPU MegaParticles 6-DoF SE(3) | 1,048,576 SE(3) particles (position + quaternion) in a 3D voxel world; GPU 3D-ESDF (JFA-3D) range likelihood, quaternion GN steps (right-perturbation), 6-D p-stable LSH neighbor consensus (a dense 6-D grid is infeasible, so #101's LSH is essential); hidden kidnap: local bootstrap post RMSE 5.97 m → 6-DoF MegaParticles 0.22 m / 1.9 deg, reacquires in 0 frames; mega ~13.9 ms/step |
 
 ### Current branch deep notes: MegaParticles-style Stein MCL (#86)
 
@@ -565,20 +587,21 @@ Immediate next action: PR #98 (GPU switchable-constraint 3D pose-graph SLAM,
 the "explicit switch variables optimised alongside poses" slice of the 3D SLAM
 follow-up) is already merged (squash) and its branch deleted; local `master`
 is at `a4dab88` and in sync with origin. There is no in-flight PR to babysit.
-The current branch `feat/gpu-megaparticles-lsh` takes the explicit-LSH slice
-of the localization-depth follow-up (replacing #86's fixed-grid neighbor
-stand-in with a real p-stable LSH index). Once its PR merges, the remaining
-strong candidates are the *other* localization-depth follow-up (MegaParticles
-3D/6-DoF poses), the *other* 3D SLAM follow-up (wire the robust/switchable
-backend into an online frontend, e.g. switchable constraints inside the
-sliding-window backend of #63), or the Open Threads A shared-header cleanup
-(now especially worthwhile: the SE(3) GN + Jacobi-PCG + Cholesky scaffold is
-duplicated across `gpu_pose_graph_slam_3d.cu`,
-`gpu_pose_graph_slam_3d_switchable.cu`, `gpu_ndt_3d.cu`, and `gpu_gicp_3d.cu`
-— a clean `include/se3_helpers.cuh` lift). Done so far: B1 (diffusion policy),
-B2 (graph-ML / label propagation), the KLD-AMCL slice of B3, the
-switch-variable slice of the 3D SLAM follow-up (#98), and now the explicit-LSH
-slice of B3. Coordinate with the concurrent session, which is working the
+The current branch `feat/gpu-megaparticles-6dof` takes the 6-DoF/SE(3) slice of
+the localization-depth follow-up (the LSH index from #101 generalised to full
+SE(3) poses, where a dense grid is infeasible). Once its PR merges, the
+localization-depth line is largely exhausted; the remaining strong candidates
+are the *other* 3D SLAM follow-up (wire the robust/switchable backend into an
+online frontend, e.g. switchable constraints inside the sliding-window backend
+of #63), or the Open Threads A shared-header cleanup (now especially
+worthwhile: the SE(3) GN + Jacobi-PCG + Cholesky scaffold is duplicated across
+`gpu_pose_graph_slam_3d.cu`, `gpu_pose_graph_slam_3d_switchable.cu`,
+`gpu_ndt_3d.cu`, and `gpu_gicp_3d.cu`, and the quaternion SE(3) helpers now
+also live in `gpu_megaparticles_6dof.cu` — a clean `include/se3_helpers.cuh`
+lift). Done so far: B1 (diffusion policy), B2 (graph-ML / label propagation),
+the KLD-AMCL slice of B3, the switch-variable slice of the 3D SLAM follow-up
+(#98), the explicit-LSH slice of B3 (#101), and now the 6-DoF/SE(3) slice of B3.
+Coordinate with the concurrent session, which is working the
 graph/traversability line on this same checkout.
 
 After GPU CMA-ES, GPU MCTS, assignment tracking, crowd swarm, PR #78 GPU

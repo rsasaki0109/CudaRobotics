@@ -343,6 +343,10 @@ add_executable(gpu_megaparticles_lsh src/gpu_megaparticles_lsh.cu)
 target_link_libraries(gpu_megaparticles_lsh ${OpenCV_LIBS})
 target_compile_options(gpu_megaparticles_lsh PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
 
+add_executable(gpu_megaparticles_6dof src/gpu_megaparticles_6dof.cu)
+target_link_libraries(gpu_megaparticles_6dof ${OpenCV_LIBS})
+target_compile_options(gpu_megaparticles_6dof PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
+
 add_executable(gpu_kld_amcl src/gpu_kld_amcl.cu)
 target_link_libraries(gpu_kld_amcl ${OpenCV_LIBS})
 target_compile_options(gpu_kld_amcl PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
