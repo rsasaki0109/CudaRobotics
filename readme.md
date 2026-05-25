@@ -36,8 +36,8 @@ Same algorithm on CPU and GPU — GPU enables orders of magnitude more particles
 | Crowd / swarm | `gpu_crowd_swarm` | 10,000 boids with uniform-grid neighbours | 105x vs CPU |
 | Graph policy control | `gpu_gnn_swarm_controller`, `gpu_gat_traversability_policy` | 2048 agents / 3072 terrain nodes x 3 heads | 2.88 ms/control; 99.4x GAT policy |
 | Assignment / tracking | `gpu_hungarian_assignment`, `gpu_assignment_tracking` | 512 x 64x64 assignment / 128 tracking scenes | 158x Hungarian; 14.0x tracking |
-| Interaction graph risk | `gpu_interaction_graph_risk` | 2048 agents x 10 message passes | 76.3x vs CPU |
-| Risk-aware planning | `gpu_reciprocal_risk_planner` | 1024 agents x 9 actions x H=16 | 4.05 ms/plan; 311.5x vs CPU |
+| Interaction graph risk | `gpu_interaction_graph_risk`, `gpu_interaction_graph_neural_mppi` | 2048 agents x 10 message passes / 48-agent graph x 4 passes + 32768 MPPI rollouts | 76.3x risk propagation; interaction-aware MPPI reduces social risk 19.7% |
+| Risk-aware planning | `gpu_reciprocal_risk_planner`, `gpu_interaction_graph_neural_mppi` | 1024 agents x 9 actions x H=16 / 32768 social-risk MPPI rollouts | 4.05 ms/plan; 311.5x reciprocal risk; 4140.9x interaction-graph MPPI rollout eval |
 | SfM / multi-view | `gpu_sfm_mini` | 2048 features x 4 views | 217.0x match + BA vs CPU |
 | Sparse linear solvers | `gpu_pcg_solver` | 262K unknowns / 1.31M CSR nnz | 13.4x Jacobi-PCG vs CPU |
 | Clustering / graph ML | `gpu_em_gmm`, `gpu_spectral_clustering`, `gpu_label_propagation`, `gpu_label_propagation_traversability`, `gpu_graph_crf_traversability` | 262K GMM points / 3K graph nodes | 90.2x EM; 193x spectral; 123x propagation; 106x CRF |
@@ -86,6 +86,8 @@ Same algorithm on CPU and GPU — GPU enables orders of magnitude more particles
 | <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_spatiotemporal_neural_astar_traversability.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_experience_graph_neural_planner.gif" width="400"/> |
 | **GPU graph-guided neural MPPI (32768 rollouts × H=72, cost 1430.31 -> 842.35, terminal 1.25 -> 0.15, 1320.1x vs CPU)** | **GPU kinodynamic graph-neural MPPI (32768 nonholonomic rollouts × H=72, cost 1516.74 -> 851.11, terminal 5.11 -> 0.88, 49.9x vs CPU)** |
 | <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_graph_guided_neural_mppi.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_kinodynamic_graph_neural_mppi.gif" width="400"/> |
+| **GPU interaction-graph neural MPPI (48-agent message-passing social risk + 32768 rollouts, social risk 1.628 -> 1.308, 4140.9x vs CPU)** | |
+| <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_interaction_graph_neural_mppi.gif" width="400"/> | |
 | **GPU Multi-Robot Planner (200 robots, parallel BF distance fields)** | **Massive Collision Check (1M segments, 1,277x)** |
 | <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_multi_robot_planner.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/comparison_collision_check.gif" width="400"/> |
 | **Massive RRT* Rewire (CPU 2K vs CUDA 200K nodes)** | **3D ESDF (32³ CPU vs 128²×64 CUDA, 86,613x)** |
@@ -205,6 +207,7 @@ cd ros2_ws && colcon build --packages-select cuda_robotics
 | GPU learned experience graph planner | 128 batched 1536-node learned experience-graph A* queries, all queries reachable, 51.8% fewer expansions than graph Dijkstra, **278.5x** vs CPU sequential graph A* |
 | GPU graph-guided neural MPPI | 32768 rollouts x H=72 x guided/unguided batches, cost 1430.31 -> 842.35, terminal error 1.25 -> 0.15, route error 0.491 -> 0.045, **1320.1x** vs CPU equivalent rollout evaluation |
 | GPU kinodynamic graph-neural MPPI | 32768 nonholonomic speed/steering rollouts x H=72 x guided/unguided batches, cost 1516.74 -> 851.11, terminal error 5.11 -> 0.88, route error 1.530 -> 0.252, **49.9x** vs CPU equivalent kinodynamic rollout evaluation |
+| GPU interaction-graph neural MPPI | 48 moving agents x 4 message-passing risk updates + 32768 MPPI rollouts x H=72, social risk 1.628 -> 1.308, clearance -0.15 -> -0.10, full objective 2913.50 -> 2395.14, **4140.9x** vs CPU equivalent rollout evaluation |
 | GPU GNN swarm controller | 2048 agents x 3 message passes, 2.88 ms/control, **44.3x** vs CPU |
 | GPU reciprocal risk planner | 1024 agents x 9 actions x H=16, 4.05 ms/plan, **311.5x** vs CPU |
 | GPU assignment tracking | 128 scenes x 48 tracks x 72 detections, **14.0x** vs CPU |
