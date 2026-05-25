@@ -36,7 +36,7 @@ Same algorithm on CPU and GPU — GPU enables orders of magnitude more particles
 | Risk-aware planning | `gpu_reciprocal_risk_planner` | 1024 agents x 9 actions x H=16 | 4.05 ms/plan; 311.5x vs CPU |
 | SfM / multi-view | `gpu_sfm_mini` | 2048 features x 4 views | 217.0x match + BA vs CPU |
 | Sparse linear solvers | `gpu_pcg_solver` | 262K unknowns / 1.31M CSR nnz | 13.4x Jacobi-PCG vs CPU |
-| Clustering / graph ML | `gpu_em_gmm`, `gpu_spectral_clustering`, `gpu_label_propagation`, `gpu_label_propagation_traversability` | 262K GMM points / 3K graph nodes | 90.2x EM; 193x spectral; 123x / 79.9x propagation |
+| Clustering / graph ML | `gpu_em_gmm`, `gpu_spectral_clustering`, `gpu_label_propagation`, `gpu_label_propagation_traversability`, `gpu_graph_crf_traversability` | 262K GMM points / 3K graph nodes | 90.2x EM; 193x spectral; 123x propagation; 106x CRF |
 | Black-box optimization | `gpu_cma_es` | 3 x 32,768 candidates x 10D | 1,254x objective eval |
 | Monte Carlo planning | `gpu_mcts_planner` | 64 scenes x 4096 rollouts x 48 horizon | 712x vs CPU |
 | Learning-based planning | `gpu_diffusion_planner`, `gpu_diffusion_policy` | 512 x 64 trajectories / 768 BC samples | analytic score → behavior-cloned denoising policy |
@@ -118,6 +118,8 @@ Same algorithm on CPU and GPU — GPU enables orders of magnitude more particles
 | <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_em_gmm.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_spectral_clustering.gif" width="400"/> |
 | **GPU label propagation (3072-node RBF graph, 12 seeds, 50 clamped iterations, 123x vs CPU)** | **GPU traversability label propagation (3072 graph nodes, 40 iters, 81.2% sparse-seed accuracy, 79.9x vs CPU)** |
 | <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_label_propagation.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_label_propagation_traversability.gif" width="400"/> |
+| **GPU graph CRF traversability refinement (3072 nodes, noisy unary 82.0% -> CRF 83.6%, 106x vs CPU)** | |
+| <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_graph_crf_traversability.gif" width="400"/> | |
 
 <details>
 <summary>More classical-algorithm GIFs</summary>
@@ -187,6 +189,7 @@ cd ros2_ws && colcon build --packages-select cuda_robotics
 | GPU spectral clustering | 3072-point dense RBF graph, 40 subspace iterations, **193x** vs CPU |
 | GPU label propagation | 3072-node RBF graph, 12 seeds, 50 clamped iterations, **123x** vs CPU |
 | GPU traversability label propagation | 3072 graph nodes x 40 propagation iters, 33.47 ms, **79.9x** vs CPU |
+| GPU graph CRF traversability | 3072-node bilateral terrain graph x 32 mean-field iters, noisy unary 82.0% -> CRF 83.6%, **106x** vs CPU |
 
 ## References
 
