@@ -30,6 +30,7 @@ Same algorithm on CPU and GPU — GPU enables orders of magnitude more particles
 | Crowd / swarm | `gpu_crowd_swarm` | 10,000 boids with uniform-grid neighbours | 105x vs CPU |
 | Assignment / tracking | `gpu_hungarian_assignment`, `gpu_assignment_tracking` | 512 x 64x64 assignment / 128 tracking scenes | 158x Hungarian; 14.0x tracking |
 | Interaction graph risk | `gpu_interaction_graph_risk` | 2048 agents x 10 message passes | 76.3x vs CPU |
+| Risk-aware planning | `gpu_reciprocal_risk_planner` | 1024 agents x 9 actions x H=16 | 4.05 ms/plan; 311.5x vs CPU |
 | SfM / multi-view | `gpu_sfm_mini` | 2048 features x 4 views | 217.0x match + BA vs CPU |
 | Sparse linear solvers | `gpu_pcg_solver` | 262K unknowns / 1.31M CSR nnz | 13.4x Jacobi-PCG vs CPU |
 | Clustering / graph ML | `gpu_em_gmm`, `gpu_spectral_clustering` | 262K GMM points / 3K dense RBF graph | 90.2x EM; 193x spectral |
@@ -80,6 +81,8 @@ Same algorithm on CPU and GPU — GPU enables orders of magnitude more particles
 | <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_mcts_planner.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_assignment_tracking.gif" width="400"/> |
 | **GPU crowd swarm (10,000 boids, uniform-grid neighbours, 0.275 ms/step, 105x vs CPU)** | **GPU interaction-graph risk propagation (2048 agents, 10 message passes, 76.3x vs CPU)** |
 | <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_crowd_swarm.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_interaction_graph_risk.gif" width="400"/> |
+| **GPU reciprocal risk planner (1024 agents, 9 actions, H=16, 4.05 ms/plan, 311.5x vs CPU)** | |
+| <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_reciprocal_risk_planner.gif" width="400"/> | |
 
 ## Differentiable / learning
 
@@ -167,6 +170,7 @@ cd ros2_ws && colcon build --packages-select cuda_robotics
 | GPU diffusion policy | 768-sample behavior cloning MLP + 512 x 64 learned denoising trajectories |
 | GPU CMA-ES objective evaluation | 3 x 32,768 candidates x 10D, **1,254x** vs CPU eval |
 | GPU MCTS kinodynamic planning | 64 scenes x 4096 rollouts x 48 horizon, **712x** vs CPU |
+| GPU reciprocal risk planner | 1024 agents x 9 actions x H=16, 4.05 ms/plan, **311.5x** vs CPU |
 | GPU assignment tracking | 128 scenes x 48 tracks x 72 detections, **14.0x** vs CPU |
 | GPU crowd swarm | 10,000 agents, uniform-grid neighbours, **105x** vs CPU |
 | GPU interaction graph risk | 2048 agents x 10 message-passing steps, **76.3x** vs CPU |

@@ -391,6 +391,10 @@ add_executable(gpu_interaction_graph_risk src/gpu_interaction_graph_risk.cu)
 target_link_libraries(gpu_interaction_graph_risk ${OpenCV_LIBS})
 target_compile_options(gpu_interaction_graph_risk PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
 
+add_executable(gpu_reciprocal_risk_planner src/gpu_reciprocal_risk_planner.cu)
+target_link_libraries(gpu_reciprocal_risk_planner ${OpenCV_LIBS})
+target_compile_options(gpu_reciprocal_risk_planner PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
+
 add_executable(gpu_hungarian_assignment src/gpu_hungarian_assignment.cu)
 target_link_libraries(gpu_hungarian_assignment ${OpenCV_LIBS})
 target_compile_options(gpu_hungarian_assignment PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
