@@ -22,6 +22,7 @@ Same algorithm on CPU and GPU — GPU enables orders of magnitude more particles
 | Occupancy grid | `comparison_occupancy_grid` | 256x256 | log-odds raycast |
 | Collision check | `comparison_collision_check` | 1M segments/scan | 1,277x per candidate |
 | Scan matching | `comparison_icp`, `comparison_ndt`, `gpu_ndt_3d_multires`, `gicp` | 10K+ points | parallel correspondences |
+| Pose-graph SLAM | `gpu_pose_graph_slam`, `gpu_pose_graph_slam_3d` | 2D 200 poses / 3D 384 poses | 3D FD-Jacobian GN, 1.64→0.28 m |
 | Particle filter | `comparison_pf`, `diff_pf`, `diff_pf_mlp` | 10K particles | end-to-end differentiable |
 | RRT family | `comparison_rrt*`, `comparison_rrtstar_rewire` | 1M paths / 200K nodes | 5,000x per-path; 62x rewire |
 | Crowd / swarm | `gpu_crowd_swarm` | 10,000 boids with uniform-grid neighbours | 105x vs CPU |
@@ -41,12 +42,12 @@ Same algorithm on CPU and GPU — GPU enables orders of magnitude more particles
 |---|---|
 | **GPU Bundle Adjustment (1000 poses × 8000 LM, 60k obs, 0.5 ms/iter)** | **GPU LiDAR SLAM frontend (scan-to-scan ICP, 0.68 ms/frame)** |
 | <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_bundle_adjustment.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_lidar_slam.gif" width="400"/> |
-| **GPU Pose-Graph SLAM backend (GN+Jacobi-PCG, RMSE 4.88→0.56 m)** | **GPU 3D Gaussian Splatting renderer (~1k Gaussians, 0.94 ms/frame)** |
-| <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_pose_graph_slam.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_gaussian_splatting.gif" width="400"/> |
+| **GPU Pose-Graph SLAM backend (2D GN+Jacobi-PCG, RMSE 4.88→0.56 m)** | **GPU 3D Pose-Graph SLAM v2 (384 poses, finite-difference SE(3) Jacobians, RMSE 1.64→0.28 m)** |
+| <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_pose_graph_slam.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_pose_graph_slam_3d.gif" width="400"/> |
 | **GPU online SLAM (sliding-window W=60 + iSAM-style global pass on loop, 1.7 ms/step, 3.0 → 0.4 m RMSE)** | **GPU NeRF-style volumetric renderer (720×480, 128 samples/ray, 0.83 ms/frame)** |
 | <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_online_slam.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_nerf_volume.gif" width="400"/> |
-| **GPU SfM mini (2048 features × 4 views, descriptor match + triangulate + point BA, 217.0x vs CPU)** | |
-| <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_sfm_mini.gif" width="400"/> | |
+| **GPU SfM mini (2048 features × 4 views, descriptor match + triangulate + point BA, 217.0x vs CPU)** | **GPU 3D Gaussian Splatting renderer (~1k Gaussians, 0.94 ms/frame)** |
+| <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_sfm_mini.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_gaussian_splatting.gif" width="400"/> |
 
 ## Solver infrastructure
 
@@ -151,6 +152,7 @@ cd ros2_ws && colcon build --packages-select cuda_robotics
 | Massive collision check | **1,277x** per candidate (2D DDA) |
 | Normal estimation (10K pts) | **3,171x** (PCA, one thread per point) |
 | Pose-graph SLAM (200 nodes) | ~200 ms total, RMSE 4.88 → 0.56 m |
+| 3D Pose-graph SLAM | 384 poses / 575 edges, finite-difference SE(3) Jacobians, RMSE 1.64 → 0.28 m |
 | 3D Gaussian Splatting (~1k Gaussians, 720x480) | **0.94 ms / frame** |
 | GPU CMA-ES objective evaluation | 3 x 32,768 candidates x 10D, **1,254x** vs CPU eval |
 | GPU MCTS kinodynamic planning | 64 scenes x 4096 rollouts x 48 horizon, **712x** vs CPU |
