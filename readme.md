@@ -30,7 +30,7 @@ Same algorithm on CPU and GPU — GPU enables orders of magnitude more particles
 | Particle filter | `comparison_pf`, `gpu_global_localization_mcl`, `gpu_megaparticles_stein_mcl`, `diff_pf`, `diff_pf_mlp` | 10K-1M particles | MegaParticles-style range SPF: 14.61 m bootstrap vs 0.097 m recovery |
 | RRT family | `comparison_rrt*`, `comparison_rrtstar_rewire` | 1M paths / 200K nodes | 5,000x per-path; 62x rewire |
 | Crowd / swarm | `gpu_crowd_swarm` | 10,000 boids with uniform-grid neighbours | 105x vs CPU |
-| Graph policy control | `gpu_gnn_swarm_controller` | 2048 agents x 3 message passes | 2.88 ms/control; 44.3x vs CPU |
+| Graph policy control | `gpu_gnn_swarm_controller`, `gpu_gat_traversability_policy` | 2048 agents / 3072 terrain nodes x 3 heads | 2.88 ms/control; 99.4x GAT policy |
 | Assignment / tracking | `gpu_hungarian_assignment`, `gpu_assignment_tracking` | 512 x 64x64 assignment / 128 tracking scenes | 158x Hungarian; 14.0x tracking |
 | Interaction graph risk | `gpu_interaction_graph_risk` | 2048 agents x 10 message passes | 76.3x vs CPU |
 | Risk-aware planning | `gpu_reciprocal_risk_planner` | 1024 agents x 9 actions x H=16 | 4.05 ms/plan; 311.5x vs CPU |
@@ -118,8 +118,8 @@ Same algorithm on CPU and GPU — GPU enables orders of magnitude more particles
 | <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_em_gmm.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_spectral_clustering.gif" width="400"/> |
 | **GPU label propagation (3072-node RBF graph, 12 seeds, 50 clamped iterations, 123x vs CPU)** | **GPU traversability label propagation (3072 graph nodes, 40 iters, 81.2% sparse-seed accuracy, 79.9x vs CPU)** |
 | <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_label_propagation.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_label_propagation_traversability.gif" width="400"/> |
-| **GPU graph CRF traversability refinement (3072 nodes, noisy unary 82.0% -> CRF 83.6%, 106x vs CPU)** | |
-| <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_graph_crf_traversability.gif" width="400"/> | |
+| **GPU graph CRF traversability refinement (3072 nodes, noisy unary 82.0% -> CRF 83.6%, 106x vs CPU)** | **GPU GAT traversability policy (3072 nodes, 3 heads x 4 layers, 78.7% -> 81.3%, 99.4x vs CPU)** |
+| <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_graph_crf_traversability.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_gat_traversability_policy.gif" width="400"/> |
 
 <details>
 <summary>More classical-algorithm GIFs</summary>
@@ -190,6 +190,7 @@ cd ros2_ws && colcon build --packages-select cuda_robotics
 | GPU label propagation | 3072-node RBF graph, 12 seeds, 50 clamped iterations, **123x** vs CPU |
 | GPU traversability label propagation | 3072 graph nodes x 40 propagation iters, 33.47 ms, **79.9x** vs CPU |
 | GPU graph CRF traversability | 3072-node bilateral terrain graph x 32 mean-field iters, noisy unary 82.0% -> CRF 83.6%, **106x** vs CPU |
+| GPU GAT traversability policy | 3072 terrain nodes x 3 heads x 4 graph-attention layers, noisy unary 78.7% -> GAT 81.3%, **99.4x** vs CPU |
 
 ## References
 
