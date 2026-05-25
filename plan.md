@@ -9,23 +9,29 @@ known sharp edges and lessons learned from the last few attempts, and (5)
 a prioritised menu of candidate next tasks with enough specificity that a
 fresh agent can pick one and start.
 
-Mainline is now in sync with `origin/master` at commit
-`9d6f902 Add GPU semi-supervised label propagation demo (#89)`.
+Mainline is in sync with `origin/master` at commit
+`5570ab3 Add GPU augmented KLD-sampling AMCL demo (#95)`. The current feature
+branch `feat/gpu-pose-graph-3d-switchable` adds a GPU switchable-constraint 3D
+pose-graph SLAM demo (3D SLAM follow-up: replaces the frozen front-end trim
+gate of #83 with explicit per-loop switch variables jointly optimised with the
+SE(3) poses). PR pending.
 
-PR #89 (`feat/gpu-label-propagation` -> `master`) was **MERGED** on
-2026-05-25 (squash). CI Build passed (11m29s; Build + Python tests +
+PR #95 (`feat/gpu-kld-amcl-kidnap` -> `master`) was **MERGED** on
+2026-05-25 (squash). CI Build passed (11m56s; Build + Python tests +
 CPU tests all green; only the Node.js 20 deprecation annotation), the
 draft was marked ready, and the PR was squash-merged with the remote
-feature branch deleted. Local `master` is at `9d6f902` and in sync with
+feature branch deleted. Local `master` is at `5570ab3` and in sync with
 origin. There is **no active feature branch** right now — the next agent
 starts a fresh branch from `master`.
 
-PR #86 (MegaParticles-style Stein MCL) merged earlier the same day at
-`af4d5ee`. Between #86 and #89, two more demos landed on `master` via
-direct commits (concurrent work): `f34c22d Add GPU GNN swarm controller
-demo` and `b4cff2e Add GPU reciprocal risk planner demo`. PR #89's squash
-diff touched only its own four files (CMakeLists.txt, plan.md, readme.md,
-src/gpu_label_propagation.cu); the other demos were not part of it.
+Note this checkout is shared with a concurrent agent session that has been
+landing its own demos (graph/traversability line) directly on `master`.
+Earlier the same day: PR #86 (MegaParticles Stein MCL) at `af4d5ee`, then
+PR #89 (label propagation) at `9d6f902`. Between #89 and #95 the concurrent
+session added the GAT traversability policy, differentiable value-iteration
+traversability, and neural A* traversability demos (`4706efe`, `62564fa`,
+`20ca275`). PR #95's squash diff touched only its own four files
+(CMakeLists.txt, plan.md, readme.md, src/gpu_kld_amcl.cu).
 
 There were no open GitHub PRs at the start of the MegaParticles-style
 Stein MCL branch; #86 was opened from this branch after the local demo,
@@ -38,12 +44,13 @@ separate parked work, not active blockers for new feature work.
 
 ## TL;DR for the impatient
 
-- Repo is on `master` at `9d6f902`, in sync with origin. PR #89 (GPU
-  semi-supervised label propagation) was squash-merged on 2026-05-25 and
-  its remote feature branch deleted. No active feature branch; start the
-  next task from a fresh branch off `master`. (PR #86 MegaParticles Stein
-  MCL merged earlier the same day; gnn_swarm_controller + reciprocal_risk
-  _planner also landed via direct commits in between.)
+- Repo is on `master` at `5570ab3`, in sync with origin. PR #95 (GPU
+  augmented KLD-sampling AMCL) was squash-merged on 2026-05-25 and its
+  remote feature branch deleted. No active feature branch; start the next
+  task from a fresh branch off `master`. (Same-day localization line: #86
+  MegaParticles Stein MCL, #89 label propagation, #95 KLD-AMCL. A
+  concurrent agent session is also landing graph/traversability demos on
+  this shared checkout.)
 - The 2026-05-21..25 sprint added 45 PRs (#40 → #84): ESDF JFA (2D + 3D),
   3D voxel map, massive collision check, realistic 3D LiDAR, ROS2 nodes,
   Bundle Adjustment, 2D pose-graph SLAM backend, LiDAR SLAM frontend,
@@ -108,15 +115,15 @@ separate parked work, not active blockers for new feature work.
 ## Repo State (2026-05-25)
 
 - **Main branch**: `master`, currently at
-  `9d6f902 Add GPU semi-supervised label propagation demo (#89)`, in sync
+  `5570ab3 Add GPU augmented KLD-sampling AMCL demo (#95)`, in sync
   with origin.
 - **Active branch**: none (last feature branch
-  `feat/gpu-label-propagation` merged and deleted).
-- **Active PR**: #89 **MERGED** (squash) on 2026-05-25; target `master`.
-  (#86 MegaParticles Stein MCL merged earlier the same day; `f34c22d` GNN
-  swarm controller + `b4cff2e` reciprocal risk planner landed via direct
-  commits in between.)
-- **Last CI**: GitHub Actions Build passed in 11m29s (Build + Python
+  `feat/gpu-kld-amcl-kidnap` merged and deleted).
+- **Active PR**: #95 **MERGED** (squash) on 2026-05-25; target `master`.
+  (Same-day localization line: #86 MegaParticles, #89 label propagation,
+  #95 KLD-AMCL. A concurrent agent session has also landed GAT / diff-VI /
+  neural-A* traversability demos on this shared checkout.)
+- **Last CI**: GitHub Actions Build passed in 11m56s (Build + Python
   tests + CPU tests all green; only a Node.js 20 deprecation annotation,
   not a failure).
 - **gh-pages branch**: hosts gif assets referenced from `readme.md`.
@@ -124,7 +131,7 @@ separate parked work, not active blockers for new feature work.
   `https://rsasaki0109.github.io/CudaRobotics/<name>.gif` resolves.
   Every new gif must be pushed there to render in the readme.
 - **Current Pages asset**:
-  `https://rsasaki0109.github.io/CudaRobotics/gpu_label_propagation.gif`
+  `https://rsasaki0109.github.io/CudaRobotics/gpu_kld_amcl.gif`
   returned HTTP 200 after the gh-pages deployment completed.
 - 130 CUDA source files (`src/*.cu`), 15 C++ files (`src/*.cpp`) on the
   MegaParticles-style Stein MCL branch.
@@ -252,6 +259,8 @@ Compact PR list. Format: `#PR  Title  | headline number`.
 | #84 | GPU global-localization MCL | 32,768 particles, 72 landmarks, hidden kidnap; local-only 20.24 m -> sensor-reset 0.022 m post-kidnap RMSE |
 | #86 | GPU MegaParticles-style Stein MCL | 1,048,576 range particles, distance-field likelihoods; local bootstrap 14.61 m -> Stein/bucket posterior 0.097 m post-kidnap RMSE |
 | #89 | GPU semi-supervised label propagation | 3072-node RBF graph, K=3, 12 clamped seeds, 50 iterations; **123x** vs CPU (55.3 ms vs 6.8 s), 100% unlabeled accuracy, 100% GPU/CPU label agreement |
+| #95 | GPU augmented KLD-sampling AMCL | KLD-sampling adapts 400→65,536 particles; augmented w_fast/w_slow injection (deadband 0.4) reacquires hidden kidnap in 13 steps, settled RMSE 0.014 m, **15.2x** vs CPU (0.35 ms vs 5.28 ms/step) |
+| (this branch) | GPU switchable-constraint 3D pose-graph SLAM | per-loop switch variables jointly optimised with SE(3) poses (Sünderhauf 2012, block coordinate descent, asymmetric switch damping); 384 poses / 611 edges / 36 false loops; plain GN 6.95 m / 39.89 deg → switchable 0.29 m / 2.23 deg, learns 36/36 false-loop rejection with no hand-set trim fraction; GPU/CPU agree to <1 mm |
 
 ### Current branch deep notes: MegaParticles-style Stein MCL (#86)
 
@@ -535,14 +544,19 @@ any new scan-matching / SLAM / optimisation work.
 
 ## Recommended Next Session
 
-Immediate next action: PR #89 (GPU label propagation, B2 graph-ML
-follow-up) is already merged (squash) and its branch deleted; local
-`master` is at `9d6f902` and in sync with origin. There is no in-flight PR
-to babysit. Pick a fresh task from the menu below and start it on a new
-branch off `master`. Note B1 (diffusion policy) and B2 (graph-ML, now
-label propagation) are both done; the remaining strong candidates are the
-localization-depth follow-ups (MegaParticles 3D/LSH, KLD-AMCL comparison),
-the 3D SLAM follow-up, or the Open Threads A shared-header cleanup.
+Immediate next action: the current branch `feat/gpu-pose-graph-3d-switchable`
+adds the GPU switchable-constraint 3D pose-graph SLAM demo (the "explicit
+switch variables optimised alongside poses" slice of the 3D SLAM follow-up).
+Once its PR merges, the remaining strong candidates are the localization-depth
+follow-ups (MegaParticles 3D/6-DoF or explicit LSH neighbor list), the *other*
+3D SLAM follow-up (wire the robust/switchable backend into an online frontend),
+or the Open Threads A shared-header cleanup (now especially worthwhile: the
+SE(3) GN + Jacobi-PCG scaffold is duplicated across
+`gpu_pose_graph_slam_3d.cu` and `gpu_pose_graph_slam_3d_switchable.cu`).
+Done so far: B1 (diffusion policy), B2 (graph-ML / label propagation), the
+KLD-AMCL slice of B3, and now the switch-variable slice of the 3D SLAM
+follow-up. Coordinate with the concurrent session, which is working the
+graph/traversability line on this same checkout.
 
 After GPU CMA-ES, GPU MCTS, assignment tracking, crowd swarm, PR #78 GPU
 SfM mini, PR #79 GPU PCG, PR #80 GPU EM GMM, PR #81 GPU spectral
