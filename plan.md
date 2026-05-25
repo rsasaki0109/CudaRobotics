@@ -10,11 +10,11 @@ a prioritised menu of candidate next tasks with enough specificity that a
 fresh agent can pick one and start.
 
 Mainline was in sync with `origin/master` at commit
-`a7f9013 Add GPU spectral clustering demo` before the current GPU 3D
-pose-graph SLAM v2 feature branch.
+`2c18b38 Add GPU 3D pose graph SLAM v2` before the current robust 3D
+pose-graph SLAM feature branch.
 
-There were no open GitHub PRs at the start of the GPU 3D pose-graph SLAM
-v2 branch.
+There were no open GitHub PRs at the start of the robust 3D pose-graph
+SLAM branch.
 Parked local branches remain for `feat/gaussian-splat-renderer`
 (checked out in `/tmp/CudaRobotics-gaussian`) and `feat/repro-report`; treat them as
 separate parked work, not active blockers for new feature work.
@@ -50,6 +50,10 @@ separate parked work, not active blockers for new feature work.
 - PR #82 / branch `feat/gpu-pose-graph-3d-v2` adds GPU 3D pose-graph SLAM
   with central finite-difference SE(3) Jacobians: 384 poses, 575 edges,
   translation RMSE 1.64 m -> 0.28 m, rotation RMSE 11.29 deg -> 2.12 deg.
+- Current branch `feat/gpu-pose-graph-3d-robust` extends the 3D backend
+  with 36 deliberately false loop closures and a trimmed switch gate:
+  plain GN is pulled to 6.95 m / 39.89 deg, while the switched solve
+  rejects 36/36 false loops and returns to 0.284 m / 2.11 deg.
 - The "scan matching 4 siblings" are NDT 2D (#67), NDT 3D (#68), GICP 2D
   (#69), GICP 3D (#70). All present and merged.
 - Follow-up #71 adds coarse-to-fine NDT 3D and fixes the old #68 outlier
@@ -67,14 +71,14 @@ separate parked work, not active blockers for new feature work.
 
 ## Repo State (2026-05-25)
 
-- **Main branch**: `master`, currently at `a7f9013` before the GPU 3D
-  pose-graph SLAM v2 feature branch.
+- **Main branch**: `master`, currently at `2c18b38` before the robust GPU
+  3D pose-graph SLAM feature branch.
 - **gh-pages branch**: hosts gif assets referenced from `readme.md`.
   Files live at the branch ROOT (not `gif/`), so the URL
   `https://rsasaki0109.github.io/CudaRobotics/<name>.gif` resolves.
   Every new gif must be pushed there to render in the readme.
 - 128 CUDA source files (`src/*.cu`), 15 C++ files (`src/*.cpp`) on the
-  GPU 3D pose-graph SLAM v2 branch.
+  robust GPU 3D pose-graph SLAM branch.
 - Build:
   ```bash
   rtk bash -lc 'cd build && cmake .. && make -j$(nproc)'
@@ -164,6 +168,7 @@ Compact PR list. Format: `#PR  Title  | headline number`.
 |---|---|---|
 | #81 | GPU spectral clustering | 3072-point dense RBF graph, 40 subspace iterations, **193x** vs CPU, 100% mapped accuracy |
 | #82 | GPU 3D pose-graph SLAM v2 | 384 poses, 575 SE(3) edges, finite-difference Jacobians, RMSE 1.64 m -> 0.28 m |
+| current | GPU robust 3D pose-graph SLAM | 384 poses, 611 SE(3) edges, 36 false loops; plain 6.95 m / 39.89 deg -> switched 0.284 m / 2.11 deg |
 
 ### Bigger architectural things landed in this sprint
 - **Shared CUDA headers (`include/`)** — #66. New `.cu` files should
@@ -172,9 +177,11 @@ Compact PR list. Format: `#PR  Title  | headline number`.
   back-migrated yet — that is a small mechanical cleanup waiting in the
   open threads list.
 - **`readme.md` SLAM / Multi-view geometry section** now includes the 2D
-  and 3D pose-graph SLAM pair. The 3D version uses central
-  finite-difference SE(3) Jacobians to avoid the aborted hand-Jacobian
-  failure mode.
+  and 3D pose-graph SLAM pair plus the robust 3D follow-up. The 3D
+  versions use central finite-difference SE(3) Jacobians to avoid the
+  aborted hand-Jacobian failure mode; the robust target trims the worst
+  loop closures from the odometry-chain residual and solves the switched
+  graph.
 - **`readme.md` Sensors / perception section** now has the scan matching
   family plus the multi-resolution NDT 3D tile and the EM / spectral
   clustering tiles. The Planning / Control section has Hungarian
@@ -357,9 +364,10 @@ any new scan-matching / SLAM / optimisation work.
 2. **Graph ML follow-up** — spectral clustering is merged; possible
    follow-ups are GPU label propagation, graph cuts, or semi-supervised
    graph classification.
-3. **3D SLAM follow-up** — now that 3D pose-graph v2 exists, possible
-   follow-ups are robust kernels, switchable loop closures, or integrating
-   it with the online SLAM demo.
+3. **3D SLAM follow-up** — robust switched loop closures now exist; the
+   next deeper follow-ups are online integration, dynamic switch variables
+   instead of a trimmed front-end gate, or robust kernels inside the
+   nonlinear solve.
 
 ### C. Older items still parked (carried over from previous handoff)
 - DPF research line — from-scratch tracking-loss MLP training, harder
@@ -373,12 +381,12 @@ any new scan-matching / SLAM / optimisation work.
 
 After GPU CMA-ES, GPU MCTS, assignment tracking, crowd swarm, PR #78 GPU
 SfM mini, PR #79 GPU PCG, PR #80 GPU EM GMM, PR #81 GPU spectral
-clustering, and PR #82 GPU 3D pose-graph SLAM v2, the natural next
-move depends on user goal:
+clustering, PR #82 GPU 3D pose-graph SLAM v2, and the robust switched
+3D pose-graph follow-up, the natural next move depends on user goal:
 
-- **Hard but high value**: add robust-kernel / switchable-loop support to
-  3D pose-graph SLAM, or wire the 3D backend into an online SLAM-style
-  frontend.
+- **Hard but high value**: wire the robust 3D backend into an online
+  SLAM-style frontend, or replace the trimmed loop gate with explicit
+  switch variables optimised alongside poses.
 - **Tying off loose ends**: refresh the lower headline benchmark table
   and back-migrate to shared headers (Open Threads A). One PR,
   mechanical, removes drift.
@@ -394,7 +402,7 @@ Suggested starting commands:
 ```bash
 rtk git switch -c feat/gpu-diffusion-policy    # B1
 rtk git switch -c feat/gpu-label-propagation   # B2
-rtk git switch -c feat/gpu-pose-graph-3d-robust
+rtk git switch -c feat/gpu-online-slam-3d-robust
 rtk git switch -c chore/shared-cuda-cleanup    # A: cleanup
 ```
 
@@ -447,7 +455,11 @@ rtk git switch -c chore/shared-cuda-cleanup    # A: cleanup
 - `src/gpu_pose_graph_slam.cu` (PR #58) — 2D GN + Jacobi-PCG.
 - `src/gpu_pose_graph_slam_3d.cu` (PR #82) — 3D SE(3) GN +
   Jacobi-PCG with central finite-difference Jacobians; 384 poses, 575
-  edges, 1.64 m -> 0.28 m translation RMSE.
+  edges, 1.64 m -> 0.28 m translation RMSE. The
+  `gpu_pose_graph_slam_3d_robust` target compiles the same source with
+  `GPU_POSE_GRAPH_3D_ROBUST=1`, adds 36 false loop closures, trims them
+  with a switch gate, and recovers 0.284 m / 2.11 deg while plain GN on
+  the corrupted graph lands at 6.95 m / 39.89 deg.
 - `src/gpu_online_slam.cu` (PR #63) — sliding-window W=60 + iSAM-style
   global pass on loop closure.
 

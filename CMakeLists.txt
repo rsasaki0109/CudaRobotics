@@ -322,6 +322,11 @@ add_executable(gpu_pose_graph_slam_3d src/gpu_pose_graph_slam_3d.cu)
 target_link_libraries(gpu_pose_graph_slam_3d ${OpenCV_LIBS})
 target_compile_options(gpu_pose_graph_slam_3d PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
 
+add_executable(gpu_pose_graph_slam_3d_robust src/gpu_pose_graph_slam_3d.cu)
+target_link_libraries(gpu_pose_graph_slam_3d_robust ${OpenCV_LIBS})
+target_compile_definitions(gpu_pose_graph_slam_3d_robust PRIVATE GPU_POSE_GRAPH_3D_ROBUST=1)
+target_compile_options(gpu_pose_graph_slam_3d_robust PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
+
 add_executable(gpu_online_slam src/gpu_online_slam.cu)
 target_link_libraries(gpu_online_slam ${OpenCV_LIBS})
 target_compile_options(gpu_online_slam PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
