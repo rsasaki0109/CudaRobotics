@@ -1,0 +1,21 @@
+{
+  "schema_version":1,
+  "benchmark":"gpu_planner_showdown_benchmark",
+  "scenario":"baseline",
+  "scenario_config":{"lane_scale":1.000000,"jitter_scale":1.000000,"cross_shift":0.000000,"priority_flip":false},
+  "pressure_mode":"learned",
+  "pressure_context":{"lane_tightness":0.000000,"conflict_density":1.282051,"cross_shift_load":0.000000,"priority_flip":0.000000},
+  "target_pass":true,
+  "hard_target":{"reach":48,"deadlocks_max":0,"collisions_max":8,"collision_cvar_max":26.500000,"residual_pct_max":12.000000,"runtime_ms_max":15.000000},
+  "training":{"samples":1152,"initial_loss":0.21103728,"final_loss":0.00178231,"epochs":180},
+  "pressure_controller":{"mode":"learned","samples":4320,"initial_loss":0.78480148,"final_loss":0.01129431,"epochs":180},
+  "budget_decision":{"mode":"learned","extra_pass":false,"accepted_extra":false,"decision_pass":2,"score":0.356273,"context_difficulty":0.435897,"cvar_after_decision":19.775822,"residual_after_decision":4.720330,"refinement_score_before":0.000000,"refinement_score_after":0.000000,"refinement_score_delta":0.000000,"estimated_extra_ms":0.000000,"fixed_gpu_ms":13.049792,"final_gpu_ms":13.049792},
+  "intent":{"top1_accuracy_pct":100.000000,"mean_confidence":0.837220,"mean_true_probability":0.837220},
+  "runtime":{"cpu_ms":38855.931191,"gpu_ms":13.049792,"speedup":2977.513410},
+  "planners":[
+    {"name":"ORCA-like reciprocal","collisions":680,"reached":7,"deadlocks":29,"min_separation":-0.439838,"mean_terminal":6.515585,"mean_social_risk":1.576509,"max_social_risk":275.706696,"collision_cvar":62.671410,"runtime_ms":9.406092,"residual_pct":-1.000000,"target_pass":false},
+    {"name":"Priority graph baseline","collisions":663,"reached":18,"deadlocks":25,"min_separation":-0.432096,"mean_terminal":4.073318,"mean_social_risk":1.726482,"max_social_risk":338.237701,"collision_cvar":88.417397,"runtime_ms":9.401433,"residual_pct":-1.000000,"target_pass":false},
+    {"name":"No-regret graph MPPI","collisions":150,"reached":48,"deadlocks":0,"min_separation":-0.431491,"mean_terminal":0.727113,"mean_social_risk":0.726601,"max_social_risk":204.069473,"collision_cvar":43.339222,"runtime_ms":8.285120,"residual_pct":13.578139,"target_pass":false},
+    {"name":"Trainable safety-dual MPPI","collisions":0,"reached":48,"deadlocks":0,"min_separation":0.228216,"mean_terminal":0.707955,"mean_social_risk":0.693127,"max_social_risk":185.863663,"collision_cvar":21.611177,"runtime_ms":13.049792,"residual_pct":4.898419,"target_pass":true}
+  ]
+}
