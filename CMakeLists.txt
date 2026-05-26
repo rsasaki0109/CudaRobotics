@@ -515,6 +515,10 @@ add_executable(gpu_trainable_safety_dual_graph_mppi src/gpu_trainable_safety_dua
 target_link_libraries(gpu_trainable_safety_dual_graph_mppi ${OpenCV_LIBS})
 target_compile_options(gpu_trainable_safety_dual_graph_mppi PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr --use_fast_math>)
 
+add_executable(gpu_planner_showdown_benchmark src/gpu_planner_showdown_benchmark.cu)
+target_link_libraries(gpu_planner_showdown_benchmark ${OpenCV_LIBS})
+target_compile_options(gpu_planner_showdown_benchmark PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr --use_fast_math>)
+
 add_executable(gpu_interaction_graph_risk src/gpu_interaction_graph_risk.cu)
 target_link_libraries(gpu_interaction_graph_risk ${OpenCV_LIBS})
 target_compile_options(gpu_interaction_graph_risk PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
@@ -658,6 +662,17 @@ set_tests_properties(test_autodiff test_gpu_mlp PROPERTIES
   TIMEOUT 60
   LABELS "gpu")
 
+add_test(NAME gpu_planner_showdown_gate
+  COMMAND ${PROJECT_SOURCE_DIR}/bin/gpu_planner_showdown_benchmark
+    --check
+    --no-video
+    --scenario baseline
+    --json ${CMAKE_BINARY_DIR}/gpu_planner_showdown_benchmark.json
+  WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+set_tests_properties(gpu_planner_showdown_gate PROPERTIES
+  TIMEOUT 90
+  LABELS "gpu;showdown;benchmark")
+
 # Python validation tests (no GPU required)
 add_test(NAME validate_design_workflow
   COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/validate_design_workflow.py
@@ -674,7 +689,20 @@ add_test(NAME check_repro_suite_dry_run
     --suite smoke
     --output-dir ${CMAKE_BINARY_DIR}/repro_suite_dry_run
   WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
-set_tests_properties(validate_design_workflow check_design_regressions check_scaffold check_repro_suite_dry_run
+add_test(NAME check_planner_showdown_summary
+  COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/summarize_planner_showdown.py
+    --json ${CMAKE_SOURCE_DIR}/gif/gpu_planner_showdown_benchmark.json
+    --markdown-out ${CMAKE_BINARY_DIR}/gpu_planner_showdown_benchmark.md
+    --strict
+  WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+add_test(NAME check_planner_showdown_matrix_summary
+  COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/summarize_planner_showdown.py
+    --json ${CMAKE_SOURCE_DIR}/gif/gpu_planner_showdown_benchmark.json
+    --json ${CMAKE_SOURCE_DIR}/gif/gpu_planner_showdown_benchmark.json
+    --markdown-out ${CMAKE_BINARY_DIR}/gpu_planner_showdown_matrix.md
+    --strict
+  WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+set_tests_properties(validate_design_workflow check_design_regressions check_scaffold check_repro_suite_dry_run check_planner_showdown_summary check_planner_showdown_matrix_summary
   PROPERTIES
   TIMEOUT 30
   LABELS "python")

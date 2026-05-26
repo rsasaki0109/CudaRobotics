@@ -4,18 +4,24 @@ name: Performance regression check
 # only run on a self-hosted runner with a CUDA-capable GPU labelled
 # `gpu`. The job is triggered:
 #   - manually via workflow_dispatch
-#   - on PRs that touch comparison_*.cu, MPPI, ESDF, RRT* sources or
-#     this workflow itself (only effective if a self-hosted gpu runner
-#     is available; otherwise the job is simply skipped)
+#   - on PRs that touch perf-critical CUDA sources, planner-showdown
+#     reports, or this workflow itself (only effective if a self-hosted
+#     gpu runner is available; otherwise the job is simply skipped)
 
 on:
   workflow_dispatch: {}
+  schedule:
+    - cron: "17 18 * * *"
   pull_request:
     paths:
       - "src/comparison_*.cu"
       - "src/esdf_mppi.cu"
+      - "src/gpu_planner_showdown_benchmark.cu"
       - "scripts/perf_check.py"
       - "scripts/perf_baseline.json"
+      - "scripts/summarize_planner_showdown.py"
+      - "gif/gpu_planner_showdown_benchmark.json"
+      - "CMakeLists.txt"
       - ".github/workflows/perf.yml"
 
 jobs:
@@ -37,10 +43,21 @@ jobs:
             comparison_collision_check \
             comparison_rrtstar_rewire \
             esdf_mppi \
+            gpu_planner_showdown_benchmark \
             -j$(nproc)
 
       - name: Run perf_check
         run: python3 scripts/perf_check.py --tolerance 0.30
+
+      - name: Run planner showdown target gate
+        run: cd build && ctest --output-on-failure --label-regex showdown -j1
+
+      - name: Render planner showdown report
+        run: |
+          python3 scripts/summarize_planner_showdown.py \
+            --json build/gpu_planner_showdown_benchmark.json \
+            --markdown-out build/gpu_planner_showdown_benchmark.md \
+            --strict
 
       - name: Upload measurements on failure
         if: failure()
@@ -49,3 +66,5 @@ jobs:
           name: perf-output
           path: |
             scripts/perf_baseline.json
+            build/gpu_planner_showdown_benchmark.json
+            build/gpu_planner_showdown_benchmark.md

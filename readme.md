@@ -38,14 +38,14 @@ Same algorithm on CPU and GPU — GPU enables orders of magnitude more particles
 | Crowd / swarm | `gpu_crowd_swarm` | 10,000 boids with uniform-grid neighbours | 105x vs CPU |
 | Graph policy control | `gpu_gnn_swarm_controller`, `gpu_gat_traversability_policy` | 2048 agents / 3072 terrain nodes x 3 heads | 2.88 ms/control; 99.4x GAT policy |
 | Assignment / tracking | `gpu_hungarian_assignment`, `gpu_assignment_tracking` | 512 x 64x64 assignment / 128 tracking scenes | 158x Hungarian; 14.0x tracking |
-| Interaction graph risk | `gpu_interaction_graph_risk`, `gpu_interaction_graph_neural_mppi`, `gpu_multiagent_graph_neural_mppi`, `gpu_priority_graph_neural_mppi`, `gpu_intent_graph_neural_mppi`, `gpu_belief_risk_graph_mppi`, `gpu_best_response_graph_mppi`, `gpu_iterative_game_graph_mppi`, `gpu_noregret_game_graph_mppi`, `gpu_safe_noregret_game_graph_mppi`, `gpu_learned_safety_dual_graph_mppi`, `gpu_trainable_safety_dual_graph_mppi` | 2048 agents x 10 message passes / 48-agent graph x 4 passes / 48 robots x 768 MPPI rollouts | 76.3x risk propagation; interaction-aware MPPI reduces social risk 19.7%; multi-agent graph MPPI cuts cross-route collisions 518 -> 261; priority arbitration cuts 261 -> 245; intent beliefs cut 518 -> 216; belief CVaR cuts collision tail risk 31.6%; best-response game cuts collisions 518 -> 171; damped fictitious play cuts collisions 518 -> 154; regret matching cuts collisions 518 -> 150; safety-constrained no-regret cuts collisions 518 -> 136 and CVaR 43.34 -> 37.93; learned safety-dual prior keeps reach 48/48 with collisions 518 -> 140 and residual 16.53%; trainable safety-dual prior trains 1152 labels and reaches collisions 132 / CVaR 37.10 |
-| Risk-aware planning | `gpu_reciprocal_risk_planner`, `gpu_interaction_graph_neural_mppi`, `gpu_multiagent_graph_neural_mppi`, `gpu_priority_graph_neural_mppi`, `gpu_intent_graph_neural_mppi`, `gpu_belief_risk_graph_mppi`, `gpu_best_response_graph_mppi`, `gpu_iterative_game_graph_mppi`, `gpu_noregret_game_graph_mppi`, `gpu_safe_noregret_game_graph_mppi`, `gpu_learned_safety_dual_graph_mppi`, `gpu_trainable_safety_dual_graph_mppi` | 1024 agents x 9 actions x H=16 / 32768 social-risk MPPI rollouts / 48 robot coordinated, priority, intent-aware, CVaR belief, best-response, iterative game, no-regret, safe no-regret, and learned/trainable safety-dual MPPI | 4.05 ms/plan; 311.5x reciprocal risk; 4140.9x interaction-graph MPPI; 3139.6x multi-agent graph MPPI; 292.9x intent graph MPPI; 3132.6x best-response graph MPPI; 3181.3x iterative game graph MPPI; 2960.6x no-regret graph MPPI; 3043.4x safe no-regret graph MPPI; 3075.5x learned safety-dual prior graph MPPI; 3013.1x trainable safety-dual prior graph MPPI |
+| Interaction graph risk | `gpu_interaction_graph_risk`, `gpu_interaction_graph_neural_mppi`, `gpu_multiagent_graph_neural_mppi`, `gpu_priority_graph_neural_mppi`, `gpu_intent_graph_neural_mppi`, `gpu_belief_risk_graph_mppi`, `gpu_best_response_graph_mppi`, `gpu_iterative_game_graph_mppi`, `gpu_noregret_game_graph_mppi`, `gpu_safe_noregret_game_graph_mppi`, `gpu_learned_safety_dual_graph_mppi`, `gpu_trainable_safety_dual_graph_mppi`, `gpu_planner_showdown_benchmark` | 2048 agents x 10 message passes / 48-agent graph x 4 passes / 48 robots x 768 MPPI rollouts | 76.3x risk propagation; interaction-aware MPPI reduces social risk 19.7%; multi-agent graph MPPI cuts cross-route collisions 518 -> 261; priority arbitration cuts 261 -> 245; intent beliefs cut 518 -> 216; belief CVaR cuts collision tail risk 31.6%; best-response game cuts collisions 518 -> 171; damped fictitious play cuts collisions 518 -> 154; regret matching cuts collisions 518 -> 150; safety-constrained no-regret cuts collisions 518 -> 136 and CVaR 43.34 -> 37.93; learned safety-dual prior keeps reach 48/48 with collisions 518 -> 140 and residual 16.53%; trainable safety-dual prior trains 1152 labels and reaches collisions 132 / CVaR 37.10; scenario-conditioned pressure showdown reaches 0 collisions, CVaR 21.61, residual 4.90%, 13.05 ms and evaluates the adversarial-density adaptive budget |
+| Risk-aware planning | `gpu_reciprocal_risk_planner`, `gpu_interaction_graph_neural_mppi`, `gpu_multiagent_graph_neural_mppi`, `gpu_priority_graph_neural_mppi`, `gpu_intent_graph_neural_mppi`, `gpu_belief_risk_graph_mppi`, `gpu_best_response_graph_mppi`, `gpu_iterative_game_graph_mppi`, `gpu_noregret_game_graph_mppi`, `gpu_safe_noregret_game_graph_mppi`, `gpu_learned_safety_dual_graph_mppi`, `gpu_trainable_safety_dual_graph_mppi`, `gpu_planner_showdown_benchmark` | 1024 agents x 9 actions x H=16 / 32768 social-risk MPPI rollouts / 48 robot coordinated, priority, intent-aware, CVaR belief, best-response, iterative game, no-regret, safe no-regret, learned/trainable safety-dual, and showdown MPPI | 4.05 ms/plan; 311.5x reciprocal risk; 4140.9x interaction-graph MPPI; 3139.6x multi-agent graph MPPI; 292.9x intent graph MPPI; 3132.6x best-response graph MPPI; 3181.3x iterative game graph MPPI; 2960.6x no-regret graph MPPI; 3043.4x safe no-regret graph MPPI; 3075.5x learned safety-dual prior graph MPPI; 3013.1x trainable safety-dual prior graph MPPI; 2977.5x planner showdown benchmark |
 | SfM / multi-view | `gpu_sfm_mini` | 2048 features x 4 views | 217.0x match + BA vs CPU |
 | Sparse linear solvers | `gpu_pcg_solver` | 262K unknowns / 1.31M CSR nnz | 13.4x Jacobi-PCG vs CPU |
 | Clustering / graph ML | `gpu_em_gmm`, `gpu_spectral_clustering`, `gpu_label_propagation`, `gpu_label_propagation_traversability`, `gpu_graph_crf_traversability` | 262K GMM points / 3K graph nodes | 90.2x EM; 193x spectral; 123x propagation; 106x CRF |
 | Black-box optimization | `gpu_cma_es` | 3 x 32,768 candidates x 10D | 1,254x objective eval |
 | Monte Carlo planning | `gpu_mcts_planner` | 64 scenes x 4096 rollouts x 48 horizon | 712x vs CPU |
-| Learning-based planning | `gpu_diffusion_planner`, `gpu_diffusion_policy`, `gpu_diff_value_iteration_traversability`, `gpu_neural_astar_traversability`, `gpu_anytime_neural_astar_traversability`, `gpu_multigoal_neural_astar_traversability`, `gpu_spatiotemporal_neural_astar_traversability`, `gpu_experience_graph_neural_planner`, `gpu_graph_guided_neural_mppi`, `gpu_kinodynamic_graph_neural_mppi`, `gpu_multiagent_graph_neural_mppi`, `gpu_priority_graph_neural_mppi`, `gpu_intent_graph_neural_mppi`, `gpu_belief_risk_graph_mppi`, `gpu_best_response_graph_mppi`, `gpu_iterative_game_graph_mppi`, `gpu_noregret_game_graph_mppi`, `gpu_safe_noregret_game_graph_mppi`, `gpu_learned_safety_dual_graph_mppi`, `gpu_trainable_safety_dual_graph_mppi` | 512 x 64 trajectories / 192x128 soft VI / 64x neural A* / 1536-node graph / 32768 MPPI rollouts / 48 robot graph MPPI | analytic score -> BC denoising policy; 747.4x learned-cost VI; 153.1x batched neural A*; 278.5x experience-graph A*; 1320.1x graph-guided MPPI; 100% top-1 intent MPPI; belief-space CVaR tail-risk MPPI; graph-neural best-response, damped fictitious-play, no-regret, safety-constrained no-regret, learned safety-dual prior, and trainable safety-dual prior MPPI |
+| Learning-based planning | `gpu_diffusion_planner`, `gpu_diffusion_policy`, `gpu_diff_value_iteration_traversability`, `gpu_neural_astar_traversability`, `gpu_anytime_neural_astar_traversability`, `gpu_multigoal_neural_astar_traversability`, `gpu_spatiotemporal_neural_astar_traversability`, `gpu_experience_graph_neural_planner`, `gpu_graph_guided_neural_mppi`, `gpu_kinodynamic_graph_neural_mppi`, `gpu_multiagent_graph_neural_mppi`, `gpu_priority_graph_neural_mppi`, `gpu_intent_graph_neural_mppi`, `gpu_belief_risk_graph_mppi`, `gpu_best_response_graph_mppi`, `gpu_iterative_game_graph_mppi`, `gpu_noregret_game_graph_mppi`, `gpu_safe_noregret_game_graph_mppi`, `gpu_learned_safety_dual_graph_mppi`, `gpu_trainable_safety_dual_graph_mppi`, `gpu_planner_showdown_benchmark` | 512 x 64 trajectories / 192x128 soft VI / 64x neural A* / 1536-node graph / 32768 MPPI rollouts / 48 robot graph MPPI | analytic score -> BC denoising policy; 747.4x learned-cost VI; 153.1x batched neural A*; 278.5x experience-graph A*; 1320.1x graph-guided MPPI; 100% top-1 intent MPPI; belief-space CVaR tail-risk MPPI; graph-neural best-response, damped fictitious-play, no-regret, safety-constrained no-regret, learned safety-dual prior, trainable safety-dual prior, and target-gated planner showdown MPPI |
 | Voxel map (3D) | `comparison_voxel_map` | 256x256x32 | 58x per ray |
 | ESDF (2D/3D) | `comparison_esdf`, `comparison_esdf_3d` | 640K cells / 1.05M voxels | 53,404x / 86,613x |
 | LiDAR sim | `comparison_lidar_sim`, `comparison_lidar3d_sim`, `comparison_lidar3d_realistic` | 1M 2D / 131K 3D rays | + 5 physical effects (realistic) |
@@ -108,6 +108,8 @@ Same algorithm on CPU and GPU — GPU enables orders of magnitude more particles
 | <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_learned_safety_dual_graph_mppi.gif" width="400"/> | |
 | **GPU trainable safety-dual prior graph MPPI (tiny MLP trained on 1152 synthetic graph-risk labels, loss 0.21104 -> 0.00178, collisions 518 -> 132, collision CVaR 43.34 -> 37.10, 3013.1x vs CPU)** | |
 | <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_trainable_safety_dual_graph_mppi.gif" width="400"/> | |
+| **GPU planner showdown benchmark (ORCA-like / priority / no-regret / trainable safety-dual; scenario-conditioned target pass: 48/48 reach, 0 collisions, CVaR 21.61, residual 4.90%, 13.05 ms)** | |
+| <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_planner_showdown_benchmark.gif" width="400"/> | |
 | **Massive RRT* Rewire (CPU 2K vs CUDA 200K nodes)** | **3D ESDF (32³ CPU vs 128²×64 CUDA, 86,613x)** |
 | <img src="https://rsasaki0109.github.io/CudaRobotics/comparison_rrtstar_rewire.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/comparison_esdf_3d.gif" width="400"/> |
 | **GPU diffusion policy (768-sample BC MLP prior + diffusion refinement, 512×64 paths)** | **GPU diffusion planner (512 trajectories × 64 waypoints, 120 Langevin steps, 0.03 ms/step)** |
@@ -187,6 +189,56 @@ mkdir build && cd build && cmake .. && make -j$(nproc)
 
 Requires CMake ≥ 3.18, CUDA Toolkit ≥ 12.0, OpenCV ≥ 4.5, Eigen 3. Executables go to `bin/`.
 
+Planner showdown target gate:
+
+```bash
+./bin/gpu_planner_showdown_benchmark --check --no-video --json gif/gpu_planner_showdown_benchmark.json
+python3 scripts/summarize_planner_showdown.py --json gif/gpu_planner_showdown_benchmark.json --markdown-out build/gpu_planner_showdown_benchmark.md --strict
+```
+
+`--check` returns non-zero if the trainable safety-dual row misses the hard gates.
+The gated default scenario is `baseline`; `--scenario tight`,
+`--scenario priority_flip`, and `--scenario adversarial_density` are manual
+stress probes for narrower crossings, flipped priority ordering, and dense
+centerline conflicts.
+Use `--pressure-mode learned|teacher|none` for the safety-pressure ablation:
+the learned controller uses runtime safety metrics plus scenario context
+(lane tightness, conflict density, cross-shift load, and priority flips) and
+matches the teacher-style target gate on baseline,
+while disabling pressure drops the adversarial-density stress probe to a target
+miss (9 collisions, CVaR 32.62).
+Use `--adaptive-budget learned|off` for the pass-budget ablation. The default
+learned budget scores pass-2 CVaR, residual pressure, and scenario difficulty;
+in the tracked matrix it evaluates only the adversarial-density run and records
+whether a refinement candidate is accepted. Current matrix runtime remains
+within 13.050 ms.
+After running those probes, repeat `--json` to render a scenario matrix:
+
+```bash
+python3 scripts/summarize_planner_showdown.py \
+  --json gif/gpu_planner_showdown_benchmark.json \
+  --json build/gpu_planner_showdown_tight.json \
+  --json build/gpu_planner_showdown_priority_flip.json \
+  --json build/gpu_planner_showdown_adversarial_density.json \
+  --markdown-out build/gpu_planner_showdown_matrix.md \
+  --strict
+```
+
+Pressure ablation matrix:
+
+```bash
+./bin/gpu_planner_showdown_benchmark --scenario baseline --pressure-mode teacher --no-video --json build/gpu_planner_showdown_pressure_teacher.json
+./bin/gpu_planner_showdown_benchmark --scenario baseline --pressure-mode none --no-video --json build/gpu_planner_showdown_pressure_none.json
+./bin/gpu_planner_showdown_benchmark --scenario adversarial_density --pressure-mode none --no-video --json build/gpu_planner_showdown_pressure_none_adversarial_density.json
+python3 scripts/summarize_planner_showdown.py \
+  --json gif/gpu_planner_showdown_benchmark.json \
+  --json build/gpu_planner_showdown_pressure_teacher.json \
+  --json build/gpu_planner_showdown_pressure_none.json \
+  --json build/gpu_planner_showdown_adversarial_density.json \
+  --json build/gpu_planner_showdown_pressure_none_adversarial_density.json \
+  --markdown-out build/gpu_planner_showdown_pressure_ablation.md
+```
+
 ROS2 (optional):
 
 ```bash
@@ -238,6 +290,7 @@ cd ros2_ws && colcon build --packages-select cuda_robotics
 | GPU safe no-regret game graph MPPI | 48 robots x 768 rollouts x H=72 x one-shot/raw/no-regret/safe no-regret updates, cross-route collisions 518 -> 136, collision CVaR 43.34 -> 37.93 vs no-regret, reach basin 48/48 -> 39/48 -> 48/48, safety alpha avg 0.637 -> 0.469, unilateral residual 25.69% -> 19.37%, **3043.4x** vs CPU equivalent rollout evaluation |
 | GPU learned safety-dual prior graph MPPI | 48 robots x 768 rollouts x H=72 x one-shot/raw/no-regret/learned-prior safety-dual updates, fixed-weight MLP prior predicts dual/alpha/scale from graph-risk features, cross-route collisions 518 -> 140, collision CVaR 43.34 -> 39.54 vs no-regret, reach basin 48/48 -> 39/48 -> 48/48, learned prior scale avg 1.168 -> 1.052, unilateral residual 25.69% -> 16.53%, **3075.5x** vs CPU equivalent rollout evaluation |
 | GPU trainable safety-dual prior graph MPPI | 48 robots x 768 rollouts x H=72 x one-shot/raw/no-regret/trainable-prior safety-dual updates, tiny MLP trains on 1152 synthetic graph-risk labels (loss 0.21104 -> 0.00178), cross-route collisions 518 -> 132, collision CVaR 43.34 -> 37.10 vs no-regret, reach basin 48/48 -> 39/48 -> 48/48, trainable prior scale avg 1.150 -> 1.083, unilateral residual 25.69% -> 17.48%, **3013.1x** vs CPU equivalent rollout evaluation |
+| GPU planner showdown benchmark | 48 robots x 768 rollouts x H=72 comparing ORCA-like reciprocal, priority graph, no-regret MPPI, and trainable safety-dual MPPI; hard target gates: reach 48/48, deadlocks 0, collisions <= 8, CVaR <= 26.5, residual <= 12.0%, runtime <= 15.0 ms; trainable safety-dual plus scenario-conditioned learned safety-pressure controller (4320 metric/context labels, loss 0.78480 -> 0.01129) and adaptive tail-risk refinement budget with collisions 0, CVaR 21.61, residual 4.90%, 13.05 ms, **2977.5x** vs CPU equivalent rollout evaluation; `--check` emits a target-gate exit code and JSON summary |
 | GPU GNN swarm controller | 2048 agents x 3 message passes, 2.88 ms/control, **44.3x** vs CPU |
 | GPU reciprocal risk planner | 1024 agents x 9 actions x H=16, 4.05 ms/plan, **311.5x** vs CPU |
 | GPU assignment tracking | 128 scenes x 48 tracks x 72 detections, **14.0x** vs CPU |
