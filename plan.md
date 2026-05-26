@@ -1,6 +1,6 @@
 # CudaRobotics Plan / Handoff (for Codex / Claude)
 
-Last updated: 2026-05-25 JST
+Last updated: 2026-05-26 JST
 
 This document is the long-form handoff for the next coding agent (Codex).
 It captures: (1) where the repo is right now, (2) what was just done over
@@ -9,25 +9,58 @@ known sharp edges and lessons learned from the last few attempts, and (5)
 a prioritised menu of candidate next tasks with enough specificity that a
 fresh agent can pick one and start.
 
-Branch `feat/gpu-online-slam-3d-switchable` is **in flight** (PR not yet
-opened at time of writing / open as draft): it is the *other* 3D SLAM
-follow-up flagged in the previous handoff -- wiring the switchable-constraint
-SE(3) back-end of #98 into the online sliding-window front-end of #63. A robot
-streams 420 SE(3) poses; true loops (GT proximity) and 21 gross false loops
-arrive incrementally; two back-ends run lockstep on the same edge stream:
-"plain online" (every loop weight 1) is yanked off course as false loops
-arrive (final RMSE 9.10 m), while "switchable online" re-minimises per-loop
-switches in closed form each frame inside the sliding window and rejects
-all 21 false loops live (final RMSE 0.29 m, clean-loop switch 1.000 / false
-0.000). Built on the SE(3) GN+PCG + closed-form switch machinery of #98 made
-sliding-window-aware (active_lo/active_hi masking, per-window anchor pin), plus
-#63's iSAM-style global pass on loop. Single file
-`src/gpu_online_slam_3d_switchable.cu`; ~16 ms/step for both back-ends. The
-localization-depth line (#86/#101/#104) being exhausted, this opens the 3D-SLAM
-online-robustness line. GIF deployed to gh-pages.
+Branch `chore/shared-se3-helpers` (-> `master`) is **in flight** (2026-05-26).
+This is the Open Threads A shared-header cleanup recommended after #105: it
+lifts the SE(3) / SO(3) math kernels + the 6x6 SPD Cholesky solve that were
+copied verbatim across the three rotation-matrix pose-graph SLAM back-ends
+(`gpu_pose_graph_slam_3d.cu`, `gpu_pose_graph_slam_3d_switchable.cu`,
+`gpu_online_slam_3d_switchable.cu`) into a single new
+`include/se3_helpers.cuh` (`clampf`, `mat3_identity/mul/transpose_mul/
+transpose_vec/vec`, `so3_exp`, `so3_log`, `solve6_spd_device`). Net -322 LOC
+across the three `.cu` files (364 deletions / 42 insertions). Investigation
+showed the plan's "six files share this scaffold" framing was optimistic:
+only these three share the *rotation-matrix* SE(3) scheme byte-for-byte;
+`gpu_ndt_3d.cu` / `gpu_gicp_3d.cu` use a differently-named `cholesky_solve_6`
++ `H_OFF` family, and `gpu_megaparticles_6dof.cu` uses a quaternion
+representation -- those are genuinely different code, not drift, so folding
+them in would be a forced abstraction and is deliberately left out of scope.
+The struct-coupled helpers (`pose_relative`, `residual_edge`, `perturb_pose`)
+stay per-`.cu` because they depend on the demo-local `Pose` / `Edge` layout;
+the header stays a pure struct-agnostic math kernel library. Verified numeric
+parity: the fully-deterministic CPU reference path is byte-identical before
+and after (robust 0.2844 m / 2.1182 deg, switchable 0.2934 m / 2.2235 deg);
+GPU final metrics match to the pre-existing `atomicAdd`-order run-to-run
+noise floor (robust 0.2842 m / cost 547.39 / 36-36 rejected, switchable
+~0.293 m / cost ~144547.5 / 36-36, online plain 9.10 m vs switchable 0.29 m
+/ 21-21). All four affected targets (the three demos plus the
+`gpu_pose_graph_slam_3d_robust` variant of the first source) rebuild and run
+clean. No CMake change needed -- `include/` is already on the compile include
+path. No GIF/readme change (behaviour is unchanged; this is a pure cleanup).
+
+PR #105 (`feat/gpu-online-slam-3d-switchable` -> `master`) was **MERGED**
+(squash) on 2026-05-25; CI Build passed (~12 min; Build + Python tests +
+CPU tests all green; only the Node.js 20 deprecation annotation), the draft was
+marked ready, and the remote feature branch was deleted. Local `master` is at
+`c1e977d` and in sync with origin. It is the *other* 3D SLAM follow-up flagged
+in the previous handoff -- wiring the switchable-constraint SE(3) back-end of
+#98 into the online sliding-window front-end of #63. A robot streams 420 SE(3)
+poses; true loops (GT proximity) and 21 gross false loops arrive incrementally;
+two back-ends run lockstep on the same edge stream: "plain online" (every loop
+weight 1) is yanked off course as false loops arrive (final RMSE 9.10 m), while
+"switchable online" re-minimises per-loop switches in closed form each frame
+inside the sliding window and rejects all 21 false loops live (final RMSE
+0.29 m, clean-loop switch 1.000 / false 0.000). Built on the SE(3) GN+PCG +
+closed-form switch machinery of #98 made sliding-window-aware (active_lo/
+active_hi masking, per-window anchor pin), plus #63's iSAM-style global pass on
+loop. Single file `src/gpu_online_slam_3d_switchable.cu`; ~16 ms/step for both
+back-ends. The squash diff touched only its four files (CMakeLists.txt,
+plan.md, readme.md, src/gpu_online_slam_3d_switchable.cu). This closes the
+3D-SLAM follow-up line (#82 v2 -> #83 robust -> #98 switchable batch -> #105
+switchable online). There is **no active feature branch** now -- the next agent
+starts fresh from `master`.
 
 Mainline is in sync with `origin/master` at commit
-`430a0f5 Add GPU MegaParticles 6-DoF SE(3) relocalization demo (#104)`.
+`c1e977d Add GPU online 3D SLAM with switchable loop constraints (#105)`.
 PR #104 (`feat/gpu-megaparticles-6dof` -> `master`) was **MERGED** (squash) on
 2026-05-25; CI Build passed (~12 min; Build + Python tests + CPU tests all
 green; only the Node.js 20 deprecation annotation), the draft was marked ready,
@@ -324,7 +357,7 @@ Compact PR list. Format: `#PR  Title  | headline number`.
 | #98 | GPU switchable-constraint 3D pose-graph SLAM | per-loop switch variables jointly optimised with SE(3) poses (Sünderhauf 2012, block coordinate descent, asymmetric switch damping); 384 poses / 611 edges / 36 false loops; plain GN 6.95 m / 39.89 deg → switchable 0.29 m / 2.23 deg, learns 36/36 false-loop rejection with no hand-set trim fraction; GPU/CPU agree to <1 mm |
 | #101 | GPU MegaParticles LSH neighbor index | explicit p-stable LSH (8 tables × 3 Gaussian projections, Datar 2004) replaces the fixed-grid neighbor stand-in of #86; controlled comparison at 2 × 1,048,576 particles with identical Stein machinery; neighbor recall vs brute-force kNN 58.2% → 87.8%, post-kidnap RMSE 0.099 → 0.088 m, both reacquire in 0 frames; LSH 9.6 ms vs grid 4.9 ms / step (8-table OR cost) |
 | #104 | GPU MegaParticles 6-DoF SE(3) | 1,048,576 SE(3) particles (position + quaternion) in a 3D voxel world; GPU 3D-ESDF (JFA-3D) range likelihood, quaternion GN steps (right-perturbation), 6-D p-stable LSH neighbor consensus (a dense 6-D grid is infeasible, so #101's LSH is essential); hidden kidnap: local bootstrap post RMSE 5.97 m → 6-DoF MegaParticles 0.22 m / 1.9 deg, reacquires in 0 frames; mega ~13.9 ms/step |
-| (in&nbsp;flight) | GPU online 3D SLAM, switchable loop constraints | #98 switchable SE(3) back-end wired into #63's online sliding-window front-end; 420 streamed poses, window W=80 + global pass on loop, true loops from GT proximity + 21 gross false loops injected live; lockstep plain vs switchable on the same edge stream; plain online corrupted to 9.10 m as false loops arrive, switchable online rejects all 21 live (closed-form per-frame switch update inside the window) → 0.29 m, clean switch 1.000 / false 0.000; ~16 ms/step both back-ends |
+| #105 | GPU online 3D SLAM, switchable loop constraints | #98 switchable SE(3) back-end wired into #63's online sliding-window front-end; 420 streamed poses, window W=80 + global pass on loop, true loops from GT proximity + 21 gross false loops injected live; lockstep plain vs switchable on the same edge stream; plain online corrupted to 9.10 m as false loops arrive, switchable online rejects all 21 live (closed-form per-frame switch update inside the window) → 0.29 m, clean switch 1.000 / false 0.000; ~16 ms/step both back-ends |
 
 ### Current branch deep notes: MegaParticles-style Stein MCL (#86)
 
@@ -574,11 +607,19 @@ any new scan-matching / SLAM / optimisation work.
 - **Back-migrate older `.cu` files to use `include/cuda_check.cuh`** and
   friends from #66, instead of their private wrappers. Mechanical, low
   risk, good first task.
-- **Lift `cholesky_solve_6` + `H_OFF` + `so3_exp` + `mat3_mul` into a
-  shared header** (`include/se3_helpers.cuh` perhaps). Currently
-  duplicated across `gpu_ndt_3d.cu`, `gpu_ndt_3d_multires.cu`, and
-  `gpu_gicp_3d.cu`, and can still be shared with future 3D SLAM /
-  registration work.
+- **Lift shared SE(3) math into a header** — DONE for the rotation-matrix
+  pose-graph family in `chore/shared-se3-helpers` (2026-05-26): the new
+  `include/se3_helpers.cuh` now holds `clampf`, the `mat3_*` family,
+  `so3_exp`, `so3_log`, and `solve6_spd_device`, shared by
+  `gpu_pose_graph_slam_3d.cu`, `gpu_pose_graph_slam_3d_switchable.cu`, and
+  `gpu_online_slam_3d_switchable.cu`. **Still open (separate, lower-priority):**
+  the scan-matching family `gpu_ndt_3d.cu` / `gpu_ndt_3d_multires.cu` /
+  `gpu_gicp_3d.cu` uses a differently-named `cholesky_solve_6` + `H_OFF`
+  scheme that is *not* byte-identical to `solve6_spd_device`; unifying it
+  would need a careful merge + per-demo numeric re-verification (NDT/GICP
+  basins are tuning-sensitive). `gpu_megaparticles_6dof.cu` is quaternion-
+  based and intentionally separate. Treat those as their own follow-up, not
+  drift.
 
 ### B. New algorithm candidates (ranked rough order, see "Recommended Next" below)
 
@@ -618,10 +659,10 @@ infeasible) is already merged (squash) and its branch deleted; local `master`
 is at `430a0f5` and in sync with origin. There is no in-flight PR to babysit.
 Pick a fresh task from the menu below and start it on a new branch off
 `master`. With the localization-depth line now exhausted (#86 Stein, #101 LSH,
-#104 6-DoF) AND the 3D-SLAM online-robustness slice now done (the in-flight
-`feat/gpu-online-slam-3d-switchable` branch wires #98's switchable SE(3)
-back-end into #63's online sliding-window front-end, rejecting false loops
-live), the strongest remaining candidate is the **Open Threads A shared-header
+#104 6-DoF) AND the 3D-SLAM online-robustness slice now done (#105 wires #98's
+switchable SE(3) back-end into #63's online sliding-window front-end, rejecting
+false loops live as they stream in), the strongest remaining candidate is the
+**Open Threads A shared-header
 cleanup** (now especially worthwhile: the SE(3) GN + Jacobi-PCG + 6x6 Cholesky
 scaffold + closed-form switch update + quaternion/so3 helpers are duplicated
 across `gpu_pose_graph_slam_3d.cu`, `gpu_pose_graph_slam_3d_switchable.cu`,
