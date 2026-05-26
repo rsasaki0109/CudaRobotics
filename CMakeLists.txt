@@ -483,6 +483,10 @@ add_executable(gpu_belief_risk_graph_mppi src/gpu_belief_risk_graph_mppi.cu)
 target_link_libraries(gpu_belief_risk_graph_mppi ${OpenCV_LIBS})
 target_compile_options(gpu_belief_risk_graph_mppi PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr --use_fast_math>)
 
+add_executable(gpu_best_response_graph_mppi src/gpu_best_response_graph_mppi.cu)
+target_link_libraries(gpu_best_response_graph_mppi ${OpenCV_LIBS})
+target_compile_options(gpu_best_response_graph_mppi PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr --use_fast_math>)
+
 add_executable(gpu_interaction_graph_risk src/gpu_interaction_graph_risk.cu)
 target_link_libraries(gpu_interaction_graph_risk ${OpenCV_LIBS})
 target_compile_options(gpu_interaction_graph_risk PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
