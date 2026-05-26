@@ -375,6 +375,10 @@ add_executable(gpu_correlative_scan_matching src/gpu_correlative_scan_matching.c
 target_link_libraries(gpu_correlative_scan_matching ${OpenCV_LIBS})
 target_compile_options(gpu_correlative_scan_matching PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
 
+add_executable(gpu_csm_loop_closure_slam src/gpu_csm_loop_closure_slam.cu)
+target_link_libraries(gpu_csm_loop_closure_slam ${OpenCV_LIBS})
+target_compile_options(gpu_csm_loop_closure_slam PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
+
 add_executable(gpu_ndt_3d src/gpu_ndt_3d.cu)
 target_link_libraries(gpu_ndt_3d ${OpenCV_LIBS})
 target_compile_options(gpu_ndt_3d PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)

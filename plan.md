@@ -9,8 +9,53 @@ known sharp edges and lessons learned from the last few attempts, and (5)
 a prioritised menu of candidate next tasks with enough specificity that a
 fresh agent can pick one and start.
 
-PR (`feat/gpu-correlative-scan-matching` -> `master`) is **IN FLIGHT** as of
-2026-05-26: it adds the GLOBAL/exhaustive member missing from the scan-matching
+PR (`feat/gpu-csm-loop-closure-slam` -> `master`) is **IN FLIGHT** as of
+2026-05-26: a 2D SLAM demo whose loop closures are DETECTED by scan matching, not
+injected from ground truth. Every existing pose-graph SLAM demo in the repo
+(`gpu_pose_graph_slam` #58, `gpu_online_slam` #63, the 3D/robust/switchable
+family) takes its loop-closure constraints from GT spatial proximity -- they
+exercise the back-end but skip the hard front-end question (has the robot
+returned to a known place, and what is the relpose of the revisit?). New single
+file `src/gpu_csm_loop_closure_slam.cu` answers it with the #120 correlative
+scan matcher as the loop-closure FRONT-END: a robot drives a closed elliptical
+lap (140 keyframes) with a small systematic odometry heading bias, so dead
+reckoning drifts ~2 m by the seam -- past a local matcher's basin but inside
+CSM's exhaustive window. When the drifting estimate brings the current keyframe
+near an earlier one (index-gap + estimate-proximity gate), the current scan's
+in-range endpoints are matched EXHAUSTIVELY (coarse-to-fine, ~1.42M candidate
+relposes/attempt, one thread = one candidate) against a distance-transform
+likelihood field built from the earlier keyframe's scan; the normalised
+scan-to-scan score gates accept/reject and the argmax gives the relpose -- NO
+ground truth enters the constraint. Accepted (odometry + CSM loop) edges feed a
+compact dense SE(2) pose-graph Gauss-Newton back-end (host Cholesky, the graph
+is small; the GPU work is the front-end search) that re-optimises the whole
+trajectory the moment a loop snaps shut. Result (deterministic): 52 loops
+proposed, 49 accepted, 3 rejected by the score gate; dead-reckoning ATE 2.03 m ->
+SLAM ATE 0.17 m; GPU 2.4 ms vs a one-off CPU coarse search 1.5 s => ~630x. Left
+panel (dead reckoning) smears / rotates; right panel folds into one consistent
+floor-plan at the closure. KEY LESSONS: (a) the CSM search must be centred on the
+estimate-predicted relpose (`relative(est[o], est[k])`), NOT zero -- at a lap
+seam the true relpose is small but the heading can be far from 0, and the window
+is only +/-0.6 rad; (b) the local field must be built from the OLD keyframe's
+matchable (in-range) endpoints only, and the moving scan likewise range-capped,
+or far/aliased returns dilute the normalised score below the accept gate; (c) the
+one-off CPU timing reference must consume its `best` score or the whole search is
+eliminated as dead code (same trap as #120, 0.0 ms tell-tale). Touched files:
+CMakeLists.txt, readme.md, plan.md, src/gpu_csm_loop_closure_slam.cu, plus the
+gh-pages GIF. This is the natural follow-up to #120 -- the global scan matcher
+graduating from a standalone relocalization primitive into a SLAM loop-closure
+front-end, and the first repo SLAM demo with data-driven (not GT) loop closures.
+
+PR #120 (`feat/gpu-correlative-scan-matching` -> `master`) was **MERGED**
+(squash) on 2026-05-26 at `f32c831`; CI Build passed (12m59s; Build + Python
+tests + CPU tests all green; only the Node.js 20 deprecation annotation), the
+draft was marked ready, and the remote branch was deleted. The concurrent agent
+session landed #119 `gpu_trainable_safety_dual_graph_mppi` at `89e41f2` just
+before it, so the squash fast-forward landed it together; #120's own diff is its
+four files (CMakeLists.txt, readme.md, plan.md,
+src/gpu_correlative_scan_matching.cu) plus the gh-pages GIF. Local `master` is
+at `f32c831` and in sync with origin.
+It adds the GLOBAL/exhaustive member missing from the scan-matching
 family (NDT 2D/3D, GICP 2D/3D are all LOCAL iterative refiners). New single file
 `src/gpu_correlative_scan_matching.cu` implements correlative scan matching
 (Olson, ICRA 2009; Cartographer's real-time CSM): a discretised (x, y, theta)
