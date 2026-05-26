@@ -24,6 +24,8 @@ Same algorithm on CPU and GPU — GPU enables orders of magnitude more particles
 | <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_online_slam_3d_switchable.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_megaparticles_gicp_mcl.gif" width="400"/> |
 | **MegaParticles trajectory smoother: robust fixed-lag cuts representative jitter ~70x and rejects spurious-mode flips (1M particles)** | **Switchable-constraint 3D pose-graph SLAM: 36/36 false loops rejected (plain 6.95 m vs switched 0.28 m)** |
 | <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_megaparticles_smoother.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_pose_graph_slam_3d_switchable.gif" width="400"/> |
+| **CSM loop-closure SLAM: loops detected by scan matching (no ground truth), dead-reckoning ATE 2.03 m → 0.17 m, 49 loops accepted / 3 rejected** | **Correlative scan matching: exhaustive global alignment, 2.1M candidate poses/frame, recovers offsets where the local matcher fails (490x vs CPU)** |
+| <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_csm_loop_closure_slam.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_correlative_scan_matching.gif" width="400"/> |
 
 ## Capability matrix
 
@@ -32,7 +34,7 @@ Same algorithm on CPU and GPU — GPU enables orders of magnitude more particles
 | Occupancy grid | `comparison_occupancy_grid` | 256x256 | log-odds raycast |
 | Collision check | `comparison_collision_check` | 1M segments/scan | 1,277x per candidate |
 | Scan matching | `comparison_icp`, `comparison_ndt`, `gpu_ndt_3d_multires`, `gicp`, `gpu_correlative_scan_matching` | 10K+ points / 2.1M candidate poses | parallel correspondences; exhaustive global CSM recovers large offsets (44/44) where a local field matcher fails (5/44), 487x vs CPU |
-| Pose-graph SLAM | `gpu_pose_graph_slam`, `gpu_pose_graph_slam_3d`, `gpu_pose_graph_slam_3d_robust`, `gpu_pose_graph_slam_3d_switchable`, `gpu_online_slam`, `gpu_online_slam_3d_switchable` | 2D 200 poses / 3D 384-420 poses | robust 3D rejects 36/36 false loops, 6.95→0.28 m; switchable constraints learn per-loop switches jointly with poses, 6.95→0.29 m; online 3D switchable rejects false loops live in a sliding window, plain 9.10 m → switchable 0.29 m (21/21 rejected) |
+| Pose-graph SLAM | `gpu_pose_graph_slam`, `gpu_pose_graph_slam_3d`, `gpu_pose_graph_slam_3d_robust`, `gpu_pose_graph_slam_3d_switchable`, `gpu_online_slam`, `gpu_online_slam_3d_switchable`, `gpu_csm_loop_closure_slam` | 2D 200 poses / 3D 384-420 poses | robust 3D rejects 36/36 false loops, 6.95→0.28 m; switchable constraints learn per-loop switches jointly with poses, 6.95→0.29 m; online 3D switchable rejects false loops live in a sliding window, plain 9.10 m → switchable 0.29 m (21/21 rejected); CSM loop-closure SLAM detects loops from scan data (no GT), ATE 2.03→0.17 m, 49 accepted / 3 rejected |
 | Particle filter | `comparison_pf`, `gpu_global_localization_mcl`, `gpu_megaparticles_stein_mcl`, `gpu_megaparticles_lsh`, `gpu_megaparticles_6dof`, `gpu_megaparticles_gicp_mcl`, `gpu_megaparticles_smoother`, `gpu_kld_amcl`, `diff_pf`, `diff_pf_mlp` | 10K-1M particles | MegaParticles-style range SPF: 14.61 m bootstrap vs 0.097 m recovery; explicit p-stable LSH neighbor index lifts neighbor recall 58%→88%; 6-DoF SE(3) relocalization recovers a hidden kidnap to 0.22 m / 1.9 deg (LSH neighbor consensus); surface-aware GICP D2D likelihood halves post-kidnap error vs the field proxy (0.099→0.064 m); a robust fixed-lag smoother over the representative state cuts in-track jitter ~70x (RMSE 5.4→0.25 m) and rejects spurious-mode flips; KLD-AMCL adapts 400→65,536 particles, 15.2x vs CPU |
 | RRT family | `comparison_rrt*`, `comparison_rrtstar_rewire` | 1M paths / 200K nodes | 5,000x per-path; 62x rewire |
 | Crowd / swarm | `gpu_crowd_swarm` | 10,000 boids with uniform-grid neighbours | 105x vs CPU |
@@ -64,8 +66,8 @@ Same algorithm on CPU and GPU — GPU enables orders of magnitude more particles
 | <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_nerf_volume.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_sfm_mini.gif" width="400"/> |
 | **GPU 3D Gaussian Splatting renderer (~1k Gaussians, 0.94 ms/frame)** | **GPU switchable-constraint 3D Pose-Graph SLAM (per-loop switch variables optimised jointly with SE(3) poses, 36/36 false loops rejected, plain 6.95 m → switchable 0.29 m)** |
 | <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_gaussian_splatting.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_pose_graph_slam_3d_switchable.gif" width="400"/> |
-| **GPU online 3D SLAM with switchable loop constraints (sliding-window SE(3) + live switch update, false loops rejected as they stream in, plain 9.10 m → switchable 0.29 m, 21/21 rejected)** | |
-| <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_online_slam_3d_switchable.gif" width="400"/> | |
+| **GPU online 3D SLAM with switchable loop constraints (sliding-window SE(3) + live switch update, false loops rejected as they stream in, plain 9.10 m → switchable 0.29 m, 21/21 rejected)** | **GPU CSM loop-closure SLAM (loops DETECTED by exhaustive scan matching, not GT; 1.4M candidate relposes/attempt, dead-reckoning ATE 2.03 m → SLAM 0.17 m, 49 accepted / 3 rejected, 630x vs CPU)** |
+| <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_online_slam_3d_switchable.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_csm_loop_closure_slam.gif" width="400"/> |
 
 ## Solver infrastructure
 
@@ -216,6 +218,7 @@ cd ros2_ws && colcon build --packages-select cuda_robotics
 | Robust 3D Pose-graph SLAM | 384 poses / 611 edges, 36 false loop closures, switch gate rejects 36/36; plain 6.95 m → robust 0.28 m |
 | Switchable-constraint 3D Pose-graph SLAM | 384 poses / 611 edges, per-loop switch variables jointly optimised with poses; learns 36/36 false-loop rejection (no hand-set trim); plain 6.95 m → switchable 0.29 m / 2.2 deg |
 | Online 3D SLAM, switchable loop constraints | 420 streamed SE(3) poses, sliding window W=80 + global pass on loop, 21 false loops injected live; plain online 9.10 m → switchable online 0.29 m, 21/21 false loops rejected as they arrive |
+| CSM loop-closure SLAM | 140-keyframe 2D lap; loops DETECTED by exhaustive correlative scan matching (no GT), 1.42M candidate relposes/attempt (coarse-to-fine), score-gated (49 accepted / 3 rejected); dead-reckoning ATE 2.03 m → SLAM 0.17 m; GPU 2.4 ms vs CPU 1.5 s per attempt — **630x** |
 | 3D Gaussian Splatting (~1k Gaussians, 720x480) | **0.94 ms / frame** |
 | GPU diffusion policy | 768-sample behavior cloning MLP + 512 x 64 learned denoising trajectories |
 | GPU CMA-ES objective evaluation | 3 x 32,768 candidates x 10D, **1,254x** vs CPU eval |
