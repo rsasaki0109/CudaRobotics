@@ -1,6 +1,6 @@
 # CudaRobotics Plan / Handoff (for Codex / Claude)
 
-Last updated: 2026-05-26 JST (CSM submap SLAM in flight)
+Last updated: 2026-05-26 JST (branch-and-bound CSM in flight)
 
 This document is the long-form handoff for the next coding agent (Codex).
 It captures: (1) where the repo is right now, (2) what was just done over
@@ -9,7 +9,48 @@ known sharp edges and lessons learned from the last few attempts, and (5)
 a prioritised menu of candidate next tasks with enough specificity that a
 fresh agent can pick one and start.
 
-PR (`feat/gpu-csm-submap-slam` -> `master`) is **IN FLIGHT** as of 2026-05-26:
+PR (`feat/gpu-branch-and-bound-csm` -> `master`) is **IN FLIGHT** as of 2026-05-26:
+the algorithmic follow-up to the CSM line (#120 exhaustive -> #121 loop-closure
+front-end -> #123 submap front-end). All three find the global pose by EXHAUSTIVE
+search (one thread scores one candidate, host takes the argmax) -- fine for a
+small window, but a real loop-closure search must cover a LARGE window and the
+exhaustive count grows cubically, so brute force (even on the GPU) eventually
+runs out of room. Cartographer's real loop closer (Hess et al., ICRA 2016) solves
+this with BRANCH AND BOUND over a precomputed multi-resolution likelihood field:
+a stack of max-pooled grids gives an admissible UPPER BOUND on the best score in
+any block of candidates, so a best-first search discards whole blocks without
+scoring their leaves and still returns the IDENTICAL global maximum. New single
+file `src/gpu_branch_and_bound_csm.cu` runs that head-to-head against the #120
+exhaustive search on the SAME field, SAME scan, and SAME discrete (x, y, theta)
+grid (translation step = one field cell, so the spatial max-pool gives an
+admissible per-point bound; theta enumerated at ~1 deg). Two GPU pieces stay in
+the "one thread = one candidate" idiom: the multi-resolution max-pool stack is
+built on the GPU (one thread = one cell per level, a 2D sparse table), and the
+BnB frontier -- a complete coarse tiling at level C-3 (64 nodes/theta) -- is
+scored on the GPU in parallel (one thread = one node); a short host best-first
+descent (first leaf popped == global optimum) then refines the winner. The window
+GROWS frame by frame (C 5->8, +/-0.8 m -> +/-6.4 m). Result (deterministic): the
+exhaustive count climbs 13k -> 4.52M candidates while BnB stays ~0.9k -> 4.5k
+nodes, and BOTH return the same pose -- 40/40 frames the BnB grid cell equals the
+exhaustive cell (or an immediate neighbour at a float tie). At the largest window
+BnB scores **1004x fewer** candidates (4,521,984 vs 4,504) for the identical
+optimum; the GPU exhaustive baseline is 12 ms vs a one-off CPU 0.7 s (~57x). KEY
+LESSONS: (a) the max-pool bound's admissibility breaks at the GRID EDGE -- if a
+node's min corner falls off-grid (sampled as 0) while an in-grid leaf inside the
+block is positive, the bound underestimates and BnB prunes the true optimum
+(observed as a real ~4-point miss); the fix is to clamp the bound's sample cell
+to [0, GRID_N-span] so the max-pool window always CONTAINS the block's in-grid
+leaves (leaves themselves, level 0, keep the out-of-grid skip so they match the
+exhaustive kernel bit-for-bit); (b) score the BnB leaves and the exhaustive
+candidates with the SAME out-of-grid convention or the two argmaxes diverge by a
+cell at near-ties; (c) verify exactness on the grid CELL (adjacency) not the raw
+float score, since GPU and host summation rank near-equal cells differently to
+~1e-3. Touched files: CMakeLists.txt, readme.md, plan.md,
+src/gpu_branch_and_bound_csm.cu, plus the gh-pages GIF. This graduates the CSM
+line from brute force to the bounded search real systems use for large windows.
+
+PR (`feat/gpu-csm-submap-slam` -> `master`) was **MERGED** (squash) on 2026-05-26
+at `3ee8586`; the remote branch was deleted and local `master` is in sync. It is
 the submap follow-up to #121. #121 detects loop closures by matching the current
 scan against a likelihood field built from ONE earlier keyframe's scan; that
 single-scan field is sparse and view-dependent, so a true revisit observed from a
