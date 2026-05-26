@@ -734,14 +734,23 @@ any new scan-matching / SLAM / optimisation work.
   `include/se3_helpers.cuh` now holds `clampf`, the `mat3_*` family,
   `so3_exp`, `so3_log`, and `solve6_spd_device`, shared by
   `gpu_pose_graph_slam_3d.cu`, `gpu_pose_graph_slam_3d_switchable.cu`, and
-  `gpu_online_slam_3d_switchable.cu`. **Still open (separate, lower-priority):**
-  the scan-matching family `gpu_ndt_3d.cu` / `gpu_ndt_3d_multires.cu` /
-  `gpu_gicp_3d.cu` uses a differently-named `cholesky_solve_6` + `H_OFF`
-  scheme that is *not* byte-identical to `solve6_spd_device`; unifying it
-  would need a careful merge + per-demo numeric re-verification (NDT/GICP
-  basins are tuning-sensitive). `gpu_megaparticles_6dof.cu` is quaternion-
-  based and intentionally separate. Treat those as their own follow-up, not
-  drift.
+  `gpu_online_slam_3d_switchable.cu`. The scan-matching family
+  `gpu_ndt_3d.cu` / `gpu_ndt_3d_multires.cu` / `gpu_gicp_3d.cu` was the
+  remaining duplication: it carried its OWN `cholesky_solve_6` + `H_OFF`
+  (a host solve over the PACKED 21-float upper triangle, run on the host
+  per Gauss-Newton iteration), copied byte-for-byte across all three demos
+  and intentionally *not* the same routine as the `__device__`, full-6x6
+  `solve6_spd_device` used by the pose-graph back-ends. This is now lifted
+  into `include/solve6_packed.cuh` (PR `feat/scan-matching-shared-cholesky`,
+  IN FLIGHT 2026-05-26): the three demos `#include` it and drop their private
+  copies. Verified byte-identical: a normalised diff confirmed the three
+  copies were the same algorithm modulo comments, and each demo's reported
+  error is unchanged after the lift (ndt_3d 0.0263 m / 0.0102 rad, gicp_3d
+  0.0011 m / 0.0001 rad, ndt_3d_multires fine 0.0155 m / 0.0072 rad) -- no
+  basin re-tuning. NOT merged into `solve6_spd_device` on purpose (different
+  execution context: host-packed vs device-full). `gpu_megaparticles_6dof.cu`
+  is quaternion-based and intentionally separate. With this, Open Threads A's
+  shared-math duplication across the SE(3)/6x6-solve demos is closed.
 
 ### B. New algorithm candidates (ranked rough order, see "Recommended Next" below)
 
