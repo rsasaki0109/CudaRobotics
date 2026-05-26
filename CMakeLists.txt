@@ -507,6 +507,10 @@ add_executable(gpu_learned_safety_dual_graph_mppi src/gpu_learned_safety_dual_gr
 target_link_libraries(gpu_learned_safety_dual_graph_mppi ${OpenCV_LIBS})
 target_compile_options(gpu_learned_safety_dual_graph_mppi PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr --use_fast_math>)
 
+add_executable(gpu_trainable_safety_dual_graph_mppi src/gpu_trainable_safety_dual_graph_mppi.cu)
+target_link_libraries(gpu_trainable_safety_dual_graph_mppi ${OpenCV_LIBS})
+target_compile_options(gpu_trainable_safety_dual_graph_mppi PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr --use_fast_math>)
+
 add_executable(gpu_interaction_graph_risk src/gpu_interaction_graph_risk.cu)
 target_link_libraries(gpu_interaction_graph_risk ${OpenCV_LIBS})
 target_compile_options(gpu_interaction_graph_risk PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
