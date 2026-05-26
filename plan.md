@@ -9,8 +9,52 @@ known sharp edges and lessons learned from the last few attempts, and (5)
 a prioritised menu of candidate next tasks with enough specificity that a
 fresh agent can pick one and start.
 
-PR for `feat/gpu-megaparticles-gicp-d2d` -> `master` is **IN FLIGHT** (opened
-2026-05-26): a GICP-style distribution-to-distribution (D2D) scan likelihood
+PR (`feat/gpu-megaparticles-smoother` -> `master`) is **IN FLIGHT** as of
+2026-05-26: it is the "Localization polish" follow-up flagged in Open Threads /
+Recommended Next -- a short smoothing pass over the representative MegaParticles
+trajectory that reports raw max-posterior vs smoothed pose error SEPARATELY,
+finally replacing the tiny hand-tuned continuity gate that #86/#101/#104/#115 all
+carried as a known limitation. New single file
+`src/gpu_megaparticles_smoother.cu`: the GPU does the expensive part exactly as
+#86 (1,048,576 particles, distance-field likelihood, bucket-neighbor Stein
+motion, posterior smoothing) and each frame emits one raw max-posterior
+representative pose; a lightweight host backend keeps a sliding window of the
+last SMOOTH_W=10 frames and jointly optimises a smoothed pose chain by IRLS
+Gauss-Newton with (a) SWITCHABLE CV-motion factors (a genuine pose
+discontinuity -- the hidden kidnap -- breaks the link instead of being smeared)
+and (b) Huber-robust measurement factors (a one-frame spurious max-posterior
+spike is rejected). A frame is finalized once it falls off the window head
+(fixed lag = future frames refine it). KEY LESSON: a robust smoother alone
+CANNOT distinguish a sustained new-location measurement (kidnap) from an outlier
+-- it rejected the post-kidnap relocalization and stuck to the coasted old
+trajectory (post-kidnap RMSE ~1.7 m). Fix: a data-driven reset -- the smoother
+resets its window only when measurements RESUME FAR from the coast AFTER a
+measurement dropout (has_obs=false run), distinguishing a genuine relocalization
+from the high-confidence spurious-mode flips during normal tracking (those stay
+rejected as outliers). Verified over 4 runs (GPU atomicAdd noise floor):
+in-track jitter (mean |d2 pos|) raw 4.31 -> smoothed ~0.06 (~70x, truth ref
+0.0055), in-track RMSE raw 5.4 -> smoothed ~0.25 m (raw inflated by 16 m
+spurious-mode flips in the repetitive-corridor map that the robust smoother
+rejects), post-kidnap RMSE raw ~1.2-1.9 -> smoothed ~0.09 m, recovers the hidden
+kidnap in 0 frames; smoothing adds negligible cost (host backend; GPU step
+~5 ms, same as #86). Final steady-state error is a touch higher than raw
+(0.040 -> 0.059 m) -- the expected smoother trade of a little sharpness for
+robustness. Touched files: CMakeLists.txt, readme.md, plan.md,
+src/gpu_megaparticles_smoother.cu, plus the gh-pages GIF. With this the
+MegaParticles localization line covers Stein (#86), explicit LSH (#101),
+6-DoF SE(3) (#104), GICP D2D likelihood (#115), and the trajectory smoother.
+
+PR #115 (`feat/gpu-megaparticles-gicp-d2d` -> `master`) was **MERGED** (squash)
+on 2026-05-26 at `0318b9f`; CI Build passed (12m50s; Build + Python tests + CPU
+tests all green; only the Node.js 20 deprecation annotation), the draft was
+marked ready, and the remote branch was deleted. The concurrent agent session
+landed two more graph-neural / game-theoretic MPPI demos
+(`gpu_iterative_game_graph_mppi`, `gpu_noregret_game_graph_mppi`) on master just
+before it, so the squash fast-forward landed them together; #115's own diff is
+its four files (CMakeLists.txt, readme.md, plan.md,
+src/gpu_megaparticles_gicp_mcl.cu) plus the gh-pages GIF. Local `master` is at
+`0318b9f` and in sync with origin. The PR added a GICP-style distribution-to-
+distribution (D2D) scan likelihood
 for the MegaParticles line -- the "GICP-like point-cloud likelihood" follow-up
 flagged after #86/#101/#104. New single file `src/gpu_megaparticles_gicp_mcl.cu`
 runs a controlled head-to-head: two 1,048,576-particle filters with IDENTICAL
