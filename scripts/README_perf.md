@@ -3,8 +3,10 @@
 ## What it does
 `scripts/perf_check.py` runs a curated set of `comparison_*` GPU demos,
 extracts the headline GPU timing from their stdout, and compares each
-measurement against `scripts/perf_baseline.json`. The script exits
-non-zero if any measurement exceeds `baseline * (1 + tolerance)`.
+measurement against `scripts/perf_baseline.json`. The workflow also runs
+the planner showdown target gate through CTest. It exits non-zero if any
+measurement exceeds `baseline * (1 + tolerance)` or the showdown planner
+misses its hard target gates.
 
 Default tolerance is **30%**.
 
@@ -14,10 +16,38 @@ Default tolerance is **30%**.
 # build the perf-critical targets
 cmake --build build --target \
   comparison_esdf comparison_esdf_3d comparison_voxel_map \
-  comparison_collision_check comparison_rrtstar_rewire esdf_mppi -j$(nproc)
+  comparison_collision_check comparison_rrtstar_rewire esdf_mppi \
+  gpu_planner_showdown_benchmark -j$(nproc)
 
 # check current performance against baseline
 python3 scripts/perf_check.py
+
+# check the planner showdown gates
+cd build && ctest --output-on-failure --label-regex showdown -j1
+
+# render a compact Markdown report from the showdown JSON
+python3 scripts/summarize_planner_showdown.py \
+  --json build/gpu_planner_showdown_benchmark.json \
+  --markdown-out build/gpu_planner_showdown_benchmark.md \
+  --strict
+
+# render a scenario matrix after manual stress-probe runs
+python3 scripts/summarize_planner_showdown.py \
+  --json build/gpu_planner_showdown_benchmark.json \
+  --json build/gpu_planner_showdown_tight.json \
+  --json build/gpu_planner_showdown_priority_flip.json \
+  --json build/gpu_planner_showdown_adversarial_density.json \
+  --markdown-out build/gpu_planner_showdown_matrix.md \
+  --strict
+
+# render a pressure-controller ablation after manual ablation runs
+python3 scripts/summarize_planner_showdown.py \
+  --json build/gpu_planner_showdown_benchmark.json \
+  --json build/gpu_planner_showdown_pressure_teacher.json \
+  --json build/gpu_planner_showdown_pressure_none.json \
+  --json build/gpu_planner_showdown_adversarial_density.json \
+  --json build/gpu_planner_showdown_pressure_none_adversarial_density.json \
+  --markdown-out build/gpu_planner_showdown_pressure_ablation.md
 
 # loosen tolerance for noisy hardware
 python3 scripts/perf_check.py --tolerance 0.50
@@ -36,17 +66,45 @@ python3 scripts/perf_check.py --update
 | `rrtstar_rewire_gpu_ms` | `comparison_rrtstar_rewire`  | GPU parallel rewire per 200K-node forest |
 | `esdf_mppi_rollout_ms`  | `esdf_mppi`                  | GPU MPPI rollout iter (K=4096, T=30) with ESDF cost |
 
+## Target gates tracked
+| Label | Binary | Gate |
+|---|---|---|
+| `showdown` | `gpu_planner_showdown_benchmark --check --no-video --scenario baseline` | trainable safety-dual MPPI with learned pressure and adaptive budget must keep reach 48/48, deadlocks 0, collisions <= 8, collision CVaR <= 26.5, residual <= 12.0%, and runtime <= 15.0 ms |
+
+`scripts/summarize_planner_showdown.py` turns the emitted JSON into a
+Markdown summary that highlights the hard-gate status and the remaining
+enemy planner, currently no-regret MPPI.
+When multiple `--json` inputs are supplied, the same script emits a
+scenario matrix across baseline and stress probes.
+The planner uses a scenario-conditioned learned safety-pressure controller
+distilled from observed CVaR, collisions, minimum separation, lane tightness,
+graph conflict density, cross-shift load, and priority flips instead of
+scenario-specific convergence boosts.
+Use `--pressure-mode learned|teacher|none` to compare the distilled
+controller with its teacher formula and a no-pressure bypass. In the tracked
+ablation, no-pressure still passes baseline with narrow margins but misses the
+adversarial-density target gate.
+Use `--adaptive-budget learned|off` to compare the default budget policy with
+fixed pass scheduling. The learned policy scores pass-2 CVaR, residual
+pressure, and scenario difficulty; in the tracked matrix it flags the
+adversarial-density probe, reports whether a refinement candidate was accepted,
+and keeps all final runtimes below the 15 ms gate.
+Only the `baseline` scenario is gated in CI; `--scenario tight`,
+`--scenario priority_flip`, and `--scenario adversarial_density` are manual
+stress probes for narrower crossings, flipped priority ordering, and dense
+centerline conflicts.
+
 ## CI integration
-`.github/workflows/perf.yml` runs `perf_check.py` on a self-hosted
-runner with the `gpu` label. GitHub-hosted Ubuntu runners do not have
-NVIDIA GPUs, so the workflow is a no-op on them.
+`.github/workflows/perf.yml` runs `perf_check.py` and the showdown CTest
+gate on a self-hosted runner with the `gpu` label. GitHub-hosted Ubuntu
+runners do not have NVIDIA GPUs, so the workflow is a no-op on them.
 
 To enable PR-time perf checks:
 1. Register a self-hosted runner labelled `gpu` with the repo.
 2. Set the repository variable `PERF_RUNNER_AVAILABLE` to `true`.
 
-The workflow also accepts manual triggering via `workflow_dispatch` so
-you can run it on demand once the runner is online.
+The workflow also accepts manual triggering via `workflow_dispatch` and
+runs nightly on a schedule once the runner is online.
 
 ## Updating the baseline
 The baseline file `scripts/perf_baseline.json` should be updated:
