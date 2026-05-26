@@ -36,6 +36,7 @@
 
 #include "cuda_check.cuh"
 #include "cuda_video.h"
+#include "solve6_packed.cuh"
 
 namespace cudabot {
 
@@ -385,56 +386,8 @@ __global__ void ndt_grad_hess_kernel(int n,
     for (int k = 0; k < 21; k++) atomicAdd(&H[k], Hl[k]);
 }
 
-// -------------------------------------------------------------------------
-// Host: 6x6 SPD solve via Cholesky + back-substitution.
-// H_packed: 21 floats upper-tri, g: 6 floats.  Computes dx = H^-1 g.
-// -------------------------------------------------------------------------
-static const int H_OFF[6][6] = {
-    { 0,  1,  2,  3,  4,  5},
-    { 1,  6,  7,  8,  9, 10},
-    { 2,  7, 11, 12, 13, 14},
-    { 3,  8, 12, 15, 16, 17},
-    { 4,  9, 13, 16, 18, 19},
-    { 5, 10, 14, 17, 19, 20},
-};
-
-static bool cholesky_solve_6(const float* H_packed, const float* g, float lambda,
-                              float* dx) {
-    // Build full 6x6 symmetric matrix A, then A = L L^T (lower).
-    float A[36];
-    for (int i = 0; i < 6; i++)
-        for (int j = 0; j < 6; j++) {
-            A[6*i + j] = H_packed[H_OFF[i][j]];
-            if (i == j) A[6*i + j] += lambda;
-        }
-    float L[36] = {0};
-    for (int i = 0; i < 6; i++) {
-        for (int j = 0; j <= i; j++) {
-            float s = A[6*i + j];
-            for (int k = 0; k < j; k++) s -= L[6*i + k] * L[6*j + k];
-            if (i == j) {
-                if (s <= 0.0f) return false;
-                L[6*i + j] = std::sqrt(s);
-            } else {
-                L[6*i + j] = s / L[6*j + j];
-            }
-        }
-    }
-    // Forward: L y = g
-    float y[6];
-    for (int i = 0; i < 6; i++) {
-        float s = g[i];
-        for (int k = 0; k < i; k++) s -= L[6*i + k] * y[k];
-        y[i] = s / L[6*i + i];
-    }
-    // Back: L^T x = y
-    for (int i = 5; i >= 0; i--) {
-        float s = y[i];
-        for (int k = i + 1; k < 6; k++) s -= L[6*k + i] * dx[k];
-        dx[i] = s / L[6*i + i];
-    }
-    return true;
-}
+// The packed-6x6 SPD Cholesky solve (H_OFF + cholesky_solve_6) is shared with
+// gpu_gicp_3d.cu / gpu_ndt_3d_multires.cu via include/solve6_packed.cuh.
 
 // -------------------------------------------------------------------------
 // Visualisation: simple perspective camera projection.
