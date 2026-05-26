@@ -31,7 +31,7 @@ Same algorithm on CPU and GPU — GPU enables orders of magnitude more particles
 |---|---|---|---|
 | Occupancy grid | `comparison_occupancy_grid` | 256x256 | log-odds raycast |
 | Collision check | `comparison_collision_check` | 1M segments/scan | 1,277x per candidate |
-| Scan matching | `comparison_icp`, `comparison_ndt`, `gpu_ndt_3d_multires`, `gicp` | 10K+ points | parallel correspondences |
+| Scan matching | `comparison_icp`, `comparison_ndt`, `gpu_ndt_3d_multires`, `gicp`, `gpu_correlative_scan_matching` | 10K+ points / 2.1M candidate poses | parallel correspondences; exhaustive global CSM recovers large offsets (44/44) where a local field matcher fails (5/44), 487x vs CPU |
 | Pose-graph SLAM | `gpu_pose_graph_slam`, `gpu_pose_graph_slam_3d`, `gpu_pose_graph_slam_3d_robust`, `gpu_pose_graph_slam_3d_switchable`, `gpu_online_slam`, `gpu_online_slam_3d_switchable` | 2D 200 poses / 3D 384-420 poses | robust 3D rejects 36/36 false loops, 6.95→0.28 m; switchable constraints learn per-loop switches jointly with poses, 6.95→0.29 m; online 3D switchable rejects false loops live in a sliding window, plain 9.10 m → switchable 0.29 m (21/21 rejected) |
 | Particle filter | `comparison_pf`, `gpu_global_localization_mcl`, `gpu_megaparticles_stein_mcl`, `gpu_megaparticles_lsh`, `gpu_megaparticles_6dof`, `gpu_megaparticles_gicp_mcl`, `gpu_megaparticles_smoother`, `gpu_kld_amcl`, `diff_pf`, `diff_pf_mlp` | 10K-1M particles | MegaParticles-style range SPF: 14.61 m bootstrap vs 0.097 m recovery; explicit p-stable LSH neighbor index lifts neighbor recall 58%→88%; 6-DoF SE(3) relocalization recovers a hidden kidnap to 0.22 m / 1.9 deg (LSH neighbor consensus); surface-aware GICP D2D likelihood halves post-kidnap error vs the field proxy (0.099→0.064 m); a robust fixed-lag smoother over the representative state cuts in-track jitter ~70x (RMSE 5.4→0.25 m) and rejects spurious-mode flips; KLD-AMCL adapts 400→65,536 particles, 15.2x vs CPU |
 | RRT family | `comparison_rrt*`, `comparison_rrtstar_rewire` | 1M paths / 200K nodes | 5,000x per-path; 62x rewire |
@@ -146,8 +146,8 @@ Same algorithm on CPU and GPU — GPU enables orders of magnitude more particles
 | <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_ndt_3d_multires.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_ndt_3d.gif" width="400"/> |
 | **GPU NDT 2D scan matching (Newton on NDT grid, 0.54 ms/scenario, ~0.02 m typical)** | **GPU GICP 2D scan matching (per-point cov + nearest-neighbour match, 1.9 ms/scenario, ~0.08 m typical)** |
 | <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_ndt_2d.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_gicp_2d.gif" width="400"/> |
-| **GPU GICP 3D point cloud registration (per-point cov via Cardano eigendecomp + 6-DOF GN on SE(3), 4.7 ms/scenario, ~1 mm typical)** | |
-| <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_gicp_3d.gif" width="400"/> | |
+| **GPU GICP 3D point cloud registration (per-point cov via Cardano eigendecomp + 6-DOF GN on SE(3), 4.7 ms/scenario, ~1 mm typical)** | **GPU correlative scan matching: exhaustive global alignment, 2.1M candidate poses/frame, recovers offsets where the local matcher fails (487x vs CPU)** |
+| <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_gicp_3d.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_correlative_scan_matching.gif" width="400"/> |
 | **GPU EM GMM clustering (262K points × 5 full-cov Gaussians, 42 EM iterations, 90.2x vs CPU)** | **GPU spectral clustering (3072-point dense RBF graph, 40 subspace iterations, 193x vs CPU)** |
 | <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_em_gmm.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_spectral_clustering.gif" width="400"/> |
 | **GPU label propagation (3072-node RBF graph, 12 seeds, 50 clamped iterations, 123x vs CPU)** | **GPU traversability label propagation (3072 graph nodes, 40 iters, 81.2% sparse-seed accuracy, 79.9x vs CPU)** |
@@ -206,6 +206,7 @@ cd ros2_ws && colcon build --packages-select cuda_robotics
 | MegaParticles GICP D2D likelihood | 2 × 1,048,576 particles, identical Stein machinery; surface-aware GICP distribution-to-distribution scoring (per-point disk covariances, grid-indexed map cloud) vs the distance-field proxy; both recover the hidden kidnap in 0 frames, post-kidnap RMSE 0.099 → 0.064 m and final error 0.040 → 0.021 m, at ~2.4x per-step cost (4.9 → 12.1 ms) |
 | MegaParticles trajectory smoother | 1,048,576 particles; robust fixed-lag smoother over the max-posterior representative state (switchable CV-motion + Huber measurement factors, data-driven reset on post-dropout relocalization); raw vs smoothed, in-track jitter (mean \|Δ²pos\|) 4.31 → 0.06 (~70x), in-track RMSE 5.4 → 0.25 m, post-kidnap RMSE ~1.6 → 0.09 m, recovers the hidden kidnap in 0 frames |
 | Augmented KLD-AMCL | KLD-sampling adapts 400→65,536 particles, augmented injection reacquires hidden kidnap in 13 steps, settled RMSE 0.014 m, **15.2x** vs CPU |
+| Correlative scan matching | exhaustive global pose search, 2.1M (x,y,θ) candidates/frame (coarse-to-fine); recovers offsets up to ±3.8 m / 40° (44/44 < 0.20 m, RMSE 0.006 m) where a local field matcher stalls (5/44, RMSE 1.95 m); GPU 6 ms vs CPU 2.9 s — **~490x** |
 | 2D ESDF (640K cells) | **53,404x** per cell (JFA) |
 | 3D ESDF (1M voxels) | **86,613x** per voxel (JFA-3D) |
 | Massive collision check | **1,277x** per candidate (2D DDA) |
