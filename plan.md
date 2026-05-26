@@ -9,8 +9,42 @@ known sharp edges and lessons learned from the last few attempts, and (5)
 a prioritised menu of candidate next tasks with enough specificity that a
 fresh agent can pick one and start.
 
-PR (`feat/gpu-megaparticles-smoother` -> `master`) is **IN FLIGHT** as of
-2026-05-26: it is the "Localization polish" follow-up flagged in Open Threads /
+PR (`feat/gpu-correlative-scan-matching` -> `master`) is **IN FLIGHT** as of
+2026-05-26: it adds the GLOBAL/exhaustive member missing from the scan-matching
+family (NDT 2D/3D, GICP 2D/3D are all LOCAL iterative refiners). New single file
+`src/gpu_correlative_scan_matching.cu` implements correlative scan matching
+(Olson, ICRA 2009; Cartographer's real-time CSM): a discretised (x, y, theta)
+window of candidate poses is scored EXHAUSTIVELY against a map likelihood field
+and the global maximum is taken -- one thread = one candidate pose, the repo's
+canonical parallel pattern. Coarse-to-fine (151x151x91 coarse @0.06 m/1 deg ->
+41x41x41 fine), ~2.1M candidates/frame. Controlled comparison on the SAME field
+objective: a LOCAL gradient-ascent matcher (stand-in for NDT/GICP) vs the GPU
+exhaustive search, with the initial offset growing across frames. Result: CSM
+recovers 44/44 frames (RMSE 0.006 m) up to +/-3.8 m / 40 deg offset while the
+local matcher stalls outside its narrow field basin (5/44, RMSE 1.95 m); GPU
+~6 ms vs a single timed CPU run ~2.9 s => ~490x. KEY LESSON (cost a debug
+cycle): a likelihood field built as distance-to-nearest-OCCUPIED-cell rewards
+piling scan endpoints into large FILLED obstacle interiors (lut=1 over the whole
+solid), so the global max was a spurious pose ~1.8 m off even at zero offset.
+Fix: build the field from obstacle SURFACES only (occupied AND adjacent to free
+space) -- a scan only ever observes surfaces, so distance-to-surface makes the
+true pose the unique global max. Also use thin wall slabs, not filled blocks,
+and avoid dead-code elimination of the timed CPU reference (consume its result).
+Touched files: CMakeLists.txt, readme.md, plan.md,
+src/gpu_correlative_scan_matching.cu, plus the gh-pages GIF. This complements
+the local scan matchers with a global loop-closure / relocalization alignment
+primitive.
+
+PR #118 (`feat/gpu-megaparticles-smoother` -> `master`) was **MERGED** (squash)
+on 2026-05-26 at `1bf1fba`; CI Build passed (13m35s; Build + Python tests + CPU
+tests all green; only the Node.js 20 deprecation annotation), the draft was
+marked ready, and the remote branch was deleted. The concurrent agent session
+landed two more demos (`gpu_safe_noregret_game_graph_mppi` at `aa549f4`, and
+#117 `gpu_learned_safety_dual_graph_mppi` at `3c99944`) on master just before
+it, so the squash fast-forward landed them together; #118's own diff is its four
+files (CMakeLists.txt, readme.md, plan.md, src/gpu_megaparticles_smoother.cu)
+plus the gh-pages GIF. Local `master` is at `1bf1fba` and in sync with origin.
+It is the "Localization polish" follow-up flagged in Open Threads /
 Recommended Next -- a short smoothing pass over the representative MegaParticles
 trajectory that reports raw max-posterior vs smoothed pose error SEPARATELY,
 finally replacing the tiny hand-tuned continuity gate that #86/#101/#104/#115 all
