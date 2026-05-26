@@ -1,6 +1,6 @@
 # CudaRobotics Plan / Handoff (for Codex / Claude)
 
-Last updated: 2026-05-26 JST
+Last updated: 2026-05-26 JST (CSM submap SLAM in flight)
 
 This document is the long-form handoff for the next coding agent (Codex).
 It captures: (1) where the repo is right now, (2) what was just done over
@@ -9,8 +9,48 @@ known sharp edges and lessons learned from the last few attempts, and (5)
 a prioritised menu of candidate next tasks with enough specificity that a
 fresh agent can pick one and start.
 
-PR (`feat/gpu-csm-loop-closure-slam` -> `master`) is **IN FLIGHT** as of
-2026-05-26: a 2D SLAM demo whose loop closures are DETECTED by scan matching, not
+PR (`feat/gpu-csm-submap-slam` -> `master`) is **IN FLIGHT** as of 2026-05-26:
+the submap follow-up to #121. #121 detects loop closures by matching the current
+scan against a likelihood field built from ONE earlier keyframe's scan; that
+single-scan field is sparse and view-dependent, so a true revisit observed from a
+slightly different heading can score below the accept gate. Real systems
+(Cartographer) instead match against a SUBMAP -- several consecutive scans fused
+into one local grid -- which fills in the surfaces from many viewpoints, giving a
+denser, far less view-dependent field. New single file
+`src/gpu_csm_submap_slam.cu` builds that submap front-end and runs it
+head-to-head against the single-scan front-end of #121 on the SAME drifting
+trajectory, SAME candidate gating, and SAME exhaustive coarse-to-fine CSM search
+(1.42M candidate relposes/attempt). The ONLY difference between the two variants
+is the likelihood field: a single anchor scan (scan-to-scan) vs the fused submap
+around that anchor (scan-to-submap, SUBMAP_KF=8). To create the regime where
+submaps actually earn their place, the simulated scan is deliberately SPARSE and
+noisy (N_SCAN=64 rays, SCAN_NOISE=6 cm) -- a single such scan localises poorly.
+Result (deterministic): from a 2.03 m dead-reckoning ATE, the single-scan
+front-end recovers only 17/52 loops (35 rejected, ATE 0.38 m) while the
+scan-to-submap front-end recovers 48/52 (4 rejected, ATE 0.18 m) -- the fused
+field lets revisits cross the score gate where the sparse single scan cannot, and
+lands an order-of-magnitude-better map. GPU 4.6 ms vs a one-off CPU coarse search
+0.67 s => ~148x (lower than #121's 630x only because the sparse 64-pt moving scan
+makes the GPU overhead-bound; same 1.42M candidates). NO ground truth enters the
+constraint -- the intra-submap relposes that fuse the field come from the live
+estimate, and over ~8 keyframes their drift is negligible. The middle panel
+tints points by submap so the partition is visible; left=dead reckoning,
+middle=scan-to-submap SLAM, right=info with three ATE curves (dead-reckon vs
+scan-to-scan vs scan-to-submap) and both variants' accept/reject tallies. KEY
+LESSONS: (a) on DENSE clean scans (180 rays) single-scan already works well, so
+the submap edge only shows once the scan is sparse/noisy enough that a single
+view is ambiguous -- the demo deliberately picks that regime, which is exactly
+why Cartographer uses submaps; (b) a smaller submap is sharper but recovers fewer
+loops, a larger one is denser/more robust but its fused relpose is slightly
+blurred by intra-submap estimate error (SUBMAP_KF=8 balances the two); (c) time
+the GPU and the one-off CPU reference on the SAME first query or the speedup
+mixes two different scans. Touched files: CMakeLists.txt, readme.md, plan.md,
+src/gpu_csm_submap_slam.cu, plus the gh-pages GIF. This graduates #121's
+single-scan loop front-end into the submap-based front-end real 2D SLAM uses.
+
+PR (`feat/gpu-csm-loop-closure-slam` -> `master`) was **MERGED** (squash) on
+2026-05-26 at `fb7a186`; the remote branch was deleted and local `master` is in
+sync. It is a 2D SLAM demo whose loop closures are DETECTED by scan matching, not
 injected from ground truth. Every existing pose-graph SLAM demo in the repo
 (`gpu_pose_graph_slam` #58, `gpu_online_slam` #63, the 3D/robust/switchable
 family) takes its loop-closure constraints from GT spatial proximity -- they
@@ -786,8 +826,8 @@ any new scan-matching / SLAM / optimisation work.
   per Gauss-Newton iteration), copied byte-for-byte across all three demos
   and intentionally *not* the same routine as the `__device__`, full-6x6
   `solve6_spd_device` used by the pose-graph back-ends. This is now lifted
-  into `include/solve6_packed.cuh` (PR `feat/scan-matching-shared-cholesky`,
-  IN FLIGHT 2026-05-26): the three demos `#include` it and drop their private
+  into `include/solve6_packed.cuh` (PR #122 `feat/scan-matching-shared-cholesky`,
+  MERGED squash 2026-05-26 at `164d467`): the three demos `#include` it and drop their private
   copies. Verified byte-identical: a normalised diff confirmed the three
   copies were the same algorithm modulo comments, and each demo's reported
   error is unchanged after the lift (ndt_3d 0.0263 m / 0.0102 rad, gicp_3d
