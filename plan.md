@@ -9,8 +9,52 @@ known sharp edges and lessons learned from the last few attempts, and (5)
 a prioritised menu of candidate next tasks with enough specificity that a
 fresh agent can pick one and start.
 
-Branch `chore/shared-se3-helpers` (-> `master`) is **in flight** (2026-05-26).
-This is the Open Threads A shared-header cleanup recommended after #105: it
+PR for `feat/gpu-megaparticles-gicp-d2d` -> `master` is **IN FLIGHT** (opened
+2026-05-26): a GICP-style distribution-to-distribution (D2D) scan likelihood
+for the MegaParticles line -- the "GICP-like point-cloud likelihood" follow-up
+flagged after #86/#101/#104. New single file `src/gpu_megaparticles_gicp_mcl.cu`
+runs a controlled head-to-head: two 1,048,576-particle filters with IDENTICAL
+MegaParticles machinery (global uniform init, Gauss-Newton particle motion,
+sparse bucket-neighbor Stein attraction/repulsion, posterior smoothing,
+representative-state gate, hidden kidnap + 15-frame scan blackout), differing
+ONLY in the per-particle scoring kernel. Arm A is the #86 distance-field
+endpoint proxy (control; it reproduces #86's ~0.097 m post-kidnap RMSE). Arm B
+is the new GICP D2D likelihood: the map is a point cloud (2,396 points, boundary
+cells thinned to ~0.15 m) with per-point disk covariances (small variance along
+the surface normal, large along the tangent), indexed by a uniform NN grid; each
+particle matches every scan endpoint to the nearest map point and scores the
+surface-aware Gaussian log-likelihood under the combined covariance
+M = (C_map + R C_scan R^T)^{-1} (Segal et al. RSS 2009), summed over the scan,
+with a per-particle full 3x3 Gauss-Newton step driving the Stein motion. Key
+robustness lesson: a PURE D2D likelihood (flat penalty + zero gradient outside
+the match radius) re-localized the hidden kidnap only intermittently -- the
+sharp D2D contracts harder pre-kidnap, leaving thin global support, and a lost
+particle gets no gradient pull. Fix is a coarse-to-fine design: an UNMATCHED ray
+falls back to the distance-field endpoint log-likelihood (smooth long-range
+pull), so the worst case == the field filter and global recovery is robust,
+while MATCHED rays use the sharp surface-aware GICP term for accuracy. Verified
+over 4 runs (GPU atomicAdd noise floor): both arms recover the kidnap in 0
+frames; post-kidnap RMSE field 0.099 m -> GICP D2D ~0.064 m (~35% lower), final
+error 0.040 m -> 0.021 m (~halved), at ~2.4x per-step cost (field ~4.9 ms ->
+D2D ~12.1 ms). Touched files: CMakeLists.txt, readme.md, plan.md,
+src/gpu_megaparticles_gicp_mcl.cu, plus the gh-pages GIF. With this the
+MegaParticles localization line now covers Stein (#86), explicit LSH (#101),
+6-DoF SE(3) (#104), and the GICP D2D likelihood.
+
+PR #112 (`chore/shared-se3-helpers` -> `master`) was **MERGED** (squash) on
+2026-05-26 at `3eb4b4d`; CI Build passed (12m1s; Build + Python tests + CPU
+tests all green; only the Node.js 20 deprecation annotation), the draft was
+marked ready, and the remote branch was deleted. The concurrent agent session
+landed six GPU graph-neural / game-theoretic MPPI demos
+(`gpu_best_response_graph_mppi`, `gpu_belief_risk_graph_mppi`,
+`gpu_intent_graph_neural_mppi`, `gpu_priority_graph_neural_mppi`,
+`gpu_interaction_graph_neural_mppi`, `gpu_multiagent_graph_neural_mppi`) on
+master just before it, so the squash fast-forward landed all of them together;
+#112's own diff is exactly its five files (include/se3_helpers.cuh, plan.md,
+and the three migrated `.cu`). Local `master` is at `3eb4b4d` and in sync with
+origin. There is **no active feature branch** now -- the next agent starts
+fresh from `master`.
+This was the Open Threads A shared-header cleanup recommended after #105: it
 lifts the SE(3) / SO(3) math kernels + the 6x6 SPD Cholesky solve that were
 copied verbatim across the three rotation-matrix pose-graph SLAM back-ends
 (`gpu_pose_graph_slam_3d.cu`, `gpu_pose_graph_slam_3d_switchable.cu`,
