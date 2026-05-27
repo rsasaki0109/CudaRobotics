@@ -1,6 +1,6 @@
 # CudaRobotics Plan / Handoff (for Codex / Claude)
 
-Last updated: 2026-05-26 JST (branch-and-bound CSM in flight)
+Last updated: 2026-05-27 JST (branch-and-bound loop-closure SLAM in flight)
 
 This document is the long-form handoff for the next coding agent (Codex).
 It captures: (1) where the repo is right now, (2) what was just done over
@@ -9,9 +9,42 @@ known sharp edges and lessons learned from the last few attempts, and (5)
 a prioritised menu of candidate next tasks with enough specificity that a
 fresh agent can pick one and start.
 
-PR (`feat/gpu-branch-and-bound-csm` -> `master`) is **IN FLIGHT** as of 2026-05-26:
-the algorithmic follow-up to the CSM line (#120 exhaustive -> #121 loop-closure
-front-end -> #123 submap front-end). All three find the global pose by EXHAUSTIVE
+PR (`feat/gpu-bnb-loop-closure-slam` -> `master`) is **IN FLIGHT** as of 2026-05-27:
+the capstone of the CSM line -- branch-and-bound (#124) wired into the SLAM
+loop-closure front-end (#121/#123). New single file
+`src/gpu_bnb_loop_closure_slam.cu` runs the SAME closed-lap submap SLAM as #123,
+but at every loop attempt searches the relpose over a full-resolution 4.5M-cell
+grid (+/-8 m / +/-0.6 rad, BNB_S=256, SEARCH_NT=69) TWO ways -- brute force
+(one thread = one candidate) and branch-and-bound (GPU multi-resolution max-pool
+bound + a complete coarse frontier scored on the GPU, then a host best-first
+descent) -- and confirms they return the IDENTICAL relpose argmax. The
+branch-and-bound relpose (after a shared fine refinement) drives the live
+pose-graph back-end. Result (deterministic): B&B == brute force on **51/51**
+attempts, B&B scoring **4.7k nodes vs 4.52M candidates (957x fewer)**, GPU B&B
+0.27 ms vs brute force 7.1 ms/attempt, lap closed dead-reckoning ATE 2.18 m ->
+0.20 m (48 loops accepted / 3 rejected). KEY LESSON (cost a full design pivot):
+this is the EFFICIENCY statement, NOT a capability one. The first cut tried to
+show a "wider" B&B window (full circle / +/-1.4 rad, prior-free heading)
+recovering loops the bounded #123 window misses -- but a larger heading window in
+a sparse-scan scene only invites PERCEPTUAL-ALIASING false positives (the 64-ray
+scan locks onto ~180 deg rotational aliases scoring above the gate), and the B&B
+variant DIVERGED to 6-13 m ATE while the bounded +/-0.6 rad search stayed at
+0.36 m. The loops here are also effectively local (the lap's relative drift over a
+loop is modest once the prior is corrected), so the bounded window is already
+sufficient and GPU brute force over it is already cheap. The honest, shippable
+result is therefore: B&B searches the SAME effective window as the established
+front-end, returns the SAME loops, and closes the SAME lap -- just scoring ~1000x
+fewer candidates (which is what lets the search scale to the large windows / 6-DoF
+where brute force becomes infeasible, the #124 point, now demonstrated end-to-end
+inside a SLAM pipeline). Do NOT chase a "wider window beats narrow" SLAM story in
+this benign 2D scene; it is not honest. Touched files: CMakeLists.txt, readme.md,
+plan.md, src/gpu_bnb_loop_closure_slam.cu, plus the gh-pages GIF.
+
+PR (`feat/gpu-branch-and-bound-csm` -> `master`) was **MERGED** (squash) on
+2026-05-26 at `73bdf08`; the remote branch was deleted and local `master` is in
+sync.  It was the algorithmic follow-up to the CSM line (#120 exhaustive -> #121
+loop-closure front-end -> #123 submap front-end). All three find the global pose
+by EXHAUSTIVE
 search (one thread scores one candidate, host takes the argmax) -- fine for a
 small window, but a real loop-closure search must cover a LARGE window and the
 exhaustive count grows cubically, so brute force (even on the GPU) eventually
