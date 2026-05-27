@@ -4,7 +4,7 @@ name: Performance regression check
 # only run on a self-hosted runner with a CUDA-capable GPU labelled
 # `gpu`. The job is triggered:
 #   - manually via workflow_dispatch
-#   - on PRs that touch perf-critical CUDA sources, planner-showdown
+#   - on PRs that touch perf-critical CUDA sources, planner showdown/falsifier
 #     reports, or this workflow itself (only effective if a self-hosted
 #     gpu runner is available; otherwise the job is simply skipped)
 
@@ -17,10 +17,13 @@ on:
       - "src/comparison_*.cu"
       - "src/esdf_mppi.cu"
       - "src/gpu_planner_showdown_benchmark.cu"
+      - "src/gpu_planner_falsifier_benchmark.cu"
       - "scripts/perf_check.py"
       - "scripts/perf_baseline.json"
       - "scripts/summarize_planner_showdown.py"
+      - "scripts/summarize_planner_falsifier.py"
       - "gif/gpu_planner_showdown_benchmark.json"
+      - "gif/gpu_planner_falsifier_benchmark.json"
       - "CMakeLists.txt"
       - ".github/workflows/perf.yml"
 
@@ -44,19 +47,24 @@ jobs:
             comparison_rrtstar_rewire \
             esdf_mppi \
             gpu_planner_showdown_benchmark \
+            gpu_planner_falsifier_benchmark \
             -j$(nproc)
 
       - name: Run perf_check
         run: python3 scripts/perf_check.py --tolerance 0.30
 
-      - name: Run planner showdown target gate
-        run: cd build && ctest --output-on-failure --label-regex showdown -j1
+      - name: Run planner showdown and falsifier target gates
+        run: cd build && ctest --output-on-failure --label-regex 'showdown|falsifier' -j1
 
       - name: Render planner showdown report
         run: |
           python3 scripts/summarize_planner_showdown.py \
             --json build/gpu_planner_showdown_benchmark.json \
             --markdown-out build/gpu_planner_showdown_benchmark.md \
+            --strict
+          python3 scripts/summarize_planner_falsifier.py \
+            --json build/gpu_planner_falsifier_benchmark.json \
+            --markdown-out build/gpu_planner_falsifier_benchmark.md \
             --strict
 
       - name: Upload measurements on failure
@@ -68,3 +76,5 @@ jobs:
             scripts/perf_baseline.json
             build/gpu_planner_showdown_benchmark.json
             build/gpu_planner_showdown_benchmark.md
+            build/gpu_planner_falsifier_benchmark.json
+            build/gpu_planner_falsifier_benchmark.md

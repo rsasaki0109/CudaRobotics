@@ -4,9 +4,9 @@
 `scripts/perf_check.py` runs a curated set of `comparison_*` GPU demos,
 extracts the headline GPU timing from their stdout, and compares each
 measurement against `scripts/perf_baseline.json`. The workflow also runs
-the planner showdown target gate through CTest. It exits non-zero if any
-measurement exceeds `baseline * (1 + tolerance)` or the showdown planner
-misses its hard target gates.
+the planner showdown and adversarial falsifier target gates through CTest.
+It exits non-zero if any measurement exceeds `baseline * (1 + tolerance)` or
+either planner gate misses.
 
 Default tolerance is **30%**.
 
@@ -17,18 +17,24 @@ Default tolerance is **30%**.
 cmake --build build --target \
   comparison_esdf comparison_esdf_3d comparison_voxel_map \
   comparison_collision_check comparison_rrtstar_rewire esdf_mppi \
-  gpu_planner_showdown_benchmark -j$(nproc)
+  gpu_planner_showdown_benchmark gpu_planner_falsifier_benchmark -j$(nproc)
 
 # check current performance against baseline
 python3 scripts/perf_check.py
 
-# check the planner showdown gates
-cd build && ctest --output-on-failure --label-regex showdown -j1
+# check the planner showdown and falsifier gates
+cd build && ctest --output-on-failure --label-regex 'showdown|falsifier' -j1
 
 # render a compact Markdown report from the showdown JSON
 python3 scripts/summarize_planner_showdown.py \
   --json build/gpu_planner_showdown_benchmark.json \
   --markdown-out build/gpu_planner_showdown_benchmark.md \
+  --strict
+
+# render a compact Markdown report from the falsifier JSON
+python3 scripts/summarize_planner_falsifier.py \
+  --json build/gpu_planner_falsifier_benchmark.json \
+  --markdown-out build/gpu_planner_falsifier_benchmark.md \
   --strict
 
 # render a scenario matrix after manual stress-probe runs
@@ -70,6 +76,7 @@ python3 scripts/perf_check.py --update
 | Label | Binary | Gate |
 |---|---|---|
 | `showdown` | `gpu_planner_showdown_benchmark --check --no-video --scenario baseline` | trainable safety-dual MPPI with learned pressure and adaptive budget must keep reach 48/48, deadlocks 0, collisions <= 8, collision CVaR <= 26.5, residual <= 12.0%, and runtime <= 15.0 ms |
+| `falsifier` | `gpu_planner_falsifier_benchmark --check` | worst-K adversarial scenario search must make no-pressure and no-regret fail, keep the learned target inside hard gates, and accept at least one adaptive repair |
 
 `scripts/summarize_planner_showdown.py` turns the emitted JSON into a
 Markdown summary that highlights the hard-gate status and the remaining
@@ -89,15 +96,22 @@ fixed pass scheduling. The learned policy scores pass-2 CVaR, residual
 pressure, and scenario difficulty; in the tracked matrix it flags the
 adversarial-density probe, reports whether a refinement candidate was accepted,
 and keeps all final runtimes below the 15 ms gate.
+`gpu_planner_falsifier_benchmark` scans 719,712 scenario variants over lane
+tightness, jitter, cross-shift, spawn phase, goal offset, and priority flips.
+Its gate requires the worst 12 discovered cases to break no-pressure and
+no-regret, keep learned safety-pressure inside the showdown hard gates, and
+accept at least one adaptive repair. The tracked run has 12/12 no-pressure
+failures, 12/12 learned passes, and 12/12 accepted repairs.
 Only the `baseline` scenario is gated in CI; `--scenario tight`,
 `--scenario priority_flip`, and `--scenario adversarial_density` are manual
 stress probes for narrower crossings, flipped priority ordering, and dense
 centerline conflicts.
 
 ## CI integration
-`.github/workflows/perf.yml` runs `perf_check.py` and the showdown CTest
-gate on a self-hosted runner with the `gpu` label. GitHub-hosted Ubuntu
-runners do not have NVIDIA GPUs, so the workflow is a no-op on them.
+`.github/workflows/perf.yml` runs `perf_check.py` plus the showdown and
+falsifier CTest gates on a self-hosted runner with the `gpu` label.
+GitHub-hosted Ubuntu runners do not have NVIDIA GPUs, so the workflow is a
+no-op on them.
 
 To enable PR-time perf checks:
 1. Register a self-hosted runner labelled `gpu` with the repo.
