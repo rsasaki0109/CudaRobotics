@@ -535,6 +535,9 @@ add_executable(gpu_planner_showdown_benchmark src/gpu_planner_showdown_benchmark
 target_link_libraries(gpu_planner_showdown_benchmark ${OpenCV_LIBS})
 target_compile_options(gpu_planner_showdown_benchmark PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr --use_fast_math>)
 
+add_executable(gpu_planner_falsifier_benchmark src/gpu_planner_falsifier_benchmark.cu)
+target_compile_options(gpu_planner_falsifier_benchmark PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr --use_fast_math>)
+
 add_executable(gpu_interaction_graph_risk src/gpu_interaction_graph_risk.cu)
 target_link_libraries(gpu_interaction_graph_risk ${OpenCV_LIBS})
 target_compile_options(gpu_interaction_graph_risk PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
@@ -689,6 +692,15 @@ set_tests_properties(gpu_planner_showdown_gate PROPERTIES
   TIMEOUT 90
   LABELS "gpu;showdown;benchmark")
 
+add_test(NAME gpu_planner_falsifier_gate
+  COMMAND ${PROJECT_SOURCE_DIR}/bin/gpu_planner_falsifier_benchmark
+    --check
+    --json ${CMAKE_BINARY_DIR}/gpu_planner_falsifier_benchmark.json
+  WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+set_tests_properties(gpu_planner_falsifier_gate PROPERTIES
+  TIMEOUT 30
+  LABELS "gpu;falsifier;benchmark")
+
 # Python validation tests (no GPU required)
 add_test(NAME validate_design_workflow
   COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/validate_design_workflow.py
@@ -718,7 +730,13 @@ add_test(NAME check_planner_showdown_matrix_summary
     --markdown-out ${CMAKE_BINARY_DIR}/gpu_planner_showdown_matrix.md
     --strict
   WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
-set_tests_properties(validate_design_workflow check_design_regressions check_scaffold check_repro_suite_dry_run check_planner_showdown_summary check_planner_showdown_matrix_summary
+add_test(NAME check_planner_falsifier_summary
+  COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/summarize_planner_falsifier.py
+    --json ${CMAKE_SOURCE_DIR}/gif/gpu_planner_falsifier_benchmark.json
+    --markdown-out ${CMAKE_BINARY_DIR}/gpu_planner_falsifier_benchmark.md
+    --strict
+  WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+set_tests_properties(validate_design_workflow check_design_regressions check_scaffold check_repro_suite_dry_run check_planner_showdown_summary check_planner_showdown_matrix_summary check_planner_falsifier_summary
   PROPERTIES
   TIMEOUT 30
   LABELS "python")
