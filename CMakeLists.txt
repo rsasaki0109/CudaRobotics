@@ -387,6 +387,10 @@ add_executable(gpu_branch_and_bound_csm src/gpu_branch_and_bound_csm.cu)
 target_link_libraries(gpu_branch_and_bound_csm ${OpenCV_LIBS})
 target_compile_options(gpu_branch_and_bound_csm PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
 
+add_executable(gpu_bnb_loop_closure_slam src/gpu_bnb_loop_closure_slam.cu)
+target_link_libraries(gpu_bnb_loop_closure_slam ${OpenCV_LIBS})
+target_compile_options(gpu_bnb_loop_closure_slam PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
+
 add_executable(gpu_ndt_3d src/gpu_ndt_3d.cu)
 target_link_libraries(gpu_ndt_3d ${OpenCV_LIBS})
 target_compile_options(gpu_ndt_3d PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
