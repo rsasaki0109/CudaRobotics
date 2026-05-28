@@ -128,6 +128,8 @@ Same algorithm on CPU and GPU — GPU enables orders of magnitude more particles
 | <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_crowd_swarm.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_interaction_graph_risk.gif" width="400"/> |
 | **GPU GNN swarm controller (2048 agents, 3 message passes, 2.88 ms/control, 44.3x vs CPU)** | **GPU reciprocal risk planner (1024 agents, 9 actions, H=16, 4.05 ms/plan, 311.5x vs CPU)** |
 | <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_gnn_swarm_controller.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_reciprocal_risk_planner.gif" width="400"/> |
+| **GPU batched iLQR trajectory optimization (4096 start/goal queries, unicycle + soft obstacles, gradient-based; 88.5% same local optimum, mean cost within 1.1%, 140x vs CPU)** | |
+| <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_batched_ilqr.gif" width="400"/> | |
 
 ## Differentiable / learning
 
