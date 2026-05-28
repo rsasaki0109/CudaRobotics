@@ -166,6 +166,8 @@ Same algorithm on CPU and GPU — GPU enables orders of magnitude more particles
 | <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_label_propagation.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_label_propagation_traversability.gif" width="400"/> |
 | **GPU graph CRF traversability refinement (3072 nodes, noisy unary 82.0% -> CRF 83.6%, 106x vs CPU)** | **GPU GAT traversability policy (3072 nodes, 3 heads x 4 layers, 78.7% -> 81.3%, 99.4x vs CPU)** |
 | <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_graph_crf_traversability.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_gat_traversability_policy.gif" width="400"/> |
+| **GPU DBSCAN density-based clustering (8192 points, brute-force pairwise, 4 clusters / 647 noise, 100% cluster agreement vs CPU, 153x vs CPU)** | |
+| <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_dbscan.gif" width="400"/> | |
 
 <details>
 <summary>More classical-algorithm GIFs</summary>
