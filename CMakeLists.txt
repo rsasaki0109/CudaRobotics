@@ -618,6 +618,10 @@ add_executable(gpu_batched_ilqr src/gpu_batched_ilqr.cu)
 target_link_libraries(gpu_batched_ilqr ${OpenCV_LIBS})
 target_compile_options(gpu_batched_ilqr PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr --fmad=false>)
 
+add_executable(gpu_tsdf_fusion src/gpu_tsdf_fusion.cu)
+target_link_libraries(gpu_tsdf_fusion ${OpenCV_LIBS})
+target_compile_options(gpu_tsdf_fusion PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr --fmad=false>)
+
 add_executable(comparison_reeds_shepp_fan src/comparison_reeds_shepp_fan.cu)
 target_link_libraries(comparison_reeds_shepp_fan ${OpenCV_LIBS})
 target_compile_options(comparison_reeds_shepp_fan PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
