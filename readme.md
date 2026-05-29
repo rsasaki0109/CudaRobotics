@@ -72,8 +72,8 @@ Same algorithm on CPU and GPU — GPU enables orders of magnitude more particles
 | <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_gaussian_splatting.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_pose_graph_slam_3d_switchable.gif" width="400"/> |
 | **GPU online 3D SLAM with switchable loop constraints (sliding-window SE(3) + live switch update, false loops rejected as they stream in, plain 9.10 m → switchable 0.29 m, 21/21 rejected)** | **GPU CSM loop-closure SLAM (loops DETECTED by exhaustive scan matching, not GT; 1.4M candidate relposes/attempt, dead-reckoning ATE 2.03 m → SLAM 0.17 m, 49 accepted / 3 rejected, 630x vs CPU)** |
 | <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_online_slam_3d_switchable.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_csm_loop_closure_slam.gif" width="400"/> |
-| **GPU TSDF volumetric fusion (96³ = 884k voxels × 24 depth frames, KinectFusion-style projective TSDF, CPU/GPU bit-identical, 1075x vs CPU)** | |
-| <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_tsdf_fusion.gif" width="400"/> | |
+| **GPU TSDF volumetric fusion (96³ = 884k voxels × 24 depth frames, KinectFusion-style projective TSDF, CPU/GPU bit-identical, 1075x vs CPU)** | **GPU Marching Cubes (128³ = 2.0M cells → 81,890 triangles, 256-entry Bourke table, one thread = one cell, CPU/GPU vertex-bit-identical, 17x vs CPU)** |
+| <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_tsdf_fusion.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_marching_cubes.gif" width="400"/> |
 
 ## Solver infrastructure
 
