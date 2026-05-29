@@ -168,6 +168,8 @@ Same algorithm on CPU and GPU — GPU enables orders of magnitude more particles
 | <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_graph_crf_traversability.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_gat_traversability_policy.gif" width="400"/> |
 | **GPU DBSCAN density-based clustering (8192 points, brute-force pairwise, 4 clusters / 647 noise, 100% cluster agreement vs CPU, 153x vs CPU)** | |
 | <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_dbscan.gif" width="400"/> | |
+| **GPU frontier exploration on an occupancy grid (512x512 cells, one thread/cell frontier detect + connected components, Yamauchi-style next-best-view, CPU/GPU bit-identical frontier map / labels / chosen target, ~80x vs CPU)** | |
+| <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_frontier_exploration.gif" width="400"/> | |
 
 <details>
 <summary>More classical-algorithm GIFs</summary>
