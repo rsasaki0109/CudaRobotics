@@ -688,6 +688,10 @@ add_executable(cuda_streams_demo src/cuda_streams_demo.cu)
 ##############################
 # Common Foundation Tests
 ##############################
+add_executable(gpu_lk_optical_flow src/gpu_lk_optical_flow.cu)
+target_link_libraries(gpu_lk_optical_flow ${OpenCV_LIBS})
+target_compile_options(gpu_lk_optical_flow PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr --fmad=false>)
+
 add_executable(test_autodiff src/test_autodiff.cu)
 add_executable(test_gpu_mlp src/test_gpu_mlp.cu)
 
