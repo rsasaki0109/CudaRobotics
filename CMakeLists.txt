@@ -811,3 +811,7 @@ if(mujoco_FOUND)
       BUILD_RPATH "${mujoco_LIBRARY_DIR}")
   endif()
 endif()
+
+add_executable(gpu_jfa_edt src/gpu_jfa_edt.cu)
+target_link_libraries(gpu_jfa_edt ${OpenCV_LIBS})
+target_compile_options(gpu_jfa_edt PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr --fmad=false>)
