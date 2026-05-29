@@ -626,6 +626,10 @@ add_executable(gpu_dbscan src/gpu_dbscan.cu)
 target_link_libraries(gpu_dbscan ${OpenCV_LIBS})
 target_compile_options(gpu_dbscan PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr --fmad=false>)
 
+add_executable(gpu_marching_cubes src/gpu_marching_cubes.cu)
+target_link_libraries(gpu_marching_cubes ${OpenCV_LIBS})
+target_compile_options(gpu_marching_cubes PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr --fmad=false>)
+
 add_executable(comparison_reeds_shepp_fan src/comparison_reeds_shepp_fan.cu)
 target_link_libraries(comparison_reeds_shepp_fan ${OpenCV_LIBS})
 target_compile_options(comparison_reeds_shepp_fan PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
@@ -688,6 +692,10 @@ target_compile_options(gpu_frontier_exploration PRIVATE $<$<COMPILE_LANGUAGE:CUD
 ##############################
 # Common Foundation Tests
 ##############################
+add_executable(gpu_lk_optical_flow src/gpu_lk_optical_flow.cu)
+target_link_libraries(gpu_lk_optical_flow ${OpenCV_LIBS})
+target_compile_options(gpu_lk_optical_flow PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr --fmad=false>)
+
 add_executable(test_autodiff src/test_autodiff.cu)
 add_executable(test_gpu_mlp src/test_gpu_mlp.cu)
 
@@ -811,3 +819,7 @@ if(mujoco_FOUND)
       BUILD_RPATH "${mujoco_LIBRARY_DIR}")
   endif()
 endif()
+
+add_executable(gpu_jfa_edt src/gpu_jfa_edt.cu)
+target_link_libraries(gpu_jfa_edt ${OpenCV_LIBS})
+target_compile_options(gpu_jfa_edt PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr --fmad=false>)

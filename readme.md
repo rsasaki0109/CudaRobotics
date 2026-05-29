@@ -72,8 +72,8 @@ Same algorithm on CPU and GPU — GPU enables orders of magnitude more particles
 | <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_gaussian_splatting.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_pose_graph_slam_3d_switchable.gif" width="400"/> |
 | **GPU online 3D SLAM with switchable loop constraints (sliding-window SE(3) + live switch update, false loops rejected as they stream in, plain 9.10 m → switchable 0.29 m, 21/21 rejected)** | **GPU CSM loop-closure SLAM (loops DETECTED by exhaustive scan matching, not GT; 1.4M candidate relposes/attempt, dead-reckoning ATE 2.03 m → SLAM 0.17 m, 49 accepted / 3 rejected, 630x vs CPU)** |
 | <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_online_slam_3d_switchable.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_csm_loop_closure_slam.gif" width="400"/> |
-| **GPU TSDF volumetric fusion (96³ = 884k voxels × 24 depth frames, KinectFusion-style projective TSDF, CPU/GPU bit-identical, 1075x vs CPU)** | |
-| <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_tsdf_fusion.gif" width="400"/> | |
+| **GPU TSDF volumetric fusion (96³ = 884k voxels × 24 depth frames, KinectFusion-style projective TSDF, CPU/GPU bit-identical, 1075x vs CPU)** | **GPU Marching Cubes (128³ = 2.0M cells → 81,890 triangles, 256-entry Bourke table, one thread = one cell, CPU/GPU vertex-bit-identical, 17x vs CPU)** |
+| <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_tsdf_fusion.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_marching_cubes.gif" width="400"/> |
 
 ## Solver infrastructure
 
@@ -166,10 +166,10 @@ Same algorithm on CPU and GPU — GPU enables orders of magnitude more particles
 | <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_label_propagation.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_label_propagation_traversability.gif" width="400"/> |
 | **GPU graph CRF traversability refinement (3072 nodes, noisy unary 82.0% -> CRF 83.6%, 106x vs CPU)** | **GPU GAT traversability policy (3072 nodes, 3 heads x 4 layers, 78.7% -> 81.3%, 99.4x vs CPU)** |
 | <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_graph_crf_traversability.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_gat_traversability_policy.gif" width="400"/> |
-| **GPU DBSCAN density-based clustering (8192 points, brute-force pairwise, 4 clusters / 647 noise, 100% cluster agreement vs CPU, 153x vs CPU)** | |
-| <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_dbscan.gif" width="400"/> | |
-| **GPU frontier exploration on an occupancy grid (512x512 cells, one thread/cell frontier detect + connected components, Yamauchi-style next-best-view, CPU/GPU bit-identical frontier map / labels / chosen target, ~80x vs CPU)** | |
-| <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_frontier_exploration.gif" width="400"/> | |
+| **GPU DBSCAN density-based clustering (8192 points, brute-force pairwise, 4 clusters / 647 noise, 100% cluster agreement vs CPU, 153x vs CPU)** | **GPU Jump Flooding Voronoi/EDT (512² px × 96 seeds, 9 passes, O(log N) GPU-native, 99.92% label agreement vs brute force, EDT max\|diff\| 0.054 px, 983x vs CPU)** |
+| <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_dbscan.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_jfa_edt.gif" width="400"/> |
+| **GPU pyramidal Lucas-Kanade optical flow (1024 features, 3-level pyramid, 8 GN iters, one thread/feature, CPU/GPU bit-identical incl. which 290 are trackable, 192x vs CPU)** | **GPU frontier exploration on an occupancy grid (512x512 cells, one thread/cell frontier detect + connected components, Yamauchi-style next-best-view, CPU/GPU bit-identical frontier map / labels / chosen target, ~80x vs CPU)** |
+| <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_lk_optical_flow.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_frontier_exploration.gif" width="400"/> |
 
 <details>
 <summary>More classical-algorithm GIFs</summary>
