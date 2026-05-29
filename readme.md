@@ -168,8 +168,8 @@ Same algorithm on CPU and GPU — GPU enables orders of magnitude more particles
 | <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_graph_crf_traversability.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_gat_traversability_policy.gif" width="400"/> |
 | **GPU DBSCAN density-based clustering (8192 points, brute-force pairwise, 4 clusters / 647 noise, 100% cluster agreement vs CPU, 153x vs CPU)** | **GPU Jump Flooding Voronoi/EDT (512² px × 96 seeds, 9 passes, O(log N) GPU-native, 99.92% label agreement vs brute force, EDT max\|diff\| 0.054 px, 983x vs CPU)** |
 | <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_dbscan.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_jfa_edt.gif" width="400"/> |
-| **GPU pyramidal Lucas-Kanade optical flow (1024 features, 3-level pyramid, 8 GN iters, one thread/feature, CPU/GPU bit-identical incl. which 290 are trackable, 192x vs CPU)** | |
-| <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_lk_optical_flow.gif" width="400"/> | |
+| **GPU pyramidal Lucas-Kanade optical flow (1024 features, 3-level pyramid, 8 GN iters, one thread/feature, CPU/GPU bit-identical incl. which 290 are trackable, 192x vs CPU)** | **GPU frontier exploration on an occupancy grid (512x512 cells, one thread/cell frontier detect + connected components, Yamauchi-style next-best-view, CPU/GPU bit-identical frontier map / labels / chosen target, ~80x vs CPU)** |
+| <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_lk_optical_flow.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_frontier_exploration.gif" width="400"/> |
 
 <details>
 <summary>More classical-algorithm GIFs</summary>
