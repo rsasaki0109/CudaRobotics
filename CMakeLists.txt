@@ -685,6 +685,10 @@ target_link_libraries(comparison_swarm ${OpenCV_LIBS})
 
 add_executable(cuda_streams_demo src/cuda_streams_demo.cu)
 
+add_executable(gpu_frontier_exploration src/gpu_frontier_exploration.cu)
+target_link_libraries(gpu_frontier_exploration ${OpenCV_LIBS})
+target_compile_options(gpu_frontier_exploration PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr --fmad=false>)
+
 ##############################
 # Common Foundation Tests
 ##############################
