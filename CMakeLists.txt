@@ -630,9 +630,17 @@ add_executable(gpu_sgm_stereo src/gpu_sgm_stereo.cu)
 target_link_libraries(gpu_sgm_stereo ${OpenCV_LIBS})
 target_compile_options(gpu_sgm_stereo PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr --fmad=false>)
 
+add_executable(gpu_wavefront_planner src/gpu_wavefront_planner.cu)
+target_link_libraries(gpu_wavefront_planner ${OpenCV_LIBS})
+target_compile_options(gpu_wavefront_planner PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr --fmad=false>)
+
 add_executable(gpu_marching_cubes src/gpu_marching_cubes.cu)
 target_link_libraries(gpu_marching_cubes ${OpenCV_LIBS})
 target_compile_options(gpu_marching_cubes PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr --fmad=false>)
+
+add_executable(gpu_direct_vo src/gpu_direct_vo.cu)
+target_link_libraries(gpu_direct_vo ${OpenCV_LIBS})
+target_compile_options(gpu_direct_vo PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr --fmad=false>)
 
 add_executable(comparison_reeds_shepp_fan src/comparison_reeds_shepp_fan.cu)
 target_link_libraries(comparison_reeds_shepp_fan ${OpenCV_LIBS})
