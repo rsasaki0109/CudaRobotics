@@ -172,6 +172,8 @@ Same algorithm on CPU and GPU — GPU enables orders of magnitude more particles
 | <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_lk_optical_flow.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_frontier_exploration.gif" width="400"/> |
 | **GPU Semi-Global Matching stereo (Hirschmuller, 384x256 x D=64, census 5x5, 4-path aggregation, one thread/scanline, CPU/GPU bit-identical disparity, ~84% within 1px vs ground truth, 46x vs CPU)** | |
 | <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_sgm_stereo.gif" width="400"/> | |
+| **GPU KD-tree nearest-neighbour search (40k points / 40k queries, host-built balanced tree, one thread/query exact backtracking search, 100% identical NN vs brute force, 10500x vs brute / 175x vs CPU KD-tree)** | |
+| <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_kdtree_nn.gif" width="400"/> | |
 
 <details>
 <summary>More classical-algorithm GIFs</summary>
