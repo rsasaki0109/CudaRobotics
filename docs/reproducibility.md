@@ -7,9 +7,9 @@ The primary entry point is:
 python3 scripts/run_repro_suite.py --suite smoke
 ```
 
-The runner writes per-benchmark CSV files, Markdown summaries, logs, and a machine-readable manifest under
-`build/repro_suite/` by default. It does not hide the underlying commands: every command line is recorded in
-`manifest.json` and printed before execution.
+The runner writes per-benchmark CSV files, Markdown summaries, logs, a human-readable report, and a
+machine-readable manifest under `build/repro_suite/` by default. It does not hide the underlying commands:
+every command line is recorded in `manifest.json` and `report.md`.
 
 ## Suites
 
@@ -67,7 +67,14 @@ Each task writes:
 - `logs/<task>.log`: benchmark stdout/stderr
 - `logs/<task>_summary.log`: summarizer stdout/stderr
 - `plots/<task>/`: optional figures when `--plots` is set
+- `report.md`: human-readable run overview with task statuses, links, logs, and commands
 - `manifest.json`: commands, outputs, statuses, timings, and git commit
+
+Regenerate a report from an existing manifest with:
+
+```bash
+python3 scripts/render_repro_report.py --manifest build/repro_suite/manifest.json
+```
 
 Optional MuJoCo tasks are skipped when their binaries are missing unless `--strict-optional` is set.
 This keeps the main suite usable on CUDA-only machines while still documenting how to reproduce the
