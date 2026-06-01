@@ -86,6 +86,8 @@ Same algorithm on CPU and GPU — GPU enables orders of magnitude more particles
 
 | | |
 |---|---|
+| **GPU MPPI autonomous racing (2048 trajectories × 40 horizon rolled out in parallel per control step, ~0.015 ms GPU vs ~11 ms CPU = ~740x; car completes 3/3 laps, best lap 6.72 s, top speed 16 m/s)** | |
+| <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_mppi_racing.gif" width="400"/> | |
 | **Visibility-aware MPPI (baseline vs −W·V(x,y) visibility)** | **ESDF-MPPI (JFA ESDF + bilinear lookup cost)** |
 | <img src="https://rsasaki0109.github.io/CudaRobotics/visibility_mppi.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/esdf_mppi.gif" width="400"/> |
 | **GPU differentiable value iteration traversability (192x128 learned cost, 220 soft Bellman iters, 747.4x vs CPU)** | **GPU neural A* traversability (64 × 192x128 queries, 79.0% fewer expansions, 153.1x vs CPU)** |
