@@ -835,3 +835,7 @@ endif()
 add_executable(gpu_jfa_edt src/gpu_jfa_edt.cu)
 target_link_libraries(gpu_jfa_edt ${OpenCV_LIBS})
 target_compile_options(gpu_jfa_edt PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr --fmad=false>)
+
+add_executable(gpu_kdtree_nn src/gpu_kdtree_nn.cu)
+target_link_libraries(gpu_kdtree_nn ${OpenCV_LIBS})
+target_compile_options(gpu_kdtree_nn PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr --fmad=false>)
