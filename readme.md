@@ -170,6 +170,8 @@ Same algorithm on CPU and GPU — GPU enables orders of magnitude more particles
 | <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_dbscan.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_jfa_edt.gif" width="400"/> |
 | **GPU pyramidal Lucas-Kanade optical flow (1024 features, 3-level pyramid, 8 GN iters, one thread/feature, CPU/GPU bit-identical incl. which 290 are trackable, 192x vs CPU)** | **GPU frontier exploration on an occupancy grid (512x512 cells, one thread/cell frontier detect + connected components, Yamauchi-style next-best-view, CPU/GPU bit-identical frontier map / labels / chosen target, ~80x vs CPU)** |
 | <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_lk_optical_flow.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_frontier_exploration.gif" width="400"/> |
+| **GPU Semi-Global Matching stereo (Hirschmuller, 384x256 x D=64, census 5x5, 4-path aggregation, one thread/scanline, CPU/GPU bit-identical disparity, ~84% within 1px vs ground truth, 46x vs CPU)** | |
+| <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_sgm_stereo.gif" width="400"/> | |
 
 <details>
 <summary>More classical-algorithm GIFs</summary>
