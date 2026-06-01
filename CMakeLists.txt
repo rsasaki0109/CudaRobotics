@@ -638,6 +638,10 @@ add_executable(gpu_marching_cubes src/gpu_marching_cubes.cu)
 target_link_libraries(gpu_marching_cubes ${OpenCV_LIBS})
 target_compile_options(gpu_marching_cubes PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr --fmad=false>)
 
+add_executable(gpu_direct_vo src/gpu_direct_vo.cu)
+target_link_libraries(gpu_direct_vo ${OpenCV_LIBS})
+target_compile_options(gpu_direct_vo PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr --fmad=false>)
+
 add_executable(comparison_reeds_shepp_fan src/comparison_reeds_shepp_fan.cu)
 target_link_libraries(comparison_reeds_shepp_fan ${OpenCV_LIBS})
 target_compile_options(comparison_reeds_shepp_fan PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
