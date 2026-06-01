@@ -74,6 +74,8 @@ Same algorithm on CPU and GPU — GPU enables orders of magnitude more particles
 | <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_online_slam_3d_switchable.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_csm_loop_closure_slam.gif" width="400"/> |
 | **GPU TSDF volumetric fusion (96³ = 884k voxels × 24 depth frames, KinectFusion-style projective TSDF, CPU/GPU bit-identical, 1075x vs CPU)** | **GPU Marching Cubes (128³ = 2.0M cells → 81,890 triangles, 256-entry Bourke table, one thread = one cell, CPU/GPU vertex-bit-identical, 17x vs CPU)** |
 | <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_tsdf_fusion.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_marching_cubes.gif" width="400"/> |
+| **GPU RGB-D Gaussian-Splatting SLAM (SplaTAM-style: GPU ray-cast RGB-D sensor, frame-to-model point-to-plane ICP tracking + incremental Gaussian map, ATE 0.018 m over 120 frames, ~5.0 ms tracking / ~15.6 ms render per frame)** | |
+| <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_gaussian_splatting_slam.gif" width="400"/> | |
 
 ## Solver infrastructure
 
