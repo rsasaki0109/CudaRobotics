@@ -638,6 +638,10 @@ add_executable(gpu_marching_cubes src/gpu_marching_cubes.cu)
 target_link_libraries(gpu_marching_cubes ${OpenCV_LIBS})
 target_compile_options(gpu_marching_cubes PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr --fmad=false>)
 
+add_executable(gpu_mppi_racing src/gpu_mppi_racing.cu)
+target_link_libraries(gpu_mppi_racing ${OpenCV_LIBS})
+target_compile_options(gpu_mppi_racing PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
+
 add_executable(gpu_direct_vo src/gpu_direct_vo.cu)
 target_link_libraries(gpu_direct_vo ${OpenCV_LIBS})
 target_compile_options(gpu_direct_vo PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr --fmad=false>)
