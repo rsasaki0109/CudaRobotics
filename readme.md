@@ -118,8 +118,8 @@ transform / warp and is verified in-binary.
 | Sinkhorn-OT (unbalanced optimal transport) | Robust Student's-t (2x outlier tolerance vs Gaussian) |
 | <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_filterreg_p2plane.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_robust_p2plane_reg.gif" width="400"/> |
 | FilterReg point-to-plane (removes soft-mean curvature bias; 43x lower error at coarse sigma) | Flagship: robust Student's-t x point-to-plane (best under outliers x curvature) |
-| <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_real_bunny_reg.gif" width="400"/> | |
-| Real data: Stanford bunny scan, known SE(3) recovered to 0.1 deg | |
+| <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_real_bunny_reg.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_fgr.gif" width="400"/> |
+| Real data: Stanford bunny scan, known SE(3) recovered to 0.1 deg | Fast Global Registration: FPFH + GNC recovers 72 deg from no initial guess |
 
 ### Learning & optimization
 
@@ -157,9 +157,10 @@ transform / warp and is verified in-binary.
   parallel-in-time (associative-scan) iLQR, convex MPC (batched ADMM box-QP).
 - Perception and mapping: LiDAR simulation, occupancy grids, ESDF/JFA, TSDF,
   Marching Cubes, SGM stereo, optical flow, direct visual odometry, KD-tree NN.
-- Point-cloud registration: probabilistic methods (FilterReg filtered-EM and its
-  point-to-plane variant, BCPD Bayesian non-rigid, Sinkhorn unbalanced optimal
-  transport, robust Student's-t mixture), NDT, GICP, ICP.
+- Point-cloud registration: global front-end (FPFH + Fast Global Registration)
+  plus local probabilistic refiners (FilterReg filtered-EM and its point-to-plane
+  variant, BCPD Bayesian non-rigid, Sinkhorn unbalanced optimal transport, robust
+  Student's-t mixture), NDT, GICP, ICP.
 - Learning and optimization: differentiable value iteration, neural A*, GNN/GAT
   policies, diffusion planners, CMA-ES, MCTS, EM/GMM, graph CRF.
 
