@@ -290,6 +290,13 @@ class EpisodeRunner {
 public:
     bool record_traj = false;            // when set, log per-step pose to traj_flat
     vector<float> traj_flat;             // [px,py,ox,oy,oth] per recorded step
+    // Model-mismatch robustness knob (default 1.0 => no-op, published numbers
+    // reproduce byte-identically). When != 1.0, the TRUE plant's contact mobility
+    // (push_gain, rot_gain) is scaled while the controller's internal rollout +
+    // autodiff gradient keep the NOMINAL gains: the controller's contact model is
+    // deliberately WRONG. This stress-tests whether the contact-gradient win
+    // survives sim-to-real-style contact-model error.
+    float plant_gain_scale = 1.0f;
 
     EpisodeRunner(const Variant& v, const BoxScenario& sc, int K, int T, int seed)
         : v_(v), sc_(sc), K_(K), T_(T), seed_(seed) {
@@ -314,6 +321,12 @@ public:
         fill(h_nominal_.begin(), h_nominal_.end(), 0.0f);
         reset_rng();
 
+        // True plant params: contact mobility scaled by plant_gain_scale (the
+        // controller's model, used in rollout/grad below, keeps sc_.params).
+        BoxParams plant_p = sc_.params;
+        plant_p.push_gain *= plant_gain_scale;
+        plant_p.rot_gain  *= plant_gain_scale;
+
         auto ep0 = chrono::steady_clock::now();
         float ctrl_ms = 0.0f;
         if (record_traj) { traj_flat.clear();
@@ -329,7 +342,7 @@ public:
             ctrl_ms += chrono::duration<float, milli>(t1 - t0).count();
 
             CUDA_CHECK(cudaMemcpy(h_nominal_.data(), d_nominal_, h_nominal_.size()*sizeof(float), cudaMemcpyDeviceToHost));
-            push_step_box_f(px_, py_, ox_, oy_, oth_, h_nominal_[0], h_nominal_[1], sc_.params);
+            push_step_box_f(px_, py_, ox_, oy_, oth_, h_nominal_[0], h_nominal_[1], plant_p);
             cum_cost_ += stage_cost_box_f(px_, py_, ox_, oy_, oth_, h_nominal_[0], h_nominal_[1], sc_.gx, sc_.gy, sc_.gth, sc_.params);
             for (int t = 0; t < T_-1; t++) { h_nominal_[t*2+0]=h_nominal_[(t+1)*2+0]; h_nominal_[t*2+1]=h_nominal_[(t+1)*2+1]; }
             h_nominal_[(T_-1)*2+0]=0.0f; h_nominal_[(T_-1)*2+1]=0.0f;
@@ -439,7 +452,7 @@ static void print_summary(const vector<EpisodeMetrics>& rows) {
 int main(int argc, char** argv) {
     bool quick=false; string csv_path="build/benchmark_diff_mppi_pushing_box.csv";
     vector<int> k_values; vector<string> scenario_names, planner_names; int seed_count=-1;
-    int horizon=DEFAULT_T; string dump_traj_prefix="";
+    int horizon=DEFAULT_T; string dump_traj_prefix=""; float plant_gain_scale=1.0f;
     for (int i=1;i<argc;i++){ string a=argv[i];
         if (a=="--quick") quick=true;
         else if (a=="--csv"&&i+1<argc) csv_path=argv[++i];
@@ -449,6 +462,9 @@ int main(int argc, char** argv) {
         else if (a=="--planners"&&i+1<argc) planner_names=parse_string_list(argv[++i]);
         else if (a=="--horizon"&&i+1<argc) horizon=max(2,atoi(argv[++i]));
         else if (a=="--dump-traj"&&i+1<argc) dump_traj_prefix=argv[++i];
+        // model-mismatch robustness: scale the TRUE plant contact mobility while the
+        // controller keeps nominal gains (default 1.0 => published numbers reproduce).
+        else if (a=="--plant-gain-scale"&&i+1<argc) plant_gain_scale=(float)atof(argv[++i]);
     }
     ensure_build_dir();
 
@@ -503,6 +519,7 @@ int main(int argc, char** argv) {
         for (int ks : k_values) for (size_t vi=0; vi<variants.size(); vi++) for (int seed=0; seed<seed_count; seed++) {
             int run_seed = (int)(6000 + si*100 + vi*20 + seed*7 + ks);
             EpisodeRunner runner(variants[vi], sc, ks, horizon, run_seed);
+            runner.plant_gain_scale = plant_gain_scale;
             EpisodeMetrics m = runner.run();
             rows.push_back(m);
             printf("[%s] %s K=%d seed=%d success=%d steps=%d pos=%.3f ang=%.3f avg_ms=%.3f\n",
