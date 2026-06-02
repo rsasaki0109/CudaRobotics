@@ -101,16 +101,16 @@ The most visually striking GPU demos, where massive parallelism really shows.
 
 ### Probabilistic point-cloud registration
 
-Modern probabilistic registration in the spirit of `probreg`, spanning the three
-main paradigms: filtered EM, Bayesian non-rigid, and optimal transport. Each demo
-recovers a known transform / warp and is verified in-binary.
+Modern probabilistic registration in the spirit of `probreg`, spanning the main
+paradigms: filtered EM, Bayesian non-rigid, optimal transport, and heavy-tailed
+robust EM. Each demo recovers a known transform / warp and is verified in-binary.
 
 | | |
 |---|---|
 | <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_filterreg.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_bcpd.gif" width="400"/> |
 | FilterReg (filtered-EM rigid) | BCPD (Bayesian non-rigid) |
-| <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_sinkhorn_reg.gif" width="400"/> | |
-| Sinkhorn-OT (unbalanced optimal transport) | |
+| <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_sinkhorn_reg.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_robust_treg.gif" width="400"/> |
+| Sinkhorn-OT (unbalanced optimal transport) | Robust Student's-t (2x outlier tolerance vs Gaussian) |
 
 ### Learning & optimization
 
@@ -148,7 +148,8 @@ recovers a known transform / warp and is verified in-binary.
 - Perception and mapping: LiDAR simulation, occupancy grids, ESDF/JFA, TSDF,
   Marching Cubes, SGM stereo, optical flow, direct visual odometry, KD-tree NN.
 - Point-cloud registration: probabilistic methods (FilterReg filtered-EM, BCPD
-  Bayesian non-rigid, Sinkhorn unbalanced optimal transport), NDT, GICP, ICP.
+  Bayesian non-rigid, Sinkhorn unbalanced optimal transport, robust Student's-t
+  mixture), NDT, GICP, ICP.
 - Learning and optimization: differentiable value iteration, neural A*, GNN/GAT
   policies, diffusion planners, CMA-ES, MCTS, EM/GMM, graph CRF.
 
