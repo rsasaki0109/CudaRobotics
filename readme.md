@@ -116,8 +116,8 @@ transform / warp and is verified in-binary.
 | FilterReg (filtered-EM rigid) | BCPD (Bayesian non-rigid) |
 | <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_sinkhorn_reg.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_robust_treg.gif" width="400"/> |
 | Sinkhorn-OT (unbalanced optimal transport) | Robust Student's-t (2x outlier tolerance vs Gaussian) |
-| <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_filterreg_p2plane.gif" width="400"/> | |
-| FilterReg point-to-plane (removes soft-mean curvature bias; 43x lower error at coarse sigma) | |
+| <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_filterreg_p2plane.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_robust_p2plane_reg.gif" width="400"/> |
+| FilterReg point-to-plane (removes soft-mean curvature bias; 43x lower error at coarse sigma) | Flagship: robust Student's-t x point-to-plane (best under outliers x curvature) |
 
 ### Learning & optimization
 
