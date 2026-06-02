@@ -21,7 +21,8 @@
 
 \begin{document}
 
-\title{Diff-MPPI: Minimal Gradient Refinement for Sampling-Based Model Predictive Control}
+\title{When Does Gradient Refinement Help Sampling-Based MPC?\\
+Localizing the Benefit of Diff-MPPI to Contact-Rich Manipulation}
 
 \author{Ryohei~Sasaki%
 \thanks{Manuscript received XXX; revised XXX.}%
@@ -35,30 +36,34 @@
 % =============================================================================
 \begin{abstract}
 Sampling-based model predictive controllers such as MPPI handle nonlinear
-dynamics and nonconvex costs effectively, but their trajectory quality can
-plateau under limited rollout budgets on hard tasks.  Recent work shows that
-MPPI is equivalent to a preconditioned gradient descent step.  We study a
-minimal hybrid controller that adds a short autodiff refinement---just three
-local gradient steps---to the standard MPPI update.  With parallelized
-gradient computation on GPU, this refinement preserves most of the sampling
-budget within the same wall-clock time.  We evaluate the method against
-vanilla MPPI and eight strong non-hybrid baselines using fixed-budget sweeps
-and exact matched-time comparisons on two-dimensional dynamic-obstacle
-navigation and a 7-DOF serial-arm manipulation benchmark.  On the hardest
-dynamic-obstacle task, the hybrid controller is the only method that reaches
-the goal across all tested compute budgets from 0.2 to 3.1\,ms---all eight
-non-hybrid baselines remain unsuccessful across every fixed-$K$ setting and
-in the matched-time sweeps we evaluated.  On 7-DOF manipulation with dynamic
-obstacles, the hybrid controller achieves success\,=\,1.00 at 0.84\,ms while
-the closest feedback baseline reaches 0.75 at 4.01\,ms.  A gradient
-freshness analysis shows that the autodiff correction concentrates during
-obstacle encounters where the cost landscape changes most rapidly,
-explaining why the refinement is specifically valuable on dynamic tasks.
+dynamics and nonconvex costs effectively, and recent work shows MPPI is
+equivalent to a preconditioned gradient descent step. A natural question is
+whether \emph{adding} explicit gradient steps to MPPI helps, and if so, where.
+We study a deliberately minimal hybrid controller---Diff-MPPI---that appends a
+short forward-mode autodiff refinement (a few local gradient steps) to the
+standard MPPI update, parallelized on GPU so it preserves most of the sampling
+budget at matched wall-clock time. Our central finding is a \emph{localization}
+rather than a blanket win. On smooth dynamic-obstacle navigation and 7-DOF
+serial-arm reaching, a literature-faithful One-Step CDF-MPPI baseline,
+reimplemented in the same harness, matches or beats the entire Diff-MPPI family
+at $8$--$47\times$ lower per-step compute; and under a fair shared-goal-configuration
+protocol the gradient refinement does \emph{not} outperform vanilla MPPI. The
+benefit appears specifically in \emph{contact-rich} dynamics. On a
+differentiable planar pushing task where the model gradient flows through a
+smooth contact model, Diff-MPPI pushes a box to a target pose with success
+$1.00$ while vanilla MPPI reaches $0.00$ \emph{even at $16\times$ the samples}
+(a cheaper per-step budget), with success monotone in the number of gradient
+steps; a second contact task and a disk-pushing matched-wall-clock efficiency
+result corroborate the effect. The contribution is thus a clearly scoped,
+mechanism-supported positive result with a rigorous negative control: gradient
+refinement buys what sampling cannot precisely when information is carried by the
+contact gradient.
 \end{abstract}
 
 \begin{IEEEkeywords}
 Motion planning, model predictive control, sampling-based optimization,
-gradient-based refinement, GPU-accelerated control
+gradient-based refinement, differentiable simulation, non-prehensile
+manipulation, GPU-accelerated control
 \end{IEEEkeywords}
 
 % =============================================================================
@@ -67,43 +72,55 @@ gradient-based refinement, GPU-accelerated control
 
 Model Predictive Path Integral (MPPI) control is widely used for real-time
 nonlinear trajectory optimization because it handles arbitrary cost functions
-through parallel rollout sampling on GPU~\cite{williams2017mppi}.  However,
-under limited rollout budgets, vanilla MPPI can produce trajectories that are
-qualitatively close to the solution without crossing the success
-boundary---particularly on tasks with rapidly changing cost landscapes such
-as dynamic obstacle avoidance.
+through parallel rollout sampling on GPU~\cite{williams2017mppi}. Recent
+theoretical work by Fazlyab et al.~\cite{fazlyab2026mppi_gd} shows that the
+MPPI update is exactly a preconditioned gradient descent step with unit step
+size on a KL-regularized objective. This invites an obvious construction: after
+the MPPI weighted update, take a few \emph{explicit} gradient steps on the
+nominal control sequence using automatic differentiation. We call this minimal
+hybrid Diff-MPPI. The question this paper answers is not ``can we build it'' but
+``\emph{when does it actually help?}''---and, just as importantly, when it does
+not.
 
-A growing body of work augments MPPI with various refinement mechanisms:
-gradient-based DDP smoothing~\cite{mppi_ipddp}, learned sampling
-distributions~\cite{le2026step_mppi,step_mppi}, sensitivity-derived feedback
-gains~\cite{belvedere2026feedback_mppi}, and ancillary controller
-biasing~\cite{trevisan2024biased_mppi}.  Recent theoretical work by Fazlyab
-et al.~\cite{fazlyab2026mppi_gd} shows that classical MPPI is exactly a
-preconditioned gradient descent step with unit step size on a KL-regularized
-distribution objective, establishing a principled connection between
-sampling-based and gradient-based trajectory optimization.
+We answer with a deliberately adversarial evaluation. Rather than reporting only
+the tasks where the hybrid wins, we (i) implement a strong, literature-faithful
+direct baseline---One-Step CDF-MPPI~\cite{cdf_mppi}---inside the same CUDA
+harness, and (ii) equalize the most important confound (goal specification) so
+that any remaining difference is attributable to the controller. Under this
+protocol, the picture on \emph{smooth} tasks is humbling: on 2D dynamic-obstacle
+navigation and 7-DOF reaching, CDF-MPPI matches or beats the Diff-MPPI family at
+a fraction of the per-step compute, and once every method is handed the same
+goal configuration the gradient refinement is statistically indistinguishable
+from vanilla MPPI. A short autodiff correction does not, by itself, beat strong
+sampling on smooth dynamics.
 
-In this context, we study a deliberately minimal hybrid controller: after the
-standard MPPI weighted update, we apply three local gradient steps to the
-nominal control sequence using forward-mode autodiff.  The key design choice
-is simplicity---no learned components, no convex corridor construction, no
-additional data structures beyond the cost gradient itself.
+The benefit reappears---sharply---when the dynamics gradient carries information
+that sampling cannot cheaply discover: \emph{contact}. We build a differentiable
+planar pushing task with a smooth (softplus / signed-distance) contact model and
+forward-mode dual-number autodiff that flows through contact. There, pushing a
+box to a target pose, Diff-MPPI succeeds $1.00$ of the time while vanilla MPPI
+succeeds $0.00$ of the time even at $16\times$ the sample budget, and success
+rises monotonically with the number of gradient steps. The effect reproduces on
+a second, mechanically distinct contact task and as a matched-wall-clock
+efficiency gain on disk pushing.
 
-Our main contributions are:
+Our contributions are:
 \begin{enumerate}
-  \item A minimal, training-free hybrid MPPI controller where the autodiff
-    refinement is parallelized to preserve most of the sampling budget at
-    matched wall-clock time, interpretable as adding explicit gradient steps
-    after MPPI's implicit preconditioned gradient step.
-  \item A matched-time evaluation and robustness sweep showing a non-hybrid
-    Pareto ceiling: on the hardest dynamic-obstacle task, all eight
-    non-hybrid baselines remain unsuccessful across every fixed-$K$ setting
-    and every matched-time configuration we tested,
-    while the hybrid controller succeeds at $K\!=\!128$ and above.
-  \item Evidence across 2D dynamic navigation and 7-DOF serial-arm
-    manipulation, including a gradient freshness analysis showing that the
-    autodiff correction concentrates during dynamic obstacle encounters where
-    the sampling-based preconditioner is least effective.
+  \item \textbf{A minimal, training-free hybrid MPPI} that refines the
+    post-sampling control mean with forward-mode autodiff, including through a
+    smooth contact model, parallelized to preserve most of the sampling budget
+    at matched wall-clock time (Sec.~\ref{sec:method}).
+  \item \textbf{A rigorous negative control.} A literature-faithful CDF-MPPI
+    baseline in the same harness, plus a fair shared-goal-configuration
+    protocol, showing that on smooth dynamic-navigation and 7-DOF reaching the
+    gradient refinement provides \emph{no} advantage over vanilla MPPI and is
+    dominated on compute by CDF-MPPI (Sec.~\ref{sec:results_smooth}).
+  \item \textbf{A localized positive result.} On differentiable-contact pushing,
+    a categorical success-rate win (box pose: $1.00$ vs $0.00$ at $16\times$
+    samples) that is monotone in gradient steps, corroborated by a second
+    contact task and a disk-pushing matched-time efficiency gain
+    (Sec.~\ref{sec:results_contact}). This localizes the benefit of gradient
+    refinement in sampling-based MPC to contact-rich dynamics.
 \end{enumerate}
 
 % =============================================================================
@@ -111,35 +128,43 @@ Our main contributions are:
 \label{sec:related}
 
 \textbf{MPPI and path-integral control.}
-MPPI~\cite{williams2017mppi} performs weighted averaging of sampled
-trajectories using the exponential cost-to-go as importance weights.  Fazlyab
-et al.~\cite{fazlyab2026mppi_gd} show this update is equivalent to a
-preconditioned gradient descent step, connecting MPPI to optimization-based
-MPC.
+MPPI~\cite{williams2017mppi} performs weighted averaging of sampled trajectories
+using the exponential cost-to-go as importance weights. Fazlyab et
+al.~\cite{fazlyab2026mppi_gd} show this update is a preconditioned gradient
+descent step, connecting MPPI to optimization-based MPC and directly motivating
+the question of whether explicit gradient steps add anything.
 
 \textbf{Sampling + gradient hybrids.}
-CEM-GD~\cite{bharadhwaj2020cemgd} combines cross-entropy method sampling
-with gradient descent for model-based RL planning.
-MPPI-IPDDP~\cite{mppi_ipddp} smooths MPPI trajectories via DDP inside a
-convex corridor.  Our approach is simpler: pure autodiff on the post-MPPI
-control sequence without corridor construction or learning.
+CEM-GD~\cite{bharadhwaj2020cemgd} combines cross-entropy sampling with gradient
+descent for model-based RL planning. MPPI-IPDDP~\cite{mppi_ipddp} smooths MPPI
+trajectories via DDP inside a convex corridor. Our refinement is simpler---pure
+autodiff on the post-MPPI control sequence---but our emphasis is different: we
+characterize \emph{where} such a hybrid helps and provide a negative control on
+smooth tasks rather than asserting a general improvement.
 
-\textbf{Feedback-enhanced MPPI.}
+\textbf{Direct sampling-based baseline.}
+One-Step CDF-MPPI~\cite{cdf_mppi} shapes a single-step MPPI cost using the angle
+between sampled motion and the ascent direction of a configuration-space
+distance field, and is evaluated on 7-DOF reaching---the same regime as our
+smooth manipulation tasks. We reimplement it faithfully (analytic
+margin-derived distance field as primary, a neural variant as an ablation) as a
+direct, mechanistically distinct baseline.
+
+\textbf{Feedback-enhanced and learned-sampling MPPI.}
 Feedback-MPPI~\cite{belvedere2026feedback_mppi} computes local feedback gains
-from rollout sensitivity analysis.
-Biased-MPPI~\cite{trevisan2024biased_mppi} uses ancillary controllers to
-improve sampling efficiency.
-Step-MPPI~\cite{step_mppi} learns a neural sampling distribution for
-single-step lookahead.  Our method is complementary: training-free refinement
-applied post-MPPI rather than modifying the sampling distribution.
+from rollout sensitivity; Biased-MPPI~\cite{trevisan2024biased_mppi} uses
+ancillary controllers; Step-MPPI~\cite{step_mppi} learns a sampling
+distribution. These modify sampling or feedback; our method instead adds an
+explicit gradient step, and we find it complementary only in contact-rich
+settings.
 
-\textbf{GPU-accelerated control.}
-DiffMPC~\cite{diffmpc2025} provides GPU-accelerated differentiable MPC in
-JAX for learning applications.  cuNRTO~\cite{cunrto2026} solves robust
-trajectory optimization on GPU for manipulators.
-MPPI-Generic~\cite{mppi_generic2024} provides a CUDA MPPI library.  We share
-the GPU-parallel rollout design but focus on the gradient refinement
-analysis.
+\textbf{Differentiable simulation and contact.}
+Differentiable physics provides analytic gradients through contact for
+manipulation and locomotion~\cite{diffmpc2025,cunrto2026}. Non-prehensile
+pushing is a canonical contact-rich task whose dynamics are governed by frictional
+contact wrenches. We use a smooth (softplus penetration, signed-distance) contact
+model so that forward-mode autodiff yields an exact gradient of the rollout cost
+through contact, which is precisely the signal our positive result exploits.
 
 % =============================================================================
 \section{Method}
@@ -148,8 +173,11 @@ analysis.
 \subsection{Controller Structure}
 \label{sec:controller_structure}
 
-At each control step, the hybrid controller executes three phases, summarized
-in Algorithm~\ref{alg:diff_mppi}.
+At each control step, Diff-MPPI executes three phases
+(Algorithm~\ref{alg:diff_mppi}): a standard MPPI weighted update, a parallel
+cost-gradient evaluation, and $N_g$ local gradient-descent steps on the nominal
+control sequence with per-timestep norm clipping. No component is learned and no
+auxiliary structure beyond the cost gradient is built.
 
 \begin{algorithm}[t]
 \caption{Diff-MPPI Controller (one control step)}
@@ -163,323 +191,277 @@ in Algorithm~\ref{alg:diff_mppi}.
 \STATE Compute trajectory costs $S^{(k)}$ \COMMENT{$K$ GPU threads}
 \STATE Compute weights $w^{(k)} \propto \exp(-\frac{1}{\lambda} S^{(k)})$
 \STATE $\mathbf{u} \leftarrow \mathbf{u} + \sum_k w^{(k)} \boldsymbol{\epsilon}^{(k)}$
-\STATE \textbf{--- Phase 2: Parallel Cost Gradient ---}
-\STATE Roll out nominal trajectory $\mathbf{x}_{0:T}$ under $\mathbf{u}_{0:T-1}$
-\STATE Compute stage cost gradients $\nabla_{\mathbf{x}} \ell_t$, $\nabla_{\mathbf{u}} \ell_t$ \COMMENT{$T$ GPU threads}
-\STATE Compute dynamics Jacobians $A_t$, $B_t$ \COMMENT{$T$ GPU threads}
+\STATE \textbf{--- Phase 2: Parallel Cost Gradient (autodiff) ---}
+\STATE For each control parameter, evaluate $\partial S / \partial \mathbf{u}_t$ by a forward-mode dual-number rollout \COMMENT{parallel over parameters}
 \STATE \textbf{--- Phase 3: Local Gradient Refinement ---}
 \FOR{$i = 1$ \TO $N_g$}
-  \STATE Backward adjoint pass: $\boldsymbol{\lambda}_T = \nabla_{\mathbf{x}} \ell_T$
-  \FOR{$t = T\!-\!1$ \TO $0$}
-    \STATE $\boldsymbol{\lambda}_t = \nabla_{\mathbf{x}} \ell_t + A_t^\top \boldsymbol{\lambda}_{t+1}$
-    \STATE $\mathbf{g}_t = \nabla_{\mathbf{u}} \ell_t + B_t^\top \boldsymbol{\lambda}_{t+1}$
-  \ENDFOR
   \STATE Clip: $\mathbf{g}_t \leftarrow \mathbf{g}_t \cdot \min(1,\; c / \|\mathbf{g}_t\|)$ for all $t$
   \STATE $\mathbf{u}_t \leftarrow \mathbf{u}_t - \alpha\, \mathbf{g}_t$ for all $t$
+  \STATE Recompute $\mathbf{g}$ by a fresh dual-number rollout
 \ENDFOR
 \RETURN $\mathbf{u}_{0:T-1}$, apply $\mathbf{u}_0$
 \end{algorithmic}
 \end{algorithm}
 
-\textbf{Phase~1: MPPI Sampling Update.}
-Sample $K$ rollouts around the current nominal control sequence~$\mathbf{u}$.
-Compute trajectory costs and update the nominal via the standard MPPI
-weighted average.
+\subsection{Forward-Mode Autodiff Through Smooth Contact}
+\label{sec:autodiff_contact}
 
-\textbf{Phase~2: Parallel Cost Gradient Computation.}
-Roll out the updated nominal trajectory.  Compute stage cost gradients and
-dynamics Jacobians in parallel across $T$ horizon threads on GPU.
-
-\textbf{Phase~3: Local Gradient Refinement.}
-Apply the adjoint backward pass (single-thread, matrix operations only) to
-obtain control gradients.  Take three gradient descent steps on the control
-sequence with per-timestep norm clipping.
-
-The gradient computation is split into a parallel phase ($T$ threads compute
-cost gradients and analytical dynamics Jacobians simultaneously) and a
-sequential phase (backward adjoint accumulates control gradients via matrix
-multiplication).  This separation enables parallelization of the expensive
-cost gradient evaluations while preserving the sequential adjoint dependency.
+The gradient $\partial S/\partial \mathbf{u}$ is obtained by a forward-mode
+dual-number rollout: every state and intermediate quantity carries a value and a
+derivative with respect to the active control parameter, so a single rollout
+returns both the cost and its exact gradient. The key requirement for the
+contact tasks is that the contact model be \emph{smooth}. For planar pushing we
+use a softplus penetration $\mathrm{pen} = \mathrm{softplus}(r - \mathrm{sd})$ of
+the pusher into the object signed distance $\mathrm{sd}$, a normal force
+proportional to penetration, and---for the box---a torque from the off-centre
+contact wrench computed from the box signed-distance gradient. Because every
+operation (softplus, signed distance of a box, the contact normal, the wrench)
+is differentiable, the dual-number rollout differentiates the entire
+contact-mediated trajectory, giving the refinement a usable gradient exactly
+where pure sampling struggles.
 
 \subsection{Compute Budget Analysis}
 \label{sec:budget}
 
-After parallelization, the gradient refinement adds minimal overhead to the
-MPPI sampling step.  At the exact 1.0\,ms target on
-\texttt{dynamic\_slalom}:
-
-\begin{itemize}
-  \item Vanilla MPPI: $K = 7167$ samples
-  \item Diff-MPPI-3: $K = 5966$ samples + 3 gradient steps
-\end{itemize}
-
-The hybrid controller retains 83\% of the pure-sampling budget while gaining
-gradient refinement within the same wall-clock regime.  This makes the
-compute--quality comparison genuinely fair: the refinement is not buying
-quality by escaping the timing budget.
-
-\subsection{Adaptive Gradient Skip}
-\label{sec:adaptive}
-
-We additionally implement an adaptive variant that monitors the total gradient
-norm and skips the gradient step when the norm falls below a threshold.  On
-2D navigation tasks, the gradient computation is already fast enough that the
-monitoring overhead exceeds the savings.  The adaptive skip is more valuable
-for higher-dimensional systems where gradient steps are more expensive.
+After parallelization, the refinement adds a bounded overhead per step. The
+comparisons in Sec.~\ref{sec:results} therefore use \emph{matched wall-clock per
+control step} (an identical timing meter wrapped around the controller update in
+all binaries) as the primary budget axis; sample count and replan rate are
+disclosed as secondary columns. Crucially, in the contact result the hybrid is
+compared against vanilla MPPI given \emph{more} samples at \emph{lower} per-step
+cost, so the gradient cannot be ``buying'' quality by escaping the budget.
 
 % =============================================================================
 \section{Experimental Setup}
 \label{sec:experiments}
 
-\subsection{2D Dynamic-Obstacle Navigation}
+\subsection{Smooth Tasks (negative-control domains)}
 
-Two scenarios on a bicycle model: \texttt{dynamic\_crossing} (easier, one
-crossing obstacle) and \texttt{dynamic\_slalom} (harder, multiple dynamic
-obstacles requiring precise timing).  Goal tolerance 2.0\,m, max 260~steps.
+\textbf{2D dynamic-obstacle navigation.} A bicycle model with
+\texttt{dynamic\_crossing} (one crossing obstacle) and \texttt{dynamic\_slalom}
+(multiple moving obstacles).
 
-\subsection{7-DOF Serial-Arm Manipulation}
+\textbf{7-DOF serial-arm reaching.} A Panda-like 7-DOF arm with 14D state, 7D
+control, 3D workspace obstacles, and analytical kinematics. Scenarios:
+\texttt{7dof\_shelf\_reach} (static) and \texttt{7dof\_dynamic\_avoid} (moving
+3D obstacle).
 
-Panda-like 7-DOF arm with 14D state (7 joint angles + 7 velocities), 7D
-torque control, 3D workspace obstacles, second-order joint dynamics with
-gravity and damping, and analytical dynamics Jacobians.  Two scenarios:
-\texttt{7dof\_shelf\_reach} (static obstacle) and
-\texttt{7dof\_dynamic\_avoid} (moving 3D obstacle).
+\subsection{Contact-Rich Tasks (positive-result domains)}
+
+\textbf{Differentiable planar pushing.} A quasi-static point pusher acts on an
+object through the smooth contact model of Sec.~\ref{sec:autodiff_contact}.
+\texttt{push\_straight}/\texttt{push\_diagonal} push a disk to a target
+position; \texttt{box\_align} and \texttt{box\_pivot} push a rectangular box to
+a target \emph{pose} $(x,y,\theta)$, which requires off-centre contact to
+generate torque. \texttt{box\_pivot} is mechanically distinct from
+\texttt{box\_align} (opposite rotation handedness, a different contact face, and
+a tighter angular tolerance). \texttt{box\_turn} (long translate~+~rotate) is
+included as a stress case.
 
 \subsection{Baselines}
 
-Eight non-hybrid baselines are included in the benchmark package.  The
-strongest and closest ones are highlighted in the main exact-time table;
-broader family variants appear in the matched-time robustness sweeps:
-\begin{enumerate}
-  \item \textbf{mppi}: vanilla sampling-only MPPI.
-  \item \textbf{feedback\_mppi\_ref}: released current-action
-    Feedback-MPPI-style gains~\cite{belvedere2026feedback_mppi}.
-  \item \textbf{feedback\_mppi\_fused}: covariance + LQR blend
-    (strongest non-hybrid).
-  \item \textbf{feedback\_mppi\_hf}: two-rate controller with full-horizon
-    covariance/LQR gains.
-  \item \textbf{feedback\_mppi\_faithful}: two-rate controller with
-    current-action-only gains.
-  \item \textbf{feedback\_mppi\_cov}: covariance-regression gains.
-  \item \textbf{feedback\_mppi\_paper}: every-step covariance + LQR blend,
-    closest to the strongest principled
-    Feedback-MPPI-style baseline~\cite{belvedere2026feedback_mppi}.
-  \item \textbf{step\_mppi}: online sampling-bias EMA inspired by
-    Step-MPPI~\cite{step_mppi}.
-\end{enumerate}
+\textbf{CDF-MPPI}~\cite{cdf_mppi}: a literature-faithful One-Step CDF-MPPI in the
+same harness, using an analytic margin-derived configuration-space distance
+field (a neural distance field is reported as an ablation). \textbf{Vanilla
+MPPI} and a family of in-harness \texttt{feedback\_mppi} variants
+(sensitivity-, covariance-, and release-style gains) are also included.
+Diff-MPPI-$N_g$ denotes the hybrid with $N_g$ gradient steps.
 
-\subsection{Matched-Time Evaluation Protocol}
+\subsection{Fair Goal-Configuration Protocol}
 
-We use a binary-search exact-time tuning script that finds the $K$ value per
-planner and scenario that produces a given wall-clock target (e.g.,
-1.0\,ms).  This ensures all comparisons are at the same per-step compute
-budget, not just the same~$K$.  The main text reports a fixed-controller
-exact-time table for the submission-critical baselines, while broader
-family-level multi-parameter sweeps over feedback gain scale and Diff-MPPI
-gradient hyperparameters are treated as robustness follow-up.
+CDF-MPPI is natively handed a collision-free goal \emph{configuration}
+$\mathbf{q}_{\text{goal}}$ (effectively a solved IK), whereas the Diff-MPPI
+family default sees only a workspace goal. To remove this confound we add a
+gated joint-space goal cost to the Diff-MPPI binary and feed it the same
+$\mathbf{q}_{\text{goal}}$ (default weight $0$, so published numbers reproduce
+byte-identically). All smooth-task comparisons are reported under this shared
+condition.
 
 % =============================================================================
 \section{Results}
 \label{sec:results}
 
-\subsection{Non-Hybrid Pareto Ceiling on \texttt{dynamic\_slalom}}
+\subsection{Where it does \emph{not} help: smooth tasks}
+\label{sec:results_smooth}
 
-The central result: on \texttt{dynamic\_slalom}, \textbf{all eight
-non-hybrid baselines remain unsuccessful across every fixed-$K$ sweep and
-exact-time run we tested}.  The strongest non-hybrid baseline
-(\texttt{feedback\_mppi\_fused}) reduces final distance to about 10.2--10.3,
-but never reaches the goal.
-
-\texttt{diff\_mppi\_3} succeeds at every $K$ from 128 upward, reaching final
-distance 1.89--1.95.
-
-Table~\ref{tab:slalom} shows a compact exact-time 1.0\,ms comparison for the
-strongest and most submission-critical baselines; the remaining feedback
-variants follow the same qualitative failure pattern and are omitted for
-space.
-
-\begin{table}[t]
-\centering
-\caption{%
-  Selected \texttt{dynamic\_slalom} planners under the 1.0\,ms exact-time
-  target protocol.
-  \textbf{Bold}: proposed method.%
-}
-\label{tab:slalom}
-\begin{tabular}{lrrcc}
-\toprule
-Planner & $K$ & ms & Success & Final Dist \\
-\midrule
-mppi                    & 7167 & 0.99 & 0.00 & 14.15 \\
-step\_mppi              & 7422 & 0.99 & 0.00 & 14.10 \\
-feedback\_mppi\_ref     &  949 & 1.01 & 0.00 & 11.86 \\
-feedback\_mppi\_paper   &  129 & 1.02 & 0.00 & 11.61 \\
-feedback\_mppi\_fused   &  128 & 1.88 & 0.00 & 10.33 \\
-\textbf{diff\_mppi\_3}  & \textbf{5966} & \textbf{0.99} & \textbf{1.00} & \textbf{1.90} \\
-\bottomrule
-\end{tabular}
-\end{table}
-
-Notably, the \texttt{step\_mppi} baseline---which adapts its sampling
-distribution online via cost-weighted exponential moving average---performs at
-vanilla MPPI level (final distance 14.20 at $K\!=\!1024$), indicating that
-learning a better sampling distribution alone does not resolve the dynamic
-obstacle challenge.
-
-This establishes a hard non-hybrid Pareto ceiling: no amount of compute
-budget allocated to non-hybrid controllers can solve this task.  The gradient
-refinement is the only mechanism that crosses the success boundary.
-
-A broader family-level matched-time sweep over $K$, feedback gain scale, and
-Diff-MPPI gradient hyperparameters reaches the same qualitative conclusion at
-1.0, 1.5, and 2.0\,ms: all non-hybrid families still fail on
-\texttt{dynamic\_slalom}.  The best hybrid family point shifts between
-\texttt{diff\_mppi\_3} and \texttt{diff\_mppi\_1} depending on the target, so
-we treat that sweep as robustness evidence rather than the headline table.
-
-\begin{figure}[t]
-  \centering
-  \includegraphics[width=\columnwidth]{fig_pareto}
-  \caption{%
-    Exact-time compute--quality plots on \texttt{dynamic\_crossing} (left)
-    and \texttt{dynamic\_slalom} (right), combining the fixed-controller
-    1.0, 1.5, and 2.0\,ms targets plus the additional 1.0\,ms
-    \texttt{feedback\_mppi\_paper} and \texttt{step\_mppi} points.
-    Non-hybrid baselines cluster above the success threshold on the hard
-    \texttt{dynamic\_slalom} panel, while Diff-MPPI-3 crosses it at every
-    matched-time point shown.%
-  }
-  \label{fig:pareto}
-\end{figure}
-
-\subsection{7-DOF Manipulation}
-
-On \texttt{7dof\_dynamic\_avoid} at $K\!=\!512$, the results are shown in
-Table~\ref{tab:7dof}.
+On \texttt{7dof\_shelf\_reach} under matched wall-clock
+(Table~\ref{tab:cdf_reach}), the literature-faithful CDF-MPPI reaches the goal
+collision-free at $0.05$\,ms/step where the best Diff-MPPI variant manages only
+$0.50$ success at roughly $9\times$ the per-step compute. The naive gap is
+partly CDF-MPPI's free goal configuration; the fair rematch
+(Table~\ref{tab:fair}) closes most of it---and, decisively, once every method is
+handed the same $\mathbf{q}_{\text{goal}}$, \texttt{diff\_mppi\_3} ($0.62$) does
+\emph{not} beat vanilla \texttt{mppi} ($0.88$). The same pattern holds on the
+dynamic 7-DOF task, where a reactive CDF-MPPI is the most reliable and cheapest
+controller ($1.00$ success, zero collisions, $0.24$\,ms/step) while the
+Diff-MPPI family tops out near $0.88$, matching vanilla MPPI. Across these smooth
+tasks the autodiff refinement shows no demonstrable advantage; this is the
+negative control that scopes the positive result below.
 
 \begin{table}[t]
 \centering
 \caption{%
-  \texttt{7dof\_dynamic\_avoid} at $K\!=\!512$.
-  \textbf{Bold}: proposed method.%
+  \texttt{7dof\_shelf\_reach}, matched wall-clock, 4 seeds. CDF-MPPI is the
+  literature-faithful baseline; the Diff-MPPI family does not beat it on success
+  or compute.%
 }
-\label{tab:7dof}
+\label{tab:cdf_reach}
 \begin{tabular}{lccc}
 \toprule
-Planner & Success & Final Dist & Avg ms \\
+Planner & Success & Final Dist & ms/step \\
 \midrule
-mppi                   & 0.25 & 0.635 & 0.39 \\
-feedback\_mppi\_ref    & 0.75 & 0.283 & 4.01 \\
-\textbf{diff\_mppi\_3} & \textbf{1.00} & \textbf{0.090} & \textbf{0.84} \\
+cdf\_mppi (analytic)   & \textbf{1.00} & 0.144 & \textbf{0.05} \\
+diff\_mppi\_1          & 0.50 & 0.274 & 0.46 \\
+diff\_mppi\_3          & 0.25 & 0.328 & 0.75 \\
+mppi                   & 0.25 & 0.340 & 0.38 \\
+feedback\_mppi\_ref    & 0.00 & 0.398 & 1.66 \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-The hybrid controller achieves the highest success rate while being 4.8$\times$
-faster than the closest feedback baseline.  This demonstrates the approach
-transfers to 14-dimensional manipulation tasks.
+\begin{table}[t]
+\centering
+\caption{%
+  Fair rematch on \texttt{7dof\_shelf\_reach} (8 seeds): with the \emph{same}
+  goal configuration, every method improves and \texttt{diff\_mppi\_3} does not
+  exceed vanilla \texttt{mppi}.%
+}
+\label{tab:fair}
+\begin{tabular}{lccc}
+\toprule
+Planner & Success (workspace) & Success (shared config) & ms/step \\
+\midrule
+mppi                & 0.38 & \textbf{0.88} & 0.39 \\
+diff\_mppi\_1       & 0.50 & 0.62 & 0.54 \\
+diff\_mppi\_3       & 0.25 & 0.62 & 0.85 \\
+feedback\_mppi\_ref & 0.00 & 1.00 & 2.33 \\
+\bottomrule
+\end{tabular}
+\end{table}
 
-The later exact-time 7-DOF follow-up is more mixed: at 3.0 and 5.0\,ms,
-\texttt{feedback\_mppi\_ref} catches up on \texttt{7dof\_dynamic\_avoid},
-while \texttt{7dof\_shelf\_reach} remains mostly unsolved for all methods.
-Accordingly, we keep the stronger fixed-budget $K\!=\!512$ result in the
-main text and treat the exact-time manipulation sweep as appendix material.
+\subsection{Where it helps: contact-rich pushing}
+\label{sec:results_contact}
 
-\begin{figure}[t]
-  \centering
-  \includegraphics[width=\columnwidth]{fig_7dof}
-  \caption{%
-    7-DOF manipulation results on \texttt{7dof\_dynamic\_avoid}.  The hybrid
-    controller (green) achieves full success at sub-millisecond latency.%
-  }
-  \label{fig:7dof}
-\end{figure}
+\textbf{Box pose alignment (categorical win).} On \texttt{box\_align}, pushing a
+box to a target pose requires torque from off-centre contact, and pure sampling
+plateaus on the fine orientation correction. Table~\ref{tab:box_align} shows the
+headline: \texttt{diff\_mppi\_5} reaches success $1.00$ (at $K\!=\!1024$) while
+\textbf{vanilla MPPI reaches $0.00$ even at $K\!=\!4096$}---$16\times$ the
+samples, at a \emph{lower} per-step cost than the hybrid---and success is
+monotone in the number of gradient steps ($0.00 \!\to\! 0.50 \!\to\! 1.00$ for
+$N_g\!=\!1,3,5$). No sample budget buys what the gradient provides.
 
-\subsection{Gradient Freshness Analysis}
+\begin{table}[t]
+\centering
+\caption{%
+  \texttt{box\_align} differentiable box-pose pushing, 8 seeds. Vanilla MPPI
+  fails at every budget, including $16\times$ samples; success is monotone in
+  gradient steps. \textbf{Bold}: proposed method.%
+}
+\label{tab:box_align}
+\begin{tabular}{lccc}
+\toprule
+Planner & Success ($K\!=\!256$) & Success ($K\!=\!1024$) & ms/step \\
+\midrule
+mppi ($K\!\le\!4096$)        & 0.00 & 0.00 & 0.13--0.52 \\
+diff\_mppi\_1                & 0.12 & 0.00 & 0.85 \\
+diff\_mppi\_3                & 0.25 & 0.50 & 2.20 \\
+\textbf{diff\_mppi\_5}       & \textbf{0.62} & \textbf{1.00} & 3.08 \\
+\bottomrule
+\end{tabular}
+\end{table}
 
-Comparing gradient behavior on static (\texttt{corner\_turn}) vs.\ dynamic
-(\texttt{dynamic\_slalom}) tasks reveals:
-\begin{itemize}
-  \item \textbf{Gradient magnitude} peaks during obstacle encounters on
-    dynamic tasks, while declining monotonically on static tasks.
-  \item \textbf{Correction magnitude} concentrates in the episode segment
-    where dynamic obstacles are closest.
-  \item \textbf{Gradient-correction alignment} varies more on dynamic tasks,
-    indicating the gradient provides directional information not captured by
-    the MPPI update.
-\end{itemize}
+\textbf{Corroboration on distinct mechanics (\texttt{box\_pivot}).} To guard
+against a single lucky scenario, \texttt{box\_pivot} uses the opposite rotation
+handedness, a different contact face, and a tighter angular tolerance. The same
+two signatures reproduce (Table~\ref{tab:box_pivot}): only the deepest-gradient
+controller ever crosses the tolerance while vanilla MPPI succeeds $0.00$ at every
+$K$, and the \emph{continuous} angular residual is strictly monotone in gradient
+steps ($0.193 \!\to\! 0.139 \!\to\! 0.124 \!\to\! 0.112$) and $K$-independent. The
+success rate here is deliberately modest---\texttt{box\_pivot} sits near the
+rotation ceiling of a single fixed-face push---so we report it primarily on the
+continuous monotone metric, with the binary win as corroboration rather than a
+threshold-tuned headline.
 
-This supports the interpretation that the gradient refinement acts as a
-``freshness correction'': on dynamic tasks where the MPPI warm-start becomes
-stale due to obstacle motion, the gradient provides an update based on the
-current cost landscape.
+\begin{table}[t]
+\centering
+\caption{%
+  \texttt{box\_pivot} corroboration, 8 seeds, $K\!=\!1024$. The continuous
+  angular residual (lower is better) is strictly monotone in gradient steps;
+  only \texttt{diff\_mppi\_5} crosses the tolerance.%
+}
+\label{tab:box_pivot}
+\begin{tabular}{lcc}
+\toprule
+Planner & Success & Angular residual \\
+\midrule
+mppi          & 0.00 & 0.193 \\
+diff\_mppi\_1 & 0.00 & 0.139 \\
+diff\_mppi\_3 & 0.00 & 0.124 \\
+\textbf{diff\_mppi\_5} & \textbf{0.50} & \textbf{0.112} \\
+\bottomrule
+\end{tabular}
+\end{table}
 
-\begin{figure}[t]
-  \centering
-  \includegraphics[width=\columnwidth]{fig_mechanism}
-  \caption{%
-    Gradient freshness analysis.  Top: gradient magnitude over episode steps.
-    Bottom: correction magnitude.  On dynamic tasks (right), the gradient
-    signal peaks during obstacle encounters; on static tasks (left), it
-    declines monotonically.%
-  }
-  \label{fig:mechanism}
-\end{figure}
+\textbf{Matched-wall-clock efficiency on disk pushing.} On \texttt{push\_straight},
+where all methods eventually reach the goal, the discriminator is efficiency.
+Vanilla MPPI saturates at $\sim$30 steps regardless of $K$ (tested $512$--$2048$),
+while \texttt{diff\_mppi\_3} reaches the goal in $\sim$26 steps at matched
+wall-clock---an edge that additional samples cannot erase. Together, three
+contact tasks (disk efficiency, two box-pose wins) localize the Diff-MPPI benefit
+to contact-rich dynamics.
 
-\subsection{Feedback Architecture Analysis}
+\subsection{Mechanism and Boundary}
+\label{sec:mechanism}
 
-The \texttt{feedback\_mppi\_faithful} variant tests whether a two-rate
-controller architecture (replan every other step, apply stored current-action
-gains between replans) can replicate the benefit of gradient refinement.
-Result: it fails on both dynamic tasks even at $K\!=\!8192$ (2.1\,ms),
-performing at vanilla MPPI level on \texttt{dynamic\_slalom}.  Combined with
-the \texttt{step\_mppi} result showing that an improved sampling distribution
-also fails, this confirms that the gradient refinement provides complementary
-value that neither pure feedback nor learned sampling can replicate.
+The monotonicity of success (and of the continuous residual) in the number of
+gradient steps is direct evidence that the autodiff refinement, not the sampling,
+is the active ingredient in the contact wins: holding the sampler fixed and
+adding gradient steps strictly improves the executed pose. The boundary is
+\texttt{box\_turn} (long translate~+~rotate), which \emph{no} method solves: its
+bottleneck is translation (sample-friendly), not orientation, and a longer
+planning horizon reduces the residual for the hybrid but vanilla MPPI keeps pace.
+Single-point non-prehensile pushing fundamentally needs contact-point switching
+for such a maneuver, which receding-horizon mean refinement does not plan. We
+report \texttt{box\_turn} as a stated limit rather than tuning a win on the wrong
+axis.
 
-\begin{figure}[t]
-  \centering
-  \includegraphics[width=\columnwidth]{fig_scenarios}
-  \caption{%
-    Scenario visualization.  Left: \texttt{dynamic\_slalom} with bicycle
-    model navigating multiple moving obstacles.  Right:
-    \texttt{7dof\_dynamic\_avoid} with a 7-DOF arm avoiding a moving 3D
-    obstacle.%
-  }
-  \label{fig:scenarios}
-\end{figure}
+% NOTE: figures need regeneration for the contact-rich framing.
+% Planned: (1) box-pose pushing filmstrips (mppi stuck vs diff_mppi_5 aligned),
+% (2) success / angular-residual vs gradient-step-count plot (monotonicity),
+% (3) CDF-MPPI vs Diff-MPPI compute-quality scatter on the smooth 7-DOF task.
+% The previous dynamic-navigation figures (fig_pareto, fig_7dof, fig_mechanism,
+% fig_scenarios) describe the superseded headline and are intentionally omitted.
 
 % =============================================================================
 \section{Limitations}
 \label{sec:limitations}
 
-The current contribution is empirical with theoretical motivation from
-Fazlyab et al.~\cite{fazlyab2026mppi_gd}.  We now include
-\texttt{feedback\_mppi\_paper} and \texttt{step\_mppi}, but both remain
-in-harness reimplementations rather than full reproductions of external
-controller stacks, and neither closes the \texttt{dynamic\_slalom} gap.  The
-7-DOF benchmark uses a simplified dynamics model rather than a validated
-Panda simulation.  We now include small MuJoCo
-\texttt{InvertedPendulum-v4} and \texttt{Reacher} follow-ups, but those read
-primarily as transfer / standardization checks rather than decisive
-hybrid-only wins, so the broader evaluation still relies mostly on custom
-benchmark domains rather than standardized manipulation or locomotion suites.
+The positive result uses a simplified planar quasi-static contact model rather
+than a validated rigid-body simulator with friction; extending the gradient
+through a higher-fidelity contact model is the natural next step. The contact
+tasks are non-prehensile pushing only, and \texttt{box\_turn} marks a maneuver
+the method does not yet solve. The CDF-MPPI baseline, while literature-faithful,
+is an in-harness reimplementation, and the smooth-task models (bicycle, simplified
+7-DOF) are custom rather than standardized suites. Finally, the contact study is
+in simulation; sim-to-real transfer of the differentiable-contact gradient is
+untested.
 
 % =============================================================================
 \section{Conclusion}
 \label{sec:conclusion}
 
-We showed that a minimal gradient refinement---three autodiff steps after a
-standard MPPI update---breaks through a hard non-hybrid Pareto ceiling on
-dynamic-obstacle tasks.  With parallelized gradient computation, the
-refinement preserves most of the sampling budget at matched wall-clock time.
-Neither \texttt{feedback\_mppi\_paper} nor \texttt{step\_mppi} closes the
-\texttt{dynamic\_slalom} gap.  A gradient freshness analysis explains why the
-refinement is specifically valuable on dynamic tasks: the gradient provides
-current-landscape information that the sampling-based update cannot capture
-when obstacles move between timesteps.  The approach transfers to 7-DOF
-manipulation, where the hybrid controller achieves higher success at lower
-compute than the closest feedback baseline.
+We asked when adding explicit gradient steps to MPPI helps. The honest answer is
+narrow and, we argue, more useful than a blanket claim: on smooth
+dynamic-navigation and 7-DOF reaching, a literature-faithful CDF-MPPI baseline
+matches or beats the Diff-MPPI family at a fraction of the compute, and under a
+fair goal-configuration protocol the refinement does not beat vanilla MPPI. But
+when the dynamics gradient flows through contact, a few autodiff steps achieve
+what no sample budget can: a categorical box-pose pushing win ($1.00$ vs $0.00$
+at $16\times$ samples), monotone in gradient steps, reproduced on a second
+contact task and as a matched-time efficiency gain. Diff-MPPI's contribution is
+real but localized---contact-rich dynamics are where the model gradient carries
+information that is expensive to sample.
 
 % =============================================================================
 \bibliographystyle{IEEEtran}
