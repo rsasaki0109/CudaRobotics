@@ -59,6 +59,8 @@ The most visually striking GPU demos, where massive parallelism really shows.
 | Online SLAM | Submap loop-closure SLAM |
 | <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_lidar_slam.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_bundle_adjustment.gif" width="400"/> |
 | LiDAR SLAM | Bundle adjustment |
+| <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_kiss_icp.gif" width="400"/> | |
+| KISS-ICP-style LiDAR odometry (0.02% drift from scans alone) | |
 
 ### Localization & filtering
 
@@ -142,7 +144,8 @@ transform / warp and is verified in-binary.
 ## What's Inside
 
 - SLAM and scan matching: pose-graph SLAM, online SLAM, correlative scan
-  matching, branch-and-bound CSM, submap loop closure, Gaussian-Splatting SLAM.
+  matching, branch-and-bound CSM, submap loop closure, Gaussian-Splatting SLAM,
+  KISS-ICP-style LiDAR odometry.
 - Localization and filtering: particle filters, KLD-AMCL, MegaParticles-style
   global localization, LSH neighbour consensus, robust smoothers.
 - Planning and control: MPPI, Diff-MPPI, graph-neural MPPI, no-regret game
