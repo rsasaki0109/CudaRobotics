@@ -620,6 +620,44 @@ whole study has localized. This is the answer to "just use the right model": you
 reach a tight contact goal. Figure: `fig_fidelity_vs_grad`. Reproduce: add
 `mppi_hardmodel` to the `--planners` list of the sim-to-sim command above.
 
+### gap #2 capstone: WHY the friction boundary is where it is — gradient DIRECTION
+
+The sim-to-sim boundary above is a *phenomenon* (gradient helps at low μ, fails at
+high μ). The capstone explains it at the level of the one quantity the controller acts
+on: the gradient **direction**. At each visited, contact-engaged `box_pivot` state we
+compute two vectors over the warm plan — the smooth-model autodiff gradient `g_s =
+∇_u J_smooth` that Diff-MPPI descends, and a central-difference sensitivity `g_h =
+∇_u J_hard` of the **true** hard-contact plant's cost (measured directly on the plant
+the controller never sees) — and report their cosine similarity. cos is scale-invariant,
+which is exactly right: the smooth and hard dynamics differ in magnitude; the question
+is only whether descending `g_s` also lowers the *true* cost. Prediction registered
+before looking: agreement high at low μ, eroding with friction.
+
+Result (diff_mppi_3, K=1024, 8 seeds; cos over contact-engaged steps):
+
+| μ | cos_first (applied) | cos_full (horizon) | success | final ang |
+|---|---|---|---|---|
+| 0.0 | **+0.582** | +0.314 | **1.00** | 0.105 |
+| 0.2 | +0.386 | +0.178 | 0.25 | 0.138 |
+| 0.4 | +0.241 | +0.124 | 0.00 | 0.283 |
+| 0.6 | +0.065 | +0.044 | 0.00 | 0.376 |
+| 0.8 | +0.069 | +0.081 | 0.00 | 0.386 |
+| 1.0 | +0.095 | +0.076 | 0.00 | 0.387 |
+
+The applied-control agreement `cos_first` falls monotonically 0.58 → 0.07 as the
+frictionless surrogate omits more stick-slip; the gradient turns nearly orthogonal to
+what the true plant rewards. **Success collapses (1.00 → 0.25 → 0) exactly where
+cos_first crosses below ~0.25.** So the boundary is not a coincidence of tolerances —
+it is **gradient misdirection**, and the method's operating regime is predictable from
+a scalar measured on the *target* plant rather than diagnosed after a success/failure
+outcome. The cos comparison uses gradients evaluated from rest (the smooth model is
+velocity-free), matching the per-step planning convention of the fidelity-arm sampler.
+Figure: `fig_grad_agreement`. Reproduce:
+
+```bash
+bin/benchmark_diff_mppi_pushing_box --grad-agreement build/grad_agree --seed-count 8 --k-values 1024
+```
+
 ### A noted non-result: stochastic pose noise games the success latch
 
 We also tried unmodelled Gaussian *process noise* on the box pose as a third
