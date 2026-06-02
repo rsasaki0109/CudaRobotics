@@ -27,6 +27,56 @@ Full animated gallery: https://rsasaki0109.github.io/CudaRobotics/
 | <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_bnb_loop_closure_slam.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_gaussian_splatting_slam.gif" width="400"/> |
 | <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_mppi_racing.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_sgm_stereo.gif" width="400"/> |
 
+## Gallery
+
+A representative slice per category. The
+[full animated gallery](https://rsasaki0109.github.io/CudaRobotics/) has the rest.
+
+### SLAM & scan matching
+
+| | |
+|---|---|
+| <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_gaussian_splatting_slam.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_pose_graph_slam_3d.gif" width="400"/> |
+| Gaussian-Splatting SLAM (RGB-D) | 3D pose-graph SLAM |
+| <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_bnb_loop_closure_slam.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_correlative_scan_matching.gif" width="400"/> |
+| Branch-and-bound loop closure | Correlative scan matching |
+
+### Localization & filtering
+
+| | |
+|---|---|
+| <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_kld_amcl.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_megaparticles_lsh.gif" width="400"/> |
+| KLD-AMCL | MegaParticles global localization (LSH) |
+| <img src="https://rsasaki0109.github.io/CudaRobotics/comparison_diff_pf_mlp.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/comparison_expansion_reset_mcl.gif" width="400"/> |
+| Differentiable particle filter (MLP) | Expansion-reset MCL |
+
+### Planning & control
+
+| | |
+|---|---|
+| <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_mppi_racing.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/comparison_diff_mppi.gif" width="400"/> |
+| MPPI autonomous racing | MPPI vs Diff-MPPI |
+| <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_wavefront_planner.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_diffusion_planner.gif" width="400"/> |
+| Wavefront planner | Diffusion planner |
+
+### Perception & mapping
+
+| | |
+|---|---|
+| <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_sgm_stereo.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_tsdf_fusion.gif" width="400"/> |
+| SGM stereo | TSDF fusion |
+| <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_kdtree_nn.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_direct_vo.gif" width="400"/> |
+| KD-tree nearest-neighbour | Direct visual odometry |
+
+### Learning & optimization
+
+| | |
+|---|---|
+| <img src="https://rsasaki0109.github.io/CudaRobotics/mini_isaac_rl.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/comparison_neuroevo.gif" width="400"/> |
+| Parallel CartPole RL (REINFORCE) | GPU neuroevolution |
+| <img src="https://rsasaki0109.github.io/CudaRobotics/comparison_sdf_nav.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_cma_es.gif" width="400"/> |
+| Neural SDF navigation | GPU CMA-ES |
+
 ## What's Inside
 
 - SLAM and scan matching: pose-graph SLAM, online SLAM, correlative scan
