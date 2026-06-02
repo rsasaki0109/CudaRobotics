@@ -157,6 +157,11 @@ add_executable(benchmark_diff_mppi_dynamic_bicycle src/benchmark_diff_mppi_dynam
 add_executable(benchmark_diff_mppi_manipulator src/benchmark_diff_mppi_manipulator.cu)
 add_executable(benchmark_diff_mppi_manipulator_7dof src/benchmark_diff_mppi_manipulator_7dof.cu)
 
+# One-Step CDF-MPPI literature-faithful baseline (arXiv:2509.00836)
+add_executable(benchmark_cdf_mppi_7dof src/benchmark_cdf_mppi_7dof.cu)
+target_link_libraries(benchmark_cdf_mppi_7dof ${OpenCV_LIBS})
+target_compile_options(benchmark_cdf_mppi_7dof PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
+
 add_executable(neural_sdf src/neural_sdf.cu)
 target_link_libraries(neural_sdf ${OpenCV_LIBS})
 
