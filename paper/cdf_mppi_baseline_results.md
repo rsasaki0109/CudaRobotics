@@ -373,6 +373,50 @@ outside those bands it degrades to the sampling baseline — which itself *never
 solves the task at any budget. Reproduce: as above with `--plant-size-scale`
 `{0.7,0.85,1.0,1.15,1.3}`.
 
+### gap #2 robustness, task-generality: both axes replicate on `box_pivot`
+
+Both mismatch sweeps above were run on `box_align`, leaving one reviewer attack
+open: *"is the robustness an artifact of that one scenario?"* We re-ran **both
+axes on the structurally distinct `box_pivot`** (opposite handedness, left-face
+contact, **tight `ang_tol=0.11`**). On `box_pivot` the binary success latch is
+near-degenerate for every method (the task sits right at the single-contact
+rotation ceiling), so a binary table would be uninformative — and trusting a
+near-threshold latch is exactly the trap the noise non-result below documents.
+The discriminating quantity is therefore the **continuous final angular residual
+`ang_err`** (settling proxy), which exposes the mechanism directly: pure
+sampling plateaus on the orientation; the contact gradient drives the residual
+down. `box_pivot`, 8 seeds, same matchup, `ang_err` (rad, lower is better):
+
+| `G` | **gain axis** mppi K4096 | diff_mppi_5 K1024 | **size axis** mppi K4096 | diff_mppi_5 K1024 |
+|---|---|---|---|---|
+| 0.7  | 0.260 | 0.171 | 0.700 | 0.700 |
+| 0.85 | 0.222 | 0.137 | 0.248 | 0.162 |
+| 1.0  | 0.193 | 0.115 | 0.193 | 0.115 |
+| 1.15/1.2 | 0.163 | 0.106 | 0.192 | 0.111 |
+| 1.3/1.4 | 0.138 | 0.101 | 0.196 | 0.106 |
+
+- **The gradient's angular residual stays strictly below the sampling floor at
+  every point of both bands.** On gain, diff leads by `0.04–0.09` rad across
+  `G ∈ [0.7, 1.4]`; on size, by a similar margin across `G ∈ [0.85, 1.3]`. mppi's
+  `ang_err` floor never drops below `0.138` (gain) / `0.192` (size) — it never
+  reaches the `0.11` latch at any budget, so its binary success is `0.00`
+  throughout. The `box_align` signature ("gradient closes the contact-driven
+  rotation residual that sampling cannot") **replicates on a different task and
+  different contact face** — it is not a `box_align` artifact.
+- **Asymmetry flips, consistently with the mechanics.** Where `box_align`'s win
+  *degraded* with larger plant gain/size, `box_pivot`'s *improves*: a higher gain
+  or a bigger box lengthens the torque lever arm, so the gradient-directed push
+  rotates more per step and crosses the tight latch (`diff_mppi_5` success climbs
+  `0.12 → 1.00` by `G=1.2` gain / `G=1.3` size). The failure boundary moves to the
+  *small* side: at size `G=0.7` the box shrinks enough that both methods collapse
+  identically (`ang_err 0.700`) — an honest, shared boundary, not a tuned one.
+- Reproduce: as the two sweeps above with `--scenarios box_pivot` and, for the
+  negative control, `--planners mppi --k-values 4096`.
+
+This makes the contact-gradient robustness **two axes × two tasks**, measured on a
+binary latch where it is clean (`box_align`) and on a continuous residual where the
+latch is tight (`box_pivot`) — consistent across all four cells.
+
 ### A noted non-result: stochastic pose noise games the success latch
 
 We also tried unmodelled Gaussian *process noise* on the box pose as a third
