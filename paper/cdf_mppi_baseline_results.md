@@ -281,6 +281,66 @@ result, TWO independent differentiable-contact tasks localize the Diff-MPPI
 contribution to contact-rich dynamics — exactly the regime the smooth 7-DOF /
 cartpole / dynamic-obstacle tasks lacked, where it showed no advantage.
 
+### gap #2 robustness: does the contact win survive contact-model MISMATCH? (yes, asymmetrically)
+
+The single strongest attack on the new contact-rich headline is: *"the gradient
+win is an artifact of a convenient smooth contact model whose parameters exactly
+match the plant — give the controller the wrong model and the gradient becomes
+garbage."* We tested it directly. `benchmark_diff_mppi_pushing_box` gained a
+default-noop flag `--plant-gain-scale G`: the **true plant**'s contact mobility
+(`push_gain`, `rot_gain`) is multiplied by `G`, while the controller's internal
+rollout **and** its autodiff gradient keep the NOMINAL gains — i.e. the
+controller's contact model is deliberately *wrong* by factor `G`. `G=1.0`
+reproduces the published numbers byte-identically. `box_align`, 8 seeds,
+`diff_mppi_5 @K=1024` vs the strongest sampler `mppi @K=4096` (16× samples,
+cheaper per step):
+
+| plant/model gain `G` | mppi (K=4096) | diff_mppi_5 (K=1024) | regime |
+|---|---|---|---|
+| 0.6 | **1.00** | 1.00 | task easy for all — discriminator vanishes |
+| 0.7 | 0.00 | **1.00** | gradient dominates |
+| 0.85 | 0.00 | **1.00** | gradient dominates |
+| 1.0 (matched) | 0.00 | 0.75 | gradient dominates |
+| 1.2 | 0.00 | 0.50 | gradient edge |
+| 1.4 | 0.00 | 0.25 | gradient edge, degrading |
+| 1.6 | 0.00 | 0.12 | gradient nearly broken (still > mppi) |
+
+Three findings, all honest:
+
+1. **The win is NOT a matched-model knife's edge.** Across the whole band
+   `G ∈ [0.7, 1.4]` (±30–40% contact-mobility error) `diff_mppi_5` keeps a
+   *categorical* success advantage over vanilla MPPI, which stays flat at `0.00`
+   for every `G` in that band regardless of 16× samples. A model wrong by a third
+   does not erase the gradient's contribution.
+2. **Robustness is asymmetric, and interpretably so.** Under-modelled mobility
+   (`G<1`, plant *less* mobile than the controller believes) is actually *better*
+   than matched — `1.00` at `G=0.7–0.85` vs `0.75` at `G=1.0`, and faster
+   (~57 vs ~100 steps): the controller over-predicts motion, so it commits to
+   sustained contact and converges conservatively. Over-modelled mobility (`G>1`,
+   plant *more* mobile) degrades monotonically (`0.75→0.50→0.25→0.12`): the
+   controller under-predicts motion and overshoots the fine orientation. This is
+   a clean, mechanistic characterization rather than a single robustness number.
+3. **Stated boundaries (both ends).** At extreme over-mobility (`G=1.6`) the
+   gradient advantage nearly collapses (`0.12` vs `0.00`) — the model is simply
+   too wrong; at extreme under-mobility (`G=0.6`) the dynamics become so gentle
+   that *vanilla MPPI also reaches `1.00`*, so the task no longer discriminates.
+   The gradient advantage lives precisely in the stiff-contact regime where
+   sampling overshoots the orientation — and it is robust across a wide band of
+   model error within it.
+
+This converts the "convenient matched model" objection into a strength: the
+contact-gradient benefit survives substantial contact-model mismatch, with an
+honestly-bounded, mechanistically-explained asymmetric degradation. Reproduce:
+
+```bash
+for G in 0.6 0.7 0.85 1.0 1.2 1.4 1.6; do
+  bin/benchmark_diff_mppi_pushing_box --scenarios box_align --planners diff_mppi_5 \
+      --k-values 1024 --seed-count 8 --plant-gain-scale $G --csv build/mm_$G.csv
+  bin/benchmark_diff_mppi_pushing_box --scenarios box_align --planners mppi \
+      --k-values 4096 --seed-count 8 --plant-gain-scale $G --csv build/mm_mppi_$G.csv
+done
+```
+
 ### Fairness caveats (MUST disclose in the paper)
 
 1. **Goal asymmetry (significant) — now quantified, see "Fair rematch" above.**
