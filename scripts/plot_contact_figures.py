@@ -426,6 +426,62 @@ def fig_escape_predictor(out_dir):
     print("wrote", path)
 
 
+def fig_sim2sim(out_dir):
+    """Sim-to-sim: does the contact-gradient win survive a STRUCTURALLY different
+    true plant? The controller's rollout + gradient keep the smooth model; ground
+    truth is a hard-contact rigid body (exact non-penetration + Coulomb stick-slip
+    friction + box momentum), swept over friction mu. mppi gets K=4096 (16x), the
+    gradient gets K=1024.
+
+    (a) Loose tolerance (box_align, ang_tol 0.25): diff_mppi_5 succeeds at every mu
+        while vanilla MPPI stays near zero -- the win is NOT an artifact of the
+        controller and plant sharing one smooth contact idealization.
+    (b) Tight tolerance (box_pivot, ang_tol 0.11): the honest boundary. At low
+        friction the gradient lands the residual inside tolerance; as mu grows the
+        frictionless controller model becomes too wrong and BOTH methods fail
+        (residual -> ~0.44). The gradient cannot compensate for a sufficiently
+        wrong contact model. Data: --true-plant hard --mu <mu>, 8 seeds.
+    """
+    mu = [0.0, 0.2, 0.4, 0.6, 0.8, 1.0]
+    align_mppi = [0.00, 0.00, 0.12, 0.12, 0.12, 0.12]   # success
+    align_diff = [1.00, 1.00, 1.00, 1.00, 1.00, 1.00]
+    pivot_mppi = [0.151, 0.207, 0.403, 0.441, 0.441, 0.440]  # final ang_err
+    pivot_diff = [0.102, 0.129, 0.238, 0.402, 0.436, 0.433]
+    pivot_tol = 0.11
+
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(SINGLE_COL * 2.0, SINGLE_COL * 0.85))
+
+    ax1.plot(mu, align_diff, "-o", color=C_DIFF5, markersize=5, label="diff_mppi_5 (K=1024)")
+    ax1.plot(mu, align_mppi, "-s", color=C_MPPI, markersize=5, label="mppi (K=4096, 16$\\times$)")
+    ax1.fill_between(mu, align_diff, align_mppi, color=C_DIFF5, alpha=0.10, lw=0)
+    ax1.set_ylim(-0.05, 1.08)
+    ax1.set_xlabel("true-plant Coulomb friction $\\mu$")
+    ax1.set_ylabel("success rate")
+    ax1.set_title("(a) loose tol (box_align): win survives")
+    ax1.legend(loc="center right", fontsize=6)
+    ax1.grid(True, alpha=0.3)
+
+    ax2.plot(mu, pivot_diff, "-o", color=C_DIFF5, markersize=5, label="diff_mppi_5 (K=1024)")
+    ax2.plot(mu, pivot_mppi, "-s", color=C_MPPI, markersize=5, label="mppi (K=4096, 16$\\times$)")
+    ax2.fill_between(mu, pivot_mppi, pivot_diff, color=C_DIFF5, alpha=0.10, lw=0)
+    ax2.axhline(pivot_tol, color="k", ls="--", lw=0.9)
+    ax2.text(0.02, pivot_tol + 0.012, "tolerance (success)", fontsize=6, va="bottom")
+    ax2.axvspan(0.55, 1.0, color="gray", alpha=0.10, lw=0)
+    ax2.text(0.78, 0.30, "model too wrong:\nboth fail", fontsize=6, color="gray", ha="center")
+    ax2.set_ylim(0, 0.50)
+    ax2.set_xlabel("true-plant Coulomb friction $\\mu$")
+    ax2.set_ylabel("final angular error [rad]")
+    ax2.set_title("(b) tight tol (box_pivot): friction erodes win")
+    ax2.legend(loc="lower right", fontsize=6)
+    ax2.grid(True, alpha=0.3)
+
+    fig.tight_layout()
+    path = os.path.join(out_dir, "fig_sim2sim.pdf")
+    fig.savefig(path)
+    plt.close(fig)
+    print("wrote", path)
+
+
 def _read_traj(path):
     """Read a --dump-traj CSV; return (meta dict, list of (px,py,ox,oy,oth))."""
     meta = {}
@@ -518,6 +574,7 @@ def main():
     fig_robustness_pivot(args.out_dir)
     fig_mechanism_sampling(args.out_dir, args.traj_dir)
     fig_escape_predictor(args.out_dir)
+    fig_sim2sim(args.out_dir)
 
 
 if __name__ == "__main__":

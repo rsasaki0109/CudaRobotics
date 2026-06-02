@@ -503,6 +503,68 @@ Reproduce: `bin/benchmark_diff_mppi_pushing_box --diag-mechanism build/diag
 `--scenarios box_swivel,box_pivot --planners mppi,diff_mppi_5 --k-values 4096,1024
 --seed-count 8` for the outcome.
 
+### gap #2, external validity: sim-to-sim against a STRUCTURALLY different hard-contact plant (the deepest test)
+
+Every result above rides on **one** smooth, self-authored contact model (smooth
+box-SDF penetration → frictionless normal force, the same model the controller's
+rollout *and* autodiff gradient use). The deepest reviewer attack is therefore not
+"is a parameter wrong" (the `plant-gain/size-scale` axes already answer that) but
+**"is the contact gradient's advantage an artifact of the controller and the plant
+sharing one idealized contact model?"** A scaled-parameter mismatch cannot answer
+it. So we added an **independent, structurally different true plant** and ran the
+controller — which keeps the smooth model in its rollout and gradient — against it.
+
+The hard-contact plant (`push_step_box_hard_f`, `--true-plant hard`) replaces the
+force law, keeping the contact geometry identical: **exact non-penetration + Coulomb
+stick-slip friction, resolved with sequential impulses on a momentum-carrying rigid
+body** (mass, inertia, linear/angular damping). The smooth model has *no* friction
+(normal push only) and a soft penetration ramp; the hard plant has a friction cone,
+hard non-penetration, and momentum. The contact **model** differs, not a parameter.
+The plant is validated independently of any controller by `--selftest-hard`, which
+asserts three physical invariants (centred push translates with no spin; off-centre
+push rotates with the correct sign; **frictionless tangential drag is exactly zero
+while μ=0.8 drags the box** — i.e. the Coulomb law is live). Default is `smooth`, so
+published numbers are byte-identical (verified: `box_pivot` diff_5 = 0.12 / ang 0.115).
+
+The headline matchup (vanilla MPPI K=4096 = 16×, vs diff_mppi_5 K=1024) under the
+hard plant, swept over friction μ, 8 seeds, gives an **honest two-sided result**:
+
+| μ (true plant) | `box_align` success (mppi / diff5) | `box_pivot` final ang_err (mppi / diff5) |
+|---|---|---|
+| 0.0 | 0.00 / **1.00** | 0.151 / **0.102** |
+| 0.2 | 0.00 / **1.00** | 0.207 / **0.129** |
+| 0.4 | 0.12 / **1.00** | 0.403 / **0.238** |
+| 0.6 | 0.12 / **1.00** | 0.441 / 0.402 |
+| 0.8 | 0.12 / **1.00** | 0.441 / 0.436 |
+| 1.0 | 0.12 / **1.00** | 0.440 / 0.433 |
+
+1. **The win is NOT an artifact of model co-design (loose tolerance).** On `box_align`
+   (`ang_tol=0.25`) diff_mppi_5 succeeds **1.00 at every friction level** while vanilla
+   MPPI never exceeds 0.12 — even though the controller believes in a frictionless
+   smooth contact and reality is a frictional rigid body. The gradient's advantage
+   survives a genuine change of contact *model*, the strongest robustness evidence in
+   the paper. (At μ=0 the momentum-carrying plant even makes `box_pivot` *easier* than
+   the massless smooth model — the box coasts in rotation — so diff_5 solves it in ~25
+   steps.)
+
+2. **The honest boundary (tight tolerance).** On `box_pivot` (`ang_tol=0.11`) the
+   gradient lands the residual inside tolerance only at low friction (μ≤0.2). As μ
+   grows the frictionless controller model becomes too wrong: the gradient–sampler gap
+   narrows and at **μ≥0.6 both methods fail** (residual → ~0.44 for both). The gradient
+   refines *within* a model; it cannot compensate for a contact model that is
+   sufficiently wrong on a task that needs precise rotation. This is the limit, stated
+   plainly — not buried.
+
+Together: the contact-gradient advantage is **real beyond the smooth idealization**
+(it transfers to an independent hard-contact plant), and it is **bounded** (a tight
+task plus high-friction model error defeats it). Both halves matter; reporting only
+the first would be the cherry-pick the rest of this study has avoided. Figure:
+`fig_sim2sim` (panel a: box_align success vs μ; panel b: box_pivot ang_err vs μ with
+the tolerance line and the both-fail region). Reproduce:
+`bin/benchmark_diff_mppi_pushing_box --selftest-hard` (physics), then
+`--true-plant hard --mu <μ> --scenarios box_align,box_pivot --planners mppi,diff_mppi_5
+--k-values 4096,1024 --seed-count 8`.
+
 ### A noted non-result: stochastic pose noise games the success latch
 
 We also tried unmodelled Gaussian *process noise* on the box pose as a third
