@@ -168,6 +168,57 @@ def fig_box_samples(out_dir):
     print("wrote", path)
 
 
+def fig_robustness(out_dir):
+    """Two panels: box_align success vs contact-model mismatch on two axes.
+
+    (a) contact-mobility (gain) mismatch; (b) object-size (geometry) mismatch.
+    diff_mppi_5 @K=1024 vs the strongest sampler mppi @K=4096 (16x samples).
+    The shaded band marks where the gradient holds a categorical advantage; the
+    mppi curve is flat at 0 across the discriminating range on both axes.
+    Numbers are the 8-seed values in paper/cdf_mppi_baseline_results.md.
+    """
+    # (a) contact-mobility gain scale G
+    gain_G = [0.6, 0.7, 0.85, 1.0, 1.2, 1.4, 1.6]
+    gain_mppi = [1.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00]
+    gain_diff = [1.00, 1.00, 1.00, 0.75, 0.50, 0.25, 0.12]
+    # (b) object-size scale G
+    size_G = [0.7, 0.85, 1.0, 1.15, 1.3]
+    size_mppi = [0.00, 0.00, 0.00, 0.00, 0.00]
+    size_diff = [0.00, 0.25, 0.75, 0.62, 0.00]
+
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(SINGLE_COL * 2.0, SINGLE_COL * 0.85))
+
+    def panel(ax, G, mppi, diff, band, title, xlabel):
+        ax.axvspan(band[0], band[1], color=C_DIFF5, alpha=0.10, lw=0)
+        ax.plot(G, diff, "-o", color=C_DIFF5, markersize=5,
+                label="diff_mppi_5 (K=1024)")
+        ax.plot(G, mppi, "-s", color=C_MPPI, markersize=5,
+                label="mppi (K=4096, 16$\\times$)")
+        ax.axvline(1.0, color="gray", ls=":", lw=0.8)
+        ax.text(1.0, 1.04, "matched", ha="center", va="bottom",
+                fontsize=6, color="gray")
+        ax.set_xlabel(xlabel)
+        ax.set_ylabel("success rate (box_align)")
+        ax.set_title(title)
+        ax.set_ylim(-0.05, 1.12)
+        ax.grid(True, alpha=0.3)
+        ax.legend(loc="upper right", fontsize=6)
+
+    panel(ax1, gain_G, gain_mppi, gain_diff, (0.7, 1.4),
+          "(a) contact-mobility mismatch", "plant/model gain scale $G$")
+    ax1.annotate("task easy\nfor all", xy=(0.6, 1.0), xytext=(0.62, 0.55),
+                 fontsize=6, color="gray",
+                 arrowprops=dict(arrowstyle="->", color="gray", lw=0.8))
+    panel(ax2, size_G, size_mppi, size_diff, (0.85, 1.15),
+          "(b) object-size mismatch", "plant/model box-size scale $G$")
+
+    fig.tight_layout()
+    path = os.path.join(out_dir, "fig_robustness.pdf")
+    fig.savefig(path)
+    plt.close(fig)
+    print("wrote", path)
+
+
 def _read_traj(path):
     """Read a --dump-traj CSV; return (meta dict, list of (px,py,ox,oy,oth))."""
     meta = {}
@@ -256,6 +307,7 @@ def main():
     fig_contact_monotone(args.out_dir)
     fig_cdf_vs_diff(args.out_dir)
     fig_box_samples(args.out_dir)
+    fig_robustness(args.out_dir)
 
 
 if __name__ == "__main__":
