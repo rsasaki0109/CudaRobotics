@@ -226,14 +226,18 @@ static float host_traj_cost(const float q[NDOF], const Scenario& s, int step_idx
 // and the oracle variant (m from host_min_margin directly). This sidesteps the
 // hard problem of learning the composite CDF gradient by value-MSE alone.
 
-// Oracle margin value + gradient (8 FK evals, host).
-static void margin_value_grad(const float q[NDOF], const Scenario& s, float& m, float grad[NDOF]) {
+// Oracle margin value + gradient (8 FK evals, host). step_idx selects the
+// obstacle positions at the CURRENT control step — so on dynamic obstacles the
+// analytic CDF-MPPI is REACTIVE to the obstacle's current location (but, being
+// H=1, cannot anticipate its motion: that is the differentiation we test).
+static void margin_value_grad(const float q[NDOF], const Scenario& s, int step_idx,
+                              float& m, float grad[NDOF]) {
     const float eps = 1.0e-3f;
-    m = host_min_margin(q, s, 0);
+    m = host_min_margin(q, s, step_idx);
     for (int j = 0; j < NDOF; j++) {
         float qp[NDOF]; for (int k = 0; k < NDOF; k++) qp[k] = q[k];
         qp[j] += eps;
-        grad[j] = (host_min_margin(qp, s, 0) - m) / eps;
+        grad[j] = (host_min_margin(qp, s, step_idx) - m) / eps;
     }
 }
 
@@ -384,7 +388,7 @@ public:
             if (dist < scenario_.goal_tol) { reached_goal_ = true; steps_taken_ = step; break; }
 
             auto t0 = chrono::steady_clock::now();
-            controller_update();
+            controller_update(step);
             auto t1 = chrono::steady_clock::now();
             total_control_ms += chrono::duration<float, milli>(t1 - t0).count();
 
@@ -428,14 +432,14 @@ private:
 
     // Returns the workspace margin m and its joint-space gradient from either
     // the neural margin field (MLP) or the oracle (host_min_margin FD).
-    void margin_source(float& m, float gradm[NDOF]) {
-        if (variant_.use_neural) cdf_->value_and_grad(q_, m, gradm);   // neural ablation
-        else margin_value_grad(q_, scenario_, m, gradm);               // analytic (primary)
+    void margin_source(int step, float& m, float gradm[NDOF]) {
+        if (variant_.use_neural) cdf_->value_and_grad(q_, m, gradm);          // neural (static)
+        else margin_value_grad(q_, scenario_, step, m, gradm);               // analytic (primary)
     }
 
-    void controller_update() {
+    void controller_update(int step) {
         float m; float gradm[NDOF];
-        margin_source(m, gradm);
+        margin_source(step, m, gradm);
         float fc; float ghat[NDOF];
         cdf_transform(m, gradm, fc, ghat);   // -> CDF value + unit ascent dir
 
@@ -460,7 +464,7 @@ private:
         CUDA_CHECK(cudaDeviceSynchronize());
     }
 
-    void warmup() { for (int i = 0; i < 4; i++) controller_update(); }
+    void warmup() { for (int i = 0; i < 4; i++) controller_update(0); }
 
     void reset_state() {
         for (int j = 0; j < NDOF; j++) q_[j] = scenario_.start_q[j];
@@ -522,6 +526,30 @@ static Scenario make_7dof_static_reach2() {
     const Obstacle3D obs[] = { {0.45f, -0.10f, 0.20f, 0.06f}, {0.50f, 0.10f, 0.35f, 0.05f} };
     s.n_obs = static_cast<int>(sizeof(obs) / sizeof(obs[0]));
     for (int i = 0; i < s.n_obs; i++) s.obstacles[i] = obs[i];
+    return s;
+}
+
+// Dynamic-obstacle reaching (copied from the Diff-MPPI benchmark verbatim) — a
+// moving obstacle crosses the workspace. CDF-MPPI is reactive (H=1) and should
+// struggle to anticipate the motion; this is the differentiation test vs the
+// multi-step + autodiff-refinement Diff-MPPI.
+static Scenario make_7dof_dynamic_avoid() {
+    Scenario s;
+    s.name = "7dof_dynamic_avoid";
+    s.start_q[0]=0.0f; s.start_q[1]=-0.78f; s.start_q[2]=0.0f;
+    s.start_q[3]=-2.36f; s.start_q[4]=0.0f; s.start_q[5]=1.57f; s.start_q[6]=0.78f;
+    s.goal_tol = 0.10f;
+    s.max_steps = 300;
+    s.cost_params.goal_x = 0.55f; s.cost_params.goal_y = -0.20f; s.cost_params.goal_z = 0.30f;
+    s.cost_params.goal_weight = 15.0f;
+    s.cost_params.obstacle_weight = 15.0f;
+    s.cost_params.obs_influence = 0.10f;
+    const Obstacle3D obs[] = { {0.45f, -0.10f, 0.20f, 0.06f}, {0.50f, 0.10f, 0.35f, 0.05f} };
+    s.n_obs = static_cast<int>(sizeof(obs) / sizeof(obs[0]));
+    for (int i = 0; i < s.n_obs; i++) s.obstacles[i] = obs[i];
+    const DynamicObstacle3D dyn[] = { {0.70f, 0.0f, 0.30f, -0.15f, -0.05f, 0.0f, 0.06f} };
+    s.n_dyn_obs = static_cast<int>(sizeof(dyn) / sizeof(dyn[0]));
+    for (int i = 0; i < s.n_dyn_obs; i++) s.dynamic_obstacles[i] = dyn[i];
     return s;
 }
 
@@ -656,7 +684,7 @@ static float validate_gradient_cosine(NeuralCdf& cdf, const Scenario& s, int K, 
         float q[NDOF]; sample_config(rng, q);
         if (fabsf(host_min_margin(q, s, 0)) > 0.30f) continue;  // near-contact only
         float mm; float gm[NDOF]; cdf.value_and_grad(q, mm, gm);     // neural margin grad
-        float mt; float gt[NDOF]; margin_value_grad(q, s, mt, gt);   // true margin grad
+        float mt; float gt[NDOF]; margin_value_grad(q, s, 0, mt, gt);   // true margin grad
         double dot=0, nm=0, nt=0;
         for (int j=0;j<NDOF;j++){ dot+=gm[j]*gt[j]; nm+=gm[j]*gm[j]; nt+=gt[j]*gt[j]; }
         if (nm > 1e-12 && nt > 1e-12) { cos_sum += dot/(sqrt(nm)*sqrt(nt)); n++; }
@@ -712,7 +740,8 @@ int main(int argc, char** argv) {
     }
     ensure_build_dir();
 
-    vector<Scenario> all_scenarios = { make_7dof_shelf_reach(), make_7dof_static_reach2() };
+    vector<Scenario> all_scenarios = {
+        make_7dof_shelf_reach(), make_7dof_static_reach2(), make_7dof_dynamic_avoid() };
     // CDF-MPPI replans at CDF_DT; reflect it in the scenario for cost/time parity.
     for (auto& s : all_scenarios) s.params.dt = CDF_DT;
 

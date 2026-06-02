@@ -98,6 +98,51 @@ Two consequences for the Diff-MPPI paper:
 (qgoal_weight sweep, 4 seeds: w=5 → mppi 0.75 / diff_mppi_3 0.50; w=15 → 1.00 /
 0.75; w=40 → 0.75 / 0.75. w=15 used for the 8-seed table.)
 
+## Dynamic obstacle — does Diff-MPPI's multi-step lookahead finally win? (no)
+
+Hypothesis: CDF-MPPI is a static-obstacle, one-step (H=1) method, so a MOVING
+obstacle should expose it — the multi-step rollout + autodiff refinement of
+Diff-MPPI should anticipate the motion and win. We made the analytic CDF-MPPI
+REACTIVE (margin evaluated at the obstacle's CURRENT step position) and ran
+`7dof_dynamic_avoid` (one obstacle crossing at 0.15 m/s), 8 seeds.
+
+| controller | success (workspace) | success (config goal w=15) | collisions | avg_ms/step |
+|---|---|---|---|---|
+| **cdf_mppi (analytic, reactive)** | **1.00** | — | **0** | 0.24 |
+| diff_mppi_3 | 0.75 | 0.88 | some (diff_mppi_1 hit 2) | 0.91 |
+| mppi | 0.12 | 0.88 | — | 0.42 |
+| diff_mppi_1 | 0.38 | 0.50 | some | 0.58 |
+| feedback_mppi_ref | 0.75 | 0.62 | — | 2.76 |
+
+**Hypothesis NOT supported.** Reactive CDF-MPPI is the MOST reliable here (1.00,
+zero collisions) and the cheapest; the Diff-MPPI family tops out at 0.88 and
+occasionally collides. And again `diff_mppi_3 (0.88) ≈ mppi (0.88)` under the
+fair condition — the gradient refinement does not clearly beat vanilla MPPI.
+
+Caveat: this obstacle is slow (0.15 m/s; it moves ~0.22 m over the ~1.5 s the
+arm takes). A genuinely anticipation-demanding obstacle (fast, on a direct
+collision course at the arrival moment) is UNTESTED and is the one regime that
+could favour multi-step lookahead. We did not hand-tune such a scenario — doing
+so to make Diff-MPPI win would be cherry-picking; if pursued it must be
+principled and pre-registered.
+
+## Consolidated conclusion (for the paper)
+
+Across static reach (×2), and this dynamic-obstacle task, a literature-faithful
+CDF-MPPI **matches or beats** the entire Diff-MPPI line on success and collisions
+at **8–47× lower per-step compute**, and crucially `diff_mppi_3` (the autodiff
+refinement) **does not outperform vanilla MPPI** once the goal configuration is
+shared. The Diff-MPPI line, as currently evaluated, has **no demonstrated
+advantage** over this strong simple baseline. Honest implications:
+
+1. The autodiff-refinement contribution needs a regime where it provably pays
+   off — high-fidelity / contact-rich dynamics (gap #2, where gradients through
+   accurate physics matter) or a principled anticipation-demanding task — or
+2. the Diff-MPPI claim must be reframed (e.g. purely the matched-wall-clock-
+   budget framing) and the systems-paper headline tempered.
+
+This is the pre-submission reality check the baseline was built to provide.
+
 ### Fairness caveats (MUST disclose in the paper)
 
 1. **Goal asymmetry (significant) — now quantified, see "Fair rematch" above.**
