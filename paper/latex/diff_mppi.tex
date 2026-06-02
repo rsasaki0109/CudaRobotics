@@ -55,7 +55,8 @@ $1.00$ while vanilla MPPI reaches $0.00$ \emph{even at $16\times$ the samples}
 (a cheaper per-step budget), with success monotone in the number of gradient
 steps; a second contact task and a disk-pushing matched-wall-clock efficiency
 result corroborate the effect, and the advantage persists under $\pm$30--40\%
-contact-model mismatch. The contribution is thus a clearly scoped,
+contact-mobility and $\pm$15\% object-size model mismatch. The contribution is
+thus a clearly scoped,
 mechanism-supported positive result with a rigorous negative control: gradient
 refinement buys what sampling cannot precisely when information is carried by the
 contact gradient.
@@ -456,7 +457,15 @@ than matched (the controller commits to sustained contact and converges
 conservatively), while over-modelled mobility ($G\!>\!1$) overshoots the fine
 orientation and degrades monotonically. The advantage lives in the stiff-contact
 regime where sampling overshoots; at $G\!=\!0.6$ the dynamics become gentle enough
-that vanilla MPPI also reaches $1.00$ and the task no longer discriminates.
+that vanilla MPPI also reaches $1.00$ and the task no longer discriminates. A
+second, structurally different error---scaling the \emph{true} object's
+dimensions while the controller keeps the nominal box size---tells the same story
+with a tighter band: \texttt{diff\_mppi\_5} holds its advantage within $\pm 15\%$
+size error ($0.25/0.75/0.62$ at size factor $0.85/1.0/1.15$) while vanilla MPPI
+stays at $0.00$ throughout, degrading to $0.00$ only at $\pm 30\%$. The tighter
+tolerance is mechanistic: object size sets the contact point and torque lever
+arm, so a wrong size mis-locates where torque is generated and corrupts the
+orientation gradient more directly than a uniform mobility scale.
 
 \begin{table}[t]
 \centering
@@ -534,7 +543,8 @@ than a validated rigid-body simulator with friction; extending the gradient
 through a higher-fidelity contact model is the natural next step. We partially
 de-risk this with the contact-model mismatch study (Table~\ref{tab:mismatch}),
 which shows the advantage survives $\pm 30$--$40\%$ error in the plant's contact
-mobility, but a full sim-to-real validation remains future work. The contact
+mobility and $\pm 15\%$ error in the object dimensions, but a full sim-to-real
+validation remains future work. The contact
 tasks are non-prehensile pushing only, and \texttt{box\_turn} marks a maneuver
 the method does not yet solve. The CDF-MPPI baseline, while literature-faithful,
 is an in-harness reimplementation, and the smooth-task models (bicycle, simplified
