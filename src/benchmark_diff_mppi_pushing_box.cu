@@ -250,6 +250,47 @@ __global__ void rollout_kernel(
     d_rng[k] = rng;
 }
 
+// Mechanism diagnostic: replay the SAME sampled controls written by rollout_kernel
+// (d_perturbed) and measure, per sample, how much rotation the box actually
+// underwent. d_rot = total angular path Sum|dtheta| (did this sample engage
+// torque-generating off-centre contact at all), d_netrot = net signed rotation.
+// Pairs 1:1 with d_costs from the same rollout, so cost-vs-rotation is exact.
+__global__ void replay_rot_kernel(
+    const float* d_start, const float* d_perturbed, float* d_rot, float* d_netrot,
+    BoxParams p, int K, int T)
+{
+    int k = blockIdx.x * blockDim.x + threadIdx.x;
+    if (k >= K) return;
+    float px=d_start[0], py=d_start[1], ox=d_start[2], oy=d_start[3], oth=d_start[4];
+    float oth0 = oth, path = 0.0f;
+    for (int t = 0; t < T; t++) {
+        float ux = d_perturbed[k*T*2 + t*2 + 0];
+        float uy = d_perturbed[k*T*2 + t*2 + 1];
+        float oth_prev = oth;
+        push_step_box_f(px, py, ox, oy, oth, ux, uy, p);
+        path += fabsf(wrapf(oth - oth_prev));
+    }
+    d_rot[k] = path;
+    d_netrot[k] = wrapf(oth - oth0);
+}
+
+// Host cost of an UNPERTURBED nominal rollout (the current mean the sampler
+// perturbs around): the baseline against which "did a sample improve?" is judged.
+// Mirrors rollout_kernel exactly with zero noise, using the controller model.
+static float host_rollout_cost(const float start[STATE_DIM], const vector<float>& nominal,
+                               int T, float gx, float gy, float gth, const BoxParams& p) {
+    float px=start[0], py=start[1], ox=start[2], oy=start[3], oth=start[4];
+    float cost = 0.0f;
+    for (int t = 0; t < T; t++) {
+        float ux = clampf_local(nominal[t*2+0], -p.u_max, p.u_max);
+        float uy = clampf_local(nominal[t*2+1], -p.u_max, p.u_max);
+        push_step_box_f(px, py, ox, oy, oth, ux, uy, p);
+        cost += stage_cost_box_f(px, py, ox, oy, oth, ux, uy, gx, gy, gth, p);
+    }
+    cost += terminal_cost_box_f(ox, oy, oth, gx, gy, gth, p);
+    return cost;
+}
+
 __global__ void weights_kernel(const float* d_costs, float* d_w, int K, float lambda) {
     if (blockIdx.x != 0 || threadIdx.x != 0) return;
     float cmin = FLT_MAX;
@@ -290,6 +331,18 @@ class EpisodeRunner {
 public:
     bool record_traj = false;            // when set, log per-step pose to traj_flat
     vector<float> traj_flat;             // [px,py,ox,oy,oth] per recorded step
+    // Mechanism diagnostic (vanilla MPPI only): per control step, measure what
+    // fraction of the K sampled rollouts engage torque-generating rotation and
+    // improve on the current mean. Quantifies "random sampling rarely produces the
+    // sustained off-centre contact needed to rotate the box". diag_flat stride 9:
+    // [step, rem_ang, nominal_cost, min_cost, improve_frac, contact_frac, rot_mean,
+    //  rot_p90, escape_frac]. escape_frac = fraction of K samples whose NET rotation
+    // is toward the goal angle by enough to break the tolerance latch this step --
+    // the sharp mechanism number (near 0 at the rotation plateau where sampling stalls).
+    bool record_diag = false;
+    int  diag_dump_step = -1;            // step at which to dump per-sample (cost,rot,netrot)
+    vector<float> diag_flat;             // stride 9 (see above)
+    vector<float> diag_scatter;          // stride 3: [cost, rot, netrot] at diag_dump_step
     // Model-mismatch robustness knob (default 1.0 => no-op, published numbers
     // reproduce byte-identically). When != 1.0, the TRUE plant's contact mobility
     // (push_gain, rot_gain) is scaled while the controller's internal rollout +
@@ -314,11 +367,14 @@ public:
         CUDA_CHECK(cudaMalloc(&d_weights_, K_*sizeof(float)));
         CUDA_CHECK(cudaMalloc(&d_perturbed_, K_*T_*CTRL_DIM*sizeof(float)));
         CUDA_CHECK(cudaMalloc(&d_rng_, K_*sizeof(curandState)));
+        CUDA_CHECK(cudaMalloc(&d_rot_, K_*sizeof(float)));
+        CUDA_CHECK(cudaMalloc(&d_netrot_, K_*sizeof(float)));
         reset_rng();
     }
     ~EpisodeRunner() {
         cudaFree(d_start_); cudaFree(d_nominal_); cudaFree(d_costs_);
         cudaFree(d_weights_); cudaFree(d_perturbed_); cudaFree(d_rng_);
+        cudaFree(d_rot_); cudaFree(d_netrot_);
     }
 
     EpisodeMetrics run() {
@@ -349,6 +405,11 @@ public:
             controller_update();
             auto t1 = chrono::steady_clock::now();
             ctrl_ms += chrono::duration<float, milli>(t1 - t0).count();
+
+            // h_nominal_ still holds the PRE-update mean (the sampler perturbed
+            // around it); d_costs_/d_perturbed_ hold this step's K samples. Collect
+            // the mechanism diagnostic before h_nominal_ is overwritten below.
+            if (record_diag) collect_diag(step);
 
             CUDA_CHECK(cudaMemcpy(h_nominal_.data(), d_nominal_, h_nominal_.size()*sizeof(float), cudaMemcpyDeviceToHost));
             push_step_box_f(px_, py_, ox_, oy_, oth_, h_nominal_[0], h_nominal_[1], plant_p);
@@ -393,11 +454,51 @@ private:
     }
     void warmup() { for (int i = 0; i < 3; i++) controller_update(); }
 
+    // Measure the K-sample statistics at the current decision state. Reuses this
+    // step's rollout (d_costs_ from controller_update, d_perturbed_) and replays it
+    // for rotation; h_nominal_ is still the pre-update mean (the sampling centre).
+    void collect_diag(int step) {
+        int b = 256;
+        replay_rot_kernel<<<(K_+b-1)/b,b>>>(d_start_, d_perturbed_, d_rot_, d_netrot_, sc_.params, K_, T_);
+        CUDA_CHECK(cudaDeviceSynchronize());
+        float start[STATE_DIM] = { px_, py_, ox_, oy_, oth_ };
+        float nominal_cost = host_rollout_cost(start, h_nominal_, T_, sc_.gx, sc_.gy, sc_.gth, sc_.params);
+        vector<float> hc(K_), hr(K_), hn(K_);
+        CUDA_CHECK(cudaMemcpy(hc.data(), d_costs_,  K_*sizeof(float), cudaMemcpyDeviceToHost));
+        CUDA_CHECK(cudaMemcpy(hr.data(), d_rot_,    K_*sizeof(float), cudaMemcpyDeviceToHost));
+        CUDA_CHECK(cudaMemcpy(hn.data(), d_netrot_, K_*sizeof(float), cudaMemcpyDeviceToHost));
+        const float rot_thresh = 0.02f;   // rad of total angular path => "engaged rotation"
+        // Signed rotation still needed to reach the goal angle, and how much beyond
+        // tolerance: a sample "escapes" the latch if it rotates the right way by >= margin.
+        float need = wrapf(sc_.gth - oth_);
+        float margin = fmaxf(0.0f, fabsf(need) - sc_.ang_tol);
+        int n_improve = 0, n_contact = 0, n_escape = 0; float min_cost = FLT_MAX, rot_sum = 0.0f;
+        for (int k = 0; k < K_; k++) {
+            if (hc[k] < nominal_cost) n_improve++;
+            if (hr[k] > rot_thresh)   n_contact++;
+            if (margin > 0.0f && need*hn[k] > 0.0f && fabsf(hn[k]) >= margin) n_escape++;
+            min_cost = fminf(min_cost, hc[k]);
+            rot_sum += hr[k];
+        }
+        vector<float> rs = hr; sort(rs.begin(), rs.end());
+        float rot_p90 = rs[(int)(0.9f*(K_-1))];
+        float improve_frac = (float)n_improve / K_;
+        float contact_frac = (float)n_contact / K_;
+        float escape_frac = (float)n_escape / K_;
+        float rot_mean = rot_sum / K_;
+        float rem_ang = ang_err();
+        diag_flat.insert(diag_flat.end(),
+            { (float)step, rem_ang, nominal_cost, min_cost, improve_frac, contact_frac, rot_mean, rot_p90, escape_frac });
+        if (step == diag_dump_step)
+            for (int k = 0; k < K_; k++) diag_scatter.insert(diag_scatter.end(), { hc[k], hr[k], hn[k] });
+    }
+
     Variant v_; BoxScenario sc_; int K_, T_, seed_;
     float px_=0,py_=0,ox_=0,oy_=0,oth_=0;
     int steps_=0; bool reached_=false; float cum_cost_=0, min_dist_=0;
     vector<float> h_nominal_;
     float *d_start_=nullptr,*d_nominal_=nullptr,*d_costs_=nullptr,*d_weights_=nullptr,*d_perturbed_=nullptr;
+    float *d_rot_=nullptr,*d_netrot_=nullptr;
     curandState* d_rng_=nullptr;
 };
 
@@ -462,6 +563,7 @@ int main(int argc, char** argv) {
     bool quick=false; string csv_path="build/benchmark_diff_mppi_pushing_box.csv";
     vector<int> k_values; vector<string> scenario_names, planner_names; int seed_count=-1;
     int horizon=DEFAULT_T; string dump_traj_prefix=""; float plant_gain_scale=1.0f; float plant_size_scale=1.0f;
+    string diag_prefix="";
     for (int i=1;i<argc;i++){ string a=argv[i];
         if (a=="--quick") quick=true;
         else if (a=="--csv"&&i+1<argc) csv_path=argv[++i];
@@ -471,6 +573,9 @@ int main(int argc, char** argv) {
         else if (a=="--planners"&&i+1<argc) planner_names=parse_string_list(argv[++i]);
         else if (a=="--horizon"&&i+1<argc) horizon=max(2,atoi(argv[++i]));
         else if (a=="--dump-traj"&&i+1<argc) dump_traj_prefix=argv[++i];
+        // mechanism diagnostic: per-step K-sample rotation/improvement statistics
+        // for vanilla MPPI across tasks (quantifies where sampling is contact-starved).
+        else if (a=="--diag-mechanism"&&i+1<argc) diag_prefix=argv[++i];
         // model-mismatch robustness: scale the TRUE plant contact mobility while the
         // controller keeps nominal gains (default 1.0 => published numbers reproduce).
         else if (a=="--plant-gain-scale"&&i+1<argc) plant_gain_scale=(float)atof(argv[++i]);
@@ -501,6 +606,50 @@ int main(int argc, char** argv) {
                     << runner.traj_flat[k+4] << "\n";
             printf("[dump-traj] %s -> %s (success=%d steps=%d)\n",
                    s.name.c_str(), path.c_str(), m.success, m.steps);
+        }
+        return 0;
+    }
+
+    // Mechanism-diagnostic mode: run vanilla MPPI (the sampler under study) at a
+    // large budget on each task and log, per control step, what fraction of the K
+    // sampled rollouts engage torque-generating rotation and improve on the current
+    // mean. Tests the thesis that sampling is contact-starved precisely on the
+    // rotation-dominant tasks where the gradient wins, and not on box_turn.
+    if (!diag_prefix.empty()) {
+        int Kdiag = k_values.empty() ? 4096 : k_values.back();
+        vector<BoxScenario> diag_sc = { make_box_turn(), make_box_align(), make_box_pivot() };
+        if (!scenario_names.empty()) {
+            vector<BoxScenario> f;
+            for (auto& w : scenario_names) { auto it=find_if(diag_sc.begin(),diag_sc.end(),[&](const BoxScenario&s){return s.name==w;});
+                if (it!=diag_sc.end()) f.push_back(*it); }
+            if (!f.empty()) diag_sc.swap(f);
+        }
+        printf("=== mechanism diagnostic: vanilla MPPI, K=%d, per-step sample statistics ===\n", Kdiag);
+        for (auto& sc : diag_sc) {
+            Variant v; v.name="mppi"; v.grad_steps=0; v.alpha=0.0f;   // the sampler under study
+            EpisodeRunner runner(v, sc, Kdiag, horizon, /*seed=*/6000+0*100+0*20+0*7+Kdiag);
+            runner.record_diag = true; runner.diag_dump_step = 60;
+            EpisodeMetrics m = runner.run();
+            string path = diag_prefix + "_" + sc.name + ".csv";
+            ofstream out(path);
+            out << "# scenario=" << sc.name << " K=" << Kdiag << " ang_tol=" << sc.ang_tol
+                << " success=" << m.success << " steps=" << m.steps << "\n";
+            out << "step,rem_ang,nominal_cost,min_cost,improve_frac,contact_frac,rot_mean,rot_p90,escape_frac\n";
+            double sif=0, scf=0, sef=0; int nrows=0;
+            for (size_t k=0; k+8 < runner.diag_flat.size(); k+=9) {
+                for (int j=0;j<9;j++) out << (j?",":"") << runner.diag_flat[k+j];
+                out << "\n";
+                sif += runner.diag_flat[k+4]; scf += runner.diag_flat[k+5]; sef += runner.diag_flat[k+8]; nrows++;
+            }
+            // per-sample scatter (cost vs rotation) at diag_dump_step
+            string spath = diag_prefix + "_" + sc.name + "_scatter.csv";
+            ofstream sout(spath);
+            sout << "# scenario=" << sc.name << " step=" << runner.diag_dump_step << " K=" << Kdiag << "\n";
+            sout << "cost,rot,netrot\n";
+            for (size_t k=0; k+2 < runner.diag_scatter.size(); k+=3)
+                sout << runner.diag_scatter[k] << "," << runner.diag_scatter[k+1] << "," << runner.diag_scatter[k+2] << "\n";
+            printf("[diag] %-10s success=%d steps=%d  improve_frac=%.3f  contact_frac=%.3f  escape_frac=%.4f -> %s\n",
+                   sc.name.c_str(), m.success, m.steps, nrows?sif/nrows:0.0, nrows?scf/nrows:0.0, nrows?sef/nrows:0.0, path.c_str());
         }
         return 0;
     }
