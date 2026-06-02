@@ -219,6 +219,139 @@ def fig_robustness(out_dir):
     print("wrote", path)
 
 
+def fig_robustness_pivot(out_dir):
+    """box_pivot replication of the two-axis mismatch robustness, on the
+    continuous angular residual (the tight ang_tol makes the binary latch
+    uninformative). diff_mppi_5 @K=1024 vs mppi @K=4096. The gradient residual
+    stays strictly below the sampling floor at every G on both axes; mppi never
+    reaches the 0.11 tolerance. Numbers: 8-seed values in
+    paper/cdf_mppi_baseline_results.md (box_pivot task-generality subsection).
+    """
+    tol = 0.11
+    gain_G = [0.7, 0.85, 1.0, 1.2, 1.4]
+    gain_mppi = [0.260, 0.222, 0.193, 0.163, 0.138]
+    gain_diff = [0.171, 0.137, 0.115, 0.106, 0.101]
+    size_G = [0.7, 0.85, 1.0, 1.15, 1.3]
+    size_mppi = [0.700, 0.248, 0.193, 0.192, 0.196]
+    size_diff = [0.700, 0.162, 0.115, 0.111, 0.106]
+
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(SINGLE_COL * 2.0, SINGLE_COL * 0.85))
+
+    def panel(ax, G, mppi, diff, title, xlabel, ymax):
+        ax.fill_between(G, diff, mppi, color=C_DIFF5, alpha=0.10, lw=0)
+        ax.plot(G, diff, "-o", color=C_DIFF5, markersize=5, label="diff_mppi_5 (K=1024)")
+        ax.plot(G, mppi, "-s", color=C_MPPI, markersize=5, label="mppi (K=4096, 16$\\times$)")
+        ax.axhline(tol, color="#2ca02c", ls="--", lw=0.9)
+        ax.text(G[0], tol + 0.006, "ang tol 0.11", fontsize=6, color="#2ca02c", va="bottom")
+        ax.axvline(1.0, color="gray", ls=":", lw=0.8)
+        ax.set_xlabel(xlabel)
+        ax.set_ylabel("final angular residual [rad]")
+        ax.set_title(title)
+        ax.set_ylim(0.0, ymax)
+        ax.grid(True, alpha=0.3)
+        ax.legend(loc="upper right", fontsize=6)
+
+    panel(ax1, gain_G, gain_mppi, gain_diff,
+          "(a) contact-mobility mismatch", "plant/model gain scale $G$", 0.30)
+    panel(ax2, size_G, size_mppi, size_diff,
+          "(b) object-size mismatch", "plant/model box-size scale $G$", 0.75)
+    ax2.annotate("both collapse\n(box too small)", xy=(0.7, 0.700), xytext=(0.78, 0.52),
+                 fontsize=6, color="gray",
+                 arrowprops=dict(arrowstyle="->", color="gray", lw=0.8))
+
+    fig.tight_layout()
+    path = os.path.join(out_dir, "fig_robustness_pivot.pdf")
+    fig.savefig(path)
+    plt.close(fig)
+    print("wrote", path)
+
+
+def _read_diag_scatter(path):
+    cost, netrot = [], []
+    with open(path) as f:
+        for line in f:
+            if line.startswith("#") or line.startswith("cost"):
+                continue
+            parts = line.strip().split(",")
+            if len(parts) < 3:
+                continue
+            cost.append(float(parts[0]))
+            netrot.append(float(parts[2]))
+    return cost, netrot
+
+
+def fig_mechanism_sampling(out_dir, traj_dir):
+    """Why 16x samples cannot rescue vanilla MPPI on the rotation plateau.
+
+    (a) At a stuck box_pivot decision state, each of K=4096 sampled rollouts as
+        (net box rotation, cost). Isotropic velocity noise piles up at ~zero
+        rotation (the box does not turn unless the push is precisely off-centre);
+        the cost-minimizing samples sit in a thin positive-rotation band that is a
+        small minority, so the softmax-weighted mean -- dominated by the inactive
+        pile -- cannot follow them. The autodiff gradient points straight into the
+        low-cost band.
+    (b) The fraction of samples that can break the angular-tolerance latch
+        (escape_frac) is ~5-9% and ~independent of K from 256 to 4096: the stall is
+        structural, not a sample-budget shortfall. Data: --diag-mechanism mode.
+    """
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(SINGLE_COL * 2.0, SINGLE_COL * 0.85))
+
+    # --- (a) cost vs net rotation scatter at the plateau ---
+    spath = os.path.join(traj_dir, "diag_box_pivot_scatter.csv")
+    if os.path.exists(spath):
+        cost, netrot = _read_diag_scatter(spath)
+        ax1.scatter(netrot, cost, s=3, color=C_MPPI, alpha=0.18, lw=0, zorder=2)
+        # binned mean-cost curve (the cost-rotation coupling, U-shaped)
+        import collections
+        binw = 0.05
+        agg = collections.defaultdict(list)
+        for nr, c in zip(netrot, cost):
+            agg[round(math.floor(nr / binw) * binw + binw / 2, 3)].append(c)
+        xs = sorted(b for b, v in agg.items() if len(v) >= 8)
+        ys = [sum(agg[b]) / len(agg[b]) for b in xs]
+        ax1.plot(xs, ys, "-", color="k", lw=1.3, zorder=4, label="mean cost / bin")
+        ax1.axvline(0.08, color="#2ca02c", ls="--", lw=0.9, zorder=3)
+        ax1.text(0.085, ax1.get_ylim()[1] * 0.92, "rotation needed\nto break latch",
+                 fontsize=6, color="#2ca02c", va="top")
+        ax1.annotate("64% of samples\nbarely rotate", xy=(0.0, 2.65), xytext=(-0.18, 9.5),
+                     fontsize=6, color="gray",
+                     arrowprops=dict(arrowstyle="->", color="gray", lw=0.8))
+        ax1.set_xlim(-0.25, 0.35)
+        ax1.set_ylim(0, 13)
+        ax1.set_xlabel("net box rotation of sample [rad]")
+        ax1.set_ylabel("rollout cost")
+        ax1.set_title("(a) box_pivot plateau: K=4096 samples")
+        ax1.legend(loc="upper left", fontsize=6)
+        ax1.grid(True, alpha=0.3)
+    else:
+        ax1.text(0.5, 0.5, "run --diag-mechanism first", ha="center", transform=ax1.transAxes)
+
+    # --- (b) escape_frac vs K (plateau mean) -- structural, not budget ---
+    Ks = [256, 1024, 4096]
+    escape = [0.043, 0.089, 0.070]
+    xpos = list(range(len(Ks)))
+    ax2.bar(xpos, escape, color=C_MPPI, width=0.6, zorder=2)
+    for x, e in zip(xpos, escape):
+        ax2.text(x, e + 0.004, f"{e:.3f}", ha="center", fontsize=6)
+    ax2.axhline(sum(escape) / len(escape), color="gray", ls=":", lw=0.9)
+    ax2.set_xticks(xpos)
+    ax2.set_xticklabels([f"{k}\n({k//256}$\\times$)" for k in Ks])
+    ax2.set_ylim(0, 0.13)
+    ax2.set_xlabel("samples $K$ (vanilla MPPI)")
+    ax2.set_ylabel("latch-break fraction (plateau)")
+    ax2.set_title("(b) starvation is structural in $K$")
+    ax2.annotate("16$\\times$ samples\ndoes not help", xy=(2, 0.070), xytext=(0.7, 0.108),
+                 fontsize=6, color="gray",
+                 arrowprops=dict(arrowstyle="->", color="gray", lw=0.8))
+    ax2.grid(True, axis="y", alpha=0.3)
+
+    fig.tight_layout()
+    path = os.path.join(out_dir, "fig_mechanism_sampling.pdf")
+    fig.savefig(path)
+    plt.close(fig)
+    print("wrote", path)
+
+
 def _read_traj(path):
     """Read a --dump-traj CSV; return (meta dict, list of (px,py,ox,oy,oth))."""
     meta = {}
@@ -308,6 +441,8 @@ def main():
     fig_cdf_vs_diff(args.out_dir)
     fig_box_samples(args.out_dir)
     fig_robustness(args.out_dir)
+    fig_robustness_pivot(args.out_dir)
+    fig_mechanism_sampling(args.out_dir, args.traj_dir)
 
 
 if __name__ == "__main__":
