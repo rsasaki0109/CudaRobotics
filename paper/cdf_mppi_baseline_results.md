@@ -417,6 +417,45 @@ This makes the contact-gradient robustness **two axes × two tasks**, measured o
 binary latch where it is clean (`box_align`) and on a continuous residual where the
 latch is tight (`box_pivot`) — consistent across all four cells.
 
+### gap #2 mechanism: WHY 16× samples cannot rescue vanilla MPPI (quantified)
+
+The headline observation is that vanilla MPPI fails the box-pose tasks *even at
+$16\times$ the samples*. We instrumented exactly why, via a new `--diag-mechanism`
+mode on `benchmark_diff_mppi_pushing_box` that runs vanilla MPPI ($K=4096$) and
+logs, per control step, the K-sample statistics (replaying the same `d_perturbed`
+controls the rollout drew, so cost and rotation pair 1:1 per sample). Two numbers
+fall out, both on `box_pivot` where the box stalls at angular residual $\approx
+0.19$ for $\sim$200 steps (the published `mppi` plateau):
+
+1. **The cost-reducing controls are a starved minority.** At the plateau decision
+   state, the per-sample (net box rotation, cost) cloud is sharply U-shaped in
+   rotation: cost is minimized in a thin **positive-rotation band $\approx[0.05,
+   0.15]$ rad** (mean cost $\approx 1.9$ vs the stall cost $2.65$), but **64% of
+   the 4096 samples have net rotation in $[-0.05, 0)$** — they barely turn the box
+   at all. Isotropic velocity noise rarely produces the *sustained off-centre*
+   contact needed to rotate; the box only turns when the push happens to stay
+   off-centre across the horizon. The softmax-weighted MPPI mean, dominated by the
+   inactive 64% pile sitting at the stall cost, cannot lock onto the useful tail.
+
+2. **The starvation is structural in $K$, not a budget shortfall.** Define
+   `escape_frac` = fraction of samples whose net rotation is toward the goal by
+   enough to break the angular-tolerance latch this step. At the plateau it is
+   $\approx 0.04$–$0.09$ and **does not grow with $K$**: `0.043 / 0.089 / 0.070`
+   at $K = 256 / 1024 / 4096$ ($1\times / 4\times / 16\times$). So $16\times$ the
+   samples buys $16\times$ the *raw* count but the *useful fraction* is fixed by
+   the noise-vs-contact geometry — the weighted mean's per-step probability of
+   escaping the latch is essentially constant. This is precisely why adding
+   **gradient steps** (which point deterministically into the low-cost rotation
+   band every step) breaks the plateau while adding **samples** does not — the
+   mechanism behind the monotone-in-$N_g$ signature.
+
+Figures: `scripts/plot_contact_figures.py` adds `fig_mechanism_sampling` (the
+cost-vs-rotation scatter + the `escape_frac`-vs-$K$ bar) and
+`fig_robustness_pivot` (the box_pivot two-axis continuous-residual separation).
+Reproduce: `bin/benchmark_diff_mppi_pushing_box --diag-mechanism build/diag
+--k-values 4096`. The diagnostic is gated behind the flag; the published sweep
+path is byte-unchanged.
+
 ### A noted non-result: stochastic pose noise games the success latch
 
 We also tried unmodelled Gaussian *process noise* on the box pose as a third
