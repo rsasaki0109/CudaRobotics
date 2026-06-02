@@ -87,8 +87,8 @@ The most visually striking GPU demos, where massive parallelism really shows.
 | Batched iLQR | SDF-MPPI |
 | <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_multi_robot_planner.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_mcts_planner.gif" width="400"/> |
 | Multi-robot planner | MCTS planner |
-| <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_mpc_qp.gif" width="400"/> | |
-| Convex MPC: 1024 batched box-QPs via ADMM (OSQP-style) | |
+| <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_mpc_qp.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_constrained_mpc.gif" width="400"/> |
+| Convex MPC: 1024 batched box-QPs via ADMM (OSQP-style) | Constrained nonlinear MPC: 400 robots, AL-iLQR with hard obstacle limits |
 
 ### Perception & mapping
 
@@ -154,7 +154,8 @@ transform / warp and is verified in-binary.
   global localization, LSH neighbour consensus, robust smoothers.
 - Planning and control: MPPI, Diff-MPPI, graph-neural MPPI, no-regret game
   planners, DWA, RRT family, value iteration, wavefront planning, batched and
-  parallel-in-time (associative-scan) iLQR, convex MPC (batched ADMM box-QP).
+  parallel-in-time (associative-scan) iLQR, convex MPC (batched ADMM box-QP),
+  constrained nonlinear MPC (augmented-Lagrangian iLQR).
 - Perception and mapping: LiDAR simulation, occupancy grids, ESDF/JFA, TSDF,
   Marching Cubes, SGM stereo, optical flow, direct visual odometry, KD-tree NN.
 - Point-cloud registration: global front-end (FPFH + Fast Global Registration)
