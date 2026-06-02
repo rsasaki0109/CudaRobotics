@@ -131,6 +131,100 @@ __host__ __device__ inline void push_step_box_f(
     oth = wrapf(oth + p.dt * p.rot_gain * torque);
 }
 
+// ===================== HARD-CONTACT plant (independent, higher-fidelity) =====================
+// A structurally DIFFERENT true plant for the sim-to-sim mismatch test. The
+// controller's rollout and gradient stay on the smooth model above; reality is
+// this rigid box. Same contact geometry (box-SDF normal + contact point), but the
+// force law is replaced by: hard non-penetration + Coulomb stick-slip friction,
+// resolved with sequential impulses on a momentum-carrying rigid body (mass M,
+// inertia I, linear/angular damping). The smooth model has NO friction (normal
+// push only) and a soft penetration ramp; this has a friction cone and exact
+// non-penetration -- the mismatch is the contact model itself, not a scaled param.
+struct HardParams {
+    float dt = 0.05f;
+    float hx = 0.35f, hy = 0.18f, push_r = 0.08f;   // geometry (matches smooth nominal)
+    float mass = 1.0f;              // box mass
+    float mu = 0.6f;                // Coulomb friction coefficient (the swept knob)
+    float damp_lin = 6.0f;          // linear velocity damping rate (1/s)
+    float damp_ang = 7.0f;          // angular velocity damping rate (1/s)
+    float beta = 0.35f;             // Baumgarte penetration push-out fraction
+    int   substeps = 4;             // dt subdivisions for stable impulse resolution
+    int   iters = 8;                // sequential-impulse iterations per substep
+};
+
+// Advance the rigid box one control step under the hard-contact plant. Pusher is a
+// velocity-controlled (kinematic) disc, identical to the smooth driver. Box pose
+// (ox,oy,oth) and box velocity (vx,vy,w) are updated in place.
+__host__ inline void push_step_box_hard_f(
+    float& px, float& py, float& ox, float& oy, float& oth,
+    float& vx, float& vy, float& w,
+    float ux, float uy, const HardParams& hp)
+{
+    const float inertia = hp.mass * (hp.hx*hp.hx + hp.hy*hp.hy) / 3.0f;  // 2D box about COM
+    const float invM = 1.0f / hp.mass, invI = 1.0f / inertia;
+    const float h = hp.dt / hp.substeps;
+    for (int ss = 0; ss < hp.substeps; ss++) {
+        px += h * ux; py += h * uy;                  // kinematic pusher
+        // --- contact geometry (identical to the smooth model) ---
+        float c = cosf(oth), s = sinf(oth);
+        float dx = px - ox, dy = py - oy;
+        float lx =  c*dx + s*dy, ly = -s*dx + c*dy;
+        float qx = fabsf(lx) - hp.hx, qy = fabsf(ly) - hp.hy;
+        float rqx = fmaxf(qx, 0.0f), rqy = fmaxf(qy, 0.0f);
+        float outside = sqrtf(rqx*rqx + rqy*rqy + 1e-9f);
+        float inside = fminf(fmaxf(qx, qy), 0.0f);
+        float sd = outside + inside;
+        float pen = hp.push_r - sd;                  // >0 => overlap (hard)
+        if (pen > 0.0f) {
+            float nlx = rqx * (lx >= 0 ? 1.0f : -1.0f);
+            float nly = rqy * (ly >= 0 ? 1.0f : -1.0f);
+            float nlen = sqrtf(nlx*nlx + nly*nly);
+            if (nlen < 1e-6f) {                      // pusher inside: normal from min face
+                if (qx > qy) { nlx = (lx >= 0 ? 1.f : -1.f); nly = 0.f; }
+                else          { nlx = 0.f; nly = (ly >= 0 ? 1.f : -1.f); }
+                nlen = 1.0f;
+            }
+            nlx /= nlen; nly /= nlen;
+            float nwx = c*nlx - s*nly, nwy = s*nlx + c*nly;   // world outward normal (box->pusher)
+            float cxw = px - nwx*sd, cyw = py - nwy*sd;
+            float rx = cxw - ox, ry = cyw - oy;
+            float tx = -nwy, ty = nwx;                        // tangent
+            float rn = rx*nwy - ry*nwx;                       // r x n  (scalar)
+            float rt = rx*ty  - ry*tx;                        // r x t  (scalar)
+            float kn = invM + rn*rn*invI;
+            float kt = invM + rt*rt*invI;
+            float vn_target = -hp.beta * pen / h;             // Baumgarte: recede to clear overlap
+            float Jn_acc = 0.0f, Jt_acc = 0.0f;
+            for (int it = 0; it < hp.iters; it++) {
+                // contact-point velocity of box relative to (kinematic) pusher
+                float cpvx = vx - w*ry, cpvy = vy + w*rx;
+                float relx = cpvx - ux,  rely = cpvy - uy;
+                float vn = relx*nwx + rely*nwy;               // +: box moving toward pusher (closing)
+                float dJn = (vn - vn_target) / kn;            // impulse in -n drives vn down
+                float newJn = fmaxf(Jn_acc + dJn, 0.0f);      // push only
+                dJn = newJn - Jn_acc; Jn_acc = newJn;
+                vx -= invM * dJn * nwx; vy -= invM * dJn * nwy;
+                w  -= invI * dJn * rn;
+                // friction: drive tangential rel-vel to zero, clamp to Coulomb cone
+                cpvx = vx - w*ry; cpvy = vy + w*rx;
+                relx = cpvx - ux; rely = cpvy - uy;
+                float vt = relx*tx + rely*ty;
+                float dJt = -vt / kt;
+                float maxJt = hp.mu * Jn_acc;
+                float newJt = fminf(fmaxf(Jt_acc + dJt, -maxJt), maxJt);
+                dJt = newJt - Jt_acc; Jt_acc = newJt;
+                vx += invM * dJt * tx; vy += invM * dJt * ty;
+                w  += invI * dJt * rt;
+            }
+        }
+        // integrate pose, then damp (semi-implicit, momentum-carrying)
+        ox += h * vx; oy += h * vy; oth = wrapf(oth + h * w);
+        float dl = fmaxf(0.0f, 1.0f - hp.damp_lin * h);
+        float da = fmaxf(0.0f, 1.0f - hp.damp_ang * h);
+        vx *= dl; vy *= dl; w *= da;
+    }
+}
+
 __host__ __device__ inline float stage_cost_box_f(
     float px, float py, float ox, float oy, float oth, float ux, float uy,
     float gx, float gy, float gth, const BoxParams& p)
@@ -357,6 +451,14 @@ public:
     // plant_gain_scale (object SHAPE error vs contact MOBILITY error) and a real
     // sim-to-real concern (exact object dimensions are rarely known).
     float plant_size_scale = 1.0f;
+    // Sim-to-sim mismatch: when true, the TRUE plant is the hard-contact rigid body
+    // (push_step_box_hard_f) -- a structurally different contact model (hard
+    // non-penetration + Coulomb stick-slip friction + box momentum) -- while the
+    // controller's rollout + gradient keep the smooth model. This is the strongest
+    // test of external validity: the contact MODEL (not a scaled parameter) is wrong.
+    // Default false => the smooth plant runs and published numbers are byte-identical.
+    bool  true_plant_hard = false;
+    float plant_mu = 0.6f;               // Coulomb friction of the hard true plant
 
     EpisodeRunner(const Variant& v, const BoxScenario& sc, int K, int T, int seed)
         : v_(v), sc_(sc), K_(K), T_(T), seed_(seed) {
@@ -392,6 +494,14 @@ public:
         plant_p.hx        *= plant_size_scale;   // true object SHAPE (controller keeps nominal)
         plant_p.hy        *= plant_size_scale;
 
+        // Hard-contact true plant: same geometry as the controller's nominal box
+        // (size mismatch is its own axis, kept off here), friction mu is the swept knob.
+        HardParams hard_p;
+        hard_p.dt = sc_.params.dt; hard_p.push_r = sc_.params.push_r;
+        hard_p.hx = sc_.params.hx * plant_size_scale;
+        hard_p.hy = sc_.params.hy * plant_size_scale;
+        hard_p.mu = plant_mu;
+
         auto ep0 = chrono::steady_clock::now();
         float ctrl_ms = 0.0f;
         if (record_traj) { traj_flat.clear();
@@ -412,7 +522,10 @@ public:
             if (record_diag) collect_diag(step);
 
             CUDA_CHECK(cudaMemcpy(h_nominal_.data(), d_nominal_, h_nominal_.size()*sizeof(float), cudaMemcpyDeviceToHost));
-            push_step_box_f(px_, py_, ox_, oy_, oth_, h_nominal_[0], h_nominal_[1], plant_p);
+            if (true_plant_hard)
+                push_step_box_hard_f(px_, py_, ox_, oy_, oth_, vx_, vy_, w_, h_nominal_[0], h_nominal_[1], hard_p);
+            else
+                push_step_box_f(px_, py_, ox_, oy_, oth_, h_nominal_[0], h_nominal_[1], plant_p);
             cum_cost_ += stage_cost_box_f(px_, py_, ox_, oy_, oth_, h_nominal_[0], h_nominal_[1], sc_.gx, sc_.gy, sc_.gth, sc_.params);
             for (int t = 0; t < T_-1; t++) { h_nominal_[t*2+0]=h_nominal_[(t+1)*2+0]; h_nominal_[t*2+1]=h_nominal_[(t+1)*2+1]; }
             h_nominal_[(T_-1)*2+0]=0.0f; h_nominal_[(T_-1)*2+1]=0.0f;
@@ -437,7 +550,7 @@ public:
 
 private:
     void reset_rng() { int b=256; init_curand_kernel<<<(K_+b-1)/b,b>>>(d_rng_, K_, (unsigned long long)seed_); CUDA_CHECK(cudaDeviceSynchronize()); }
-    void reset_state() { px_=sc_.px0; py_=sc_.py0; ox_=sc_.ox0; oy_=sc_.oy0; oth_=sc_.oth0; steps_=0; reached_=false; cum_cost_=0; min_dist_=pos_dist(); }
+    void reset_state() { px_=sc_.px0; py_=sc_.py0; ox_=sc_.ox0; oy_=sc_.oy0; oth_=sc_.oth0; vx_=vy_=w_=0.0f; steps_=0; reached_=false; cum_cost_=0; min_dist_=pos_dist(); }
     float pos_dist() const { float dx=ox_-sc_.gx, dy=oy_-sc_.gy; return sqrtf(dx*dx+dy*dy); }
     float ang_err() const { return fabsf(wrapf(oth_ - sc_.gth)); }
     void sync_start() { float s[STATE_DIM]={px_,py_,ox_,oy_,oth_}; CUDA_CHECK(cudaMemcpy(d_start_, s, STATE_DIM*sizeof(float), cudaMemcpyHostToDevice)); }
@@ -495,6 +608,7 @@ private:
 
     Variant v_; BoxScenario sc_; int K_, T_, seed_;
     float px_=0,py_=0,ox_=0,oy_=0,oth_=0;
+    float vx_=0,vy_=0,w_=0;                 // box velocity (hard true plant only)
     int steps_=0; bool reached_=false; float cum_cost_=0, min_dist_=0;
     vector<float> h_nominal_;
     float *d_start_=nullptr,*d_nominal_=nullptr,*d_costs_=nullptr,*d_weights_=nullptr,*d_perturbed_=nullptr;
@@ -576,7 +690,7 @@ int main(int argc, char** argv) {
     bool quick=false; string csv_path="build/benchmark_diff_mppi_pushing_box.csv";
     vector<int> k_values; vector<string> scenario_names, planner_names; int seed_count=-1;
     int horizon=DEFAULT_T; string dump_traj_prefix=""; float plant_gain_scale=1.0f; float plant_size_scale=1.0f;
-    string diag_prefix="";
+    string diag_prefix=""; bool true_plant_hard=false; float plant_mu=0.6f;
     for (int i=1;i<argc;i++){ string a=argv[i];
         if (a=="--quick") quick=true;
         else if (a=="--csv"&&i+1<argc) csv_path=argv[++i];
@@ -594,8 +708,46 @@ int main(int argc, char** argv) {
         else if (a=="--plant-gain-scale"&&i+1<argc) plant_gain_scale=(float)atof(argv[++i]);
         // true plant box-size scale vs the controller's nominal size (default 1 => no-op).
         else if (a=="--plant-size-scale"&&i+1<argc) plant_size_scale=(float)atof(argv[++i]);
+        // sim-to-sim: run the STRUCTURALLY different hard-contact rigid-body plant as
+        // ground truth (controller keeps the smooth model). Default smooth => byte-identical.
+        else if (a=="--true-plant"&&i+1<argc) true_plant_hard = (string(argv[++i])=="hard");
+        // Coulomb friction of the hard true plant (only used with --true-plant hard).
+        else if (a=="--mu"&&i+1<argc) plant_mu=(float)atof(argv[++i]);
     }
     ensure_build_dir();
+
+    // Physics self-test for the hard-contact plant: scripted pushes whose outcome is
+    // known a priori, so the rigid-body / friction model is validated independently of
+    // any controller. Asserts the qualitative invariants; prints the numbers.
+    {
+        bool selftest=false; for(int i=1;i<argc;i++) if(string(argv[i])=="--selftest-hard") selftest=true;
+        if (selftest) {
+            HardParams hp; hp.hx=0.35f; hp.hy=0.18f; hp.push_r=0.08f;
+            auto run = [&](float px,float py,float oth0,float ux,float uy,float mu,int n,
+                           float& ox,float& oy,float& oth){
+                hp.mu=mu; ox=0; oy=0; oth=oth0; float vx=0,vy=0,w=0; float p=px,q=py;
+                for(int i=0;i<n;i++) push_step_box_hard_f(p,q,ox,oy,oth,vx,vy,w,ux,uy,hp);
+            };
+            float ox,oy,oth;
+            // (1) centred push on the left face -> translate +x, negligible rotation
+            run(-0.42f, 0.0f, 0.0f, +1.0f, 0.0f, 0.5f, 40, ox,oy,oth);
+            printf("[selftest] centred push:    ox=%+.3f oy=%+.3f oth=%+.3f  (expect ox>0, |oth| small)\n",ox,oy,oth);
+            bool ok1 = ox>0.05f && fabsf(oth)<0.05f;
+            // (2) off-centre push (pusher above centre) on left face -> rotates clockwise (oth<0)
+            run(-0.42f, +0.12f, 0.0f, +1.0f, 0.0f, 0.5f, 40, ox,oy,oth);
+            printf("[selftest] off-centre push: ox=%+.3f oy=%+.3f oth=%+.3f  (expect ox>0, oth<0)\n",ox,oy,oth);
+            bool ok2 = ox>0.05f && oth<-0.02f;
+            // (3) frictionless tangential drag: pusher slides ALONG the face, mu=0 -> box still
+            float ox0,oy0,oth0_, oxm,oym,othm;
+            run(-0.40f, 0.0f, 0.0f, 0.0f, +1.0f, 0.0f, 40, ox0,oy0,oth0_);   // mu=0
+            run(-0.40f, 0.0f, 0.0f, 0.0f, +1.0f, 0.8f, 40, oxm,oym,othm);    // mu=0.8
+            printf("[selftest] tangential mu=0: oy=%+.3f | mu=0.8: oy=%+.3f  (expect ~0 vs >0)\n",oy0,oym);
+            bool ok3 = fabsf(oy0)<0.01f && oym>0.02f;   // frictionless: zero drag; friction: nonzero drag
+            printf("[selftest] invariants: centred=%s  off-centre-torque=%s  coulomb-friction=%s\n",
+                   ok1?"PASS":"FAIL", ok2?"PASS":"FAIL", ok3?"PASS":"FAIL");
+            return (ok1&&ok2&&ok3)?0:1;
+        }
+    }
 
     // Trajectory-dump mode: write per-step box poses for the figure filmstrip.
     if (!dump_traj_prefix.empty()) {
@@ -696,6 +848,8 @@ int main(int argc, char** argv) {
             EpisodeRunner runner(variants[vi], sc, ks, horizon, run_seed);
             runner.plant_gain_scale = plant_gain_scale;
             runner.plant_size_scale = plant_size_scale;
+            runner.true_plant_hard = true_plant_hard;
+            runner.plant_mu = plant_mu;
             EpisodeMetrics m = runner.run();
             rows.push_back(m);
             printf("[%s] %s K=%d seed=%d success=%d steps=%d pos=%.3f ang=%.3f avg_ms=%.3f\n",
