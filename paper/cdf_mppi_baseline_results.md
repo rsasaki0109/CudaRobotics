@@ -143,6 +143,30 @@ advantage** over this strong simple baseline. Honest implications:
 
 This is the pre-submission reality check the baseline was built to provide.
 
+## gap #2 probe: where could the autodiff refinement pay off? (contact is missing)
+
+We checked whether existing underactuated / higher-fidelity tasks reveal a
+Diff-MPPI advantage, and surveyed the suite for the contact-rich regime.
+
+- **Existing cartpole swing-up** (`benchmark_diff_mppi_cartpole`, 8 seeds): no
+  clean win. `cartpole_large_angle`: all methods fail (success 0, incl. K=2048).
+  `cartpole_recover`: best is diff_mppi_1@K256 = 0.50 vs mppi 0.0–0.25 (a faint
+  hint), but diff_mppi_3 = 0.125 (extra steps hurt); low + noisy overall.
+- **Existing dynamic-bicycle** CSV (already in repo): diff_mppi ties vanilla.
+- **Critical infra gap (survey):** EVERY benchmark uses smooth dynamics, and the
+  dual-number autodiff + the `if (d<margin)` penalty mean **no gradient flows
+  through contact anywhere in the repo**. The contact-rich hypothesis — that a
+  model gradient through accurate contact dynamics beats pure sampling — is
+  therefore literally untestable with current code. Real MuJoCo is linked only
+  for ground-truth eval (gradients go through a hand-coded smooth approx), and
+  the MuJoCo models in-repo (pendulum, reacher) have no contact anyway.
+
+**Implication:** demonstrating Diff-MPPI's value needs a NEW differentiable
+contact task — e.g. planar non-prehensile pushing with a smooth (softplus/
+barrier) friction-contact model so autodiff gradients flow through contact.
+That is the decisive experiment; until it exists, the evidence says the autodiff
+refinement has no advantage over vanilla MPPI / a CDF-MPPI baseline.
+
 ### Fairness caveats (MUST disclose in the paper)
 
 1. **Goal asymmetry (significant) — now quantified, see "Fair rematch" above.**
