@@ -738,6 +738,140 @@ static void diag_backward(const float* obs, int n_obs, float sx, float sy, float
         agg[wt].J[0],agg[wt].J[1],agg[wt].J[2],agg[wt].J[3],agg[wt].J[4],agg[wt].J[5],agg[wt].J[6],agg[wt].J[7],agg[wt].J[8]);
 }
 
+// ============================ GPU parallel-in-time backward scan ============================
+// The combine operator's identity element: A=I, b=0, C=0, eta=0, J=0 (so that
+// combine(e,x)=combine(x,e)=x).  Used to pad the element array up to a power of
+// two so the in-place Hillis-Steele scan needs no boundary branches.
+__host__ __device__ static inline BElem belem_identity() {
+    BElem e;
+    m3_identity(e.A);
+    for (int i = 0; i < 9; ++i) { e.C[i] = 0.f; e.J[i] = 0.f; }
+    for (int i = 0; i < 3; ++i) { e.b[i] = 0.f; e.eta[i] = 0.f; }
+    return e;
+}
+
+// Parallel backward pass: ONE block, npow = next-pow2(n) threads, one element per
+// thread held in shared memory.  An in-place Hillis-Steele SUFFIX scan combines
+// them in ceil(log2(npow)) parallel steps -- O(log T) span vs the O(T) sequential
+// fold.  `reps` repeats the scan on-GPU so the timing excludes launch overhead.
+__global__ void scan_backward_kernel(const BElem* __restrict__ elem_in,
+                                     BElem* __restrict__ agg_out, int n, int npow, int reps) {
+    extern __shared__ BElem sh[];
+    int k = threadIdx.x;
+    for (int r = 0; r < reps; ++r) {
+        sh[k] = (k < n) ? elem_in[k] : belem_identity();
+        __syncthreads();
+        // suffix scan: sh[k] <- combine over [k, npow-1]
+        for (int d = 1; d < npow; d <<= 1) {
+            BElem reg = sh[k];
+            if (k + d < npow) reg = bcombine(sh[k], sh[k + d]);
+            __syncthreads();
+            sh[k] = reg;
+            __syncthreads();
+        }
+        if (r == reps - 1 && k < n) agg_out[k] = sh[k];
+        __syncthreads();
+    }
+}
+
+// Sequential backward pass on the GPU: ONE block, ONE thread does the O(T) fold.
+// This is the latency baseline a batch kernel runs per problem.
+__global__ void seq_backward_kernel(const BElem* __restrict__ elem_in,
+                                    BElem* __restrict__ agg_out, int n, int reps) {
+    if (threadIdx.x != 0) return;
+    for (int r = 0; r < reps; ++r) {
+        BElem acc = elem_in[n - 1];
+        if (r == reps - 1) agg_out[n - 1] = acc;
+        for (int t = n - 2; t >= 0; --t) {
+            acc = bcombine(elem_in[t], acc);
+            if (r == reps - 1) agg_out[t] = acc;
+        }
+    }
+}
+
+// Build the backward elements for the iteration-0 linearization of one problem,
+// so the scan kernels operate on realistic (well-conditioned) data.
+static void build_elements(const float* obs, int n_obs, float sx, float sy, float sth,
+                           float gx, float gy, int T, std::vector<BElem>& elem) {
+    float u[T_MAX * NU], xs[(T_MAX + 1) * NX];
+    init_controls(u, sx, sy, gx, gy, T);
+    rollout(u, obs, n_obs, sx, sy, sth, gx, gy, xs, T);
+    elem.resize(T + 1);
+    for (int t = 0; t < T; ++t) {
+        float fx[NX * NX], fu[NX * NU]; dyn_jac(&xs[t * NX], &u[t * NU], fx, fu);
+        float l_x[NX], l_u[NU], l_xx[NX * NX], l_uu[NU * NU];
+        stage_cost(&xs[t * NX], &u[t * NU], obs, n_obs, gx, gy, l_x, l_u, l_xx, l_uu);
+        float Uinv[NU * NU] = { 1.f / l_uu[0], 0.f, 0.f, 1.f / l_uu[3] };
+        elem[t] = belem_stage(fx, fu, l_x, l_u, l_xx, Uinv);
+    }
+    float lf_x[NX], lf_xx[NX * NX];
+    term_cost(&xs[T * NX], gx, gy, lf_x, lf_xx);
+    elem[T] = belem_terminal(lf_x, lf_xx);
+}
+
+static inline int next_pow2(int n) { int p = 1; while (p < n) p <<= 1; return p; }
+
+// Latency benchmark: for a sweep of horizons, time the sequential O(T) fold and
+// the parallel O(log T) scan ON the GPU, and verify the parallel aggregate
+// matches the host left-fold.  Returns measured ms into the out-vectors.
+struct ScanBench { std::vector<int> Ts; std::vector<double> seq_us, par_us; std::vector<int> depth; };
+
+static ScanBench run_gpu_scan_benchmark(const float* obs, int n_obs) {
+    ScanBench b;
+    const int Tsweep[] = {8, 16, 32, 48, 64, 96, 128, 192, 254};
+    const int reps = 200;
+    for (int T : Tsweep) {
+        int n = T + 1, npow = next_pow2(n);
+        std::vector<BElem> elem;
+        build_elements(obs, n_obs, 1.0f, 5.0f, 0.3f, 9.0f, 5.0f, T, elem);
+        // host left-fold reference
+        std::vector<BElem> host_agg(n);
+        host_agg[n - 1] = elem[n - 1];
+        for (int t = n - 2; t >= 0; --t) host_agg[t] = bcombine(elem[t], host_agg[t + 1]);
+
+        BElem *d_elem, *d_agg;
+        CUDA_CHECK(cudaMalloc(&d_elem, n * sizeof(BElem)));
+        CUDA_CHECK(cudaMalloc(&d_agg, n * sizeof(BElem)));
+        CUDA_CHECK(cudaMemcpy(d_elem, elem.data(), n * sizeof(BElem), cudaMemcpyHostToDevice));
+        size_t shmem = (size_t)npow * sizeof(BElem);
+        cudaFuncSetAttribute(scan_backward_kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, shmem);
+
+        cudaEvent_t e0, e1; CUDA_CHECK(cudaEventCreate(&e0)); CUDA_CHECK(cudaEventCreate(&e1));
+        // warm up + correctness
+        scan_backward_kernel<<<1, npow, shmem>>>(d_elem, d_agg, n, npow, 1);
+        CUDA_CHECK(cudaDeviceSynchronize());
+        std::vector<BElem> gpu_agg(n);
+        CUDA_CHECK(cudaMemcpy(gpu_agg.data(), d_agg, n * sizeof(BElem), cudaMemcpyDeviceToHost));
+        float maxd = 0.f;
+        for (int t = 0; t < n; ++t) for (int i = 0; i < 9; ++i)
+            maxd = std::max(maxd, std::fabs(gpu_agg[t].J[i] - host_agg[t].J[i]));
+
+        CUDA_CHECK(cudaEventRecord(e0));
+        scan_backward_kernel<<<1, npow, shmem>>>(d_elem, d_agg, n, npow, reps);
+        CUDA_CHECK(cudaEventRecord(e1)); CUDA_CHECK(cudaEventSynchronize(e1));
+        float par_ms = 0; CUDA_CHECK(cudaEventElapsedTime(&par_ms, e0, e1));
+
+        seq_backward_kernel<<<1, 32>>>(d_elem, d_agg, n, 1);  // warm
+        CUDA_CHECK(cudaDeviceSynchronize());
+        CUDA_CHECK(cudaEventRecord(e0));
+        seq_backward_kernel<<<1, 32>>>(d_elem, d_agg, n, reps);
+        CUDA_CHECK(cudaEventRecord(e1)); CUDA_CHECK(cudaEventSynchronize(e1));
+        float seq_ms = 0; CUDA_CHECK(cudaEventElapsedTime(&seq_ms, e0, e1));
+
+        int dep = 0; for (int d = 1; d < npow; d <<= 1) ++dep;
+        b.Ts.push_back(T);
+        b.seq_us.push_back(seq_ms * 1e3 / reps);
+        b.par_us.push_back(par_ms * 1e3 / reps);
+        b.depth.push_back(dep);
+        std::printf("  T=%3d  n=%3d npow=%3d depth=%2d | seq %8.2f us | par %7.2f us | speedup %5.1fx | scan err %.2e\n",
+                    T, n, npow, dep, seq_ms * 1e3 / reps, par_ms * 1e3 / reps,
+                    (seq_ms / par_ms), maxd);
+        cudaFree(d_elem); cudaFree(d_agg);
+        cudaEventDestroy(e0); cudaEventDestroy(e1);
+    }
+    return b;
+}
+
 }  // namespace cudabot
 
 // ============================ Phase 1 verification main ============================
@@ -821,5 +955,11 @@ int main() {
                 "S_k,v_k match the sequential Riccati to ~1e-7 relative (the diag above); "
                 "on smooth problems both converge to the same optimum (median cost diff "
                 "~3e-6); on the obstacle field they reach equal-quality optima. ===\n");
+
+    // ---- Phase 2: GPU backward-pass latency, O(T) fold vs O(log T) scan ----
+    std::printf("\n=== Phase 2: GPU backward-pass latency (single problem) ===\n");
+    std::printf("  sequential = 1 thread, O(T) Riccati fold;  parallel = T threads, "
+                "O(log T) in-shared-memory associative scan\n");
+    run_gpu_scan_benchmark(h_obs, n_obs);
     return 0;
 }
