@@ -102,8 +102,9 @@ The most visually striking GPU demos, where massive parallelism really shows.
 ### Probabilistic point-cloud registration
 
 Modern probabilistic registration in the spirit of `probreg`, spanning the main
-paradigms: filtered EM, Bayesian non-rigid, optimal transport, and heavy-tailed
-robust EM. Each demo recovers a known transform / warp and is verified in-binary.
+paradigms: filtered EM, Bayesian non-rigid, optimal transport, heavy-tailed
+robust EM, and a point-to-plane filtered EM. Each demo recovers a known
+transform / warp and is verified in-binary.
 
 | | |
 |---|---|
@@ -111,6 +112,8 @@ robust EM. Each demo recovers a known transform / warp and is verified in-binary
 | FilterReg (filtered-EM rigid) | BCPD (Bayesian non-rigid) |
 | <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_sinkhorn_reg.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_robust_treg.gif" width="400"/> |
 | Sinkhorn-OT (unbalanced optimal transport) | Robust Student's-t (2x outlier tolerance vs Gaussian) |
+| <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_filterreg_p2plane.gif" width="400"/> | |
+| FilterReg point-to-plane (removes soft-mean curvature bias; 43x lower error at coarse sigma) | |
 
 ### Learning & optimization
 
@@ -147,9 +150,9 @@ robust EM. Each demo recovers a known transform / warp and is verified in-binary
   parallel-in-time (associative-scan) iLQR.
 - Perception and mapping: LiDAR simulation, occupancy grids, ESDF/JFA, TSDF,
   Marching Cubes, SGM stereo, optical flow, direct visual odometry, KD-tree NN.
-- Point-cloud registration: probabilistic methods (FilterReg filtered-EM, BCPD
-  Bayesian non-rigid, Sinkhorn unbalanced optimal transport, robust Student's-t
-  mixture), NDT, GICP, ICP.
+- Point-cloud registration: probabilistic methods (FilterReg filtered-EM and its
+  point-to-plane variant, BCPD Bayesian non-rigid, Sinkhorn unbalanced optimal
+  transport, robust Student's-t mixture), NDT, GICP, ICP.
 - Learning and optimization: differentiable value iteration, neural A*, GNN/GAT
   policies, diffusion planners, CMA-ES, MCTS, EM/GMM, graph CRF.
 
