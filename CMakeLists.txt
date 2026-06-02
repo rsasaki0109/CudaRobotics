@@ -671,6 +671,10 @@ add_executable(gpu_real_bunny_reg src/gpu_real_bunny_reg.cu)
 target_link_libraries(gpu_real_bunny_reg ${OpenCV_LIBS})
 target_compile_options(gpu_real_bunny_reg PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
 
+add_executable(gpu_fgr src/gpu_fgr.cu)
+target_link_libraries(gpu_fgr ${OpenCV_LIBS})
+target_compile_options(gpu_fgr PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
+
 add_executable(gpu_filterreg_p2plane src/gpu_filterreg_p2plane.cu)
 target_link_libraries(gpu_filterreg_p2plane ${OpenCV_LIBS})
 target_compile_options(gpu_filterreg_p2plane PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
