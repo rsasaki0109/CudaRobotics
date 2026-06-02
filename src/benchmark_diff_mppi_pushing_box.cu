@@ -50,6 +50,9 @@ struct BoxParams {
     float push_r = 0.08f;
     float push_gain = 11.0f;        // translation mobility
     float rot_gain = 14.0f;         // rotation mobility (1/inertia folded in)
+    float pen_thresh = 0.0f;        // static-friction deadzone (off by default;
+                                    // a coarse deadzone hurts fine positioning
+                                    // for ALL methods, see results notes)
     // cost weights
     float w_pos = 1.5f;             // stage position
     float w_ang = 0.6f;             // stage orientation
@@ -112,14 +115,15 @@ __host__ __device__ inline void push_step_box_f(
     float inside = fminf(fmaxf(qx, qy), 0.0f);
     float sd = outside + inside;                 // box signed distance of pusher
     float pen = fmaxf(p.push_r - sd, 0.0f);       // smooth contact penetration
+    float peff = fmaxf(pen - p.pen_thresh, 0.0f); // friction deadzone
     float nlx = rqx * (lx >= 0 ? 1.0f : -1.0f);
     float nly = rqy * (ly >= 0 ? 1.0f : -1.0f);
     float nlen = sqrtf(nlx*nlx + nly*nly + 1e-9f);
     nlx /= nlen; nly /= nlen;                     // outward normal (box frame)
     float nwx = c*nlx - s*nly;                    // box->world
     float nwy = s*nlx + c*nly;
-    float Fx = -nwx * p.push_gain * pen;          // push box away from pusher
-    float Fy = -nwy * p.push_gain * pen;
+    float Fx = -nwx * p.push_gain * peff;         // push box away from pusher
+    float Fy = -nwy * p.push_gain * peff;
     float cxw = px - nwx * sd, cyw = py - nwy * sd;   // contact point (world)
     float rx = cxw - ox, ry = cyw - oy;
     float torque = rx*Fy - ry*Fx;
@@ -182,14 +186,15 @@ __device__ inline float dcost_dparam_box(
         Dualf inside = d_min0(d_max(qx, qy));
         Dualf sd = outside + inside;
         Dualf pen = d_relu(Dualf::constant(p.push_r) - sd);
+        Dualf peff = d_relu(pen - Dualf::constant(p.pen_thresh));   // friction deadzone
         Dualf nlx = rqx * Dualf::constant(lx.val >= 0.0f ? 1.0f : -1.0f);
         Dualf nly = rqy * Dualf::constant(ly.val >= 0.0f ? 1.0f : -1.0f);
         Dualf nlen = cudabot::sqrt(nlx*nlx + nly*nly + Dualf::constant(1e-9f));
         nlx = nlx / nlen; nly = nly / nlen;
         Dualf nwx = c*nlx - s*nly;
         Dualf nwy = s*nlx + c*nly;
-        Dualf Fx = (Dualf::constant(0.0f) - nwx) * Dualf::constant(p.push_gain) * pen;
-        Dualf Fy = (Dualf::constant(0.0f) - nwy) * Dualf::constant(p.push_gain) * pen;
+        Dualf Fx = (Dualf::constant(0.0f) - nwx) * Dualf::constant(p.push_gain) * peff;
+        Dualf Fy = (Dualf::constant(0.0f) - nwy) * Dualf::constant(p.push_gain) * peff;
         Dualf cxw = px - nwx*sd, cyw = py - nwy*sd;
         Dualf rx = cxw - ox, ry = cyw - oy;
         Dualf torque = rx*Fy - ry*Fx;
@@ -436,6 +441,7 @@ int main(int argc, char** argv) {
     { Variant v; v.name="mppi"; variants.push_back(v); }
     { Variant v; v.name="diff_mppi_1"; v.grad_steps=1; v.alpha=0.02f; variants.push_back(v); }
     { Variant v; v.name="diff_mppi_3"; v.grad_steps=3; v.alpha=0.010f; variants.push_back(v); }
+    { Variant v; v.name="diff_mppi_5"; v.grad_steps=5; v.alpha=0.008f; variants.push_back(v); }
     if (!planner_names.empty()) {
         vector<Variant> f; for (auto& w : planner_names){ auto it=find_if(variants.begin(),variants.end(),[&](const Variant&v){return v.name==w;});
             if (it==variants.end()){fprintf(stderr,"Unknown planner: %s\n",w.c_str());return 1;} f.push_back(*it);} variants.swap(f);
