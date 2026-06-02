@@ -297,6 +297,13 @@ public:
     // deliberately WRONG. This stress-tests whether the contact-gradient win
     // survives sim-to-real-style contact-model error.
     float plant_gain_scale = 1.0f;
+    // Geometry-mismatch robustness knob (default 1.0 => no-op). When != 1.0, the
+    // TRUE plant box half-extents (hx, hy) are scaled by this factor while the
+    // controller's rollout + autodiff gradient keep the NOMINAL box size: the
+    // controller has the wrong object dimensions. This is an axis distinct from
+    // plant_gain_scale (object SHAPE error vs contact MOBILITY error) and a real
+    // sim-to-real concern (exact object dimensions are rarely known).
+    float plant_size_scale = 1.0f;
 
     EpisodeRunner(const Variant& v, const BoxScenario& sc, int K, int T, int seed)
         : v_(v), sc_(sc), K_(K), T_(T), seed_(seed) {
@@ -326,6 +333,8 @@ public:
         BoxParams plant_p = sc_.params;
         plant_p.push_gain *= plant_gain_scale;
         plant_p.rot_gain  *= plant_gain_scale;
+        plant_p.hx        *= plant_size_scale;   // true object SHAPE (controller keeps nominal)
+        plant_p.hy        *= plant_size_scale;
 
         auto ep0 = chrono::steady_clock::now();
         float ctrl_ms = 0.0f;
@@ -452,7 +461,7 @@ static void print_summary(const vector<EpisodeMetrics>& rows) {
 int main(int argc, char** argv) {
     bool quick=false; string csv_path="build/benchmark_diff_mppi_pushing_box.csv";
     vector<int> k_values; vector<string> scenario_names, planner_names; int seed_count=-1;
-    int horizon=DEFAULT_T; string dump_traj_prefix=""; float plant_gain_scale=1.0f;
+    int horizon=DEFAULT_T; string dump_traj_prefix=""; float plant_gain_scale=1.0f; float plant_size_scale=1.0f;
     for (int i=1;i<argc;i++){ string a=argv[i];
         if (a=="--quick") quick=true;
         else if (a=="--csv"&&i+1<argc) csv_path=argv[++i];
@@ -465,6 +474,8 @@ int main(int argc, char** argv) {
         // model-mismatch robustness: scale the TRUE plant contact mobility while the
         // controller keeps nominal gains (default 1.0 => published numbers reproduce).
         else if (a=="--plant-gain-scale"&&i+1<argc) plant_gain_scale=(float)atof(argv[++i]);
+        // true plant box-size scale vs the controller's nominal size (default 1 => no-op).
+        else if (a=="--plant-size-scale"&&i+1<argc) plant_size_scale=(float)atof(argv[++i]);
     }
     ensure_build_dir();
 
@@ -520,6 +531,7 @@ int main(int argc, char** argv) {
             int run_seed = (int)(6000 + si*100 + vi*20 + seed*7 + ks);
             EpisodeRunner runner(variants[vi], sc, ks, horizon, run_seed);
             runner.plant_gain_scale = plant_gain_scale;
+            runner.plant_size_scale = plant_size_scale;
             EpisodeMetrics m = runner.run();
             rows.push_back(m);
             printf("[%s] %s K=%d seed=%d success=%d steps=%d pos=%.3f ang=%.3f avg_ms=%.3f\n",

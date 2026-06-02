@@ -341,6 +341,49 @@ for G in 0.6 0.7 0.85 1.0 1.2 1.4 1.6; do
 done
 ```
 
+### gap #2 robustness, second axis: OBJECT-SIZE (geometry) mismatch
+
+The gain-scale study above varies contact *mobility*. A structurally different
+sim-to-real error is getting the object's *dimensions* wrong: the controller
+rarely knows the exact box size. `--plant-size-scale G` scales the TRUE plant's
+box half-extents (`hx, hy`) by `G` while the controller's rollout + gradient keep
+the nominal size. `box_align`, 8 seeds, same matchup:
+
+| plant/model box size `G` | mppi (K=4096) | diff_mppi_5 (K=1024) |
+|---|---|---|
+| 0.7 (plant box smaller) | 0.00 | 0.00 |
+| 0.85 | 0.00 | 0.25 |
+| 1.0 (matched) | 0.00 | 0.75 |
+| 1.15 | 0.00 | 0.62 |
+| 1.3 (plant box bigger) | 0.00 | 0.00 |
+
+- **mppi is flat `0.00` across the whole range** — sampling never solves the
+  orientation regardless of object-size error.
+- **diff_mppi_5 keeps its advantage within `±15%` size error** (`G ∈ [0.85, 1.15]`)
+  but degrades to `0.00` at `±30%`. The tolerance band is **tighter than for the
+  gain axis** (`±15%` vs `±30–40%`), and mechanistically so: the box size sets the
+  contact point and torque lever arm, so a wrong size mis-locates *where* torque
+  is generated — corrupting the orientation gradient more directly than a uniform
+  mobility scale. At `G=1.3` the controller mis-places the contact badly enough to
+  shove the box away (`pos_err 0.90`) — a clean, stated failure boundary.
+
+Together the two axes bound the contact-gradient win honestly: robust to
+contact-mobility error up to `±30–40%` and to object-size error up to `±15%`;
+outside those bands it degrades to the sampling baseline — which itself *never*
+solves the task at any budget. Reproduce: as above with `--plant-size-scale`
+`{0.7,0.85,1.0,1.15,1.3}`.
+
+### A noted non-result: stochastic pose noise games the success latch
+
+We also tried unmodelled Gaussian *process noise* on the box pose as a third
+axis, but dropped it as a clean robustness test: the episode's success is latched
+the first step the (noisy) pose touches the tolerance, so injecting pose noise
+lets a stuck vanilla MPPI "succeed" on a transient excursion (e.g. at noise std
+`0.04`, mppi reports `success 0.50` with final `pos_err 0.63 ≫ tol`). The noise
+games the metric rather than testing control quality. A faithful noise study would
+need a settling-based success criterion (within-tolerance for several consecutive
+steps); we leave that to future work rather than report a metric-confounded number.
+
 ### Fairness caveats (MUST disclose in the paper)
 
 1. **Goal asymmetry (significant) — now quantified, see "Fair rematch" above.**
