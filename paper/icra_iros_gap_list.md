@@ -83,6 +83,14 @@ hypothesis was literally untestable. Built two differentiable-contact tasks
 - disk pushing (`push_straight`): vanilla saturates at ~30 steps for any K;
   `diff_mppi_3` reaches 26 at matched wall-clock — a matched-budget edge sampling
   cannot erase.
+- **corroborating second box task `box_pivot`** (opposite handedness, different
+  contact face, tight `ang_tol=0.11`): only `diff_mppi_5` ever crosses (0.50 vs
+  vanilla 0.00 at every K), and the **continuous angular residual is strictly
+  monotone in gradient steps** (`0.193 → 0.139 → 0.124 → 0.112`, K-independent).
+  This guards the headline against being one lucky scenario — the mechanism
+  reproduces on different contact geometry. (`box_turn`, long translate+rotate, is
+  the honest boundary: unsolved by all because it is translation-dominant, where
+  sampling is not the bottleneck and single-point pushing needs contact-switching.)
 
 **Consequence for the paper — pivot the headline.**
 The current draft leads with dynamic-obstacle exact-time navigation wins. The new
@@ -453,10 +461,12 @@ Revised immediate next work:
    pushing results, demote the smooth 7-DOF / dynamic-obstacle tables to a labelled
    "where it does not help, and why" section, and introduce CDF-MPPI as the honest
    baseline that makes that boundary precise.
-2. **Harden the contact result**: at least one more differentiable-contact task, and
-   either solve or honestly bound the currently-unsolved `box_turn` (long translate +
-   rotate). The monotone-in-gradient-steps evidence is the strongest single result —
-   protect it with a second task so it does not read as one cherry-picked scenario.
+2. **Harden the contact result** — DONE (2026-06-02): added a second orientation
+   task `box_pivot` (different contact mechanics) that reproduces the monotone-in-
+   gradient-steps signature and the "only deepest gradient crosses, sampling never
+   does" shape; and honestly bounded `box_turn` as the translation-dominant limit
+   rather than tuning a win. The headline no longer rests on a single scenario.
+   (Remaining stretch: a contact-mode / re-grasp planner to attack `box_turn`.)
 3. Keep the matched-wall-clock protocol and the fair shared-goal-config condition as
    the reporting standard throughout.
 

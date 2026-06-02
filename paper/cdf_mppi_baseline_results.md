@@ -227,9 +227,52 @@ scales **monotonically with the number of gradient steps** (0.00 / 0.38 / 1.00
 for 1 / 3 / 5 steps) — direct evidence that the autodiff refinement through
 contact is the active ingredient, not sampling. The bottleneck is fine pose
 control near the goal: pure sampling plateaus at pos_err ~0.27 regardless of K;
-the gradient closes the last few cm. (Harder `box_turn`, long translate+rotate,
-is solved by none — a current limit. A coarse static-friction deadzone was tried
+the gradient closes the last few cm. (A coarse static-friction deadzone was tried
 and REMOVED: it equally blocks every method's fine corrections, helping no one.)
+
+### gap #2 corroboration: second contact task `box_pivot` (different mechanics)
+
+To guard against `box_align` being a single lucky scenario, added a structurally
+distinct orientation task `box_pivot`: **opposite handedness** (+0.7 rad vs
+box_align's −0.7), the pusher engages the **left face** (push +x) instead of the
+bottom, and a **tighter angular tolerance** (`ang_tol=0.11`). Tight-tolerance
+rotation is exactly the regime where sampling plateaus and the contact gradient
+closes the last bit. 8 seeds:
+
+| controller | success (K=1024) | ang_err (K=1024) | ang_err (K=256) |
+|---|---|---|---|
+| **diff_mppi_5** | **0.50** | **0.112** | 0.117 |
+| diff_mppi_3 | 0.00 | 0.124 | 0.121 |
+| diff_mppi_1 | 0.00 | 0.139 | 0.142 |
+| mppi (K=1024 / 256) | 0.00 | 0.193 | 0.193 |
+
+Two things reproduce from `box_align`: (1) **only the deepest-gradient controller
+ever crosses the tolerance; vanilla MPPI succeeds 0% at every K**, and (2) the
+**continuous angular residual is strictly monotone in gradient steps**
+(`0.193 → 0.139 → 0.124 → 0.112`), and K-independent — the gradient, not sampling,
+drives the orientation correction. The success rate is *deliberately modest* (0.50,
+not 1.00): `box_pivot` sits near the contact-mechanics rotation ceiling of a single
+fixed-face push (~0.65 rad before the contact normal rotates away and further
+rotation needs contact repositioning), so this is reported primarily on the
+**continuous monotone metric**, with the binary win as corroboration rather than a
+threshold-tuned headline. It confirms the box_align mechanism on different contact
+geometry without duplicating it.
+
+### Honest boundary: `box_turn` (long translate + rotate) is unsolved by all
+
+`box_turn` (translate ~0.9 + rotate 0.9 rad) is solved by **no method** (all 0%,
+pos_err floors at ~0.39 > tol 0.20). This is a genuine limit, reported as such:
+- The blocker is **translation, not orientation** (ang_err is already ~0.10). A
+  longer planning horizon monotonically reduces the residual (diff_mppi_5 pos_err
+  `0.378 → 0.304 → 0.274 → 0.220` for `H = 16/24/32/48` via `--horizon`), but
+  **vanilla MPPI keeps pace** (both reach 0.17 success at H=48, ~23 ms/step):
+  translation is sample-friendly, so this task does *not* isolate the gradient's
+  contribution the way the orientation-dominant tasks do.
+- Single-point non-prehensile pushing fundamentally needs **contact-point
+  switching** for a long translate-then-rotate maneuver; receding-horizon mean
+  refinement does not plan that re-grasp. We do **not** hand-tune a win here — that
+  would be cherry-picking the wrong axis. `box_turn` stands as the stated boundary
+  of the method and a clean direction for future work (contact-mode planning).
 
 This is the strongest result of the study: a literature-faithful sampling method
 (vanilla MPPI) provably cannot match Diff-MPPI here at any sample budget, and the

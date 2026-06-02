@@ -388,6 +388,19 @@ static BoxScenario make_box_align() {
     s.pos_tol=0.22f; s.ang_tol=0.25f; s.max_steps=240;
     return s;
 }
+// Second orientation-dominant task, structurally distinct from box_align:
+// opposite handedness (+1.0 rad), pusher engages the LEFT face (push +x) instead
+// of the bottom, and a TIGHTER angular tolerance. Tight ang_tol is precisely the
+// regime where pure sampling plateaus and the contact gradient closes the last bit,
+// so this re-tests the monotone-in-gradient-steps signature on different contact
+// mechanics — a guard against box_align being a single lucky scenario.
+static BoxScenario make_box_pivot() {
+    BoxScenario s; s.name="box_pivot";
+    s.ox0=1.6f; s.oy0=1.8f; s.oth0=0.0f; s.px0=0.95f; s.py0=1.55f;
+    s.gx=2.0f; s.gy=1.8f; s.gth=0.70f;            // rotate +0.7, small +x translate
+    s.pos_tol=0.22f; s.ang_tol=0.11f; s.max_steps=240;
+    return s;
+}
 
 // ======================== Utilities ========================
 static void ensure_build_dir() { mkdir("build", 0755); }
@@ -420,6 +433,7 @@ static void print_summary(const vector<EpisodeMetrics>& rows) {
 int main(int argc, char** argv) {
     bool quick=false; string csv_path="build/benchmark_diff_mppi_pushing_box.csv";
     vector<int> k_values; vector<string> scenario_names, planner_names; int seed_count=-1;
+    int horizon=DEFAULT_T;
     for (int i=1;i<argc;i++){ string a=argv[i];
         if (a=="--quick") quick=true;
         else if (a=="--csv"&&i+1<argc) csv_path=argv[++i];
@@ -427,10 +441,11 @@ int main(int argc, char** argv) {
         else if (a=="--seed-count"&&i+1<argc) seed_count=max(1,atoi(argv[++i]));
         else if (a=="--scenarios"&&i+1<argc) scenario_names=parse_string_list(argv[++i]);
         else if (a=="--planners"&&i+1<argc) planner_names=parse_string_list(argv[++i]);
+        else if (a=="--horizon"&&i+1<argc) horizon=max(2,atoi(argv[++i]));
     }
     ensure_build_dir();
 
-    vector<BoxScenario> all_sc = { make_box_turn(), make_box_align() };
+    vector<BoxScenario> all_sc = { make_box_turn(), make_box_align(), make_box_pivot() };
     vector<BoxScenario> scenarios;
     if (!scenario_names.empty()) {
         for (auto& w : scenario_names) { auto it=find_if(all_sc.begin(),all_sc.end(),[&](const BoxScenario&s){return s.name==w;});
@@ -454,7 +469,7 @@ int main(int argc, char** argv) {
         const BoxScenario& sc = scenarios[si];
         for (int ks : k_values) for (size_t vi=0; vi<variants.size(); vi++) for (int seed=0; seed<seed_count; seed++) {
             int run_seed = (int)(6000 + si*100 + vi*20 + seed*7 + ks);
-            EpisodeRunner runner(variants[vi], sc, ks, DEFAULT_T, run_seed);
+            EpisodeRunner runner(variants[vi], sc, ks, horizon, run_seed);
             EpisodeMetrics m = runner.run();
             rows.push_back(m);
             printf("[%s] %s K=%d seed=%d success=%d steps=%d pos=%.3f ang=%.3f avg_ms=%.3f\n",
