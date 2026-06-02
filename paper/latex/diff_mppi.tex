@@ -56,11 +56,16 @@ $1.00$ while vanilla MPPI reaches $0.00$ \emph{even at $16\times$ the samples}
 steps; a second contact task and a disk-pushing matched-wall-clock efficiency
 result corroborate the effect, and the advantage persists under $\pm$30--40\%
 contact-mobility and $\pm$15\% object-size model mismatch on two distinct tasks.
-The contribution is
-thus a clearly scoped,
-mechanism-supported positive result with a rigorous negative control: gradient
-refinement buys what sampling cannot precisely when information is carried by the
-contact gradient.
+We quantify the mechanism---vanilla MPPI's latch-break sample fraction is
+$K$-independent, so the stall is structural---and show this fraction \emph{predicts}
+where the gradient helps. Finally, a sim-to-sim study against a structurally
+different hard-contact plant (exact non-penetration, Coulomb friction, momentum)
+shows the win survives a genuine change of contact model on the loose task, with an
+honest boundary on tight-tolerance high-friction tasks; and a differentiability-vs-fidelity
+comparison shows the gradient can beat even an exact-model sampler given $16\times$
+the budget. The contribution is thus a clearly scoped, mechanism-supported positive
+result with a rigorous negative control: gradient refinement buys what sampling
+cannot precisely when information is carried by the contact gradient.
 \end{abstract}
 
 \begin{IEEEkeywords}
@@ -124,6 +129,13 @@ Our contributions are:
     contact task and a disk-pushing matched-time efficiency gain
     (Sec.~\ref{sec:results_contact}). This localizes the benefit of gradient
     refinement in sampling-based MPC to contact-rich dynamics.
+  \item \textbf{A mechanism, a predictor, and external validity.} We show vanilla
+    MPPI's latch-break sample fraction is $K$-independent (the stall is structural),
+    that this fraction predicts the \emph{sign} of the gradient's benefit
+    (Sec.~\ref{sec:mechanism}), and---via sim-to-sim against a structurally different
+    hard-contact plant---that the win is not an artifact of the controller and plant
+    sharing one smooth model, with a stated high-friction boundary and a
+    differentiability-vs-fidelity analysis (Sec.~\ref{sec:external_validity}).
 \end{enumerate}
 
 % =============================================================================
@@ -516,7 +528,7 @@ for every method (it sits at the single-contact rotation ceiling), so---as for t
 nominal corroboration---we report the discriminating \emph{continuous} angular
 residual rather than a near-threshold binary. Across both axes the gradient's
 residual stays strictly below the sampling floor at every $G$
-(Table~\ref{tab:mismatch_pivot}): vanilla MPPI never drops below $0.138$ (gain) or
+(Table~\ref{tab:mismatch_pivot} and Fig.~\ref{fig:robustness_pivot}): vanilla MPPI never drops below $0.138$ (gain) or
 $0.192$ (size) and so never reaches the $0.11$ tolerance, while
 \texttt{diff\_mppi\_5} leads by $0.04$--$0.09$\,rad throughout. The asymmetry
 flips consistently with the mechanics: where \texttt{box\_align}'s win degrades
@@ -551,6 +563,19 @@ $G$ & mppi & \textbf{diff\_5} & mppi & \textbf{diff\_5} \\
 \bottomrule
 \end{tabular}
 \end{table}
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=\columnwidth]{fig_robustness_pivot}
+  \caption{%
+    Mismatch robustness on \texttt{box\_pivot} (continuous angular residual, rad,
+    lower is better) across the (a) contact-mobility and (b) object-size axes. The
+    gradient (\texttt{diff\_mppi\_5}, $K\!=\!1024$) stays below the vanilla-MPPI
+    floor ($K\!=\!4096$, $16\times$) at every $G$; \texttt{mppi} never reaches the
+    $0.11$ tolerance. The shaded gap is the gradient's margin.%
+  }
+  \label{fig:robustness_pivot}
+\end{figure}
 
 \textbf{Matched-wall-clock efficiency on disk pushing.} On \texttt{push\_straight},
 where all methods eventually reach the goal, the discriminator is efficiency.
@@ -588,32 +613,170 @@ for such a maneuver, which receding-horizon mean refinement does not plan. We
 report \texttt{box\_turn} as a stated limit rather than tuning a win on the wrong
 axis.
 
+\textbf{Why $16\times$ samples cannot substitute (quantified).} Monotonicity says
+the gradient is the active ingredient; it does not yet say \emph{why} more samples
+cannot stand in for it. We instrument vanilla MPPI on the \texttt{box\_pivot}
+rotation plateau (Fig.~\ref{fig:mechanism_sampling}). Replaying the $K$ sampled
+rollouts as (net box rotation, cost) pairs shows the cost-reducing controls are a
+starved minority: $64\%$ of $4096$ samples barely rotate the box (isotropic
+velocity noise rarely produces the sustained off-centre contact a rotation needs),
+so the softmax-weighted mean is dominated by an inactive pile and cannot follow the
+thin low-cost band. Crucially, the fraction of samples that break the
+angular-tolerance latch (\texttt{escape\_frac}) is $\approx$$5$--$9\%$ and
+\emph{independent of $K$} from $256$ to $4096$: the starvation is structural, not a
+budget shortfall, which is exactly why adding gradient steps---not samples---breaks
+the plateau.
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=\columnwidth]{fig_mechanism_sampling}
+  \caption{%
+    Why $16\times$ samples cannot rescue vanilla MPPI. (a) At a stuck
+    \texttt{box\_pivot} state, the $K\!=\!4096$ sampled rollouts as (net rotation,
+    cost): the cost-minimizing samples sit in a thin positive-rotation band while
+    $64\%$ barely rotate; the gradient points straight into the low-cost band.
+    (b) The latch-break fraction \texttt{escape\_frac} is flat in $K$ ($256$ to
+    $4096$): sampling is contact-starved structurally, not for want of budget.%
+  }
+  \label{fig:mechanism_sampling}
+\end{figure}
+
+\textbf{\texttt{escape\_frac} predicts where the gradient helps.} The same
+diagnostic predicts the \emph{converse}: a task where sampling is not starved
+should need no gradient. We add a matched negative-control task \texttt{box\_swivel}
+(a small rotation past a wide tolerance via an off-centre push) that differs from
+\texttt{box\_pivot} as little as possible---both reach sustained contact (episode
+contact fraction $0.26$ vs $0.30$)---but in which the box need only rotate slightly
+past tolerance. This flips the contact-engaged \texttt{escape\_frac} by $\sim$$9\times$
+($0.62$ vs $0.07$, both flat in $K$; Fig.~\ref{fig:escape_predictor}a), and the
+outcome flips with it (Fig.~\ref{fig:escape_predictor}b): where
+\texttt{escape\_frac} is high, vanilla MPPI not only succeeds but \emph{beats}
+\texttt{diff\_mppi\_5} ($1.00$ vs $0.88$)---the refinement steps overshoot the easy
+rotation---while where it is low, only the gradient reaches tolerance.
+\texttt{escape\_frac} thus predicts the \emph{sign} of the gradient's value, giving
+the title question a measurable answer: the gradient helps exactly when the
+contact-engaged latch-break fraction is low.
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=\columnwidth]{fig_escape_predictor}
+  \caption{%
+    \texttt{escape\_frac} as a predictor. (a) Contact-engaged latch-break fraction
+    is high on \texttt{box\_swivel} ($0.62$) and low on \texttt{box\_pivot}
+    ($0.07$), both $K$-independent. (b) Tolerance-normalized final angular error
+    ($1.0$ = success threshold): where \texttt{escape\_frac} is high the gradient
+    is redundant (vanilla even beats it); where low, only the gradient reaches
+    tolerance. The sign of the gradient's benefit tracks \texttt{escape\_frac}.%
+  }
+  \label{fig:escape_predictor}
+\end{figure}
+
 % Figures for the contact-rich framing are generated by
 % scripts/plot_contact_figures.py (data dumped via
 % `bin/benchmark_diff_mppi_pushing_box --dump-traj build/box_traj`):
 %   fig_contact_filmstrip, fig_box_samples, fig_contact_monotone, fig_cdf_vs_diff,
-%   fig_robustness.
+%   fig_robustness, fig_robustness_pivot, fig_mechanism_sampling,
+%   fig_escape_predictor, fig_sim2sim, fig_fidelity_vs_grad.
 % The previous dynamic-navigation figures (fig_pareto, fig_7dof, fig_mechanism,
 % fig_scenarios) describe the superseded headline and are intentionally omitted.
+
+\subsection{External Validity: a Structurally Different Contact Plant}
+\label{sec:external_validity}
+
+Every result so far rides on one smooth, self-authored contact model that the
+controller's rollout \emph{and} its gradient share, so the parameter-mismatch
+sweeps (Sec.~\ref{sec:results_contact}) cannot answer the sharpest objection:
+\emph{is the gradient's advantage an artifact of the controller and plant sharing
+one idealized contact model?} We answer it by running the controller---which keeps
+the smooth model in both rollout and gradient---against an independent, structurally
+different ground-truth plant: a rigid box with \emph{exact non-penetration},
+\emph{Coulomb stick--slip friction}, and momentum, resolved with sequential
+impulses. The smooth model has no friction (normal push only) and a soft penetration
+ramp; the hard plant has a friction cone, hard non-penetration, and inertia---the
+contact \emph{model} differs, not a parameter. (The plant is validated independently
+of any controller by three scripted physical invariants: a centred push translates
+without spin, an off-centre push rotates with the correct sign, and frictionless
+tangential drag is exactly zero while $\mu\!=\!0.8$ drags the box.)
+
+The result is honestly two-sided (Fig.~\ref{fig:sim2sim}; \texttt{mppi} $K\!=\!4096$,
+i.e.\ $16\times$, vs \texttt{diff\_mppi\_5} $K\!=\!1024$, swept over friction $\mu$).
+On the loose-tolerance task (\texttt{box\_align}) the gradient succeeds $1.00$ at
+\emph{every} friction level while vanilla MPPI never exceeds $0.12$: the win
+\emph{survives a genuine change of contact model}, not just a scaled parameter. On
+the tight-tolerance task (\texttt{box\_pivot}) we find the boundary---the gradient
+reaches tolerance only at low friction, and at $\mu\!\ge\!0.6$ the frictionless
+controller model is too wrong and both methods fail (residual $\to$$\sim$$0.44$).
+The gradient refines \emph{within} a model; it cannot compensate for a contact model
+that is sufficiently wrong on a task demanding precise rotation.
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=\columnwidth]{fig_sim2sim}
+  \caption{%
+    Sim-to-sim against an independent hard-contact plant (non-penetration + Coulomb
+    stick--slip + momentum); the controller keeps the smooth model. (a) Loose
+    tolerance: the gradient's win survives at every friction $\mu$. (b) Tight
+    tolerance: the honest boundary---at $\mu\!\ge\!0.6$ the smooth model is too wrong
+    and both methods fail.%
+  }
+  \label{fig:sim2sim}
+\end{figure}
+
+\textbf{Differentiability versus fidelity.} The boundary invites the rebuttal
+``then give the sampler the correct model.'' We tested it: a third arm
+(\texttt{mppi\_hardmodel}) rolls out with the \emph{exact} hard-contact plant---zero
+model mismatch---but gets no gradient, because the impulse/Coulomb solver is
+non-differentiable (the very reason a smooth surrogate exists). On the tight task
+(Fig.~\ref{fig:fidelity_vs_grad}) three findings emerge, none cherry-picked.
+\emph{(i) Differentiability can beat fidelity}: at low model error the gradient
+($K\!=\!1024$) lands a lower residual than the exact-model sampler with $16\times$
+the samples ($0.102$ vs $0.143$ at $\mu\!=\!0$)---directed first-order refinement
+extracts more than undirected sampling even with a perfect model. \emph{(ii) Fidelity
+can beat differentiability}: as the smooth model degrades ($\mu\!\ge\!0.4$) the
+friction-immune exact model wins ($0.135$ vs $0.402$ at $\mu\!=\!0.6$), since a
+gradient through a badly-wrong model points the wrong way. \emph{(iii) The exact
+model plateaus above tolerance} ($\sim$$0.13\!>\!0.11$ at every $\mu$): undirected
+sampling, even exact and at $16\times$ budget, never makes the final precise
+rotation, and only the gradient crosses into tolerance. Directed refinement buys
+precision, fidelity buys robustness to model error, and the smooth differentiable
+surrogate trades the latter for the former; Diff-MPPI's operating regime is exactly
+where that trade pays.
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=\columnwidth]{fig_fidelity_vs_grad}
+  \caption{%
+    Differentiability vs fidelity against the hard plant. Three arms: smooth (wrong)
+    model, \emph{exact} hard model (no gradient---non-differentiable), and
+    smooth$+$gradient. (a) Loose tolerance: both fidelity and the gradient rescue the
+    sampler. (b) Tight tolerance: the gradient beats the exact-model sampler at low
+    model error; the exact model wins at high error but plateaus above tolerance,
+    where only the gradient reaches the goal.%
+  }
+  \label{fig:fidelity_vs_grad}
+\end{figure}
 
 % =============================================================================
 \section{Limitations}
 \label{sec:limitations}
 
-The positive result uses a simplified planar quasi-static contact model rather
-than a validated rigid-body simulator with friction; extending the gradient
-through a higher-fidelity contact model is the natural next step. We partially
-de-risk this with the contact-model mismatch study
-(Tables~\ref{tab:mismatch} and~\ref{tab:mismatch_pivot}), which shows the
+The controller uses a simplified planar quasi-static contact model in both its
+rollout and its gradient. We de-risk this on three fronts: the contact-model
+mismatch study (Tables~\ref{tab:mismatch} and~\ref{tab:mismatch_pivot}) shows the
 advantage survives $\pm 30$--$40\%$ error in the plant's contact mobility and
-$\pm 15\%$ error in the object dimensions on two distinct contact tasks, but a
-full sim-to-real validation remains future work. The contact
-tasks are non-prehensile pushing only, and \texttt{box\_turn} marks a maneuver
-the method does not yet solve. The CDF-MPPI baseline, while literature-faithful,
-is an in-harness reimplementation, and the smooth-task models (bicycle, simplified
-7-DOF) are custom rather than standardized suites. Finally, the contact study is
-in simulation; sim-to-real transfer of the differentiable-contact gradient is
-untested.
+$\pm 15\%$ error in the object dimensions on two distinct tasks; and the sim-to-sim
+study (Sec.~\ref{sec:external_validity}) shows it survives a \emph{structurally
+different} ground-truth plant (hard non-penetration $+$ Coulomb stick--slip $+$
+momentum) on the loose-tolerance task at every friction level. That study also
+states the boundary plainly: on a tight-tolerance task at high friction the
+frictionless model is too wrong and the gradient fails. A full sim-to-\emph{real}
+(hardware) validation remains future work, as does extending the differentiable
+gradient through a higher-fidelity \emph{controller} model (the exact hard-contact
+solver is non-differentiable, which is precisely why a smooth surrogate is used).
+The contact tasks are non-prehensile pushing only, and \texttt{box\_turn} marks a
+maneuver the method does not yet solve. The CDF-MPPI baseline, while
+literature-faithful, is an in-harness reimplementation, and the smooth-task models
+(bicycle, simplified 7-DOF) are custom rather than standardized suites.
 
 % =============================================================================
 \section{Conclusion}
@@ -627,9 +790,14 @@ fair goal-configuration protocol the refinement does not beat vanilla MPPI. But
 when the dynamics gradient flows through contact, a few autodiff steps achieve
 what no sample budget can: a categorical box-pose pushing win ($1.00$ vs $0.00$
 at $16\times$ samples), monotone in gradient steps, reproduced on a second
-contact task and as a matched-time efficiency gain. Diff-MPPI's contribution is
-real but localized---contact-rich dynamics are where the model gradient carries
-information that is expensive to sample.
+contact task and as a matched-time efficiency gain. The win is not an artifact of a
+co-designed contact model: it survives sim-to-sim transfer to a structurally
+different hard-contact plant, where a directed gradient can beat even an exact-model
+sampler given $16\times$ the budget---bounded only when the controller's model is too
+wrong on a precision task. Diff-MPPI's contribution is real but localized---contact-rich
+dynamics are where the model gradient carries information that is expensive to sample,
+and a smooth differentiable surrogate is worth more there than an exact but
+non-differentiable model.
 
 % =============================================================================
 \bibliographystyle{IEEEtran}
