@@ -164,8 +164,38 @@ Diff-MPPI advantage, and surveyed the suite for the contact-rich regime.
 **Implication:** demonstrating Diff-MPPI's value needs a NEW differentiable
 contact task — e.g. planar non-prehensile pushing with a smooth (softplus/
 barrier) friction-contact model so autodiff gradients flow through contact.
-That is the decisive experiment; until it exists, the evidence says the autodiff
-refinement has no advantage over vanilla MPPI / a CDF-MPPI baseline.
+
+### gap #2 RESULT: differentiable planar pushing (the regime where it pays off)
+
+Built `src/benchmark_diff_mppi_pushing.cu`: quasi-static point-pusher → disk,
+SMOOTH contact (softplus penetration → normal force), forward-mode dual-number
+autodiff for the exact gradient THROUGH contact; Diff-MPPI refines the control
+mean with it. Matched-budget vs vanilla MPPI, 8 seeds. All methods reach the
+goal (task is solvable), so the discriminator is **efficiency (steps / cost)**.
+
+At matched sample count K, Diff-MPPI reaches goal in ~20–26% fewer steps. The
+sharper test is matched WALL-CLOCK (diff_mppi_3 is ~13× the per-step cost):
+
+| scenario | diff_mppi_3 (K=16) | mppi (K=1024, matched ms) | mppi saturation |
+|---|---|---|---|
+| **push_straight** | **26.1 steps** @0.38 ms | 29.8 steps @0.39 ms | K 512→2048 all ~30 |
+| push_diagonal | 30.4 steps @0.40 ms | 30.9 steps @0.16 ms | ~31 (tie) |
+
+**On push_straight, vanilla MPPI saturates at ~30 steps no matter how many
+samples — it cannot buy the gradient's directness — while diff_mppi_3 reaches 26
+at matched wall-clock.** This is the FIRST regime in the whole study where the
+autodiff refinement holds a matched-budget edge that sampling cannot erase. It
+is modest and task-dependent (a tie on push_diagonal), but it LOCALIZES the
+Diff-MPPI contribution: contact-rich dynamics where the model gradient carries
+information that is expensive to sample. The smooth 7-DOF / cartpole / dynamic
+tasks lack this property, which is why the refinement showed no advantage there.
+
+→ Honest framing for the paper: Diff-MPPI's value is specific to differentiable-
+contact / contact-rich settings, shown as a matched-wall-clock efficiency gain
+that extra samples cannot match — NOT a general success-rate win over MPPI or
+the CDF-MPPI baseline. The next step is a stronger contact task (friction,
+object orientation, or a maneuver requiring contact switching) to test whether
+the edge grows from "efficiency" to "success rate".
 
 ### Fairness caveats (MUST disclose in the paper)
 

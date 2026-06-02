@@ -162,6 +162,10 @@ add_executable(benchmark_cdf_mppi_7dof src/benchmark_cdf_mppi_7dof.cu)
 target_link_libraries(benchmark_cdf_mppi_7dof ${OpenCV_LIBS})
 target_compile_options(benchmark_cdf_mppi_7dof PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
 
+# Differentiable planar pushing: autodiff-through-contact test for Diff-MPPI
+add_executable(benchmark_diff_mppi_pushing src/benchmark_diff_mppi_pushing.cu)
+target_compile_options(benchmark_diff_mppi_pushing PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
+
 add_executable(neural_sdf src/neural_sdf.cu)
 target_link_libraries(neural_sdf ${OpenCV_LIBS})
 
