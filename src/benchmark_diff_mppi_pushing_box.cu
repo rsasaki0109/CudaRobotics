@@ -288,6 +288,9 @@ __global__ void grad_step_kernel(
 // ======================== Episode Runner ========================
 class EpisodeRunner {
 public:
+    bool record_traj = false;            // when set, log per-step pose to traj_flat
+    vector<float> traj_flat;             // [px,py,ox,oy,oth] per recorded step
+
     EpisodeRunner(const Variant& v, const BoxScenario& sc, int K, int T, int seed)
         : v_(v), sc_(sc), K_(K), T_(T), seed_(seed) {
         h_nominal_.assign(T_*CTRL_DIM, 0.0f);
@@ -313,6 +316,8 @@ public:
 
         auto ep0 = chrono::steady_clock::now();
         float ctrl_ms = 0.0f;
+        if (record_traj) { traj_flat.clear();
+            traj_flat.insert(traj_flat.end(), {px_,py_,ox_,oy_,oth_}); }
         for (int step = 0; step < sc_.max_steps; step++) {
             float pd = pos_dist(), ad = ang_err();
             min_dist_ = fminf(min_dist_, pd);
@@ -329,6 +334,7 @@ public:
             for (int t = 0; t < T_-1; t++) { h_nominal_[t*2+0]=h_nominal_[(t+1)*2+0]; h_nominal_[t*2+1]=h_nominal_[(t+1)*2+1]; }
             h_nominal_[(T_-1)*2+0]=0.0f; h_nominal_[(T_-1)*2+1]=0.0f;
             steps_ = step + 1;
+            if (record_traj) traj_flat.insert(traj_flat.end(), {px_,py_,ox_,oy_,oth_});
         }
         auto ep1 = chrono::steady_clock::now();
 
@@ -433,7 +439,7 @@ static void print_summary(const vector<EpisodeMetrics>& rows) {
 int main(int argc, char** argv) {
     bool quick=false; string csv_path="build/benchmark_diff_mppi_pushing_box.csv";
     vector<int> k_values; vector<string> scenario_names, planner_names; int seed_count=-1;
-    int horizon=DEFAULT_T;
+    int horizon=DEFAULT_T; string dump_traj_prefix="";
     for (int i=1;i<argc;i++){ string a=argv[i];
         if (a=="--quick") quick=true;
         else if (a=="--csv"&&i+1<argc) csv_path=argv[++i];
@@ -442,8 +448,35 @@ int main(int argc, char** argv) {
         else if (a=="--scenarios"&&i+1<argc) scenario_names=parse_string_list(argv[++i]);
         else if (a=="--planners"&&i+1<argc) planner_names=parse_string_list(argv[++i]);
         else if (a=="--horizon"&&i+1<argc) horizon=max(2,atoi(argv[++i]));
+        else if (a=="--dump-traj"&&i+1<argc) dump_traj_prefix=argv[++i];
     }
     ensure_build_dir();
+
+    // Trajectory-dump mode: write per-step box poses for the figure filmstrip.
+    if (!dump_traj_prefix.empty()) {
+        BoxScenario sc = make_box_align();
+        struct { string name; int grad; float alpha; } sel[] = {
+            {"mppi", 0, 0.0f}, {"diff_mppi_5", 5, 0.008f} };
+        for (auto& s : sel) {
+            Variant v; v.name=s.name; v.grad_steps=s.grad; v.alpha=s.alpha;
+            EpisodeRunner runner(v, sc, 1024, horizon, /*seed=*/6000+1*100+0*20+0*7+1024);
+            runner.record_traj = true;
+            EpisodeMetrics m = runner.run();
+            string path = dump_traj_prefix + "_" + s.name + ".csv";
+            ofstream out(path);
+            out << "# scenario=" << sc.name << " goal=" << sc.gx << "," << sc.gy << "," << sc.gth
+                << " hx=" << sc.params.hx << " hy=" << sc.params.hy
+                << " success=" << m.success << " steps=" << m.steps << "\n";
+            out << "px,py,ox,oy,oth\n";
+            for (size_t k=0; k+4 < runner.traj_flat.size(); k+=5)
+                out << runner.traj_flat[k] << "," << runner.traj_flat[k+1] << ","
+                    << runner.traj_flat[k+2] << "," << runner.traj_flat[k+3] << ","
+                    << runner.traj_flat[k+4] << "\n";
+            printf("[dump-traj] %s -> %s (success=%d steps=%d)\n",
+                   s.name.c_str(), path.c_str(), m.success, m.steps);
+        }
+        return 0;
+    }
 
     vector<BoxScenario> all_sc = { make_box_turn(), make_box_align(), make_box_pivot() };
     vector<BoxScenario> scenarios;
