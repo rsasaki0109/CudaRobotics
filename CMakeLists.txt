@@ -643,6 +643,10 @@ add_executable(gpu_filterreg src/gpu_filterreg.cu)
 target_link_libraries(gpu_filterreg ${OpenCV_LIBS})
 target_compile_options(gpu_filterreg PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
 
+add_executable(gpu_bcpd src/gpu_bcpd.cu)
+target_link_libraries(gpu_bcpd ${OpenCV_LIBS})
+target_compile_options(gpu_bcpd PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
+
 add_executable(gpu_tsdf_fusion src/gpu_tsdf_fusion.cu)
 target_link_libraries(gpu_tsdf_fusion ${OpenCV_LIBS})
 target_compile_options(gpu_tsdf_fusion PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr --fmad=false>)
