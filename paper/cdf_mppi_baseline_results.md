@@ -565,6 +565,61 @@ the tolerance line and the both-fail region). Reproduce:
 `--true-plant hard --mu <μ> --scenarios box_align,box_pivot --planners mppi,diff_mppi_5
 --k-values 4096,1024 --seed-count 8`.
 
+### gap #2, the rebuttal: differentiability vs fidelity ("just use the right model")
+
+The hard-plant boundary above invites the obvious rebuttal: *if the smooth model is
+too wrong at high friction, give the sampler the correct (hard) model instead of a
+gradient.* We tested exactly that. A third planner `mppi_hardmodel` (`hard_rollout`)
+rolls out with the **exact hard-contact plant** in its sampler — zero model mismatch —
+but gets **no gradient**, because the impulse/Coulomb solver is non-differentiable
+(which is the whole reason a smooth surrogate exists). Against the hard true plant we
+compare three arms: vanilla MPPI with the wrong smooth model (K=4096), `mppi_hardmodel`
+with the exact model (K=4096), and `diff_mppi_5` with the smooth model + gradient
+(K=1024). Both samplers get 16× the gradient's budget. Appended last as a variant, so
+existing planner indices and seeds are unchanged (published numbers byte-identical).
+
+`box_align` (loose, success): both fidelity and the gradient rescue the smooth-model
+sampler — `mppi_hardmodel` 0.88–1.00, `diff_mppi_5` 1.00 at every μ — while smooth-model
+MPPI stays ≤0.12. The gradient matches the exact model with **4× fewer samples**.
+
+`box_pivot` (tight, final `ang_err`, tol 0.11) is decisive:
+
+| μ | mppi smooth K=4096 | mppi_hardmodel EXACT K=4096 | diff_mppi_5 smooth+grad K=1024 |
+|---|---|---|---|
+| 0.0 | 0.151 | 0.143 | **0.102** |
+| 0.2 | 0.207 | 0.199 | **0.129** |
+| 0.4 | 0.403 | **0.147** | 0.238 |
+| 0.6 | 0.441 | **0.135** | 0.402 |
+| 0.8 | 0.441 | **0.129** | 0.436 |
+| 1.0 | 0.440 | **0.137** | 0.433 |
+
+Three findings, none cherry-picked:
+
+1. **Differentiability can beat fidelity.** At low model error (μ≤0.2) the gradient
+   (smooth model, K=1024) lands a *lower* residual than the EXACT-model sampler with 16×
+   the samples (0.102 vs 0.143 at μ=0). Directed first-order refinement extracts more
+   than undirected sampling **even when the sampler has the perfect model** — the value
+   of a usable gradient is not just "compensating for a wrong model".
+2. **Fidelity can beat differentiability.** As the smooth model degrades (μ≥0.4) the
+   exact-model sampler wins on robustness (0.135 vs 0.402 at μ=0.6): a gradient through
+   a badly-wrong model points the wrong way, while the exact model — friction-immune —
+   stays flat (~0.13–0.20 across all μ).
+3. **Neither is free, and the gradient is the only thing that reaches tolerance.** The
+   exact-model sampler **plateaus above tolerance** (~0.13 > 0.11 at every μ): undirected
+   sampling, even with the right model and 16× budget, cannot make the final precise
+   rotation. Only the gradient crosses *into* tolerance, and only where the smooth model
+   is accurate enough (μ≤0.2). The non-differentiability of the exact model is not a
+   detail — it is why fidelity alone tops out short of the goal.
+
+Synthesis: directed refinement (a gradient) buys **precision**, model fidelity buys
+**robustness to contact-model error**, and the smooth differentiable surrogate trades
+the latter for the former. Diff-MPPI's operating regime is precisely where the smooth
+model is accurate enough that its gradient's precision dominates — which is what the
+whole study has localized. This is the answer to "just use the right model": you often
+*cannot* (it is non-differentiable), and even when you can, undirected sampling does not
+reach a tight contact goal. Figure: `fig_fidelity_vs_grad`. Reproduce: add
+`mppi_hardmodel` to the `--planners` list of the sim-to-sim command above.
+
 ### A noted non-result: stochastic pose noise games the success latch
 
 We also tried unmodelled Gaussian *process noise* on the box pose as a third
