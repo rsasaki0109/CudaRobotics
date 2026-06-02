@@ -78,6 +78,7 @@ struct Variant {
     float grad_clip = 15.0f;
     float sigma = 0.6f;
     float lambda = 5.0f;
+    bool hard_rollout = false;   // sample with the exact hard-contact model (fidelity arm)
 };
 
 struct EpisodeMetrics {
@@ -155,7 +156,7 @@ struct HardParams {
 // Advance the rigid box one control step under the hard-contact plant. Pusher is a
 // velocity-controlled (kinematic) disc, identical to the smooth driver. Box pose
 // (ox,oy,oth) and box velocity (vx,vy,w) are updated in place.
-__host__ inline void push_step_box_hard_f(
+__host__ __device__ inline void push_step_box_hard_f(
     float& px, float& py, float& ox, float& oy, float& oth,
     float& vx, float& vy, float& w,
     float ux, float uy, const HardParams& hp)
@@ -344,6 +345,36 @@ __global__ void rollout_kernel(
     d_rng[k] = rng;
 }
 
+// Fidelity-arm rollout: the sampler predicts with the EXACT hard-contact plant model
+// (push_step_box_hard_f) instead of the smooth model -- no model mismatch, but the
+// dynamics are non-differentiable so there is no gradient to add. Used to ask whether
+// giving MPPI the right model beats the smooth-but-differentiable gradient. Cost uses
+// the same weights (p_cost) as every other planner. Each sample carries its own box
+// velocity (vx,vy,w) initialised to rest, exactly like the episode's true plant.
+__global__ void rollout_kernel_hard(
+    const float* d_start, const float* d_nominal, float* d_costs, float* d_perturbed,
+    curandState* d_rng, BoxParams p_cost, HardParams hp, float gx, float gy, float gth,
+    int K, int T, float sigma)
+{
+    int k = blockIdx.x * blockDim.x + threadIdx.x;
+    if (k >= K) return;
+    curandState rng = d_rng[k];
+    float px=d_start[0], py=d_start[1], ox=d_start[2], oy=d_start[3], oth=d_start[4];
+    float vx=0.0f, vy=0.0f, w=0.0f;
+    float cost = 0.0f;
+    for (int t = 0; t < T; t++) {
+        float ux = clampf_local(d_nominal[t*2+0] + curand_normal(&rng) * sigma, -p_cost.u_max, p_cost.u_max);
+        float uy = clampf_local(d_nominal[t*2+1] + curand_normal(&rng) * sigma, -p_cost.u_max, p_cost.u_max);
+        d_perturbed[k*T*2 + t*2 + 0] = ux;
+        d_perturbed[k*T*2 + t*2 + 1] = uy;
+        push_step_box_hard_f(px, py, ox, oy, oth, vx, vy, w, ux, uy, hp);
+        cost += stage_cost_box_f(px, py, ox, oy, oth, ux, uy, gx, gy, gth, p_cost);
+    }
+    cost += terminal_cost_box_f(ox, oy, oth, gx, gy, gth, p_cost);
+    d_costs[k] = cost;
+    d_rng[k] = rng;
+}
+
 // Mechanism diagnostic: replay the SAME sampled controls written by rollout_kernel
 // (d_perturbed) and measure, per sample, how much rotation the box actually
 // underwent. d_rot = total angular path Sum|dtheta| (did this sample engage
@@ -480,6 +511,16 @@ public:
     }
 
     EpisodeMetrics run() {
+        // Hard-contact params, built BEFORE warmup so a hard_rollout controller can
+        // use them. Same geometry as the controller's nominal box (size mismatch is its
+        // own axis, kept off here); friction mu is the swept knob. Used both as the
+        // true plant (--true-plant hard) and, for the fidelity-arm planner, in rollout.
+        hard_p_ = HardParams();
+        hard_p_.dt = sc_.params.dt; hard_p_.push_r = sc_.params.push_r;
+        hard_p_.hx = sc_.params.hx * plant_size_scale;
+        hard_p_.hy = sc_.params.hy * plant_size_scale;
+        hard_p_.mu = plant_mu;
+
         reset_state();
         fill(h_nominal_.begin(), h_nominal_.end(), 0.0f);
         warmup();
@@ -493,14 +534,7 @@ public:
         plant_p.rot_gain  *= plant_gain_scale;
         plant_p.hx        *= plant_size_scale;   // true object SHAPE (controller keeps nominal)
         plant_p.hy        *= plant_size_scale;
-
-        // Hard-contact true plant: same geometry as the controller's nominal box
-        // (size mismatch is its own axis, kept off here), friction mu is the swept knob.
-        HardParams hard_p;
-        hard_p.dt = sc_.params.dt; hard_p.push_r = sc_.params.push_r;
-        hard_p.hx = sc_.params.hx * plant_size_scale;
-        hard_p.hy = sc_.params.hy * plant_size_scale;
-        hard_p.mu = plant_mu;
+        const HardParams& hard_p = hard_p_;
 
         auto ep0 = chrono::steady_clock::now();
         float ctrl_ms = 0.0f;
@@ -558,7 +592,10 @@ private:
         sync_start();
         CUDA_CHECK(cudaMemcpy(d_nominal_, h_nominal_.data(), h_nominal_.size()*sizeof(float), cudaMemcpyHostToDevice));
         int b=256;
-        rollout_kernel<<<(K_+b-1)/b,b>>>(d_start_, d_nominal_, d_costs_, d_perturbed_, d_rng_, sc_.params, sc_.gx, sc_.gy, sc_.gth, K_, T_, v_.sigma);
+        if (v_.hard_rollout)   // fidelity arm: sample with the exact hard-contact model (no gradient)
+            rollout_kernel_hard<<<(K_+b-1)/b,b>>>(d_start_, d_nominal_, d_costs_, d_perturbed_, d_rng_, sc_.params, hard_p_, sc_.gx, sc_.gy, sc_.gth, K_, T_, v_.sigma);
+        else
+            rollout_kernel<<<(K_+b-1)/b,b>>>(d_start_, d_nominal_, d_costs_, d_perturbed_, d_rng_, sc_.params, sc_.gx, sc_.gy, sc_.gth, K_, T_, v_.sigma);
         weights_kernel<<<1,1>>>(d_costs_, d_weights_, K_, v_.lambda);
         update_kernel<<<(T_+b-1)/b,b>>>(d_nominal_, d_perturbed_, d_weights_, K_, T_);
         for (int g = 0; g < v_.grad_steps; g++)
@@ -607,6 +644,7 @@ private:
     }
 
     Variant v_; BoxScenario sc_; int K_, T_, seed_;
+    HardParams hard_p_;                     // hard-contact params (true plant and/or fidelity-arm rollout)
     float px_=0,py_=0,ox_=0,oy_=0,oth_=0;
     float vx_=0,vy_=0,w_=0;                 // box velocity (hard true plant only)
     int steps_=0; bool reached_=false; float cum_cost_=0, min_dist_=0;
@@ -833,6 +871,11 @@ int main(int argc, char** argv) {
     { Variant v; v.name="diff_mppi_1"; v.grad_steps=1; v.alpha=0.02f; variants.push_back(v); }
     { Variant v; v.name="diff_mppi_3"; v.grad_steps=3; v.alpha=0.010f; variants.push_back(v); }
     { Variant v; v.name="diff_mppi_5"; v.grad_steps=5; v.alpha=0.008f; variants.push_back(v); }
+    // Fidelity arm: vanilla MPPI that ROLLS OUT with the exact hard-contact model (no
+    // gradient). Appended last so existing variants keep their index vi (the per-run
+    // seed is vi-dependent) -> published numbers stay byte-identical. Only meaningful
+    // with --true-plant hard, where it is the model-exact sampler to beat.
+    { Variant v; v.name="mppi_hardmodel"; v.grad_steps=0; v.alpha=0.0f; v.hard_rollout=true; variants.push_back(v); }
     if (!planner_names.empty()) {
         vector<Variant> f; for (auto& w : planner_names){ auto it=find_if(variants.begin(),variants.end(),[&](const Variant&v){return v.name==w;});
             if (it==variants.end()){fprintf(stderr,"Unknown planner: %s\n",w.c_str());return 1;} f.push_back(*it);} variants.swap(f);
