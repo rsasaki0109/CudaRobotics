@@ -655,6 +655,10 @@ add_executable(gpu_robust_treg src/gpu_robust_treg.cu)
 target_link_libraries(gpu_robust_treg ${OpenCV_LIBS})
 target_compile_options(gpu_robust_treg PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
 
+add_executable(gpu_kiss_icp src/gpu_kiss_icp.cu)
+target_link_libraries(gpu_kiss_icp ${OpenCV_LIBS})
+target_compile_options(gpu_kiss_icp PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
+
 add_executable(gpu_filterreg_p2plane src/gpu_filterreg_p2plane.cu)
 target_link_libraries(gpu_filterreg_p2plane ${OpenCV_LIBS})
 target_compile_options(gpu_filterreg_p2plane PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
