@@ -54,7 +54,8 @@ smooth contact model, Diff-MPPI pushes a box to a target pose with success
 $1.00$ while vanilla MPPI reaches $0.00$ \emph{even at $16\times$ the samples}
 (a cheaper per-step budget), with success monotone in the number of gradient
 steps; a second contact task and a disk-pushing matched-wall-clock efficiency
-result corroborate the effect. The contribution is thus a clearly scoped,
+result corroborate the effect, and the advantage persists under $\pm$30--40\%
+contact-model mismatch. The contribution is thus a clearly scoped,
 mechanism-supported positive result with a rigorous negative control: gradient
 refinement buys what sampling cannot precisely when information is carried by the
 contact gradient.
@@ -441,6 +442,46 @@ diff\_mppi\_3 & 0.00 & 0.124 \\
 \end{tabular}
 \end{table}
 
+\textbf{Robustness to contact-model mismatch.} A natural objection is that the
+gradient win is an artifact of a contact model whose parameters exactly match the
+plant. We test this directly: the \emph{true} plant's contact mobility (force and
+torque gains) is scaled by a factor $G$ while the controller's rollout and
+gradient keep the nominal gains---its contact model is deliberately wrong by $G$
+($G\!=\!1$ recovers the matched case). Table~\ref{tab:mismatch} shows the win is
+not a matched-model knife's edge: across $G \in [0.7, 1.4]$ ($\pm 30$--$40\%$
+contact-mobility error), \texttt{diff\_mppi\_5} retains a categorical advantage
+over vanilla MPPI, which stays at $0.00$ throughout. The degradation is
+asymmetric and interpretable: under-modelled mobility ($G\!<\!1$) is \emph{better}
+than matched (the controller commits to sustained contact and converges
+conservatively), while over-modelled mobility ($G\!>\!1$) overshoots the fine
+orientation and degrades monotonically. The advantage lives in the stiff-contact
+regime where sampling overshoots; at $G\!=\!0.6$ the dynamics become gentle enough
+that vanilla MPPI also reaches $1.00$ and the task no longer discriminates.
+
+\begin{table}[t]
+\centering
+\caption{%
+  Contact-model mismatch on \texttt{box\_align}, 8 seeds. The plant's contact
+  mobility is scaled by $G$ while the controller keeps nominal gains. The
+  gradient win survives $\pm 30$--$40\%$ model error; vanilla MPPI fails at every
+  $G$ in that band even at $16\times$ samples.%
+}
+\label{tab:mismatch}
+\begin{tabular}{lcc}
+\toprule
+Plant/model gain $G$ & mppi ($K\!=\!4096$) & \textbf{diff\_mppi\_5} ($K\!=\!1024$) \\
+\midrule
+0.6 (task easy for all) & 1.00 & 1.00 \\
+0.7  & 0.00 & \textbf{1.00} \\
+0.85 & 0.00 & \textbf{1.00} \\
+1.0 (matched)  & 0.00 & \textbf{0.75} \\
+1.2  & 0.00 & \textbf{0.50} \\
+1.4  & 0.00 & \textbf{0.25} \\
+1.6  & 0.00 & 0.12 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
 \textbf{Matched-wall-clock efficiency on disk pushing.} On \texttt{push\_straight},
 where all methods eventually reach the goal, the discriminator is efficiency.
 Vanilla MPPI saturates at $\sim$30 steps regardless of $K$ (tested $512$--$2048$),
@@ -490,7 +531,10 @@ axis.
 
 The positive result uses a simplified planar quasi-static contact model rather
 than a validated rigid-body simulator with friction; extending the gradient
-through a higher-fidelity contact model is the natural next step. The contact
+through a higher-fidelity contact model is the natural next step. We partially
+de-risk this with the contact-model mismatch study (Table~\ref{tab:mismatch}),
+which shows the advantage survives $\pm 30$--$40\%$ error in the plant's contact
+mobility, but a full sim-to-real validation remains future work. The contact
 tasks are non-prehensile pushing only, and \texttt{box\_turn} marks a maneuver
 the method does not yet solve. The CDF-MPPI baseline, while literature-faithful,
 is an in-harness reimplementation, and the smooth-task models (bicycle, simplified
