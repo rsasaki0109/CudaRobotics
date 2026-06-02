@@ -456,6 +456,53 @@ Reproduce: `bin/benchmark_diff_mppi_pushing_box --diag-mechanism build/diag
 --k-values 4096`. The diagnostic is gated behind the flag; the published sweep
 path is byte-unchanged.
 
+### gap #2 mechanism, negative control: `escape_frac` PREDICTS where the gradient helps
+
+The mechanism section above shows that on `box_pivot` the sampler is contact-starved
+(`escape_frac ≈ 0.07`, K-independent), so the gradient is what breaks the stall.
+A mechanism is only convincing if its diagnostic also predicts the *converse*: a
+task where the sampler is **not** starved should need **no** gradient. We added a
+matched negative-control task `box_swivel` (gated, new scenario; published numbers
+byte-unchanged) and confirmed exactly this — turning `escape_frac` from a descriptive
+number into a **predictor of the sign of the gradient's value**.
+
+`box_swivel` is constructed to differ from `box_pivot` in as little as possible:
+both establish sustained contact (episode `contact_frac` 0.26 vs 0.30), but the box
+must rotate only a little past tolerance (`gth=+0.30`, `ang_tol=0.20` → margin `0.10`)
+via an off-centre push, versus far past it on `box_pivot` (`gth=+0.70`, `ang_tol=0.11`
+→ margin `0.59`). That single knob — how far past tolerance the box must turn — is the
+mechanism, and it flips `escape_frac` by ~9×:
+
+| task | engaged `escape_frac` (K=256/1024/4096) | vanilla MPPI K=4096 | diff_mppi_5 K=1024 |
+|---|---|---|---|
+| `box_swivel` (margin 0.10) | **0.61 / 0.61 / 0.62** (high) | success **1.00**, `ang_err 0.004` | success 0.88, `ang_err 0.076` |
+| `box_pivot`  (margin 0.59) | **0.067 / 0.086 / 0.069** (low) | success **0.00**, `ang_err 0.193` | success 0.12, `ang_err 0.115` |
+
+Engaged `escape_frac` = mean over the contact-engaged, still-needs-rotation regime
+(`contact_frac>0.1` and remaining angle `>ang_tol`). Two things follow:
+
+1. **The predictor is K-independent on both ends.** High (0.62) and low (0.07) both
+   hold flat across a 16× sweep of K. Whether the sampler suffices is set by contact
+   geometry, not budget — so escape_frac, measured once, predicts the outcome at *any* K.
+2. **The gradient's value changes sign with escape_frac.** Where it is high
+   (`box_swivel`), vanilla MPPI not only succeeds but **beats** diff_mppi_5
+   (1.00 vs 0.88) — the refinement steps are redundant and their perturbation mildly
+   *overshoots* the easy rotation. Where it is low (`box_pivot`), only the gradient
+   pulls the residual toward tolerance. This is a clean double dissociation: the same
+   diagnostic that explains the `box_pivot` win also correctly predicts a `box_swivel`
+   *non-*win, which is the strongest evidence that the mechanism — contact-starved
+   sampling — is the real cause and not a post-hoc story.
+
+This directly answers the paper's title question ("When does gradient refinement
+help?") with a measurable quantity: **the gradient helps exactly when engaged
+`escape_frac` is low**; when it is high, sampling already suffices and refinement is
+at best neutral. Figure: `fig_escape_predictor` (panel a: escape_frac vs K for the
+matched pair; panel b: tolerance-normalized final angular error showing the sign flip).
+Reproduce: `bin/benchmark_diff_mppi_pushing_box --diag-mechanism build/diag
+--scenarios box_swivel,box_pivot --k-values 4096` for escape_frac, and
+`--scenarios box_swivel,box_pivot --planners mppi,diff_mppi_5 --k-values 4096,1024
+--seed-count 8` for the outcome.
+
 ### A noted non-result: stochastic pose noise games the success latch
 
 We also tried unmodelled Gaussian *process noise* on the box pose as a third

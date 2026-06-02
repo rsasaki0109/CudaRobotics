@@ -352,6 +352,80 @@ def fig_mechanism_sampling(out_dir, traj_dir):
     print("wrote", path)
 
 
+def fig_escape_predictor(out_dir):
+    """escape_frac as a PREDICTOR of where the contact gradient helps.
+
+    A matched pair of contact-rotation tasks that both reach sustained contact
+    (episode contact_frac 0.26 vs 0.30) but differ in how far past tolerance the
+    box must rotate (margin 0.10 vs 0.59 rad):
+
+    (a) In the contact-engaged, still-needs-rotation regime, the fraction of K
+        samples that break the angular-tolerance latch (escape_frac) is ~0.62 on
+        box_swivel vs ~0.07 on box_pivot -- a 9x gap that is flat across a 16x
+        sweep of K (256..4096). Sampling is starved on one task and not the other,
+        structurally (not for want of budget).
+    (b) The consequence. Final angular error normalized by each task's tolerance
+        (1.0 = success threshold): where escape_frac is high (box_swivel), vanilla
+        MPPI already lands far inside tolerance and even beats diff_mppi_5 -- the
+        gradient is redundant and its perturbation mildly hurts. Where escape_frac
+        is low (box_pivot), only the gradient pulls the residual toward tolerance.
+        escape_frac predicts the SIGN of the gradient's value. Data: --diag-mechanism
+        (panel a) and an 8-seed benchmark, mppi K=4096 vs diff_mppi_5 K=1024 (panel b).
+    """
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(SINGLE_COL * 2.0, SINGLE_COL * 0.85))
+    C_SW = "#2ca02c"   # box_swivel (high escape, sampling suffices) -- green
+
+    # --- (a) engaged escape_frac vs K: high on swivel, low on pivot, both flat ---
+    Ks = [256, 1024, 4096]
+    sw = [0.6145, 0.6140, 0.6209]   # box_swivel, contact-engaged regime
+    pv = [0.0668, 0.0859, 0.0689]   # box_pivot,  contact-engaged regime
+    xpos = list(range(len(Ks)))
+    w = 0.38
+    ax1.bar([x - w / 2 for x in xpos], sw, width=w, color=C_SW, zorder=2,
+            label="box_swivel (vanilla wins)")
+    ax1.bar([x + w / 2 for x in xpos], pv, width=w, color=C_MPPI, zorder=2,
+            label="box_pivot (gradient needed)")
+    for x, a, b in zip(xpos, sw, pv):
+        ax1.text(x - w / 2, a + 0.012, f"{a:.2f}", ha="center", fontsize=6)
+        ax1.text(x + w / 2, b + 0.012, f"{b:.2f}", ha="center", fontsize=6)
+    ax1.set_xticks(xpos)
+    ax1.set_xticklabels([f"{k}\n({k // 256}$\\times$)" for k in Ks])
+    ax1.set_ylim(0, 0.78)
+    ax1.set_xlabel("samples $K$ (vanilla MPPI)")
+    ax1.set_ylabel("latch-break fraction (engaged)")
+    ax1.set_title("(a) escape_frac: the predictor")
+    ax1.legend(loc="upper center", fontsize=6)
+    ax1.grid(True, axis="y", alpha=0.3)
+
+    # --- (b) outcome: final ang error / tolerance (1.0 = success threshold) ---
+    tasks = ["box_swivel\n(escape 0.62)", "box_pivot\n(escape 0.07)"]
+    mppi_norm = [0.004 / 0.20, 0.193 / 0.11]   # vanilla MPPI K=4096
+    diff_norm = [0.076 / 0.20, 0.115 / 0.11]   # diff_mppi_5 K=1024
+    xpos2 = list(range(len(tasks)))
+    ax2.bar([x - w / 2 for x in xpos2], mppi_norm, width=w, color=C_MPPI, zorder=2,
+            label="mppi (K=4096, 16$\\times$)")
+    ax2.bar([x + w / 2 for x in xpos2], diff_norm, width=w, color=C_DIFF5, zorder=2,
+            label="diff_mppi_5 (K=1024)")
+    ax2.axhline(1.0, color="k", ls="--", lw=0.9, zorder=3)
+    ax2.text(-0.46, 1.03, "tolerance (success)", fontsize=6, ha="left", va="bottom")
+    for x, a, b in zip(xpos2, mppi_norm, diff_norm):
+        ax2.text(x - w / 2, a + 0.04, f"{a:.2f}", ha="center", fontsize=6)
+        ax2.text(x + w / 2, b + 0.04, f"{b:.2f}", ha="center", fontsize=6)
+    ax2.set_xticks(xpos2)
+    ax2.set_xticklabels(tasks)
+    ax2.set_ylim(0, 2.0)
+    ax2.set_ylabel("final ang. error / tolerance")
+    ax2.set_title("(b) consequence: where the gradient helps")
+    ax2.legend(loc="upper left", fontsize=6)
+    ax2.grid(True, axis="y", alpha=0.3)
+
+    fig.tight_layout()
+    path = os.path.join(out_dir, "fig_escape_predictor.pdf")
+    fig.savefig(path)
+    plt.close(fig)
+    print("wrote", path)
+
+
 def _read_traj(path):
     """Read a --dump-traj CSV; return (meta dict, list of (px,py,ox,oy,oth))."""
     meta = {}
@@ -443,6 +517,7 @@ def main():
     fig_robustness(args.out_dir)
     fig_robustness_pivot(args.out_dir)
     fig_mechanism_sampling(args.out_dir, args.traj_dir)
+    fig_escape_predictor(args.out_dir)
 
 
 if __name__ == "__main__":

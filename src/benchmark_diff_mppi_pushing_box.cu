@@ -530,6 +530,19 @@ static BoxScenario make_box_pivot() {
     s.pos_tol=0.22f; s.ang_tol=0.11f; s.max_steps=240;
     return s;
 }
+// Negative control for the mechanism claim: a SMALL rotation with a WIDE angular
+// tolerance and a pusher that engages the box near a corner, so isotropic velocity
+// noise routinely produces correctly-signed torque. Here the latch the gradient is
+// supposed to break does not form — vanilla MPPI alone succeeds. The prediction is
+// that this regime has a HIGH escape_frac (sampling is NOT contact-starved), so the
+// gradient buys little: escape_frac becomes a predictor of where Diff-MPPI helps.
+static BoxScenario make_box_swivel() {
+    BoxScenario s; s.name="box_swivel";
+    s.ox0=1.5f; s.oy0=1.5f; s.oth0=0.0f; s.px0=1.85f; s.py0=0.9f;
+    s.gx=1.55f; s.gy=1.95f; s.gth=0.30f;          // small +0.30 rotate via off-centre push
+    s.pos_tol=0.22f; s.ang_tol=0.20f; s.max_steps=240;
+    return s;
+}
 
 // ======================== Utilities ========================
 static void ensure_build_dir() { mkdir("build", 0755); }
@@ -617,7 +630,7 @@ int main(int argc, char** argv) {
     // rotation-dominant tasks where the gradient wins, and not on box_turn.
     if (!diag_prefix.empty()) {
         int Kdiag = k_values.empty() ? 4096 : k_values.back();
-        vector<BoxScenario> diag_sc = { make_box_turn(), make_box_align(), make_box_pivot() };
+        vector<BoxScenario> diag_sc = { make_box_turn(), make_box_align(), make_box_pivot(), make_box_swivel() };
         if (!scenario_names.empty()) {
             vector<BoxScenario> f;
             for (auto& w : scenario_names) { auto it=find_if(diag_sc.begin(),diag_sc.end(),[&](const BoxScenario&s){return s.name==w;});
@@ -654,7 +667,9 @@ int main(int argc, char** argv) {
         return 0;
     }
 
-    vector<BoxScenario> all_sc = { make_box_turn(), make_box_align(), make_box_pivot() };
+    // box_swivel is appended LAST so the existing scenarios keep their indices si=0..2
+    // (the per-run seed in the sweep loop is si-dependent); published numbers stay byte-identical.
+    vector<BoxScenario> all_sc = { make_box_turn(), make_box_align(), make_box_pivot(), make_box_swivel() };
     vector<BoxScenario> scenarios;
     if (!scenario_names.empty()) {
         for (auto& w : scenario_names) { auto it=find_if(all_sc.begin(),all_sc.end(),[&](const BoxScenario&s){return s.name==w;});
