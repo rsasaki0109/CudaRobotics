@@ -50,6 +50,64 @@ The main reason is that the current paper would still look like:
 
 That combination usually struggles at `ICRA/IROS` unless the empirical evidence is unusually strong or the systems story is unusually concrete.
 
+## Update 2026-06-02: both Tier-1 additions built — and they force a headline pivot
+
+The two missing pieces the "plausible" line above was waiting for now both exist.
+Full evidence: `paper/cdf_mppi_baseline_results.md`. They did not just fill the
+checklist — they changed what the honest headline can be.
+
+**1. Literature-faithful direct baseline — DONE (and sobering).**
+Implemented One-Step CDF-MPPI (`arXiv:2509.00836`) inside the same CUDA harness
+(`src/benchmark_cdf_mppi_7dof.cu`), analytic margin-derived CDF as primary, neural
+CDF as a documented ablation. Under matched wall-clock per control step:
+- `7dof_shelf_reach` (4 seeds): `cdf_mppi` **1.00 success @ 0.05 ms/step**; best
+  Diff variant `diff_mppi_1` 0.50 @ 0.46 ms; `diff_mppi_3` 0.25; vanilla 0.25.
+- `7dof_dynamic_avoid`, reactive CDF (8 seeds): `cdf_mppi` **1.00, 0 collisions
+  @ 0.24 ms**; `diff_mppi_3` 0.75–0.88; it occasionally collides.
+- **Fair rematch (key):** the naive CDF win was largely its free goal *config*
+  (solved IK). Handing Diff-MPPI the same `q_goal`, every variant jumps and the
+  gap collapses — and crucially **`diff_mppi_3` (0.62–0.88) does NOT beat vanilla
+  MPPI (0.88)**. CDF-MPPI's durable edge is per-step compute (8–47× cheaper), not
+  success. **On the old headline tasks the autodiff refinement shows no advantage.**
+
+**2. Higher-fidelity / decisive experiment — DONE (and this is the new headline).**
+The whole smooth-dynamics suite lacked any contact gradient, so the contact-rich
+hypothesis was literally untestable. Built two differentiable-contact tasks
+(`src/benchmark_diff_mppi_pushing.cu`, `..._pushing_box.cu`) with smooth
+(softplus / box-SDF) contact and forward-mode dual-number autodiff THROUGH contact:
+- **box-pose pushing** (`box_align`, 8 seeds, K=256): `diff_mppi_5` **1.00 success**
+  (71.5 steps) while **vanilla MPPI = 0.00 even at 16× samples (K=4096), which is
+  cheaper per step yet still fails.** Success is **monotone in gradient steps**
+  (0.00 / 0.38 / 1.00 for 1 / 3 / 5) — direct evidence the gradient is the active
+  ingredient, not sampling.
+- disk pushing (`push_straight`): vanilla saturates at ~30 steps for any K;
+  `diff_mppi_3` reaches 26 at matched wall-clock — a matched-budget edge sampling
+  cannot erase.
+
+**Consequence for the paper — pivot the headline.**
+The current draft leads with dynamic-obstacle exact-time navigation wins. The new
+CDF-MPPI baseline *undercuts* that lead (a reactive one-step baseline matches/beats
+the Diff line there at a fraction of the compute). The honest, defensible thesis is
+now narrower and stronger:
+
+> Diff-MPPI's contribution is **localized to contact-rich dynamics**: where the
+> model gradient flows through (smooth) contact, a few autodiff refinement steps
+> buy success/efficiency that no sample budget can match; on smooth tasks it ties
+> vanilla MPPI and loses on compute to a CDF-MPPI baseline.
+
+Lead with the pushing results; demote the smooth 7-DOF / dynamic-obstacle tables to
+"where it does NOT help (and why)", with CDF-MPPI as the honest baseline that makes
+that boundary precise. This converts the prior overclaim risk into a credibility
+asset (a clearly-scoped positive result plus a strong negative control).
+
+Status line, revised:
+- `ICRA/IROS full paper`: still borderline, but on a **more honest and more
+  defensible** footing — a scoped contact-rich claim with a literature-faithful
+  baseline, rather than a broad dynamic-navigation claim that the baseline refutes.
+- Remaining work is now **writing** (re-frame the draft around contact) and
+  **hardening** the contact result (more contact tasks / a harder solved case like
+  `box_turn`, currently unsolved by all methods), not building the missing pieces.
+
 ## What Is Already Good
 
 The current line now has real positives:
@@ -154,6 +212,16 @@ This is the most dangerous missing experiment because a reviewer can reasonably 
 > The paper shows that hybrid search plus local sensitivity helps over vanilla MPPI and over stronger in-repo feedback controllers, but does not yet show whether the proposed implementation is actually better than existing sensitivity-aware MPPI variants.
 
 That is a direct novelty threat, not just a "future work" point.
+
+**Status 2026-06-02 — this gap is now CLOSED, see the Update section above.** A
+literature-faithful **One-Step CDF-MPPI** (`arXiv:2509.00836`) is implemented in the
+same harness (`src/benchmark_cdf_mppi_7dof.cu`). It is not another in-house feedback
+proxy but a published, mechanistically-distinct controller (C-space distance-field
+angle shaping). The reviewer sentence above is answered — but the answer cuts both
+ways: on the smooth 7-DOF tasks CDF-MPPI matches/beats the Diff-MPPI line at 8–47×
+lower per-step compute, so the paper can no longer claim a baseline-beating result
+*there*. That is why the headline pivots to the contact-rich regime (Update section),
+where the autodiff refinement provably wins and CDF-MPPI is not applicable.
 
 ### 3. The experiment tier is still below flagship-conference expectations
 
@@ -262,6 +330,15 @@ Current status:
 - **substantially addressed** by the new `benchmark_diff_mppi_manipulator_7dof` benchmark: Panda-like 7-DOF serial arm with 14D state, 7D control, 3D workspace obstacles, analytical Jacobians, and two scenarios (`7dof_shelf_reach`, `7dof_dynamic_avoid`). On `7dof_dynamic_avoid`, `feedback_mppi_ref` reaches `1.00` success at `K=256` while vanilla MPPI reaches `0.75`. This is no longer a toy 2-link task but a high-dimensional manipulation domain.
 - an additional `feedback_mppi_faithful` two-rate variant was tested: combining released current-action gain with stride=2 replan. It fails on both dynamic tasks even at K=8192 (2.1 ms/step), confirming that current-action-only feedback gains lose temporal coverage between replans.
 - still not fully closed, because the 7-DOF benchmark is still a custom simplified model rather than a standardized suite, and Diff-MPPI does not consistently outperform feedback baselines on the 7-DOF tasks
+- **closed for the contribution, differently than expected (2026-06-02):** the 7-DOF
+  task turned out to be the wrong place to look — under the fair shared-goal-config
+  condition Diff-MPPI does not beat vanilla MPPI or CDF-MPPI there. The higher-fidelity
+  domain that *does* discriminate is **differentiable contact** (`benchmark_diff_mppi_pushing`,
+  `..._pushing_box`): on box-pose pushing `diff_mppi_5` reaches `1.00` success while
+  vanilla MPPI reaches `0.00` even at `K=4096` (16× samples, cheaper per step), with
+  success **monotone in gradient steps**. This is the decisive higher-fidelity experiment;
+  it moves the paper out of "2D smooth toy" into contact-rich manipulation where the
+  model gradient carries information sampling cannot buy. See the Update section above.
 
 3. Extend the direct time-tuning protocol
 
@@ -349,12 +426,39 @@ The safer framing is:
 
 That framing is narrower, but more defensible.
 
+**Revised framing (2026-06-02), now that the experiments are in.** The matched-budget
+result above is real but, on smooth tasks, weaker than hoped (a CDF-MPPI baseline ties
+or beats it). The strongest *defensible* framing is now contact-scoped:
+
+> We study a minimal hybrid MPPI controller — stochastic rollouts plus a short
+> autodiff refinement stage — and show that **when the dynamics gradient flows through
+> contact**, the refinement achieves success and matched-wall-clock efficiency that
+> sampling cannot match at any budget (box-pose pushing: 100% vs 0% at 16× samples,
+> monotone in gradient steps), while on smooth dynamics it ties vanilla MPPI and a
+> literature-faithful CDF-MPPI baseline. The contribution is a clearly-scoped,
+> mechanism-supported positive result with an honest negative control.
+
+This trades breadth for credibility — exactly the trade flagship review rewards.
+
 ## Recommended Next Steps
 
 Immediate next work:
 1. Strengthen the current `feedback_mppi_ref` / `feedback_mppi_release` / `feedback_mppi_sens` / `feedback_mppi_cov` / `feedback_mppi_fused` / `feedback_mppi_hf` baselines in `benchmark_diff_mppi` into a more literature-faithful comparison.
 2. Port the benchmark to one higher-fidelity domain.
 3. Carry the new exact matched-time tuning workflow into that stronger evaluation domain.
+
+**Superseded 2026-06-02 — both items 1–2 are done; the work is now writing + hardening.**
+Revised immediate next work:
+1. **Re-frame the draft around contact** (`diff_mppi.tex`): lead with the differentiable-
+   pushing results, demote the smooth 7-DOF / dynamic-obstacle tables to a labelled
+   "where it does not help, and why" section, and introduce CDF-MPPI as the honest
+   baseline that makes that boundary precise.
+2. **Harden the contact result**: at least one more differentiable-contact task, and
+   either solve or honestly bound the currently-unsolved `box_turn` (long translate +
+   rotate). The monotone-in-gradient-steps evidence is the strongest single result —
+   protect it with a second task so it does not read as one cherry-picked scenario.
+3. Keep the matched-wall-clock protocol and the fair shared-goal-config condition as
+   the reporting standard throughout.
 
 If time is limited:
 1. aim for `workshop / late-breaking results / open-source systems demo`
@@ -368,3 +472,12 @@ As of `2026-04-02`, my judgment is:
 - `for workshop/demo right now`: yes
 
 That is a conservative judgment, but it is the one most likely to survive actual review pressure.
+
+**Updated judgment (2026-06-02).** Both gating items are now built, so the judgment is
+no longer "plausible after more experiments" but "plausible after a rewrite":
+- `today, as-is (old framing)`: weaker than before — the new CDF-MPPI baseline refutes
+  the dynamic-navigation headline the current draft leads with.
+- `after re-framing around the contact-rich result`: plausible, and on a more honest
+  footing than any prior iteration — a scoped, mechanism-supported (monotone in grad
+  steps), baseline-anchored positive result.
+- The bottleneck moved from *evidence* to *narrative*. That is a much better place to be.
