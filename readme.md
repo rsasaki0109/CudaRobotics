@@ -133,6 +133,8 @@ transform / warp and is verified in-binary.
 | Diffusion policy | Neural A* traversability |
 | <img src="https://rsasaki0109.github.io/CudaRobotics/pso.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_em_gmm.gif" width="400"/> |
 | PSO swarm optimization | EM / GMM clustering |
+| <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_diff_contact_push.gif" width="400"/> | |
+| Differentiable contact: autodiff-through-contact pushing to a target pose | |
 
 ### Graph-neural & multi-agent MPPI
 

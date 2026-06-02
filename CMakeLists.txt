@@ -667,6 +667,10 @@ add_executable(gpu_constrained_mpc src/gpu_constrained_mpc.cu)
 target_link_libraries(gpu_constrained_mpc ${OpenCV_LIBS})
 target_compile_options(gpu_constrained_mpc PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
 
+add_executable(gpu_diff_contact_push src/gpu_diff_contact_push.cu)
+target_link_libraries(gpu_diff_contact_push ${OpenCV_LIBS})
+target_compile_options(gpu_diff_contact_push PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
+
 add_executable(gpu_robust_p2plane_reg src/gpu_robust_p2plane_reg.cu)
 target_link_libraries(gpu_robust_p2plane_reg ${OpenCV_LIBS})
 target_compile_options(gpu_robust_p2plane_reg PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
