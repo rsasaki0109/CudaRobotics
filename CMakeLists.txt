@@ -166,6 +166,10 @@ target_compile_options(benchmark_cdf_mppi_7dof PRIVATE $<$<COMPILE_LANGUAGE:CUDA
 add_executable(benchmark_diff_mppi_pushing src/benchmark_diff_mppi_pushing.cu)
 target_compile_options(benchmark_diff_mppi_pushing PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
 
+# Differentiable box pushing (position + orientation): contact-point reasoning
+add_executable(benchmark_diff_mppi_pushing_box src/benchmark_diff_mppi_pushing_box.cu)
+target_compile_options(benchmark_diff_mppi_pushing_box PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
+
 add_executable(neural_sdf src/neural_sdf.cu)
 target_link_libraries(neural_sdf ${OpenCV_LIBS})
 
