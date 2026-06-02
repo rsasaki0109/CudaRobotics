@@ -482,6 +482,73 @@ def fig_sim2sim(out_dir):
     print("wrote", path)
 
 
+def fig_fidelity_vs_grad(out_dir):
+    """Differentiability vs fidelity: the rebuttal to "just use the right model".
+
+    Against the hard-contact true plant, three arms: vanilla MPPI with the WRONG
+    (smooth) model, vanilla MPPI with the EXACT hard model in its rollout (no gradient
+    -- the hard solver is non-differentiable), and diff_mppi_5 (smooth model + gradient).
+    Both samplers get K=4096 (16x); the gradient gets K=1024.
+
+    (a) Loose tolerance (box_align): both fidelity and the gradient rescue the
+        smooth-model sampler; the gradient does it with 4x fewer samples.
+    (b) Tight tolerance (box_pivot): the decisive panel. At low model error the
+        gradient beats the EXACT-model sampler outright -- directed refinement >
+        undirected sampling even with perfect fidelity and 16x the budget. As the
+        model error grows the exact model wins on robustness, but note it plateaus
+        ABOVE tolerance (~0.13): undirected sampling, even exact, never makes the
+        final precise alignment. Only the gradient crosses into tolerance, and only
+        where the smooth model is accurate enough. Data: --true-plant hard, 8 seeds.
+    """
+    mu = [0.0, 0.2, 0.4, 0.6, 0.8, 1.0]
+    C_HARD = "#ff7f0e"   # exact-hard-model sampler (orange)
+    # (a) box_align success
+    al_mppi = [0.00, 0.00, 0.12, 0.12, 0.12, 0.12]
+    al_hard = [1.00, 1.00, 0.88, 1.00, 1.00, 1.00]
+    al_diff = [1.00, 1.00, 1.00, 1.00, 1.00, 1.00]
+    # (b) box_pivot final ang_err
+    pv_mppi = [0.151, 0.207, 0.403, 0.441, 0.441, 0.440]
+    pv_hard = [0.143, 0.199, 0.147, 0.135, 0.129, 0.137]
+    pv_diff = [0.102, 0.129, 0.238, 0.402, 0.436, 0.433]
+    pv_tol = 0.11
+
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(SINGLE_COL * 2.0, SINGLE_COL * 0.85))
+
+    ax1.plot(mu, al_diff, "-o", color=C_DIFF5, markersize=5, label="diff_mppi_5: smooth+grad (K=1024)")
+    ax1.plot(mu, al_hard, "-^", color=C_HARD, markersize=5, label="mppi: EXACT model (K=4096)")
+    ax1.plot(mu, al_mppi, "-s", color=C_MPPI, markersize=5, label="mppi: smooth model (K=4096)")
+    ax1.set_ylim(-0.05, 1.08)
+    ax1.set_xlabel("true-plant Coulomb friction $\\mu$")
+    ax1.set_ylabel("success rate")
+    ax1.set_title("(a) loose tol (box_align)")
+    ax1.legend(loc="center right", fontsize=5.5)
+    ax1.grid(True, alpha=0.3)
+
+    ax2.plot(mu, pv_diff, "-o", color=C_DIFF5, markersize=5, label="diff_mppi_5: smooth+grad (K=1024)")
+    ax2.plot(mu, pv_hard, "-^", color=C_HARD, markersize=5, label="mppi: EXACT model (K=4096)")
+    ax2.plot(mu, pv_mppi, "-s", color=C_MPPI, markersize=5, label="mppi: smooth model (K=4096)")
+    ax2.axhline(pv_tol, color="k", ls="--", lw=0.9)
+    ax2.text(0.98, pv_tol + 0.008, "tolerance", fontsize=6, va="bottom", ha="right")
+    ax2.annotate("grad beats EXACT model\n(differentiability > fidelity)",
+                 xy=(0.1, 0.115), xytext=(0.20, 0.30), fontsize=5.5, color="gray",
+                 arrowprops=dict(arrowstyle="->", color="gray", lw=0.8))
+    ax2.annotate("exact model plateaus\nabove tolerance", xy=(0.8, 0.129), xytext=(0.42, 0.055),
+                 fontsize=5.5, color="gray",
+                 arrowprops=dict(arrowstyle="->", color="gray", lw=0.8))
+    ax2.set_ylim(0, 0.48)
+    ax2.set_xlabel("true-plant Coulomb friction $\\mu$")
+    ax2.set_ylabel("final angular error [rad]")
+    ax2.set_title("(b) tight tol (box_pivot)")
+    ax2.legend(loc="upper left", fontsize=5.5)
+    ax2.grid(True, alpha=0.3)
+
+    fig.tight_layout()
+    path = os.path.join(out_dir, "fig_fidelity_vs_grad.pdf")
+    fig.savefig(path)
+    plt.close(fig)
+    print("wrote", path)
+
+
 def _read_traj(path):
     """Read a --dump-traj CSV; return (meta dict, list of (px,py,ox,oy,oth))."""
     meta = {}
@@ -575,6 +642,7 @@ def main():
     fig_mechanism_sampling(args.out_dir, args.traj_dir)
     fig_escape_predictor(args.out_dir)
     fig_sim2sim(args.out_dir)
+    fig_fidelity_vs_grad(args.out_dir)
 
 
 if __name__ == "__main__":
