@@ -118,6 +118,8 @@ transform / warp and is verified in-binary.
 | Sinkhorn-OT (unbalanced optimal transport) | Robust Student's-t (2x outlier tolerance vs Gaussian) |
 | <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_filterreg_p2plane.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_robust_p2plane_reg.gif" width="400"/> |
 | FilterReg point-to-plane (removes soft-mean curvature bias; 43x lower error at coarse sigma) | Flagship: robust Student's-t x point-to-plane (best under outliers x curvature) |
+| <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_real_bunny_reg.gif" width="400"/> | |
+| Real data: Stanford bunny scan, known SE(3) recovered to 0.1 deg | |
 
 ### Learning & optimization
 
