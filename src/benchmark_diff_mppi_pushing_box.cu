@@ -416,6 +416,43 @@ static float host_rollout_cost(const float start[STATE_DIM], const vector<float>
     return cost;
 }
 
+// Total cost of rolling the TRUE hard-contact plant (push_step_box_hard_f) from
+// `start` under `nominal`, box initialised at rest -- the same per-step planning
+// convention as the fidelity-arm sampler (rollout_kernel_hard). The smooth model is
+// velocity-free, so the smooth gradient is implicitly also evaluated from rest:
+// comparing the two from the same rest state is apples-to-apples. Cost uses the same
+// weights (pc) as every planner. Used by the gradient-agreement capstone to obtain a
+// finite-difference sensitivity of the structurally-different true plant.
+static float hard_rollout_cost(const float start[STATE_DIM], const vector<float>& nominal,
+                               int T, const HardParams& hp, const BoxParams& pc,
+                               float gx, float gy, float gth) {
+    float px=start[0], py=start[1], ox=start[2], oy=start[3], oth=start[4];
+    float vx=0.0f, vy=0.0f, w=0.0f, cost=0.0f;
+    for (int t = 0; t < T; t++) {
+        float ux = clampf_local(nominal[t*2+0], -pc.u_max, pc.u_max);
+        float uy = clampf_local(nominal[t*2+1], -pc.u_max, pc.u_max);
+        push_step_box_hard_f(px, py, ox, oy, oth, vx, vy, w, ux, uy, hp);
+        cost += stage_cost_box_f(px, py, ox, oy, oth, ux, uy, gx, gy, gth, pc);
+    }
+    cost += terminal_cost_box_f(ox, oy, oth, gx, gy, gth, pc);
+    return cost;
+}
+
+// Pusher-box penetration under the smooth box-SDF (>0 => overlap, contact active).
+// Instantaneous contact indicator used to gate the gradient-agreement diagnostic to
+// contact-engaged steps (where u actually couples into box pose, so the gradient is
+// dynamics-driven rather than a residual of the tiny control-cost term).
+static float box_pen(float px, float py, float ox, float oy, float oth, const BoxParams& p) {
+    float c=cosf(oth), s=sinf(oth);
+    float dx=px-ox, dy=py-oy;
+    float lx= c*dx + s*dy, ly=-s*dx + c*dy;
+    float qx=fabsf(lx)-p.hx, qy=fabsf(ly)-p.hy;
+    float rqx=fmaxf(qx,0.0f), rqy=fmaxf(qy,0.0f);
+    float outside=sqrtf(rqx*rqx + rqy*rqy + 1e-9f);
+    float inside=fminf(fmaxf(qx,qy),0.0f);
+    return p.push_r - (outside + inside);
+}
+
 __global__ void weights_kernel(const float* d_costs, float* d_w, int K, float lambda) {
     if (blockIdx.x != 0 || threadIdx.x != 0) return;
     float cmin = FLT_MAX;
@@ -451,6 +488,20 @@ __global__ void grad_step_kernel(
         d_nominal[kp] = clampf_local(d_nominal[kp] - scale*grad[kp], -p.u_max, p.u_max);
 }
 
+// Diagnostic: write the full 2T smooth-model forward-mode autodiff gradient vector --
+// the EXACT gradient grad_step_kernel descends -- without taking a step. The
+// gradient-agreement capstone compares this direction (what the controller follows)
+// against the true hard-contact plant's finite-difference sensitivity.
+__global__ void grad_vec_kernel(
+    const float* d_start, const float* d_nominal, float* d_grad,
+    BoxParams p, float gx, float gy, float gth, int T)
+{
+    if (blockIdx.x != 0 || threadIdx.x != 0) return;
+    float start[STATE_DIM] = { d_start[0], d_start[1], d_start[2], d_start[3], d_start[4] };
+    for (int kp = 0; kp < 2*T; kp++)
+        d_grad[kp] = dcost_dparam_box(start, d_nominal, T, kp, gx, gy, gth, p);
+}
+
 // ======================== Episode Runner ========================
 class EpisodeRunner {
 public:
@@ -468,6 +519,17 @@ public:
     int  diag_dump_step = -1;            // step at which to dump per-sample (cost,rot,netrot)
     vector<float> diag_flat;             // stride 9 (see above)
     vector<float> diag_scatter;          // stride 3: [cost, rot, netrot] at diag_dump_step
+    // Gradient-agreement capstone: per control step, measure the cosine similarity
+    // between (a) the smooth-model autodiff gradient the controller descends and
+    // (b) the TRUE plant's finite-difference cost sensitivity, both w.r.t. the warm
+    // plan at the visited state. cos > 0 => following the smooth gradient also lowers
+    // the true cost (the gradient "buys" real improvement); cos -> 0/negative => the
+    // gradient misleads. Sweeping the hard plant's friction explains the success
+    // boundary at the level of gradient DIRECTION. grad_agree_flat stride 7:
+    // [step, cos_full, cos_first, gnorm_smooth, gnorm_hard, rem_ang, engaged].
+    // engaged = contact-active AND still-needs-rotation (where the mechanism lives).
+    bool record_grad_agree = false;
+    vector<float> grad_agree_flat;       // stride 7 (see above)
     // Model-mismatch robustness knob (default 1.0 => no-op, published numbers
     // reproduce byte-identically). When != 1.0, the TRUE plant's contact mobility
     // (push_gain, rot_gain) is scaled while the controller's internal rollout +
@@ -502,12 +564,13 @@ public:
         CUDA_CHECK(cudaMalloc(&d_rng_, K_*sizeof(curandState)));
         CUDA_CHECK(cudaMalloc(&d_rot_, K_*sizeof(float)));
         CUDA_CHECK(cudaMalloc(&d_netrot_, K_*sizeof(float)));
+        CUDA_CHECK(cudaMalloc(&d_grad_, T_*CTRL_DIM*sizeof(float)));
         reset_rng();
     }
     ~EpisodeRunner() {
         cudaFree(d_start_); cudaFree(d_nominal_); cudaFree(d_costs_);
         cudaFree(d_weights_); cudaFree(d_perturbed_); cudaFree(d_rng_);
-        cudaFree(d_rot_); cudaFree(d_netrot_);
+        cudaFree(d_rot_); cudaFree(d_netrot_); cudaFree(d_grad_);
     }
 
     EpisodeMetrics run() {
@@ -544,6 +607,10 @@ public:
             float pd = pos_dist(), ad = ang_err();
             min_dist_ = fminf(min_dist_, pd);
             if (pd < sc_.pos_tol && ad < sc_.ang_tol) { reached_ = true; steps_ = step; break; }
+
+            // Gradient-agreement diagnostic at the warm plan (before the controller
+            // overwrites it); not counted in control timing (it is pure instrumentation).
+            if (record_grad_agree) collect_grad_agree(step);
 
             auto t0 = chrono::steady_clock::now();
             controller_update();
@@ -643,6 +710,48 @@ private:
             for (int k = 0; k < K_; k++) diag_scatter.insert(diag_scatter.end(), { hc[k], hr[k], hn[k] });
     }
 
+    // Gradient-agreement capstone (see grad_agree_flat docs). At the current decision
+    // state and warm plan, compute the smooth-model autodiff gradient (the direction
+    // the controller descends) and the TRUE hard-contact plant's central-difference
+    // sensitivity, then their cosine similarity. cos is scale-invariant, which is
+    // exactly right: the smooth and hard dynamics have different magnitudes but the
+    // mechanism question is whether they point the same way.
+    void collect_grad_agree(int step) {
+        // (a) smooth gradient: exactly grad_step_kernel's gradient, on GPU.
+        sync_start();
+        CUDA_CHECK(cudaMemcpy(d_nominal_, h_nominal_.data(), h_nominal_.size()*sizeof(float), cudaMemcpyHostToDevice));
+        grad_vec_kernel<<<1,1>>>(d_start_, d_nominal_, d_grad_, sc_.params, sc_.gx, sc_.gy, sc_.gth, T_);
+        CUDA_CHECK(cudaDeviceSynchronize());
+        vector<float> gs(T_*CTRL_DIM);
+        CUDA_CHECK(cudaMemcpy(gs.data(), d_grad_, gs.size()*sizeof(float), cudaMemcpyDeviceToHost));
+        // (b) hard-plant FD sensitivity: central difference on the true plant cost.
+        float start[STATE_DIM] = { px_, py_, ox_, oy_, oth_ };
+        vector<float> nom = h_nominal_, gh(T_*CTRL_DIM);
+        const float eps = 1e-2f;   // velocity units; hard plant has substeps -> not too small
+        for (int i = 0; i < T_*CTRL_DIM; i++) {
+            float saved = nom[i];
+            nom[i] = saved + eps; float cp = hard_rollout_cost(start, nom, T_, hard_p_, sc_.params, sc_.gx, sc_.gy, sc_.gth);
+            nom[i] = saved - eps; float cm = hard_rollout_cost(start, nom, T_, hard_p_, sc_.params, sc_.gx, sc_.gy, sc_.gth);
+            nom[i] = saved;        gh[i] = (cp - cm) / (2.0f*eps);
+        }
+        // cosine similarity over the full horizon and over the first applied control.
+        double dot=0, ns=0, nh=0, dot1=0, ns1=0, nh1=0;
+        for (int i=0;i<T_*CTRL_DIM;i++){ dot+=(double)gs[i]*gh[i]; ns+=(double)gs[i]*gs[i]; nh+=(double)gh[i]*gh[i]; }
+        for (int i=0;i<CTRL_DIM;i++){ dot1+=(double)gs[i]*gh[i]; ns1+=(double)gs[i]*gs[i]; nh1+=(double)gh[i]*gh[i]; }
+        float gnorm_s=(float)sqrt(ns), gnorm_h=(float)sqrt(nh);
+        float cos_full  = (ns>1e-18 && nh>1e-18) ? (float)(dot /(sqrt(ns )*sqrt(nh ))) : 0.0f;
+        float cos_first = (ns1>1e-18&& nh1>1e-18) ? (float)(dot1/(sqrt(ns1)*sqrt(nh1))) : 0.0f;
+        float rem_ang = ang_err();
+        // engaged = pusher in/near contact AND box still needs to rotate AND both
+        // gradients are non-negligible (so cos is a real direction comparison, not
+        // dominated by the tiny control-cost residual present when out of contact).
+        float pen = box_pen(px_, py_, ox_, oy_, oth_, sc_.params);
+        int engaged = (rem_ang > sc_.ang_tol && pen > -0.05f &&
+                       gnorm_s > 1e-2f && gnorm_h > 1e-2f) ? 1 : 0;
+        grad_agree_flat.insert(grad_agree_flat.end(),
+            { (float)step, cos_full, cos_first, gnorm_s, gnorm_h, rem_ang, (float)engaged });
+    }
+
     Variant v_; BoxScenario sc_; int K_, T_, seed_;
     HardParams hard_p_;                     // hard-contact params (true plant and/or fidelity-arm rollout)
     float px_=0,py_=0,ox_=0,oy_=0,oth_=0;
@@ -651,6 +760,7 @@ private:
     vector<float> h_nominal_;
     float *d_start_=nullptr,*d_nominal_=nullptr,*d_costs_=nullptr,*d_weights_=nullptr,*d_perturbed_=nullptr;
     float *d_rot_=nullptr,*d_netrot_=nullptr;
+    float *d_grad_=nullptr;                 // 2T smooth-model gradient (grad-agreement diag)
     curandState* d_rng_=nullptr;
 };
 
@@ -729,6 +839,7 @@ int main(int argc, char** argv) {
     vector<int> k_values; vector<string> scenario_names, planner_names; int seed_count=-1;
     int horizon=DEFAULT_T; string dump_traj_prefix=""; float plant_gain_scale=1.0f; float plant_size_scale=1.0f;
     string diag_prefix=""; bool true_plant_hard=false; float plant_mu=0.6f;
+    string grad_agree_prefix="";
     for (int i=1;i<argc;i++){ string a=argv[i];
         if (a=="--quick") quick=true;
         else if (a=="--csv"&&i+1<argc) csv_path=argv[++i];
@@ -751,6 +862,9 @@ int main(int argc, char** argv) {
         else if (a=="--true-plant"&&i+1<argc) true_plant_hard = (string(argv[++i])=="hard");
         // Coulomb friction of the hard true plant (only used with --true-plant hard).
         else if (a=="--mu"&&i+1<argc) plant_mu=(float)atof(argv[++i]);
+        // gradient-agreement capstone: sweep hard-plant friction and log cos(smooth
+        // autodiff gradient, true-plant FD sensitivity) at the visited states.
+        else if (a=="--grad-agreement"&&i+1<argc) grad_agree_prefix=argv[++i];
     }
     ensure_build_dir();
 
@@ -854,6 +968,61 @@ int main(int argc, char** argv) {
             printf("[diag] %-10s success=%d steps=%d  improve_frac=%.3f  contact_frac=%.3f  escape_frac=%.4f -> %s\n",
                    sc.name.c_str(), m.success, m.steps, nrows?sif/nrows:0.0, nrows?scf/nrows:0.0, nrows?sef/nrows:0.0, path.c_str());
         }
+        return 0;
+    }
+
+    // Gradient-agreement capstone: explain the sim-to-sim success boundary at the level
+    // of gradient DIRECTION. On box_pivot (the tight-tolerance rotation task with the
+    // friction boundary), run the paper's Diff-MPPI (diff_mppi_3) against the hard
+    // true plant while sweeping Coulomb friction mu. At each visited, contact-engaged
+    // state, measure cos between the smooth autodiff gradient the controller descends
+    // and the true plant's finite-difference cost sensitivity. The prediction (made
+    // before looking): cos is high at low mu (the smooth gradient agrees with what the
+    // true plant actually rewards, so the gradient helps) and falls as mu rises (the
+    // smooth model omits stick-slip, so its gradient increasingly misleads), tracking
+    // the success boundary. We report whatever the curve is -- agreement is the claim,
+    // not a guarantee. Seeds reuse the box_pivot/diff_mppi_3 indices (si=2, vi=2) so
+    // the trajectories are IDENTICAL to the sim-to-sim experiment.
+    if (!grad_agree_prefix.empty()) {
+        BoxScenario sc = make_box_pivot();
+        vector<float> mus = { 0.0f, 0.2f, 0.4f, 0.6f, 0.8f, 1.0f };
+        int Kga   = k_values.empty() ? 1024 : k_values.back();
+        int nseed = seed_count>0 ? seed_count : 8;
+        Variant v; v.name="diff_mppi_3"; v.grad_steps=3; v.alpha=0.010f;
+        string path = grad_agree_prefix + "_" + sc.name + ".csv";
+        ofstream out(path);
+        out << "# scenario=" << sc.name << " planner=diff_mppi_3 K=" << Kga
+            << " ang_tol=" << sc.ang_tol << " seeds=" << nseed
+            << "  cos(smooth-autodiff-grad, hard-plant-FD-sensitivity) over contact-engaged steps\n";
+        out << "mu,cos_full_mean,cos_full_std,cos_first_mean,n_engaged,success_rate,final_ang_mean\n";
+        printf("=== gradient-agreement capstone: cos(smooth grad, hard-plant FD sensitivity) vs mu ===\n");
+        printf("    scenario=%s planner=diff_mppi_3 K=%d seeds=%d ang_tol=%.3f\n",
+               sc.name.c_str(), Kga, nseed, sc.ang_tol);
+        for (float mu : mus) {
+            vector<float> cosv; double cos1_sum=0; int succ=0; double fang=0;
+            for (int seed=0; seed<nseed; seed++) {
+                EpisodeRunner runner(v, sc, Kga, horizon, (int)(6000 + 2*100 + 2*20 + seed*7 + Kga));
+                runner.true_plant_hard = true; runner.plant_mu = mu;
+                runner.record_grad_agree = true;
+                EpisodeMetrics m = runner.run();
+                succ += m.success; fang += m.min_goal_distance;
+                for (size_t k=0; k+6 < runner.grad_agree_flat.size(); k+=7)
+                    if (runner.grad_agree_flat[k+6] > 0.5f) {       // engaged
+                        cosv.push_back(runner.grad_agree_flat[k+1]); // cos_full
+                        cos1_sum += runner.grad_agree_flat[k+2];     // cos_first
+                    }
+            }
+            double mean=0, var=0;
+            for (float c : cosv) mean += c; if (!cosv.empty()) mean /= cosv.size();
+            for (float c : cosv) var += (c-mean)*(c-mean); if (cosv.size()>1) var /= (cosv.size()-1);
+            double cos1mean = cosv.empty()? 0.0 : cos1_sum/cosv.size();
+            double sr = (double)succ/nseed, fa = fang/nseed, sd = sqrt(var);
+            out << mu << "," << mean << "," << sd << "," << cos1mean << ","
+                << cosv.size() << "," << sr << "," << fa << "\n";
+            printf("  mu=%.2f  cos_full=%+.3f +/- %.3f  cos_first=%+.3f  n_engaged=%zu  success=%.2f  final_ang=%.3f\n",
+                   mu, mean, sd, cos1mean, cosv.size(), sr, fa);
+        }
+        printf("[grad-agreement] wrote %s\n", path.c_str());
         return 0;
     }
 

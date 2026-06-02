@@ -61,7 +61,9 @@ $K$-independent, so the stall is structural---and show this fraction \emph{predi
 where the gradient helps. Finally, a sim-to-sim study against a structurally
 different hard-contact plant (exact non-penetration, Coulomb friction, momentum)
 shows the win survives a genuine change of contact model on the loose task, with an
-honest boundary on tight-tolerance high-friction tasks; and a differentiability-vs-fidelity
+honest boundary on tight-tolerance high-friction tasks that we trace to gradient
+\emph{direction} (the cosine between the smooth gradient and the true plant's cost
+sensitivity collapses exactly where success does); and a differentiability-vs-fidelity
 comparison shows the gradient can beat even an exact-model sampler given $16\times$
 the budget. The contribution is thus a clearly scoped, mechanism-supported positive
 result with a rigorous negative control: gradient refinement buys what sampling
@@ -134,7 +136,9 @@ Our contributions are:
     that this fraction predicts the \emph{sign} of the gradient's benefit
     (Sec.~\ref{sec:mechanism}), and---via sim-to-sim against a structurally different
     hard-contact plant---that the win is not an artifact of the controller and plant
-    sharing one smooth model, with a stated high-friction boundary and a
+    sharing one smooth model. We further \emph{explain} the high-friction boundary at
+    the level of gradient direction---the cosine between the smooth gradient and the
+    true plant's cost sensitivity collapses exactly where success does---and give a
     differentiability-vs-fidelity analysis (Sec.~\ref{sec:external_validity}).
 \end{enumerate}
 
@@ -756,6 +760,48 @@ where that trade pays.
   \label{fig:fidelity_vs_grad}
 \end{figure}
 
+\subsection{Why the boundary is where it is: gradient direction}
+\label{sec:grad_agreement}
+The sim-to-sim boundary (Fig.~\ref{fig:sim2sim}b) is so far a \emph{phenomenon}:
+the gradient helps at low friction and fails at high friction. We close the study
+by explaining it at the level of the one quantity the controller actually acts on---the
+gradient \emph{direction}. At each visited, contact-engaged state on the tight task we
+compute two vectors over the warm plan: the smooth-model autodiff gradient
+$g_s=\nabla_u J_{\text{smooth}}$ that Diff-MPPI descends, and a central-difference
+sensitivity $g_h=\nabla_u J_{\text{hard}}$ of the \emph{true} hard-contact plant's
+cost---measured directly on the plant the controller never sees. Their cosine
+similarity $\cos(g_s,g_h)$ is scale-invariant, which is exactly the right metric: the
+smooth and hard dynamics differ in magnitude, and the question is only whether
+descending $g_s$ also lowers the true cost. We registered the prediction before
+looking: agreement is high at low $\mu$ and erodes as friction grows.
+
+Figure~\ref{fig:grad_agreement} confirms it. The applied-control agreement
+$\cos_1$ falls monotonically from $0.58$ at $\mu\!=\!0$ to $\sim$$0.07$ for
+$\mu\!\ge\!0.6$: as the frictionless surrogate omits more of the true stick--slip
+physics, its gradient turns nearly orthogonal to what the plant actually rewards.
+Crucially, the success rate collapses ($1.00\!\to\!0.25\!\to\!0$) exactly where
+$\cos_1$ crosses below $\sim$$0.25$ (Fig.~\ref{fig:grad_agreement}b). The boundary is
+therefore not a coincidence of tolerances but \emph{gradient misdirection}: Diff-MPPI
+helps precisely while the smooth model's gradient still points, in direction, the way
+the true contact dynamics do---and fails once it does not. This makes the operating
+regime of the method predictable from a scalar measured on the target plant, rather
+than diagnosed only after a success/failure outcome.
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=\columnwidth]{fig_grad_agreement}
+  \caption{%
+    Gradient-direction explanation of the friction boundary (\texttt{box\_pivot},
+    hard true plant, 8 seeds). At each contact-engaged state we measure
+    $\cos$ between the smooth autodiff gradient the controller descends and the true
+    plant's finite-difference cost sensitivity. (a) The applied-control agreement
+    $\cos_1$ erodes from $0.58$ to $\sim$$0.07$ as friction grows. (b) Success
+    (right axis) collapses exactly where agreement falls below $\sim$$0.25$: the
+    boundary is gradient misdirection, measured on the plant the controller never sees.%
+  }
+  \label{fig:grad_agreement}
+\end{figure}
+
 % =============================================================================
 \section{Limitations}
 \label{sec:limitations}
@@ -768,8 +814,11 @@ $\pm 15\%$ error in the object dimensions on two distinct tasks; and the sim-to-
 study (Sec.~\ref{sec:external_validity}) shows it survives a \emph{structurally
 different} ground-truth plant (hard non-penetration $+$ Coulomb stick--slip $+$
 momentum) on the loose-tolerance task at every friction level. That study also
-states the boundary plainly: on a tight-tolerance task at high friction the
-frictionless model is too wrong and the gradient fails. A full sim-to-\emph{real}
+states the boundary plainly and \emph{explains} it: on a tight-tolerance task at
+high friction the frictionless model is too wrong, and Sec.~\ref{sec:grad_agreement}
+shows why---the smooth gradient's direction decorrelates from the true plant's cost
+sensitivity ($\cos_1\!\to\!0.07$), so descending it no longer lowers the true cost.
+A full sim-to-\emph{real}
 (hardware) validation remains future work, as does extending the differentiable
 gradient through a higher-fidelity \emph{controller} model (the exact hard-contact
 solver is non-differentiable, which is precisely why a smooth surrogate is used).

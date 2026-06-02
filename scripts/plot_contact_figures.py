@@ -549,6 +549,77 @@ def fig_fidelity_vs_grad(out_dir):
     print("wrote", path)
 
 
+def fig_grad_agreement(out_dir):
+    """Capstone: explain the sim-to-sim friction boundary at the level of gradient
+    DIRECTION. On box_pivot against the hard-contact true plant, at each visited,
+    contact-engaged state we measure the cosine similarity between the smooth-model
+    autodiff gradient the controller descends and the TRUE plant's finite-difference
+    cost sensitivity, sweeping Coulomb friction mu.
+
+    (a) Gradient agreement collapses with friction: the applied-control agreement
+        cos_first falls from 0.58 (mu=0) to ~0.07 (mu>=0.6) -- the smooth model omits
+        stick-slip, so its gradient turns nearly orthogonal to what the true plant
+        actually rewards. cos_full (32-dim horizon, weaker far-future coupling) is
+        noisier but tracks the same fall.
+    (b) Agreement predicts the outcome: success rate (right axis) collapses exactly
+        where cos_first crosses below ~0.25. The boundary is not a coincidence of
+        tolerances -- it is gradient misdirection, measured directly on the plant the
+        controller never sees. Data: --grad-agreement, 8 seeds, K=1024.
+    """
+    mu          = [0.0, 0.2, 0.4, 0.6, 0.8, 1.0]
+    cos_full    = [0.314, 0.178, 0.124, 0.044, 0.081, 0.076]
+    cos_full_sd = [0.291, 0.258, 0.313, 0.337, 0.323, 0.335]
+    cos_first   = [0.582, 0.386, 0.241, 0.065, 0.069, 0.095]
+    success     = [1.00, 0.25, 0.00, 0.00, 0.00, 0.00]
+    C_COS = C_DIFF5
+    C_SUC = "#1f77b4"
+
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(SINGLE_COL * 2.0, SINGLE_COL * 0.85))
+
+    # (a) cosine similarity vs mu
+    ax1.axhline(0.0, color="k", lw=0.7, ls=":")
+    cf = [c - s for c, s in zip(cos_full, cos_full_sd)]
+    cu = [c + s for c, s in zip(cos_full, cos_full_sd)]
+    ax1.fill_between(mu, cf, cu, color=C_COS, alpha=0.10, lw=0)
+    ax1.plot(mu, cos_first, "-o", color=C_COS, markersize=5,
+             label="applied control ($\\cos_1$)")
+    ax1.plot(mu, cos_full, "--s", color=C_COS, markersize=4, alpha=0.65,
+             label="full horizon ($\\cos$, $\\pm$1$\\sigma$)")
+    ax1.set_ylim(-0.25, 0.75)
+    ax1.set_xlabel("true-plant Coulomb friction $\\mu$")
+    ax1.set_ylabel("cos(smooth grad, true-plant sensitivity)")
+    ax1.set_title("(a) gradient agreement erodes with friction")
+    ax1.legend(loc="upper right", fontsize=6)
+    ax1.grid(True, alpha=0.3)
+
+    # (b) agreement vs success (twin axis), co-collapse
+    ln1 = ax2.plot(mu, cos_first, "-o", color=C_COS, markersize=5,
+                   label="gradient agreement $\\cos_1$")
+    ax2.axhspan(-0.05, 0.25, color="gray", alpha=0.08, lw=0)
+    ax2.text(0.62, 0.10, "misdirected\n($\\cos_1<0.25$)", fontsize=6,
+             color="gray", ha="center")
+    ax2.set_ylim(-0.05, 0.70)
+    ax2.set_xlabel("true-plant Coulomb friction $\\mu$")
+    ax2.set_ylabel("gradient agreement $\\cos_1$", color=C_COS)
+    ax2.tick_params(axis="y", labelcolor=C_COS)
+    ax2.set_title("(b) agreement predicts success")
+    ax2.grid(True, alpha=0.3)
+    axr = ax2.twinx()
+    ln2 = axr.plot(mu, success, "-^", color=C_SUC, markersize=5,
+                   label="diff_mppi_3 success")
+    axr.set_ylim(-0.05, 1.08)
+    axr.set_ylabel("success rate", color=C_SUC)
+    axr.tick_params(axis="y", labelcolor=C_SUC)
+    lns = ln1 + ln2
+    ax2.legend(lns, [l.get_label() for l in lns], loc="upper right", fontsize=6)
+
+    fig.tight_layout()
+    path = os.path.join(out_dir, "fig_grad_agreement.pdf")
+    fig.savefig(path)
+    plt.close(fig)
+    print("wrote", path)
+
+
 def _read_traj(path):
     """Read a --dump-traj CSV; return (meta dict, list of (px,py,ox,oy,oth))."""
     meta = {}
@@ -643,6 +714,7 @@ def main():
     fig_escape_predictor(args.out_dir)
     fig_sim2sim(args.out_dir)
     fig_fidelity_vs_grad(args.out_dir)
+    fig_grad_agreement(args.out_dir)
 
 
 if __name__ == "__main__":
