@@ -471,6 +471,82 @@ static FilterRegResult filterreg(const std::vector<float>& X, const std::vector<
     return res;
 }
 
+// ============================ convergence GIF ============================
+// Orbiting 3D view of the source cloud (orange) locking onto the fixed cloud
+// (cyan) as the pose trajectory plays back.  Painter's-algorithm depth sorting
+// with depth-cued brightness gives a clean 3D look.
+static void render_gif(const std::vector<float>& X, const std::vector<float>& Y,
+                       const std::vector<Pose>& traj) {
+    const int W = 1280, H = 720;
+    const int CX = 380, CY = 360;           // 3D viewport centre
+    const float SCALE = 78.f;
+    // subsample for clean, fast rendering
+    auto sub = [](const std::vector<float>& P, int stride) {
+        std::vector<float> q; for (size_t i = 0; i < P.size()/3; i += stride) {
+            q.push_back(P[i*3]); q.push_back(P[i*3+1]); q.push_back(P[i*3+2]); } return q; };
+    std::vector<float> Xs = sub(X, 4), Ys = sub(Y, 4);
+
+    if (system("mkdir -p tmp") != 0) std::fprintf(stderr, "warning: mkdir tmp failed\n");
+    cv::VideoWriter video("tmp/gpu_filterreg.avi", cv::VideoWriter::fourcc('M','J','P','G'), 20,
+                          cv::Size(W, H));
+    const float elev = 0.42f;
+    int ntraj = (int)traj.size();
+    const int HOLD = 26;
+    int nframes = ntraj + HOLD;
+    struct Splat { float sx, sy, depth; cv::Scalar col; };
+    for (int f = 0; f < nframes; ++f) {
+        int k = std::min(f, ntraj - 1);
+        float az = 0.6f + f * 0.018f;       // slow orbit
+        cv::Mat img(H, W, CV_8UC3, cv::Scalar(26, 26, 32));
+        const Pose& T = traj[k];
+        float ca = std::cos(az), sa = std::sin(az), ce = std::cos(elev), se = std::sin(elev);
+        auto project = [&](float x, float y, float z, float& sx, float& sy, float& depth) {
+            float x1 = x*ca - y*sa, y1 = x*sa + y*ca, z1 = z;
+            sx = CX + SCALE * x1;
+            sy = CY - SCALE * (z1*ce - y1*se);
+            depth = y1*ce + z1*se;
+        };
+        std::vector<Splat> sp; sp.reserve(Xs.size()/3 + Ys.size()/3);
+        for (size_t i = 0; i < Xs.size()/3; ++i) {
+            Splat s; project(Xs[i*3], Xs[i*3+1], Xs[i*3+2], s.sx, s.sy, s.depth);
+            s.col = cv::Scalar(210, 180, 60); sp.push_back(s);     // fixed: cyan-ish (BGR)
+        }
+        for (size_t i = 0; i < Ys.size()/3; ++i) {
+            float y0[3] = {Ys[i*3], Ys[i*3+1], Ys[i*3+2]}, p[3]; pose_apply(T, y0, p);
+            Splat s; project(p[0], p[1], p[2], s.sx, s.sy, s.depth);
+            s.col = cv::Scalar(40, 130, 240); sp.push_back(s);     // source: orange (BGR)
+        }
+        std::sort(sp.begin(), sp.end(), [](const Splat&a, const Splat&b){ return a.depth < b.depth; });
+        float dmin=1e9f, dmax=-1e9f; for (auto&s:sp){ dmin=std::min(dmin,s.depth); dmax=std::max(dmax,s.depth);}
+        for (auto& s : sp) {
+            float t = (s.depth - dmin) / (dmax - dmin + 1e-6f);    // 0 far .. 1 near
+            float b = 0.45f + 0.55f*t;
+            cv::circle(img, cv::Point((int)s.sx, (int)s.sy), 2, s.col*b, -1, cv::LINE_AA);
+        }
+        // info panel
+        int px = 800, py = 70;
+        auto put = [&](const std::string& s, int yy, double sc, cv::Scalar c, int th){
+            cv::putText(img, s, cv::Point(px, yy), cv::FONT_HERSHEY_SIMPLEX, sc, c, th, cv::LINE_AA); };
+        put("GPU FilterReg", py, 1.0, cv::Scalar(235,235,245), 2); py += 38;
+        put("probabilistic registration", py, 0.62, cv::Scalar(180,180,200), 1); py += 50;
+        cv::circle(img, cv::Point(px+8, py-6), 6, cv::Scalar(210,180,60), -1);
+        cv::putText(img, "fixed cloud", cv::Point(px+26, py), cv::FONT_HERSHEY_SIMPLEX, 0.6, cv::Scalar(200,200,210), 1, cv::LINE_AA); py += 30;
+        cv::circle(img, cv::Point(px+8, py-6), 6, cv::Scalar(40,130,240), -1);
+        cv::putText(img, "source (aligning)", cv::Point(px+26, py), cv::FONT_HERSHEY_SIMPLEX, 0.6, cv::Scalar(200,200,210), 1, cv::LINE_AA); py += 52;
+        char buf[128];
+        std::snprintf(buf, sizeof(buf), "iteration %d / %d", k, ntraj-1);
+        put(buf, py, 0.62, cv::Scalar(210,210,225), 1); py += 40;
+        put("E-step: Gaussian filter (O(N+M))", py, 0.5, cv::Scalar(150,200,150), 1); py += 26;
+        put("M-step: SE(3) twist Gauss-Newton", py, 0.5, cv::Scalar(150,200,150), 1); py += 26;
+        put("coarse-to-fine sigma annealing", py, 0.5, cv::Scalar(150,200,150), 1); py += 44;
+        if (f >= nframes - HOLD) put("ALIGNED", py, 0.8, cv::Scalar(120,230,250), 2);
+        video.write(img);
+    }
+    video.release();
+    avi_to_gif("tmp/gpu_filterreg.avi", "gif/gpu_filterreg.gif", 20, 900);
+    std::printf("wrote gif/gpu_filterreg.gif\n");
+}
+
 }  // namespace cudabot
 
 // ============================ verification main ============================
@@ -508,8 +584,9 @@ int main() {
 
     // we recover the transform that maps SOURCE onto FIXED, i.e. inverse of Tgt.
     Pose T0; T0.R = {1,0,0, 0,1,0, 0,0,1}; T0.t[0]=T0.t[1]=T0.t[2]=0;
+    std::vector<Pose> traj;
     auto t0 = std::chrono::high_resolution_clock::now();
-    FilterRegResult res = filterreg(X, Y, T0);
+    FilterRegResult res = filterreg(X, Y, T0, &traj);
     auto t1 = std::chrono::high_resolution_clock::now();
     double ms = std::chrono::duration<double, std::milli>(t1 - t0).count();
 
@@ -532,5 +609,7 @@ int main() {
         std::printf("RESULT: PASS -- FilterReg recovered the known transform.\n");
     else
         std::printf("RESULT: CHECK -- transform not recovered within tolerance.\n");
+
+    if (!zero && !easy) render_gif(X, Y, traj);
     return 0;
 }
