@@ -79,6 +79,20 @@ struct Variant {
     float sigma = 0.6f;
     float lambda = 5.0f;
     bool hard_rollout = false;   // sample with the exact hard-contact model (fidelity arm)
+    bool use_low_pass_sampling = false;
+    float lp_alpha = 0.35f;
+    bool use_soppi_sampling = false;
+    int soppi_svgd_iters = 1;
+    float soppi_step_size = 0.06f;
+    float soppi_bandwidth = 2.0f;
+    int soppi_neighbor_count = 0; // 0 = all particles; >0 = deterministic particle subset
+    bool use_object_informed = false;
+    float oi_ref_weight_pos = 1.5f;
+    float oi_ref_weight_ang = 3.0f;
+    float oi_obj_speed = 1.2f;
+    float oi_ang_speed = 1.2f;
+    float oi_seed_blend = 0.10f;
+    float oi_contact_margin = 0.04f;
 };
 
 struct EpisodeMetrics {
@@ -88,13 +102,14 @@ struct EpisodeMetrics {
     int reached_goal = 0, collision_free = 1, success = 0, steps = 0;
     float final_distance = 0.0f, min_goal_distance = 0.0f, cumulative_cost = 0.0f;
     int collisions = 0;
+    float mean_control_delta = 0.0f, control_roughness = 0.0f;
     float avg_control_ms = 0.0f, total_control_ms = 0.0f, episode_ms = 0.0f;
     long long sample_budget = 0;
 };
 
 struct SummaryStats {
     int episodes = 0, successes = 0;
-    double steps_sum = 0, final_sum = 0, min_sum = 0, cost_sum = 0, ms_sum = 0, ang_sum = 0;
+    double steps_sum = 0, final_sum = 0, min_sum = 0, cost_sum = 0, ms_sum = 0, ang_sum = 0, du_sum = 0, rough_sum = 0;
 };
 
 __host__ __device__ inline float clampf_local(float x, float lo, float hi) { return fminf(fmaxf(x, lo), hi); }
@@ -247,6 +262,21 @@ __host__ __device__ inline float terminal_cost_box_f(
     return p.w_term_pos * (dpx*dpx + dpy*dpy) + p.w_term_ang * (dth*dth);
 }
 
+__host__ __device__ inline void object_ref_box_f(
+    float ox0, float oy0, float oth0, float gx, float gy, float gth,
+    float dt, float obj_speed, float ang_speed, int step,
+    float& rx, float& ry, float& rth)
+{
+    float dx = gx - ox0, dy = gy - oy0;
+    float dist = sqrtf(dx*dx + dy*dy + 1e-9f);
+    float travel = fminf(dist, fmaxf(0.0f, obj_speed) * dt * static_cast<float>(step));
+    rx = ox0 + dx / dist * travel;
+    ry = oy0 + dy / dist * travel;
+    float need = wrapf(gth - oth0);
+    float astep = fminf(fabsf(need), fmaxf(0.0f, ang_speed) * dt * static_cast<float>(step));
+    rth = wrapf(oth0 + (need >= 0.0f ? astep : -astep));
+}
+
 // ===================== Dualf helpers + dynamics (gradient) =====================
 __device__ inline Dualf d_abs(const Dualf& x) { return x.val >= 0.0f ? x : (Dualf::constant(0.0f) - x); }
 __device__ inline Dualf d_relu(const Dualf& x) { return x.val > 0.0f ? x : Dualf::constant(0.0f); }
@@ -343,6 +373,96 @@ __global__ void rollout_kernel(
     cost += terminal_cost_box_f(ox, oy, oth, gx, gy, gth, p);
     d_costs[k] = cost;
     d_rng[k] = rng;
+}
+
+__global__ void rollout_low_pass_kernel(
+    const float* d_start, const float* d_nominal, float* d_costs, float* d_perturbed,
+    curandState* d_rng, BoxParams p, float gx, float gy, float gth, int K, int T, float sigma, float lp_alpha)
+{
+    int k = blockIdx.x * blockDim.x + threadIdx.x;
+    if (k >= K) return;
+    curandState rng = d_rng[k];
+    float px=d_start[0], py=d_start[1], ox=d_start[2], oy=d_start[3], oth=d_start[4];
+    float cost = 0.0f;
+    float fx = 0.0f, fy = 0.0f;
+    float alpha = clampf_local(lp_alpha, 0.02f, 1.0f);
+    float beta = 1.0f - alpha;
+    float variance_gain = sqrtf((2.0f - alpha) / alpha);
+    for (int t = 0; t < T; t++) {
+        fx = beta * fx + alpha * curand_normal(&rng);
+        fy = beta * fy + alpha * curand_normal(&rng);
+        float ux = d_nominal[t*2+0] + fx * variance_gain * sigma;
+        float uy = d_nominal[t*2+1] + fy * variance_gain * sigma;
+        ux = clampf_local(ux, -p.u_max, p.u_max);
+        uy = clampf_local(uy, -p.u_max, p.u_max);
+        d_perturbed[k*T*2 + t*2 + 0] = ux;
+        d_perturbed[k*T*2 + t*2 + 1] = uy;
+        push_step_box_f(px, py, ox, oy, oth, ux, uy, p);
+        cost += stage_cost_box_f(px, py, ox, oy, oth, ux, uy, gx, gy, gth, p);
+    }
+    cost += terminal_cost_box_f(ox, oy, oth, gx, gy, gth, p);
+    d_costs[k] = cost;
+    d_rng[k] = rng;
+}
+
+__global__ void rollout_object_informed_kernel(
+    const float* d_start, const float* d_nominal, float* d_costs, float* d_perturbed,
+    curandState* d_rng, BoxParams p, float gx, float gy, float gth, int K, int T,
+    float sigma, bool use_low_pass, float lp_alpha, float oi_ref_weight_pos,
+    float oi_ref_weight_ang, float oi_obj_speed, float oi_ang_speed)
+{
+    int k = blockIdx.x * blockDim.x + threadIdx.x;
+    if (k >= K) return;
+    curandState rng = d_rng[k];
+    const float ox0=d_start[2], oy0=d_start[3], oth0=d_start[4];
+    float px=d_start[0], py=d_start[1], ox=ox0, oy=oy0, oth=oth0;
+    float cost = 0.0f;
+    float fx = 0.0f, fy = 0.0f;
+    float alpha = clampf_local(lp_alpha, 0.02f, 1.0f);
+    float beta = 1.0f - alpha;
+    float variance_gain = use_low_pass ? sqrtf((2.0f - alpha) / alpha) : 1.0f;
+    for (int t = 0; t < T; t++) {
+        float nx = curand_normal(&rng);
+        float ny = curand_normal(&rng);
+        if (use_low_pass) {
+            fx = beta * fx + alpha * nx;
+            fy = beta * fy + alpha * ny;
+            nx = fx * variance_gain;
+            ny = fy * variance_gain;
+        }
+        float ux = clampf_local(d_nominal[t*2+0] + nx * sigma, -p.u_max, p.u_max);
+        float uy = clampf_local(d_nominal[t*2+1] + ny * sigma, -p.u_max, p.u_max);
+        d_perturbed[k*T*2 + t*2 + 0] = ux;
+        d_perturbed[k*T*2 + t*2 + 1] = uy;
+        push_step_box_f(px, py, ox, oy, oth, ux, uy, p);
+        cost += stage_cost_box_f(px, py, ox, oy, oth, ux, uy, gx, gy, gth, p);
+        float rx, ry, rth;
+        object_ref_box_f(ox0, oy0, oth0, gx, gy, gth, p.dt, oi_obj_speed, oi_ang_speed, t + 1, rx, ry, rth);
+        float ex = ox - rx, ey = oy - ry, eth = wrapf(oth - rth);
+        cost += (fmaxf(0.0f, oi_ref_weight_pos) * (ex*ex + ey*ey) +
+                 fmaxf(0.0f, oi_ref_weight_ang) * eth*eth) * p.dt;
+    }
+    cost += terminal_cost_box_f(ox, oy, oth, gx, gy, gth, p);
+    d_costs[k] = cost;
+    d_rng[k] = rng;
+}
+
+__global__ void fixed_rollout_kernel(
+    const float* d_start, const float* d_controls, float* d_costs,
+    BoxParams p, float gx, float gy, float gth, int K, int T)
+{
+    int k = blockIdx.x * blockDim.x + threadIdx.x;
+    if (k >= K) return;
+    float px=d_start[0], py=d_start[1], ox=d_start[2], oy=d_start[3], oth=d_start[4];
+    float cost = 0.0f;
+    for (int t = 0; t < T; t++) {
+        float ux = clampf_local(d_controls[k*T*2 + t*2 + 0], -p.u_max, p.u_max);
+        float uy = clampf_local(d_controls[k*T*2 + t*2 + 1], -p.u_max, p.u_max);
+        push_step_box_f(px, py, ox, oy, oth, ux, uy, p);
+        cost += stage_cost_box_f(px, py, ox, oy, oth, ux, uy, gx, gy, gth, p);
+    }
+    cost += terminal_cost_box_f(ox, oy, oth, gx, gy, gth, p);
+    d_costs[k] = cost;
 }
 
 // Fidelity-arm rollout: the sampler predicts with the EXACT hard-contact plant model
@@ -502,6 +622,63 @@ __global__ void grad_vec_kernel(
         d_grad[kp] = dcost_dparam_box(start, d_nominal, T, kp, gx, gy, gth, p);
 }
 
+__global__ void sample_grad_kernel(
+    const float* d_start, const float* d_controls, float* d_control_grads,
+    BoxParams p, float gx, float gy, float gth, int K, int T)
+{
+    int k = blockIdx.x * blockDim.x + threadIdx.x;
+    if (k >= K) return;
+    float start[STATE_DIM] = { d_start[0], d_start[1], d_start[2], d_start[3], d_start[4] };
+    const float* controls = &d_controls[k*T*CTRL_DIM];
+    for (int param = 0; param < T*CTRL_DIM; param++)
+        d_control_grads[k*T*CTRL_DIM + param] = dcost_dparam_box(start, controls, T, param, gx, gy, gth, p);
+}
+
+__global__ void soppi_svgd_step_kernel(
+    const float* d_controls, float* d_controls_next, const float* d_control_grads,
+    BoxParams p, int K, int T, int neighbor_count,
+    float lambda, float bandwidth, float step_size, float sigma)
+{
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    int total = K * T;
+    if (idx >= total) return;
+
+    const float noise = fmaxf(0.05f, sigma);
+    const float h = fmaxf(0.10f, bandwidth);
+    int k = idx / T;
+    int t = idx - k * T;
+    int base = k*T*CTRL_DIM + t*CTRL_DIM;
+    float ux_i = d_controls[base + 0];
+    float uy_i = d_controls[base + 1];
+    int neighbor_samples = K;
+    if (neighbor_count > 0 && neighbor_count < K) neighbor_samples = neighbor_count;
+    int stride = K / neighbor_samples;
+    if (stride < 1) stride = 1;
+
+    float phi_x = 0.0f;
+    float phi_y = 0.0f;
+    for (int m = 0; m < neighbor_samples; m++) {
+        int j = neighbor_count > 0 ? (k + m * stride) % K : m;
+        int jbase = j*T*CTRL_DIM + t*CTRL_DIM;
+        float ux_j = d_controls[jbase + 0];
+        float uy_j = d_controls[jbase + 1];
+        float dx = (ux_j - ux_i) / noise;
+        float dy = (uy_j - uy_i) / noise;
+        float k_rbf = expf(-(dx*dx + dy*dy) / h);
+
+        float score_x = -clampf_local(d_control_grads[jbase + 0] / fmaxf(lambda, 1.0e-3f), -25.0f, 25.0f);
+        float score_y = -clampf_local(d_control_grads[jbase + 1] / fmaxf(lambda, 1.0e-3f), -25.0f, 25.0f);
+        float repel_x = -2.0f * k_rbf * dx / (h * noise);
+        float repel_y = -2.0f * k_rbf * dy / (h * noise);
+        phi_x += k_rbf * score_x + repel_x;
+        phi_y += k_rbf * score_y + repel_y;
+    }
+    phi_x /= fmaxf(1.0f, static_cast<float>(neighbor_samples));
+    phi_y /= fmaxf(1.0f, static_cast<float>(neighbor_samples));
+    d_controls_next[base + 0] = clampf_local(ux_i + clampf_local(step_size * phi_x, -0.35f, 0.35f), -p.u_max, p.u_max);
+    d_controls_next[base + 1] = clampf_local(uy_i + clampf_local(step_size * phi_y, -0.35f, 0.35f), -p.u_max, p.u_max);
+}
+
 // ======================== Episode Runner ========================
 class EpisodeRunner {
 public:
@@ -565,12 +742,18 @@ public:
         CUDA_CHECK(cudaMalloc(&d_rot_, K_*sizeof(float)));
         CUDA_CHECK(cudaMalloc(&d_netrot_, K_*sizeof(float)));
         CUDA_CHECK(cudaMalloc(&d_grad_, T_*CTRL_DIM*sizeof(float)));
+        if (v_.use_soppi_sampling) {
+            CUDA_CHECK(cudaMalloc(&d_soppi_scratch_, K_*T_*CTRL_DIM*sizeof(float)));
+            CUDA_CHECK(cudaMalloc(&d_soppi_grad_, K_*T_*CTRL_DIM*sizeof(float)));
+        }
         reset_rng();
     }
     ~EpisodeRunner() {
         cudaFree(d_start_); cudaFree(d_nominal_); cudaFree(d_costs_);
         cudaFree(d_weights_); cudaFree(d_perturbed_); cudaFree(d_rng_);
         cudaFree(d_rot_); cudaFree(d_netrot_); cudaFree(d_grad_);
+        if (d_soppi_scratch_) cudaFree(d_soppi_scratch_);
+        if (d_soppi_grad_) cudaFree(d_soppi_grad_);
     }
 
     EpisodeMetrics run() {
@@ -601,6 +784,11 @@ public:
 
         auto ep0 = chrono::steady_clock::now();
         float ctrl_ms = 0.0f;
+        float prev_ux = 0.0f, prev_uy = 0.0f;
+        bool have_prev_control = false;
+        float control_delta_sum = 0.0f;
+        float control_roughness_sum = 0.0f;
+        int control_delta_count = 0;
         if (record_traj) { traj_flat.clear();
             traj_flat.insert(traj_flat.end(), {px_,py_,ox_,oy_,oth_}); }
         for (int step = 0; step < sc_.max_steps; step++) {
@@ -623,6 +811,16 @@ public:
             if (record_diag) collect_diag(step);
 
             CUDA_CHECK(cudaMemcpy(h_nominal_.data(), d_nominal_, h_nominal_.size()*sizeof(float), cudaMemcpyDeviceToHost));
+            if (have_prev_control) {
+                float dux = h_nominal_[0] - prev_ux;
+                float duy = h_nominal_[1] - prev_uy;
+                control_delta_sum += sqrtf(dux*dux + duy*duy);
+                control_roughness_sum += dux*dux + duy*duy;
+                control_delta_count++;
+            }
+            prev_ux = h_nominal_[0];
+            prev_uy = h_nominal_[1];
+            have_prev_control = true;
             if (true_plant_hard)
                 push_step_box_hard_f(px_, py_, ox_, oy_, oth_, vx_, vy_, w_, h_nominal_[0], h_nominal_[1], hard_p);
             else
@@ -643,6 +841,8 @@ public:
         m.reached_goal = reached_?1:0; m.success = reached_?1:0;
         m.steps=steps_; m.final_distance=pd; m.min_goal_distance=ad;  // store final ang err in min col
         m.cumulative_cost=cum_cost_;
+        m.mean_control_delta = control_delta_count > 0 ? control_delta_sum / control_delta_count : 0.0f;
+        m.control_roughness = control_delta_count > 0 ? control_roughness_sum / control_delta_count : 0.0f;
         m.total_control_ms=ctrl_ms; m.avg_control_ms = steps_>0? ctrl_ms/steps_ : 0.0f;
         m.episode_ms = chrono::duration<float, milli>(ep1 - ep0).count();
         m.sample_budget = (long long)steps_ * K_ * T_;
@@ -657,12 +857,40 @@ private:
     void sync_start() { float s[STATE_DIM]={px_,py_,ox_,oy_,oth_}; CUDA_CHECK(cudaMemcpy(d_start_, s, STATE_DIM*sizeof(float), cudaMemcpyHostToDevice)); }
     void controller_update() {
         sync_start();
+        seed_object_informed_nominal();
         CUDA_CHECK(cudaMemcpy(d_nominal_, h_nominal_.data(), h_nominal_.size()*sizeof(float), cudaMemcpyHostToDevice));
         int b=256;
         if (v_.hard_rollout)   // fidelity arm: sample with the exact hard-contact model (no gradient)
             rollout_kernel_hard<<<(K_+b-1)/b,b>>>(d_start_, d_nominal_, d_costs_, d_perturbed_, d_rng_, sc_.params, hard_p_, sc_.gx, sc_.gy, sc_.gth, K_, T_, v_.sigma);
+        else if (v_.use_object_informed)
+            rollout_object_informed_kernel<<<(K_+b-1)/b,b>>>(
+                d_start_, d_nominal_, d_costs_, d_perturbed_, d_rng_,
+                sc_.params, sc_.gx, sc_.gy, sc_.gth, K_, T_, v_.sigma,
+                v_.use_low_pass_sampling, v_.lp_alpha, v_.oi_ref_weight_pos,
+                v_.oi_ref_weight_ang, v_.oi_obj_speed, v_.oi_ang_speed);
+        else if (v_.use_low_pass_sampling)
+            rollout_low_pass_kernel<<<(K_+b-1)/b,b>>>(
+                d_start_, d_nominal_, d_costs_, d_perturbed_, d_rng_,
+                sc_.params, sc_.gx, sc_.gy, sc_.gth, K_, T_, v_.sigma, v_.lp_alpha);
         else
             rollout_kernel<<<(K_+b-1)/b,b>>>(d_start_, d_nominal_, d_costs_, d_perturbed_, d_rng_, sc_.params, sc_.gx, sc_.gy, sc_.gth, K_, T_, v_.sigma);
+        if (v_.use_soppi_sampling) {
+            int total_particles = K_ * T_;
+            for (int iter = 0; iter < max(1, v_.soppi_svgd_iters); iter++) {
+                sample_grad_kernel<<<(K_+b-1)/b,b>>>(
+                    d_start_, d_perturbed_, d_soppi_grad_,
+                    sc_.params, sc_.gx, sc_.gy, sc_.gth, K_, T_);
+                soppi_svgd_step_kernel<<<(total_particles+b-1)/b,b>>>(
+                    d_perturbed_, d_soppi_scratch_, d_soppi_grad_,
+                    sc_.params, K_, T_, v_.soppi_neighbor_count,
+                    v_.lambda, v_.soppi_bandwidth, v_.soppi_step_size, v_.sigma);
+                CUDA_CHECK(cudaMemcpy(d_perturbed_, d_soppi_scratch_,
+                                      K_*T_*CTRL_DIM*sizeof(float), cudaMemcpyDeviceToDevice));
+                fixed_rollout_kernel<<<(K_+b-1)/b,b>>>(
+                    d_start_, d_perturbed_, d_costs_,
+                    sc_.params, sc_.gx, sc_.gy, sc_.gth, K_, T_);
+            }
+        }
         weights_kernel<<<1,1>>>(d_costs_, d_weights_, K_, v_.lambda);
         update_kernel<<<(T_+b-1)/b,b>>>(d_nominal_, d_perturbed_, d_weights_, K_, T_);
         for (int g = 0; g < v_.grad_steps; g++)
@@ -670,6 +898,42 @@ private:
         CUDA_CHECK(cudaDeviceSynchronize());
     }
     void warmup() { for (int i = 0; i < 3; i++) controller_update(); }
+
+    void seed_object_informed_nominal() {
+        if (!v_.use_object_informed || v_.oi_seed_blend <= 0.0f) return;
+        const BoxParams& p = sc_.params;
+        float blend = clampf_local(v_.oi_seed_blend, 0.0f, 1.0f);
+        float sim_px = px_, sim_py = py_;
+        float dxg = sc_.gx - ox_, dyg = sc_.gy - oy_;
+        float dg = sqrtf(dxg*dxg + dyg*dyg + 1e-9f);
+        float dirx = dxg / dg, diry = dyg / dg;
+        float contact_offset = fmaxf(p.hx, p.hy) + p.push_r + fmaxf(0.0f, v_.oi_contact_margin);
+        for (int t = 0; t < T_; t++) {
+            float refx, refy, refth;
+            object_ref_box_f(ox_, oy_, oth_, sc_.gx, sc_.gy, sc_.gth,
+                             p.dt, v_.oi_obj_speed, v_.oi_ang_speed, t + 1, refx, refy, refth);
+            float target_px, target_py;
+            if (dg > fmaxf(0.25f, 1.15f * sc_.pos_tol)) {
+                target_px = refx - dirx * contact_offset;
+                target_py = refy - diry * contact_offset;
+            } else {
+                float need = wrapf(sc_.gth - oth_);
+                float sign = need >= 0.0f ? 1.0f : -1.0f;
+                float c = cosf(refth), s = sinf(refth);
+                float lx = -p.hx - p.push_r - v_.oi_contact_margin;
+                float ly = -sign * p.hy;
+                target_px = refx + c*lx - s*ly;
+                target_py = refy + s*lx + c*ly;
+            }
+            float ux = clampf_local((target_px - sim_px) / p.dt, -p.u_max, p.u_max);
+            float uy = clampf_local((target_py - sim_py) / p.dt, -p.u_max, p.u_max);
+            int base = t * CTRL_DIM;
+            h_nominal_[base + 0] = (1.0f - blend) * h_nominal_[base + 0] + blend * ux;
+            h_nominal_[base + 1] = (1.0f - blend) * h_nominal_[base + 1] + blend * uy;
+            sim_px += p.dt * h_nominal_[base + 0];
+            sim_py += p.dt * h_nominal_[base + 1];
+        }
+    }
 
     // Measure the K-sample statistics at the current decision state. Reuses this
     // step's rollout (d_costs_ from controller_update, d_perturbed_) and replays it
@@ -761,6 +1025,7 @@ private:
     float *d_start_=nullptr,*d_nominal_=nullptr,*d_costs_=nullptr,*d_weights_=nullptr,*d_perturbed_=nullptr;
     float *d_rot_=nullptr,*d_netrot_=nullptr;
     float *d_grad_=nullptr;                 // 2T smooth-model gradient (grad-agreement diag)
+    float *d_soppi_scratch_=nullptr,*d_soppi_grad_=nullptr;
     curandState* d_rng_=nullptr;
 };
 
@@ -812,11 +1077,12 @@ static vector<int> parse_int_list(const string& t){ vector<int> v; string tok; s
 static vector<string> parse_string_list(const string& t){ vector<string> v; string tok; stringstream ss(t); while(getline(ss,tok,',')) if(!tok.empty()) v.push_back(tok); sort(v.begin(),v.end()); v.erase(unique(v.begin(),v.end()),v.end()); return v; }
 static void write_csv(const vector<EpisodeMetrics>& rows, const string& path) {
     ofstream out(path);
-    out << "scenario,planner,seed,k_samples,t_horizon,grad_steps,alpha,reached_goal,collision_free,success,steps,final_distance,min_goal_distance,cumulative_cost,collisions,avg_control_ms,total_control_ms,episode_ms,sample_budget\n";
+    out << "scenario,planner,seed,k_samples,t_horizon,grad_steps,alpha,reached_goal,collision_free,success,steps,final_distance,min_goal_distance,cumulative_cost,collisions,mean_control_delta,control_roughness,avg_control_ms,total_control_ms,episode_ms,sample_budget\n";
     for (const auto& r : rows)
         out << r.scenario<<','<<r.planner<<','<<r.seed<<','<<r.k_samples<<','<<r.t_horizon<<','<<r.grad_steps<<','<<r.alpha<<','
             << r.reached_goal<<','<<r.collision_free<<','<<r.success<<','<<r.steps<<','<<r.final_distance<<','<<r.min_goal_distance<<','
-            << r.cumulative_cost<<','<<r.collisions<<','<<r.avg_control_ms<<','<<r.total_control_ms<<','<<r.episode_ms<<','<<r.sample_budget<<'\n';
+            << r.cumulative_cost<<','<<r.collisions<<','<<r.mean_control_delta<<','<<r.control_roughness<<','
+            << r.avg_control_ms<<','<<r.total_control_ms<<','<<r.episode_ms<<','<<r.sample_budget<<'\n';
 }
 static void print_summary(const vector<EpisodeMetrics>& rows) {
     map<string, SummaryStats> st;
@@ -824,12 +1090,13 @@ static void print_summary(const vector<EpisodeMetrics>& rows) {
         string key = r.scenario + " | " + r.planner + " | K=" + to_string(r.k_samples);
         auto& s = st[key]; s.episodes++; s.successes+=r.success; s.steps_sum+=r.steps;
         s.final_sum+=r.final_distance; s.ang_sum+=r.min_goal_distance; s.cost_sum+=r.cumulative_cost; s.ms_sum+=r.avg_control_ms;
+        s.du_sum+=r.mean_control_delta; s.rough_sum+=r.control_roughness;
     }
     cout << "=== benchmark_diff_mppi_pushing_box summary ===" << endl;
     for (const auto& kv : st) {
         const SummaryStats& s = kv.second; float n=s.episodes;
-        printf("%s : success=%.2f steps=%.1f pos_err=%.3f ang_err=%.3f cost=%.1f avg_ms=%.3f\n",
-               kv.first.c_str(), s.successes/n, s.steps_sum/n, s.final_sum/n, s.ang_sum/n, s.cost_sum/n, s.ms_sum/n);
+        printf("%s : success=%.2f steps=%.1f pos_err=%.3f ang_err=%.3f cost=%.1f du=%.3f rough=%.3f avg_ms=%.3f\n",
+               kv.first.c_str(), s.successes/n, s.steps_sum/n, s.final_sum/n, s.ang_sum/n, s.cost_sum/n, s.du_sum/n, s.rough_sum/n, s.ms_sum/n);
     }
 }
 
@@ -840,6 +1107,11 @@ int main(int argc, char** argv) {
     int horizon=DEFAULT_T; string dump_traj_prefix=""; float plant_gain_scale=1.0f; float plant_size_scale=1.0f;
     string diag_prefix=""; bool true_plant_hard=false; float plant_mu=0.6f;
     string grad_agree_prefix="";
+    float override_lp_alpha = -1.0f;
+    int override_soppi_iters = -1;
+    int override_soppi_neighbor_count = -1;
+    float override_soppi_step_size = -1.0f;
+    float override_soppi_bandwidth = -1.0f;
     for (int i=1;i<argc;i++){ string a=argv[i];
         if (a=="--quick") quick=true;
         else if (a=="--csv"&&i+1<argc) csv_path=argv[++i];
@@ -848,6 +1120,11 @@ int main(int argc, char** argv) {
         else if (a=="--scenarios"&&i+1<argc) scenario_names=parse_string_list(argv[++i]);
         else if (a=="--planners"&&i+1<argc) planner_names=parse_string_list(argv[++i]);
         else if (a=="--horizon"&&i+1<argc) horizon=max(2,atoi(argv[++i]));
+        else if (a=="--override-lp-alpha"&&i+1<argc) override_lp_alpha=(float)atof(argv[++i]);
+        else if (a=="--override-soppi-iters"&&i+1<argc) override_soppi_iters=atoi(argv[++i]);
+        else if (a=="--override-soppi-neighbors"&&i+1<argc) override_soppi_neighbor_count=max(0,atoi(argv[++i]));
+        else if (a=="--override-soppi-step-size"&&i+1<argc) override_soppi_step_size=(float)atof(argv[++i]);
+        else if (a=="--override-soppi-bandwidth"&&i+1<argc) override_soppi_bandwidth=(float)atof(argv[++i]);
         else if (a=="--dump-traj"&&i+1<argc) dump_traj_prefix=argv[++i];
         // mechanism diagnostic: per-step K-sample rotation/improvement statistics
         // for vanilla MPPI across tasks (quantifies where sampling is contact-starved).
@@ -1037,17 +1314,29 @@ int main(int argc, char** argv) {
 
     vector<Variant> variants;
     { Variant v; v.name="mppi"; variants.push_back(v); }
+    { Variant v; v.name="lp_mppi"; v.use_low_pass_sampling=true; v.lp_alpha=0.35f; variants.push_back(v); }
+    { Variant v; v.name="lp_mppi_smooth"; v.use_low_pass_sampling=true; v.lp_alpha=0.20f; variants.push_back(v); }
+    { Variant v; v.name="oi_mppi"; v.use_object_informed=true; v.oi_ref_weight_pos=1.5f; v.oi_ref_weight_ang=3.0f; v.oi_obj_speed=1.2f; v.oi_ang_speed=1.2f; v.oi_seed_blend=0.12f; variants.push_back(v); }
+    { Variant v; v.name="oi_lp_mppi"; v.use_object_informed=true; v.use_low_pass_sampling=true; v.lp_alpha=0.25f; v.oi_ref_weight_pos=1.5f; v.oi_ref_weight_ang=3.0f; v.oi_obj_speed=1.2f; v.oi_ang_speed=1.2f; v.oi_seed_blend=0.10f; variants.push_back(v); }
     { Variant v; v.name="diff_mppi_1"; v.grad_steps=1; v.alpha=0.02f; variants.push_back(v); }
     { Variant v; v.name="diff_mppi_3"; v.grad_steps=3; v.alpha=0.010f; variants.push_back(v); }
     { Variant v; v.name="diff_mppi_5"; v.grad_steps=5; v.alpha=0.008f; variants.push_back(v); }
+    { Variant v; v.name="soppi"; v.use_soppi_sampling=true; v.soppi_step_size=0.06f; v.soppi_bandwidth=2.0f; variants.push_back(v); }
+    { Variant v; v.name="soppi_fast"; v.use_soppi_sampling=true; v.soppi_step_size=0.06f; v.soppi_bandwidth=2.0f; v.soppi_neighbor_count=32; variants.push_back(v); }
     // Fidelity arm: vanilla MPPI that ROLLS OUT with the exact hard-contact model (no
-    // gradient). Appended last so existing variants keep their index vi (the per-run
-    // seed is vi-dependent) -> published numbers stay byte-identical. Only meaningful
-    // with --true-plant hard, where it is the model-exact sampler to beat.
+    // gradient). Only meaningful with --true-plant hard, where it is the model-exact
+    // sampler to beat.
     { Variant v; v.name="mppi_hardmodel"; v.grad_steps=0; v.alpha=0.0f; v.hard_rollout=true; variants.push_back(v); }
     if (!planner_names.empty()) {
         vector<Variant> f; for (auto& w : planner_names){ auto it=find_if(variants.begin(),variants.end(),[&](const Variant&v){return v.name==w;});
             if (it==variants.end()){fprintf(stderr,"Unknown planner: %s\n",w.c_str());return 1;} f.push_back(*it);} variants.swap(f);
+    }
+    for (auto& v : variants) {
+        if (override_lp_alpha >= 0.0f && v.use_low_pass_sampling) v.lp_alpha = override_lp_alpha;
+        if (override_soppi_iters >= 0 && v.use_soppi_sampling) v.soppi_svgd_iters = override_soppi_iters;
+        if (override_soppi_neighbor_count >= 0 && v.use_soppi_sampling) v.soppi_neighbor_count = override_soppi_neighbor_count;
+        if (override_soppi_step_size >= 0.0f && v.use_soppi_sampling) v.soppi_step_size = override_soppi_step_size;
+        if (override_soppi_bandwidth >= 0.0f && v.use_soppi_sampling) v.soppi_bandwidth = override_soppi_bandwidth;
     }
     if (k_values.empty()) k_values = quick ? vector<int>{256} : vector<int>{256, 1024};
     if (seed_count<=0) seed_count = quick ? 4 : 8;
@@ -1056,7 +1345,7 @@ int main(int argc, char** argv) {
     for (size_t si=0; si<scenarios.size(); si++) {
         const BoxScenario& sc = scenarios[si];
         for (int ks : k_values) for (size_t vi=0; vi<variants.size(); vi++) for (int seed=0; seed<seed_count; seed++) {
-            int run_seed = (int)(6000 + si*100 + vi*20 + seed*7 + ks);
+            int run_seed = (int)(6000 + si*100 + seed*7 + ks);
             EpisodeRunner runner(variants[vi], sc, ks, horizon, run_seed);
             runner.plant_gain_scale = plant_gain_scale;
             runner.plant_size_scale = plant_size_scale;
