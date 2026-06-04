@@ -1,0 +1,413 @@
+# SOPPI Reproduction Notes
+
+Date: 2026-06-04
+
+## Target
+
+Paper: **Stein-based Optimization of Sampling Distributions in Model Predictive Path Integral Control** by Jace Aldrich and Odest Chadwicke Jenkins.
+
+- arXiv: https://arxiv.org/abs/2511.02015
+- Latest arXiv metadata: submitted 2025-11-03, revised 2026-03-30.
+- Core idea: Stein-Optimized Path-Integral Inference (SOPPI) applies SVGD updates to MPPI action samples so the proposal distribution spreads toward lower-cost regions before the standard MPPI weighted update.
+
+Step-MPPI (`arXiv:2604.01539`) was checked first and is already represented by the existing `step_mppi` variant in `src/benchmark_diff_mppi.cu`, so SOPPI was selected as the next missing MPPI-family reproduction.
+
+## Implementation
+
+Implemented a lightweight SOPPI variant in `src/benchmark_diff_mppi.cu`:
+
+- Added `PlannerVariant::use_soppi_sampling` and hyperparameters:
+  - `soppi_svgd_iters`
+  - `soppi_step_size`
+  - `soppi_bandwidth`
+  - `soppi_neighbor_count` (`0` = all-pairs, `>0` = deterministic particle subset)
+- Added `soppi` planner registration.
+- Added `soppi_fast` planner registration with `soppi_neighbor_count=32`.
+- Added `soppi_svgd_step_kernel`, which updates each per-timestep action particle with an RBF-kernel SVGD step in normalized `(accel, steer)` action space.
+- Added `rollout_fixed_controls_kernel` to re-evaluate moved particles before MPPI weighting.
+- Added CLI overrides:
+  - `--override-soppi-iters`
+  - `--override-soppi-step-size`
+  - `--override-soppi-bandwidth`
+  - `--override-soppi-neighbors`
+
+Added `scripts/sweep_soppi.py` for reproducible parameter sweeps against MPPI. The runner executes MPPI once, then executes SOPPI across the requested grid, and writes per-run CSVs, a combined CSV, a manifest, and a Markdown summary. The script supports `--neighbors` to compare all-pairs SOPPI against the faster subset approximation.
+
+Implemented a CartPole SOPPI variant in `src/benchmark_diff_mppi_cartpole.cu`:
+
+- Added `soppi` and `soppi_fast` planner registrations.
+- Added the same CLI overrides as the 2D navigation benchmark.
+- Added per-sample rollout-state storage and fixed-control re-rollout after SVGD.
+- Added `sample_action_gradient_kernel`, which computes a per-sample cost-to-go action gradient by backpropagating through the CartPole dynamics. This is closer to the SOPPI paper's trajectory-cost score than the lightweight 2D navigation implementation.
+- Fixed CartPole benchmark seeds so planners share the same initial state for a scenario/K/seed cell. The old seed formula included the planner index, which made planner comparisons depend on different initial states.
+
+Implemented a planar pushing SOPPI variant in `src/benchmark_diff_mppi_pushing.cu`:
+
+- Added `soppi` and `soppi_fast` planner registrations.
+- Added the same SOPPI CLI overrides.
+- Added `push_sample_grad_kernel`, which evaluates the existing differentiable contact rollout gradient for every sampled control sequence.
+- Added `push_fixed_rollout_kernel` to re-evaluate moved samples before MPPI weighting.
+- Fixed pushing benchmark seeds so planners share the same scenario/K/seed initial condition.
+
+Implemented a box pushing SOPPI variant in `src/benchmark_diff_mppi_pushing_box.cu`:
+
+- Added `soppi` and `soppi_fast` planner registrations.
+- Added the same SOPPI CLI overrides.
+- Added `sample_grad_kernel`, which evaluates the existing differentiable box-contact rollout gradient for every sampled control sequence.
+- Added `fixed_rollout_kernel` to re-evaluate moved samples before MPPI weighting.
+- Fixed box-pushing benchmark seeds so planners share the same scenario/K/seed initial condition within a run.
+
+## Scope Caveats
+
+This is a reproduction scaffold, not yet a full paper-faithful reproduction:
+
+- The 2D navigation SVGD score uses the local stage-cost gradient at each rollout state/action, not a full differentiable dynamics-through-time gradient.
+- The CartPole SVGD score uses differentiable cost-to-go gradients through the sampled rollout, but it is still not the paper's RNN gradient approximation for black-box dynamics.
+- The planar pushing SVGD score uses differentiable contact cost gradients through each sampled control sequence, but the current built-in pushing scenarios are easy enough that all planners already succeed.
+- The box-pushing SVGD score also uses differentiable contact cost gradients through each sampled control sequence. It exposes stronger sample-distribution effects than disk pushing, but the built-in success thresholds are still strict enough that many cells improve final error/cost without reaching success.
+- The implementation applies SVGD independently at each horizon timestep to keep the kernel dimension meaningful, matching the paper's motivation, but it does not reproduce the paper's RNN gradient approximation for non-differentiable dynamics.
+- Runtime is `O(K^2 * T)` when `soppi_neighbor_count=0`. `soppi_fast` reduces this to `O(K * N * T)` with a deterministic particle subset of size `N`, which is much faster but approximate.
+- Current validation is on the existing 2D bicycle navigation, CartPole, planar pushing, and box-pushing benchmarks, not the paper's 7-DOF arm pushing or planar biped tasks.
+- Scenario filtering can change the scenario index used in the benchmark seed formula. Planner comparisons within a single command share seeds, but separate commands with different `--scenarios` ordering should not be treated as exact seed-matched reruns.
+
+## Commands
+
+Build:
+
+```bash
+cmake --build build-docker-smoke --target benchmark_diff_mppi -j$(nproc)
+```
+
+Initial grid sweep:
+
+```bash
+python3 scripts/sweep_soppi.py \
+  --bin bin/benchmark_diff_mppi \
+  --output-dir build-docker-smoke/soppi_sweep \
+  --scenarios dynamic_crossing,cluttered \
+  --k-values 128,256 \
+  --seed-count 1 \
+  --step-sizes 0.015,0.025,0.045,0.075 \
+  --bandwidths 1.0,2.0,4.0 \
+  --iters 1
+```
+
+Confirmation sweep:
+
+```bash
+python3 scripts/sweep_soppi.py \
+  --bin bin/benchmark_diff_mppi \
+  --output-dir build-docker-smoke/soppi_sweep_confirm \
+  --scenarios dynamic_crossing,cluttered \
+  --k-values 128,256 \
+  --seed-count 3 \
+  --step-sizes 0.025,0.075 \
+  --bandwidths 1.0,2.0 \
+  --iters 1
+```
+
+Fast neighbor sweep:
+
+```bash
+python3 scripts/sweep_soppi.py \
+  --bin bin/benchmark_diff_mppi \
+  --output-dir build-docker-smoke/soppi_fast_sweep \
+  --scenarios dynamic_crossing,cluttered \
+  --k-values 128,256 \
+  --seed-count 3 \
+  --step-sizes 0.075 \
+  --bandwidths 2.0 \
+  --iters 1 \
+  --neighbors 0,16,32,64
+```
+
+Direct planner smoke:
+
+```bash
+./bin/benchmark_diff_mppi \
+  --quick \
+  --scenarios dynamic_crossing \
+  --planners soppi_fast,soppi,mppi \
+  --k-values 256 \
+  --seed-count 1 \
+  --csv build-docker-smoke/soppi_fast_check.csv
+```
+
+CartPole comparison:
+
+```bash
+./bin/benchmark_diff_mppi_cartpole \
+  --quick \
+  --scenarios cartpole_recover,cartpole_large_angle \
+  --planners mppi,diff_mppi_1,diff_mppi_3,soppi,soppi_fast \
+  --k-values 256,512 \
+  --seed-count 3 \
+  --csv build-docker-smoke/soppi_cartpole_compare.csv
+```
+
+CartPole SOPPI sweep:
+
+```bash
+python3 scripts/sweep_soppi.py \
+  --bin bin/benchmark_diff_mppi_cartpole \
+  --output-dir build-docker-smoke/soppi_cartpole_sweep \
+  --scenarios cartpole_recover,cartpole_large_angle \
+  --k-values 256,512 \
+  --seed-count 3 \
+  --step-sizes 0.005,0.015,0.03,0.06,0.12 \
+  --bandwidths 0.5,1.0,2.0 \
+  --iters 1 \
+  --neighbors 0,32
+```
+
+Planar pushing comparison:
+
+```bash
+./bin/benchmark_diff_mppi_pushing \
+  --quick \
+  --planners mppi,diff_mppi_1,diff_mppi_3,soppi,soppi_fast \
+  --k-values 256 \
+  --seed-count 4 \
+  --csv build-docker-smoke/soppi_pushing_compare.csv
+```
+
+Planar pushing SOPPI sweep:
+
+```bash
+python3 scripts/sweep_soppi.py \
+  --bin bin/benchmark_diff_mppi_pushing \
+  --output-dir build-docker-smoke/soppi_pushing_sweep \
+  --scenarios push_straight,push_diagonal \
+  --k-values 128,256 \
+  --seed-count 4 \
+  --step-sizes 0.03,0.06,0.12 \
+  --bandwidths 1.0,2.0 \
+  --iters 1 \
+  --neighbors 0,32
+```
+
+Box pushing comparison:
+
+```bash
+./bin/benchmark_diff_mppi_pushing_box \
+  --quick \
+  --planners mppi,diff_mppi_1,diff_mppi_3,soppi,soppi_fast \
+  --k-values 256 \
+  --seed-count 4 \
+  --csv build-docker-smoke/soppi_pushing_box_compare.csv
+```
+
+Box pushing SOPPI sweep:
+
+```bash
+python3 scripts/sweep_soppi.py \
+  --bin bin/benchmark_diff_mppi_pushing_box \
+  --output-dir build-docker-smoke/soppi_pushing_box_sweep \
+  --scenarios box_turn,box_align,box_pivot,box_swivel \
+  --k-values 128,256 \
+  --seed-count 4 \
+  --step-sizes 0.03,0.06,0.12 \
+  --bandwidths 1.0,2.0 \
+  --iters 1 \
+  --neighbors 0,32
+```
+
+## Confirmation Results
+
+Artifacts:
+
+- `build-docker-smoke/soppi_sweep_confirm/soppi_sweep_summary.md`
+- `build-docker-smoke/soppi_sweep_confirm/soppi_sweep_combined.csv`
+- `build-docker-smoke/soppi_sweep_confirm/manifest.csv`
+
+Best SOPPI by scenario/K from the seed-count 3 confirmation sweep:
+
+| Scenario | K | Best SOPPI | Success | Final Distance | Cost | Avg ms | MPPI Final Distance | MPPI Cost | MPPI Avg ms |
+|---|---:|---|---:|---:|---:|---:|---:|---:|---:|
+| cluttered | 128 | s=0.025, b=2, i=1 | 0.00 | 38.50 | 49939.8 | 1.96 | 38.50 | 49955.5 | 0.16 |
+| cluttered | 256 | s=0.075, b=2, i=1 | 0.00 | 38.50 | 49885.2 | 3.66 | 38.52 | 49927.6 | 0.20 |
+| dynamic_crossing | 128 | s=0.025, b=1, i=1 | 0.00 | 3.38 | 46204.8 | 1.39 | 3.39 | 46253.3 | 0.13 |
+| dynamic_crossing | 256 | s=0.075, b=2, i=1 | 0.00 | 2.77 | 45400.5 | 2.51 | 2.93 | 45545.0 | 0.16 |
+
+Observed pattern:
+
+- SOPPI reduces cumulative cost consistently in the tested cells.
+- `dynamic_crossing, K=256` shows the clearest final-distance improvement: `2.93 -> 2.77`.
+- `cluttered` mostly shows cost improvement without meaningful final-distance movement.
+- No tested configuration reached the goal in these two smoke scenarios.
+- The all-pairs SVGD kernel is much slower than MPPI, so the next engineering step is reducing interaction cost before broad benchmarking.
+
+## Fast Neighbor Results
+
+Artifacts:
+
+- `build-docker-smoke/soppi_fast_sweep/soppi_sweep_summary.md`
+- `build-docker-smoke/soppi_fast_sweep/soppi_sweep_combined.csv`
+- `build-docker-smoke/soppi_fast_sweep/manifest.csv`
+- `build-docker-smoke/soppi_fast_check.csv`
+
+Best SOPPI by scenario/K from the seed-count 3 neighbor sweep:
+
+| Scenario | K | Best SOPPI | Success | Final Distance | Cost | Avg ms | MPPI Final Distance | MPPI Cost | MPPI Avg ms |
+|---|---:|---|---:|---:|---:|---:|---:|---:|---:|
+| cluttered | 128 | s=0.075, b=2, i=1, n=32 | 0.00 | 38.50 | 49922.2 | 0.61 | 38.50 | 49955.5 | 0.23 |
+| cluttered | 256 | s=0.075, b=2, i=1, n=16 | 0.00 | 38.50 | 49887.4 | 0.44 | 38.52 | 49927.6 | 0.27 |
+| dynamic_crossing | 128 | s=0.075, b=2, i=1, n=64 | 0.00 | 3.41 | 46142.7 | 0.70 | 3.39 | 46253.3 | 0.20 |
+| dynamic_crossing | 256 | s=0.075, b=2, i=1, n=0 | 0.00 | 2.77 | 45400.5 | 2.39 | 2.93 | 45545.0 | 0.32 |
+
+Direct planner smoke on `dynamic_crossing, K=256, seed-count=1`:
+
+| Planner | Final Distance | Cost | Avg ms |
+|---|---:|---:|---:|
+| mppi | 3.20 | 46129.6 | 0.19 |
+| soppi | 3.08 | 45775.3 | 2.68 |
+| soppi_fast | 2.97 | 45669.5 | 0.48 |
+
+Observed pattern:
+
+- `neighbors=16/32` keeps the cost reduction close to all-pairs SOPPI in the tested `K=256` cells while cutting average control time by roughly 5x to 8x versus `neighbors=0`.
+- `dynamic_crossing, K=256` still gets the strongest final-distance improvement from all-pairs SOPPI, but `neighbors=32/64` is nearly identical in final distance and cost at much lower runtime.
+- `cluttered` remains insensitive in final distance; the improvement is mostly lower cumulative cost.
+- Existing smoke reproducibility suite passed after the `soppi_fast` change: `build-docker-smoke/repro_suite_after_soppi_fast/report.md`.
+
+## CartPole Results
+
+Artifacts:
+
+- `build-docker-smoke/soppi_cartpole_compare.csv`
+- `build-docker-smoke/soppi_cartpole_compare_summary.md`
+- `build-docker-smoke/soppi_cartpole_sweep/soppi_sweep_summary.md`
+- `build-docker-smoke/repro_suite_cartpole_soppi/report.md`
+
+Default planner comparison, seed-count 3:
+
+| Scenario | K | Planner | Success | Final Dist | Cost | Avg ms |
+|---|---:|---|---:|---:|---:|---:|
+| cartpole_recover | 256 | mppi | 0.00 | 0.68 | 1124.0 | 0.19 |
+| cartpole_recover | 256 | diff_mppi_3 | 0.00 | 0.52 | 1019.1 | 0.58 |
+| cartpole_recover | 256 | soppi | 0.00 | 0.61 | 1094.6 | 0.46 |
+| cartpole_recover | 256 | soppi_fast | 0.00 | 0.62 | 1134.3 | 0.38 |
+| cartpole_recover | 512 | mppi | 0.33 | 0.81 | 661.6 | 0.16 |
+| cartpole_recover | 512 | diff_mppi_3 | 0.33 | 0.80 | 586.6 | 0.63 |
+| cartpole_recover | 512 | soppi | 0.33 | 0.83 | 643.1 | 0.60 |
+| cartpole_recover | 512 | soppi_fast | 0.33 | 0.80 | 621.9 | 0.42 |
+| cartpole_large_angle | 256 | mppi | 0.00 | 1.28 | 2417.7 | 0.12 |
+| cartpole_large_angle | 256 | diff_mppi_3 | 0.00 | 1.27 | 2362.6 | 0.58 |
+| cartpole_large_angle | 256 | soppi | 0.00 | 1.28 | 2388.3 | 0.49 |
+| cartpole_large_angle | 256 | soppi_fast | 0.00 | 1.27 | 2384.5 | 0.42 |
+| cartpole_large_angle | 512 | mppi | 0.00 | 1.33 | 2417.8 | 0.18 |
+| cartpole_large_angle | 512 | diff_mppi_3 | 0.00 | 1.29 | 2378.0 | 0.61 |
+| cartpole_large_angle | 512 | soppi | 0.00 | 1.35 | 2397.9 | 0.66 |
+| cartpole_large_angle | 512 | soppi_fast | 0.00 | 1.31 | 2392.1 | 0.43 |
+
+Best SOPPI from the CartPole sweep:
+
+| Scenario | K | Best SOPPI | Success | Final Distance | Cost | Avg ms | MPPI Final Distance | MPPI Cost | MPPI Avg ms |
+|---|---:|---|---:|---:|---:|---:|---:|---:|---:|
+| cartpole_large_angle | 256 | s=0.12, b=1, i=1, n=32 | 0.00 | 1.25 | 2378.1 | 0.39 | 1.28 | 2417.7 | 0.18 |
+| cartpole_large_angle | 512 | s=0.03, b=0.5, i=1, n=32 | 0.00 | 1.28 | 2394.4 | 0.44 | 1.33 | 2417.8 | 0.21 |
+| cartpole_recover | 256 | s=0.12, b=1, i=1, n=0 | 0.33 | 0.63 | 1093.9 | 0.46 | 0.68 | 1124.0 | 0.17 |
+| cartpole_recover | 512 | s=0.06, b=2, i=1, n=32 | 0.33 | 0.80 | 621.9 | 0.43 | 0.81 | 661.6 | 0.22 |
+
+Observed pattern:
+
+- CartPole SOPPI is now a meaningful MPPI improvement in several cells, especially lower cumulative cost.
+- `soppi_fast` is the better default CartPole tradeoff: it is close to tuned SOPPI quality and much cheaper than all-pairs.
+- Diff-MPPI remains stronger than default SOPPI in the current CartPole setup, so SOPPI is not yet a replacement for the adjoint-refinement baseline.
+- The harder `cartpole_large_angle` scenario remains unsolved by all methods under this quick budget.
+- CartPole repro suite passed after the change: `build-docker-smoke/repro_suite_cartpole_soppi/report.md`.
+
+## Planar Pushing Results
+
+Artifacts:
+
+- `build-docker-smoke/soppi_pushing_compare.csv`
+- `build-docker-smoke/soppi_pushing_compare_summary.md`
+- `build-docker-smoke/soppi_pushing_sweep/soppi_sweep_summary.md`
+
+Default planner comparison, seed-count 4, `K=256`:
+
+| Scenario | Planner | Success | Steps | Final Dist | Cost | Avg ms |
+|---|---|---:|---:|---:|---:|---:|
+| push_diagonal | mppi | 1.00 | 31.8 | 0.19 | 3.3 | 0.12 |
+| push_diagonal | diff_mppi_1 | 1.00 | 29.8 | 0.18 | 3.2 | 0.23 |
+| push_diagonal | diff_mppi_3 | 1.00 | 27.2 | 0.18 | 3.0 | 0.48 |
+| push_diagonal | soppi | 1.00 | 31.0 | 0.19 | 3.3 | 0.40 |
+| push_diagonal | soppi_fast | 1.00 | 31.0 | 0.18 | 3.2 | 0.30 |
+| push_straight | mppi | 1.00 | 30.8 | 0.19 | 2.2 | 0.14 |
+| push_straight | diff_mppi_1 | 1.00 | 25.8 | 0.19 | 1.9 | 0.33 |
+| push_straight | diff_mppi_3 | 1.00 | 25.0 | 0.18 | 1.8 | 0.69 |
+| push_straight | soppi | 1.00 | 30.0 | 0.19 | 2.2 | 0.58 |
+| push_straight | soppi_fast | 1.00 | 30.0 | 0.18 | 2.2 | 0.34 |
+
+Best SOPPI from the planar pushing sweep:
+
+| Scenario | K | Best SOPPI | Success | Final Distance | Cost | Avg ms | MPPI Final Distance | MPPI Cost | MPPI Avg ms |
+|---|---:|---|---:|---:|---:|---:|---:|---:|---:|
+| push_diagonal | 128 | s=0.12, b=2, i=1, n=32 | 1.00 | 0.18 | 3.5 | 0.24 | 0.19 | 3.6 | 0.09 |
+| push_diagonal | 256 | s=0.06, b=1, i=1, n=32 | 1.00 | 0.18 | 3.3 | 0.27 | 0.19 | 3.4 | 0.11 |
+| push_straight | 128 | s=0.12, b=1, i=1, n=32 | 1.00 | 0.18 | 2.1 | 0.24 | 0.18 | 2.1 | 0.08 |
+| push_straight | 256 | s=0.12, b=1, i=1, n=0 | 1.00 | 0.18 | 2.2 | 0.38 | 0.18 | 2.2 | 0.12 |
+
+Observed pattern:
+
+- The SOPPI implementation works on differentiable contact rollouts, but the current pushing scenarios are saturated: MPPI already has `1.00` success.
+- SOPPI can shave a small amount off final distance/cost in the sweep, but the effect is not large enough to be a strong reproduction result.
+- Diff-MPPI remains the stronger pushing baseline because it reduces steps more clearly.
+- The next useful task is not more tuning on these two scenarios; it is a harder pushing setup with contact loss, obstacle detours, or box orientation.
+
+## Box Pushing Results
+
+Artifacts:
+
+- `build-docker-smoke/soppi_pushing_box_compare.csv`
+- `build-docker-smoke/soppi_pushing_box_compare_summary.md`
+- `build-docker-smoke/soppi_pushing_box_sweep/soppi_sweep_summary.md`
+
+Default planner comparison, seed-count 4, `K=256`:
+
+| Scenario | Planner | Success | Steps | Final Dist | Cost | Avg ms |
+|---|---|---:|---:|---:|---:|---:|
+| box_align | mppi | 0.00 | 240.0 | 0.43 | 7.8 | 0.10 |
+| box_align | diff_mppi_3 | 0.50 | 149.8 | 0.40 | 7.1 | 1.88 |
+| box_align | soppi | 0.00 | 240.0 | 0.28 | 4.1 | 1.08 |
+| box_align | soppi_fast | 0.00 | 240.0 | 0.28 | 3.8 | 1.00 |
+| box_pivot | mppi | 0.00 | 240.0 | 0.11 | 1.2 | 0.10 |
+| box_pivot | diff_mppi_3 | 0.00 | 240.0 | 0.12 | 1.0 | 1.84 |
+| box_pivot | soppi | 0.00 | 240.0 | 0.11 | 1.1 | 1.08 |
+| box_pivot | soppi_fast | 0.00 | 240.0 | 0.11 | 1.1 | 0.97 |
+| box_swivel | mppi | 0.75 | 103.0 | 0.27 | 1.8 | 0.11 |
+| box_swivel | diff_mppi_3 | 0.75 | 100.0 | 0.27 | 1.8 | 1.82 |
+| box_swivel | soppi | 1.00 | 89.0 | 0.22 | 1.5 | 1.08 |
+| box_swivel | soppi_fast | 1.00 | 86.0 | 0.22 | 1.5 | 1.00 |
+| box_turn | mppi | 0.00 | 260.0 | 0.41 | 4.6 | 0.10 |
+| box_turn | diff_mppi_3 | 0.00 | 260.0 | 0.39 | 4.1 | 1.88 |
+| box_turn | soppi | 0.00 | 260.0 | 0.41 | 4.6 | 1.06 |
+| box_turn | soppi_fast | 0.00 | 260.0 | 0.41 | 4.5 | 0.96 |
+
+Best SOPPI from the box-pushing sweep:
+
+| Scenario | K | Best SOPPI | Success | Final Distance | Cost | Avg ms | MPPI Final Distance | MPPI Cost | MPPI Avg ms |
+|---|---:|---|---:|---:|---:|---:|---:|---:|---:|
+| box_align | 128 | s=0.03, b=2, i=1, n=0 | 0.00 | 0.28 | 3.4 | 0.88 | 0.28 | 3.6 | 0.10 |
+| box_align | 256 | s=0.12, b=1, i=1, n=32 | 0.00 | 0.27 | 3.7 | 0.99 | 0.28 | 4.2 | 0.13 |
+| box_pivot | 128 | s=0.03, b=1, i=1, n=0 | 0.00 | 0.11 | 1.2 | 0.86 | 0.11 | 1.2 | 0.10 |
+| box_pivot | 256 | s=0.12, b=2, i=1, n=0 | 0.00 | 0.11 | 1.1 | 1.04 | 0.11 | 1.1 | 0.11 |
+| box_swivel | 128 | s=0.12, b=1, i=1, n=0 | 1.00 | 0.21 | 1.6 | 0.87 | 0.27 | 2.2 | 0.09 |
+| box_swivel | 256 | s=0.06, b=2, i=1, n=32 | 0.75 | 0.27 | 2.2 | 1.00 | 0.27 | 2.3 | 0.11 |
+| box_turn | 128 | s=0.12, b=1, i=1, n=0 | 0.00 | 0.40 | 4.5 | 0.85 | 0.40 | 4.6 | 0.09 |
+| box_turn | 256 | s=0.06, b=1, i=1, n=0 | 0.00 | 0.39 | 4.3 | 1.06 | 0.40 | 4.4 | 0.10 |
+
+Observed pattern:
+
+- Box pushing is a better SOPPI reproduction target than disk pushing. `box_swivel` improves from `0.75` MPPI success to `1.00` SOPPI success in the default planner comparison.
+- `box_align` shows a large final-distance/cost reduction (`0.43 -> 0.28`, `7.8 -> 3.8` for `soppi_fast`) even though it does not cross the strict success threshold in this quick run.
+- `box_turn` and `box_pivot` are mostly insensitive under the current quick budget.
+- `soppi_fast` is the better practical default for this benchmark; it keeps most of the quality signal while avoiding the all-pairs kernel.
+- SOPPI is still roughly 9x to 10x slower than vanilla MPPI for `K=256` in this implementation, so kernel optimization matters before larger-scale benchmarking.
+
+## Next Steps
+
+1. Profile the SOPPI kernels and reduce the per-sample gradient cost, especially for box pushing.
+2. Add a `--baseline-planners` option to `scripts/sweep_soppi.py` if repeated comparisons against Diff-MPPI are needed.
+3. Add a harder pushing benchmark with contact loss, obstacle detours, or stricter box orientation goals.

@@ -78,6 +78,18 @@ struct Variant {
     float grad_clip = 30.0f;
     float sigma = 0.6f;          // velocity sampling std
     float lambda = 5.0f;         // softmax temperature
+    bool use_low_pass_sampling = false;
+    float lp_alpha = 0.35f;
+    bool use_soppi_sampling = false;
+    int soppi_svgd_iters = 1;
+    float soppi_step_size = 0.06f;
+    float soppi_bandwidth = 2.0f;
+    int soppi_neighbor_count = 0; // 0 = all particles; >0 = deterministic particle subset
+    bool use_object_informed = false;
+    float oi_ref_weight = 2.0f;     // track an object-only reference trajectory
+    float oi_obj_speed = 1.8f;      // direct-actuated object speed used by the reference
+    float oi_seed_blend = 0.15f;    // blend nominal toward reference contact strategy
+    float oi_contact_margin = 0.04f;
 };
 
 struct EpisodeMetrics {
@@ -87,6 +99,7 @@ struct EpisodeMetrics {
     int reached_goal = 0, collision_free = 1, success = 0, steps = 0;
     float final_distance = 0.0f, min_goal_distance = 0.0f, cumulative_cost = 0.0f;
     int collisions = 0;
+    float mean_control_delta = 0.0f, control_roughness = 0.0f;
     float avg_control_ms = 0.0f, total_control_ms = 0.0f, episode_ms = 0.0f;
     long long sample_budget = 0;
 };
@@ -136,6 +149,17 @@ __host__ __device__ inline float stage_cost_f(
 __host__ __device__ inline float terminal_cost_f(float ox, float oy, float gx, float gy, const PushParams& p) {
     float dox = ox - gx, doy = oy - gy;
     return p.w_term * (dox*dox + doy*doy);
+}
+
+__host__ __device__ inline void object_ref_disk_f(
+    float ox0, float oy0, float gx, float gy, float dt, float obj_speed, int step,
+    float& rx, float& ry)
+{
+    float dx = gx - ox0, dy = gy - oy0;
+    float dist = sqrtf(dx*dx + dy*dy + 1e-9f);
+    float travel = fminf(dist, fmaxf(0.0f, obj_speed) * dt * static_cast<float>(step));
+    rx = ox0 + dx / dist * travel;
+    ry = oy0 + dy / dist * travel;
 }
 
 // ---- Dualf (gradient through contact, forward-mode) ----
@@ -217,6 +241,96 @@ __global__ void push_rollout_kernel(
     d_rng[k] = rng;
 }
 
+__global__ void push_low_pass_rollout_kernel(
+    const float* d_start, const float* d_nominal, float* d_costs, float* d_perturbed,
+    curandState* d_rng, PushParams p, float gx, float gy, int K, int T, float sigma, float lp_alpha)
+{
+    int k = blockIdx.x * blockDim.x + threadIdx.x;
+    if (k >= K) return;
+    curandState rng = d_rng[k];
+    float px = d_start[0], py = d_start[1], ox = d_start[2], oy = d_start[3];
+    float cost = 0.0f;
+    float fx = 0.0f, fy = 0.0f;
+    float alpha = clampf_local(lp_alpha, 0.02f, 1.0f);
+    float beta = 1.0f - alpha;
+    float variance_gain = sqrtf((2.0f - alpha) / alpha);
+    for (int t = 0; t < T; t++) {
+        fx = beta * fx + alpha * curand_normal(&rng);
+        fy = beta * fy + alpha * curand_normal(&rng);
+        float ux = d_nominal[t*2+0] + fx * variance_gain * sigma;
+        float uy = d_nominal[t*2+1] + fy * variance_gain * sigma;
+        ux = clampf_local(ux, -p.u_max, p.u_max);
+        uy = clampf_local(uy, -p.u_max, p.u_max);
+        d_perturbed[k*T*2 + t*2 + 0] = ux;
+        d_perturbed[k*T*2 + t*2 + 1] = uy;
+        push_step_f(px, py, ox, oy, ux, uy, p);
+        cost += stage_cost_f(px, py, ox, oy, ux, uy, gx, gy, p);
+    }
+    cost += terminal_cost_f(ox, oy, gx, gy, p);
+    d_costs[k] = cost;
+    d_rng[k] = rng;
+}
+
+__global__ void push_object_informed_rollout_kernel(
+    const float* d_start, const float* d_nominal, float* d_costs, float* d_perturbed,
+    curandState* d_rng, PushParams p, float gx, float gy, int K, int T, float sigma,
+    bool use_low_pass, float lp_alpha, float oi_ref_weight, float oi_obj_speed)
+{
+    int k = blockIdx.x * blockDim.x + threadIdx.x;
+    if (k >= K) return;
+    curandState rng = d_rng[k];
+    const float ox0 = d_start[2], oy0 = d_start[3];
+    float px = d_start[0], py = d_start[1], ox = ox0, oy = oy0;
+    float cost = 0.0f;
+    float fx = 0.0f, fy = 0.0f;
+    float alpha = clampf_local(lp_alpha, 0.02f, 1.0f);
+    float beta = 1.0f - alpha;
+    float variance_gain = use_low_pass ? sqrtf((2.0f - alpha) / alpha) : 1.0f;
+    for (int t = 0; t < T; t++) {
+        float nx = curand_normal(&rng);
+        float ny = curand_normal(&rng);
+        if (use_low_pass) {
+            fx = beta * fx + alpha * nx;
+            fy = beta * fy + alpha * ny;
+            nx = fx * variance_gain;
+            ny = fy * variance_gain;
+        }
+        float ux = d_nominal[t*2+0] + nx * sigma;
+        float uy = d_nominal[t*2+1] + ny * sigma;
+        ux = clampf_local(ux, -p.u_max, p.u_max);
+        uy = clampf_local(uy, -p.u_max, p.u_max);
+        d_perturbed[k*T*2 + t*2 + 0] = ux;
+        d_perturbed[k*T*2 + t*2 + 1] = uy;
+        push_step_f(px, py, ox, oy, ux, uy, p);
+        cost += stage_cost_f(px, py, ox, oy, ux, uy, gx, gy, p);
+        float rx, ry;
+        object_ref_disk_f(ox0, oy0, gx, gy, p.dt, oi_obj_speed, t + 1, rx, ry);
+        float erx = ox - rx, ery = oy - ry;
+        cost += fmaxf(0.0f, oi_ref_weight) * (erx*erx + ery*ery) * p.dt;
+    }
+    cost += terminal_cost_f(ox, oy, gx, gy, p);
+    d_costs[k] = cost;
+    d_rng[k] = rng;
+}
+
+__global__ void push_fixed_rollout_kernel(
+    const float* d_start, const float* d_controls, float* d_costs,
+    PushParams p, float gx, float gy, int K, int T)
+{
+    int k = blockIdx.x * blockDim.x + threadIdx.x;
+    if (k >= K) return;
+    float px = d_start[0], py = d_start[1], ox = d_start[2], oy = d_start[3];
+    float cost = 0.0f;
+    for (int t = 0; t < T; t++) {
+        float ux = clampf_local(d_controls[k*T*2 + t*2 + 0], -p.u_max, p.u_max);
+        float uy = clampf_local(d_controls[k*T*2 + t*2 + 1], -p.u_max, p.u_max);
+        push_step_f(px, py, ox, oy, ux, uy, p);
+        cost += stage_cost_f(px, py, ox, oy, ux, uy, gx, gy, p);
+    }
+    cost += terminal_cost_f(ox, oy, gx, gy, p);
+    d_costs[k] = cost;
+}
+
 __global__ void push_weights_kernel(const float* d_costs, float* d_w, int K, float lambda) {
     if (blockIdx.x != 0 || threadIdx.x != 0) return;
     float cmin = FLT_MAX;
@@ -263,6 +377,64 @@ __global__ void push_grad_step_kernel(
     }
 }
 
+__global__ void push_sample_grad_kernel(
+    const float* d_start, const float* d_controls, float* d_control_grads,
+    PushParams p, float gx, float gy, int K, int T)
+{
+    int k = blockIdx.x * blockDim.x + threadIdx.x;
+    if (k >= K) return;
+    float start[STATE_DIM] = { d_start[0], d_start[1], d_start[2], d_start[3] };
+    const float* controls = &d_controls[k*T*CTRL_DIM];
+    for (int param = 0; param < T*CTRL_DIM; param++) {
+        d_control_grads[k*T*CTRL_DIM + param] = dcost_dparam(start, controls, T, param, gx, gy, p);
+    }
+}
+
+__global__ void push_soppi_svgd_step_kernel(
+    const float* d_controls, float* d_controls_next, const float* d_control_grads,
+    PushParams p, int K, int T, int neighbor_count,
+    float lambda, float bandwidth, float step_size, float sigma)
+{
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    int total = K * T;
+    if (idx >= total) return;
+
+    const float noise = fmaxf(0.05f, sigma);
+    const float h = fmaxf(0.10f, bandwidth);
+    int k = idx / T;
+    int t = idx - k * T;
+    int base = k*T*CTRL_DIM + t*CTRL_DIM;
+    float ux_i = d_controls[base + 0];
+    float uy_i = d_controls[base + 1];
+    int neighbor_samples = K;
+    if (neighbor_count > 0 && neighbor_count < K) neighbor_samples = neighbor_count;
+    int stride = K / neighbor_samples;
+    if (stride < 1) stride = 1;
+
+    float phi_x = 0.0f;
+    float phi_y = 0.0f;
+    for (int m = 0; m < neighbor_samples; m++) {
+        int j = neighbor_count > 0 ? (k + m * stride) % K : m;
+        int jbase = j*T*CTRL_DIM + t*CTRL_DIM;
+        float ux_j = d_controls[jbase + 0];
+        float uy_j = d_controls[jbase + 1];
+        float dx = (ux_j - ux_i) / noise;
+        float dy = (uy_j - uy_i) / noise;
+        float k_rbf = expf(-(dx*dx + dy*dy) / h);
+
+        float score_x = -clampf_local(d_control_grads[jbase + 0] / fmaxf(lambda, 1.0e-3f), -25.0f, 25.0f);
+        float score_y = -clampf_local(d_control_grads[jbase + 1] / fmaxf(lambda, 1.0e-3f), -25.0f, 25.0f);
+        float repel_x = -2.0f * k_rbf * dx / (h * noise);
+        float repel_y = -2.0f * k_rbf * dy / (h * noise);
+        phi_x += k_rbf * score_x + repel_x;
+        phi_y += k_rbf * score_y + repel_y;
+    }
+    phi_x /= fmaxf(1.0f, static_cast<float>(neighbor_samples));
+    phi_y /= fmaxf(1.0f, static_cast<float>(neighbor_samples));
+    d_controls_next[base + 0] = clampf_local(ux_i + clampf_local(step_size * phi_x, -0.35f, 0.35f), -p.u_max, p.u_max);
+    d_controls_next[base + 1] = clampf_local(uy_i + clampf_local(step_size * phi_y, -0.35f, 0.35f), -p.u_max, p.u_max);
+}
+
 // ======================== Episode Runner ========================
 class EpisodeRunner {
 public:
@@ -275,11 +447,17 @@ public:
         CUDA_CHECK(cudaMalloc(&d_weights_, K_*sizeof(float)));
         CUDA_CHECK(cudaMalloc(&d_perturbed_, K_*T_*CTRL_DIM*sizeof(float)));
         CUDA_CHECK(cudaMalloc(&d_rng_, K_*sizeof(curandState)));
+        if (v_.use_soppi_sampling) {
+            CUDA_CHECK(cudaMalloc(&d_soppi_scratch_, K_*T_*CTRL_DIM*sizeof(float)));
+            CUDA_CHECK(cudaMalloc(&d_soppi_grad_, K_*T_*CTRL_DIM*sizeof(float)));
+        }
         reset_rng();
     }
     ~EpisodeRunner() {
         cudaFree(d_start_); cudaFree(d_nominal_); cudaFree(d_costs_);
         cudaFree(d_weights_); cudaFree(d_perturbed_); cudaFree(d_rng_);
+        if (d_soppi_scratch_) cudaFree(d_soppi_scratch_);
+        if (d_soppi_grad_) cudaFree(d_soppi_grad_);
     }
 
     EpisodeMetrics run() {
@@ -291,6 +469,11 @@ public:
 
         auto ep0 = chrono::steady_clock::now();
         float ctrl_ms = 0.0f;
+        float prev_ux = 0.0f, prev_uy = 0.0f;
+        bool have_prev_control = false;
+        float control_delta_sum = 0.0f;
+        float control_roughness_sum = 0.0f;
+        int control_delta_count = 0;
         for (int step = 0; step < sc_.max_steps; step++) {
             float dist = obj_goal_dist();
             min_dist_ = fminf(min_dist_, dist);
@@ -302,6 +485,16 @@ public:
             ctrl_ms += chrono::duration<float, milli>(t1 - t0).count();
 
             CUDA_CHECK(cudaMemcpy(h_nominal_.data(), d_nominal_, h_nominal_.size()*sizeof(float), cudaMemcpyDeviceToHost));
+            if (have_prev_control) {
+                float dux = h_nominal_[0] - prev_ux;
+                float duy = h_nominal_[1] - prev_uy;
+                control_delta_sum += sqrtf(dux*dux + duy*duy);
+                control_roughness_sum += dux*dux + duy*duy;
+                control_delta_count++;
+            }
+            prev_ux = h_nominal_[0];
+            prev_uy = h_nominal_[1];
+            have_prev_control = true;
             push_step_f(px_, py_, ox_, oy_, h_nominal_[0], h_nominal_[1], sc_.params);
             cum_cost_ += stage_cost_f(px_, py_, ox_, oy_, h_nominal_[0], h_nominal_[1], sc_.goal_x, sc_.goal_y, sc_.params);
 
@@ -322,6 +515,8 @@ public:
         m.steps = steps_;
         m.final_distance = fd; m.min_goal_distance = min_dist_;
         m.cumulative_cost = cum_cost_;
+        m.mean_control_delta = control_delta_count > 0 ? control_delta_sum / control_delta_count : 0.0f;
+        m.control_roughness = control_delta_count > 0 ? control_roughness_sum / control_delta_count : 0.0f;
         m.total_control_ms = ctrl_ms;
         m.avg_control_ms = steps_ > 0 ? ctrl_ms / steps_ : 0.0f;
         m.episode_ms = chrono::duration<float, milli>(ep1 - ep0).count();
@@ -349,10 +544,40 @@ private:
     }
     void controller_update() {
         sync_start();
+        seed_object_informed_nominal();
         CUDA_CHECK(cudaMemcpy(d_nominal_, h_nominal_.data(), h_nominal_.size()*sizeof(float), cudaMemcpyHostToDevice));
         int b = 256;
-        push_rollout_kernel<<<(K_+b-1)/b, b>>>(d_start_, d_nominal_, d_costs_, d_perturbed_, d_rng_,
-                                               sc_.params, sc_.goal_x, sc_.goal_y, K_, T_, v_.sigma);
+        if (v_.use_object_informed) {
+            push_object_informed_rollout_kernel<<<(K_+b-1)/b, b>>>(
+                d_start_, d_nominal_, d_costs_, d_perturbed_, d_rng_,
+                sc_.params, sc_.goal_x, sc_.goal_y, K_, T_, v_.sigma,
+                v_.use_low_pass_sampling, v_.lp_alpha, v_.oi_ref_weight, v_.oi_obj_speed);
+        } else if (v_.use_low_pass_sampling) {
+            push_low_pass_rollout_kernel<<<(K_+b-1)/b, b>>>(
+                d_start_, d_nominal_, d_costs_, d_perturbed_, d_rng_,
+                sc_.params, sc_.goal_x, sc_.goal_y, K_, T_, v_.sigma, v_.lp_alpha);
+        } else {
+            push_rollout_kernel<<<(K_+b-1)/b, b>>>(
+                d_start_, d_nominal_, d_costs_, d_perturbed_, d_rng_,
+                sc_.params, sc_.goal_x, sc_.goal_y, K_, T_, v_.sigma);
+        }
+        if (v_.use_soppi_sampling) {
+            int total_particles = K_ * T_;
+            for (int iter = 0; iter < max(1, v_.soppi_svgd_iters); iter++) {
+                push_sample_grad_kernel<<<(K_+b-1)/b, b>>>(
+                    d_start_, d_perturbed_, d_soppi_grad_,
+                    sc_.params, sc_.goal_x, sc_.goal_y, K_, T_);
+                push_soppi_svgd_step_kernel<<<(total_particles+b-1)/b, b>>>(
+                    d_perturbed_, d_soppi_scratch_, d_soppi_grad_,
+                    sc_.params, K_, T_, v_.soppi_neighbor_count,
+                    v_.lambda, v_.soppi_bandwidth, v_.soppi_step_size, v_.sigma);
+                CUDA_CHECK(cudaMemcpy(d_perturbed_, d_soppi_scratch_,
+                                      K_*T_*CTRL_DIM*sizeof(float), cudaMemcpyDeviceToDevice));
+                push_fixed_rollout_kernel<<<(K_+b-1)/b, b>>>(
+                    d_start_, d_perturbed_, d_costs_,
+                    sc_.params, sc_.goal_x, sc_.goal_y, K_, T_);
+            }
+        }
         push_weights_kernel<<<1,1>>>(d_costs_, d_weights_, K_, v_.lambda);
         push_update_kernel<<<(T_+b-1)/b, b>>>(d_nominal_, d_perturbed_, d_weights_, K_, T_);
         for (int g = 0; g < v_.grad_steps; g++) {
@@ -363,11 +588,36 @@ private:
     }
     void warmup() { for (int i = 0; i < 3; i++) controller_update(); }
 
+    void seed_object_informed_nominal() {
+        if (!v_.use_object_informed || v_.oi_seed_blend <= 0.0f) return;
+        const PushParams& p = sc_.params;
+        float sim_px = px_, sim_py = py_;
+        float blend = clampf_local(v_.oi_seed_blend, 0.0f, 1.0f);
+        float dxg = sc_.goal_x - ox_, dyg = sc_.goal_y - oy_;
+        float dg = sqrtf(dxg*dxg + dyg*dyg + 1e-9f);
+        float dirx = dxg / dg, diry = dyg / dg;
+        float contact_offset = p.contact + fmaxf(0.0f, v_.oi_contact_margin);
+        for (int t = 0; t < T_; t++) {
+            float refx, refy;
+            object_ref_disk_f(ox_, oy_, sc_.goal_x, sc_.goal_y, p.dt, v_.oi_obj_speed, t + 1, refx, refy);
+            float target_px = refx - dirx * contact_offset;
+            float target_py = refy - diry * contact_offset;
+            float ux = clampf_local((target_px - sim_px) / p.dt, -p.u_max, p.u_max);
+            float uy = clampf_local((target_py - sim_py) / p.dt, -p.u_max, p.u_max);
+            int base = t * CTRL_DIM;
+            h_nominal_[base + 0] = (1.0f - blend) * h_nominal_[base + 0] + blend * ux;
+            h_nominal_[base + 1] = (1.0f - blend) * h_nominal_[base + 1] + blend * uy;
+            sim_px += p.dt * h_nominal_[base + 0];
+            sim_py += p.dt * h_nominal_[base + 1];
+        }
+    }
+
     Variant v_; PushScenario sc_; int K_, T_, seed_;
     float px_=0, py_=0, ox_=0, oy_=0;
     int steps_=0; bool reached_=false; float cum_cost_=0, min_dist_=0;
     vector<float> h_nominal_;
     float *d_start_=nullptr, *d_nominal_=nullptr, *d_costs_=nullptr, *d_weights_=nullptr, *d_perturbed_=nullptr;
+    float *d_soppi_scratch_=nullptr, *d_soppi_grad_=nullptr;
     curandState* d_rng_=nullptr;
 };
 
@@ -401,12 +651,13 @@ static vector<string> parse_string_list(const string& t) {
 }
 static void write_csv(const vector<EpisodeMetrics>& rows, const string& path) {
     ofstream out(path);
-    out << "scenario,planner,seed,k_samples,t_horizon,grad_steps,alpha,reached_goal,collision_free,success,steps,final_distance,min_goal_distance,cumulative_cost,collisions,avg_control_ms,total_control_ms,episode_ms,sample_budget\n";
+    out << "scenario,planner,seed,k_samples,t_horizon,grad_steps,alpha,reached_goal,collision_free,success,steps,final_distance,min_goal_distance,cumulative_cost,collisions,mean_control_delta,control_roughness,avg_control_ms,total_control_ms,episode_ms,sample_budget\n";
     for (const auto& r : rows)
         out << r.scenario<<','<<r.planner<<','<<r.seed<<','<<r.k_samples<<','<<r.t_horizon<<','
             << r.grad_steps<<','<<r.alpha<<','<<r.reached_goal<<','<<r.collision_free<<','<<r.success<<','
             << r.steps<<','<<r.final_distance<<','<<r.min_goal_distance<<','<<r.cumulative_cost<<','
-            << r.collisions<<','<<r.avg_control_ms<<','<<r.total_control_ms<<','<<r.episode_ms<<','<<r.sample_budget<<'\n';
+            << r.collisions<<','<<r.mean_control_delta<<','<<r.control_roughness<<','
+            << r.avg_control_ms<<','<<r.total_control_ms<<','<<r.episode_ms<<','<<r.sample_budget<<'\n';
 }
 static void print_summary(const vector<EpisodeMetrics>& rows) {
     map<string, SummaryStats> st;
@@ -430,6 +681,11 @@ int main(int argc, char** argv) {
     string csv_path = "build/benchmark_diff_mppi_pushing.csv";
     vector<int> k_values; vector<string> scenario_names, planner_names;
     int seed_count = -1;
+    float override_lp_alpha = -1.0f;
+    int override_soppi_iters = -1;
+    int override_soppi_neighbor_count = -1;
+    float override_soppi_step_size = -1.0f;
+    float override_soppi_bandwidth = -1.0f;
     for (int i = 1; i < argc; i++) {
         string a = argv[i];
         if (a == "--quick") quick = true;
@@ -438,6 +694,11 @@ int main(int argc, char** argv) {
         else if (a == "--seed-count" && i+1<argc) seed_count = max(1, atoi(argv[++i]));
         else if (a == "--scenarios" && i+1<argc) scenario_names = parse_string_list(argv[++i]);
         else if (a == "--planners" && i+1<argc) planner_names = parse_string_list(argv[++i]);
+        else if (a == "--override-lp-alpha" && i+1<argc) override_lp_alpha = atof(argv[++i]);
+        else if (a == "--override-soppi-iters" && i+1<argc) override_soppi_iters = atoi(argv[++i]);
+        else if (a == "--override-soppi-neighbors" && i+1<argc) override_soppi_neighbor_count = max(0, atoi(argv[++i]));
+        else if (a == "--override-soppi-step-size" && i+1<argc) override_soppi_step_size = atof(argv[++i]);
+        else if (a == "--override-soppi-bandwidth" && i+1<argc) override_soppi_bandwidth = atof(argv[++i]);
     }
     ensure_build_dir();
 
@@ -453,8 +714,14 @@ int main(int argc, char** argv) {
 
     vector<Variant> variants;
     { Variant v; v.name="mppi"; variants.push_back(v); }
+    { Variant v; v.name="lp_mppi"; v.use_low_pass_sampling=true; v.lp_alpha=0.35f; variants.push_back(v); }
+    { Variant v; v.name="lp_mppi_smooth"; v.use_low_pass_sampling=true; v.lp_alpha=0.20f; variants.push_back(v); }
+    { Variant v; v.name="oi_mppi"; v.use_object_informed=true; v.oi_ref_weight=2.0f; v.oi_obj_speed=1.8f; v.oi_seed_blend=0.15f; variants.push_back(v); }
+    { Variant v; v.name="oi_lp_mppi"; v.use_object_informed=true; v.use_low_pass_sampling=true; v.lp_alpha=0.25f; v.oi_ref_weight=2.0f; v.oi_obj_speed=1.8f; v.oi_seed_blend=0.12f; variants.push_back(v); }
     { Variant v; v.name="diff_mppi_1"; v.grad_steps=1; v.alpha=0.04f; variants.push_back(v); }
     { Variant v; v.name="diff_mppi_3"; v.grad_steps=3; v.alpha=0.02f; variants.push_back(v); }
+    { Variant v; v.name="soppi"; v.use_soppi_sampling=true; v.soppi_step_size=0.06f; v.soppi_bandwidth=2.0f; variants.push_back(v); }
+    { Variant v; v.name="soppi_fast"; v.use_soppi_sampling=true; v.soppi_step_size=0.06f; v.soppi_bandwidth=2.0f; v.soppi_neighbor_count=32; variants.push_back(v); }
     if (!planner_names.empty()) {
         vector<Variant> f;
         for (auto& w : planner_names) {
@@ -463,6 +730,13 @@ int main(int argc, char** argv) {
             f.push_back(*it);
         }
         variants.swap(f);
+    }
+    for (auto& v : variants) {
+        if (override_lp_alpha >= 0.0f && v.use_low_pass_sampling) v.lp_alpha = override_lp_alpha;
+        if (override_soppi_iters >= 0 && v.use_soppi_sampling) v.soppi_svgd_iters = override_soppi_iters;
+        if (override_soppi_neighbor_count >= 0 && v.use_soppi_sampling) v.soppi_neighbor_count = override_soppi_neighbor_count;
+        if (override_soppi_step_size >= 0.0f && v.use_soppi_sampling) v.soppi_step_size = override_soppi_step_size;
+        if (override_soppi_bandwidth >= 0.0f && v.use_soppi_sampling) v.soppi_bandwidth = override_soppi_bandwidth;
     }
     if (k_values.empty()) k_values = quick ? vector<int>{256} : vector<int>{256, 512};
     if (seed_count <= 0) seed_count = quick ? 4 : 8;
@@ -473,7 +747,7 @@ int main(int argc, char** argv) {
         for (int ks : k_values) {
             for (size_t vi = 0; vi < variants.size(); vi++) {
                 for (int seed = 0; seed < seed_count; seed++) {
-                    int run_seed = (int)(5000 + si*100 + vi*20 + seed*7 + ks);
+                    int run_seed = (int)(5000 + si*100 + seed*7 + ks);
                     EpisodeRunner runner(variants[vi], sc, ks, DEFAULT_T, run_seed);
                     EpisodeMetrics m = runner.run();
                     rows.push_back(m);
