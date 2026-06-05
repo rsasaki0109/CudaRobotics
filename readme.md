@@ -17,8 +17,8 @@
   <a href="https://rsasaki0109.github.io/CudaRobotics/gpu_diffusion_planner.gif">
     <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_diffusion_planner.gif" alt="CUDA diffusion planner demo" width="180"/>
   </a>
-  <a href="https://rsasaki0109.github.io/CudaRobotics/gpu_bnb_loop_closure_slam.gif">
-    <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_bnb_loop_closure_slam.gif" alt="CUDA branch-and-bound loop closure demo" width="180"/>
+  <a href="gif/gpu_multi_robot_place_graph_slam.gif">
+    <img src="gif/gpu_multi_robot_place_graph_slam.gif" alt="CUDA multi-robot place graph SLAM demo" width="180"/>
   </a>
 </p>
 
@@ -31,7 +31,7 @@
   /
   <a href="https://rsasaki0109.github.io/CudaRobotics/gpu_diffusion_planner.gif">Diffusion planner</a>
   /
-  <a href="https://rsasaki0109.github.io/CudaRobotics/gpu_bnb_loop_closure_slam.gif">BNB loop closure</a>
+  <a href="gif/gpu_multi_robot_place_graph_slam.gif">Multi-robot place graph SLAM</a>
   /
   <a href="https://rsasaki0109.github.io/CudaRobotics/gpu_gaussian_splatting_slam.gif">Gaussian-Splatting SLAM</a>
   /
@@ -123,6 +123,7 @@ does not, and what would be required for a paper-faithful reproduction.
 
 | Demo | What it shows |
 |---|---|
+| `gpu_multi_robot_place_graph_slam` | Multi-robot place recognition scores 60,516 descriptor pairs on the GPU, adds inter-robot loop edges, and cuts pose-graph RMSE from 7.59 m to 3.33 m. |
 | `gpu_bnb_loop_closure_slam` | Branch-and-bound loop search scores about 957x fewer candidates than brute force while returning the same relpose on 51/51 attempts. |
 | `gpu_gaussian_splatting_slam` | RGB-D Gaussian-Splatting SLAM with GPU ray-cast sensor, point-to-plane ICP tracking, and incremental Gaussian map fusion. |
 | `gpu_mppi_racing` | MPPI autonomous racing with 2048 x 40 rollouts per control step on the GPU. |
@@ -132,7 +133,7 @@ does not, and what would be required for a paper-faithful reproduction.
 
 | | |
 |---|---|
-| <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_bnb_loop_closure_slam.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_gaussian_splatting_slam.gif" width="400"/> |
+| <img src="gif/gpu_multi_robot_place_graph_slam.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_gaussian_splatting_slam.gif" width="400"/> |
 | <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_mppi_racing.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_sgm_stereo.gif" width="400"/> |
 
 ## Gallery
@@ -159,10 +160,10 @@ The most visually striking GPU demos, where massive parallelism really shows.
 
 | | |
 |---|---|
-| <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_gaussian_splatting_slam.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_pose_graph_slam_3d.gif" width="400"/> |
-| Gaussian-Splatting SLAM (RGB-D) | 3D pose-graph SLAM |
-| <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_bnb_loop_closure_slam.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_correlative_scan_matching.gif" width="400"/> |
-| Branch-and-bound loop closure | Correlative scan matching |
+| <img src="gif/gpu_multi_robot_place_graph_slam.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_gaussian_splatting_slam.gif" width="400"/> |
+| Multi-robot place graph SLAM | Gaussian-Splatting SLAM (RGB-D) |
+| <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_pose_graph_slam_3d.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_correlative_scan_matching.gif" width="400"/> |
+| 3D pose-graph SLAM | Correlative scan matching |
 | <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_online_slam.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_csm_submap_slam.gif" width="400"/> |
 | Online SLAM | Submap loop-closure SLAM |
 | <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_lidar_slam.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_bundle_adjustment.gif" width="400"/> |
@@ -257,9 +258,9 @@ transform / warp and is verified in-binary.
 
 ## What's Inside
 
-- SLAM and scan matching: pose-graph SLAM, online SLAM, correlative scan
-  matching, branch-and-bound CSM, submap loop closure, Gaussian-Splatting SLAM,
-  KISS-ICP-style LiDAR odometry.
+- SLAM and scan matching: multi-robot place-graph SLAM, pose-graph SLAM,
+  online SLAM, correlative scan matching, branch-and-bound CSM, submap loop
+  closure, Gaussian-Splatting SLAM, KISS-ICP-style LiDAR odometry.
 - Localization and filtering: particle filters, KLD-AMCL, MegaParticles-style
   global localization, LSH neighbour consensus, robust smoothers.
 - Planning and control: MPPI, Diff-MPPI, graph-neural MPPI, no-regret game

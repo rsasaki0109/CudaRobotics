@@ -12,5 +12,6 @@ deploy.sh
 __pycache__/
 *.pyc
 *.avi
+tmp/
 videos/
 docker-compose.override.yml
