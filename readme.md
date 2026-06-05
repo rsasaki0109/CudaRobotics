@@ -37,6 +37,8 @@ The checked-in MPPI zoo smoke result was generated on 2026-06-05 with
 scenario/planner/K cell. It is a smoke benchmark, not a paper-faithful claim,
 but it gives a concrete negative control and a reproducible comparison target.
 
+<img src="docs/results/mppi_zoo_smoke_2026-06-05.svg" alt="MPPI Zoo fixed-seed smoke chart" width="900"/>
+
 | Scenario | K | Baseline MPPI | Strongest signal |
 |---|---:|---|---|
 | `dynamic_crossing` | 64 | success 0.00, final distance 3.21 | `ducct_mppi_smooth` success 1.00, final distance 1.91 |
