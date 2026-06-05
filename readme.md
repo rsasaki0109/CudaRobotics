@@ -5,18 +5,21 @@
 [![Gallery](https://img.shields.io/badge/gallery-animated_demos-blue)](https://rsasaki0109.github.io/CudaRobotics/)
 
 <p align="center">
-  <a href="https://rsasaki0109.github.io/CudaRobotics/">
-    <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_gaussian_splatting_slam.gif" alt="CUDA RGB-D Gaussian-Splatting SLAM demo" width="820"/>
+  <a href="https://rsasaki0109.github.io/CudaRobotics/gpu_mppi_racing.gif">
+    <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_mppi_racing.gif" alt="CUDA MPPI racing demo" width="410"/>
+  </a>
+  <a href="https://rsasaki0109.github.io/CudaRobotics/comparison_expansion_reset_mcl.gif">
+    <img src="https://rsasaki0109.github.io/CudaRobotics/comparison_expansion_reset_mcl.gif" alt="Expansion-reset MCL demo" width="410"/>
   </a>
 </p>
 
 <p align="center">
   <a href="https://rsasaki0109.github.io/CudaRobotics/gpu_mppi_racing.gif">MPPI racing</a>
-  ·
-  <a href="https://rsasaki0109.github.io/CudaRobotics/gpu_sgm_stereo.gif">SGM stereo</a>
-  ·
-  <a href="https://rsasaki0109.github.io/CudaRobotics/gpu_bnb_loop_closure_slam.gif">loop closure</a>
-  ·
+  /
+  <a href="https://rsasaki0109.github.io/CudaRobotics/comparison_expansion_reset_mcl.gif">Expansion-reset MCL</a>
+  /
+  <a href="https://rsasaki0109.github.io/CudaRobotics/gpu_gaussian_splatting_slam.gif">Gaussian-Splatting SLAM</a>
+  /
   <a href="https://rsasaki0109.github.io/CudaRobotics/">full gallery</a>
 </p>
 
