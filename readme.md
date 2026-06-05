@@ -4,6 +4,22 @@
 [![CUDA](https://img.shields.io/badge/CUDA-12.x-76B900)](https://developer.nvidia.com/cuda-toolkit)
 [![Gallery](https://img.shields.io/badge/gallery-animated_demos-blue)](https://rsasaki0109.github.io/CudaRobotics/)
 
+<p align="center">
+  <a href="https://rsasaki0109.github.io/CudaRobotics/">
+    <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_gaussian_splatting_slam.gif" alt="CUDA RGB-D Gaussian-Splatting SLAM demo" width="820"/>
+  </a>
+</p>
+
+<p align="center">
+  <a href="https://rsasaki0109.github.io/CudaRobotics/gpu_mppi_racing.gif">MPPI racing</a>
+  ·
+  <a href="https://rsasaki0109.github.io/CudaRobotics/gpu_sgm_stereo.gif">SGM stereo</a>
+  ·
+  <a href="https://rsasaki0109.github.io/CudaRobotics/gpu_bnb_loop_closure_slam.gif">loop closure</a>
+  ·
+  <a href="https://rsasaki0109.github.io/CudaRobotics/">full gallery</a>
+</p>
+
 CUDA Robotics is a GPU-first robotics playground and benchmark suite for SLAM,
 mapping, perception, planning, MPPI control, point-cloud registration, and
 learning demos in C++/CUDA.
