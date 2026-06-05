@@ -17,6 +17,18 @@ docker compose run --rm cudarobotics bash -lc 'python3 scripts/run_mppi_zoo_smok
 The script writes CSV and a compact Markdown report under `build/mppi_zoo/`
 through the Docker volume mount.
 
+## Checked-In Smoke Result
+
+The latest checked-in fixed-seed smoke artifact is
+[`results/mppi_zoo_smoke_2026-06-05.md`](results/mppi_zoo_smoke_2026-06-05.md)
+with its source CSV at
+[`results/mppi_zoo_smoke_2026-06-05.csv`](results/mppi_zoo_smoke_2026-06-05.csv).
+
+Scope: `dynamic_crossing,narrow_passage`, `K=64,128`, 3 seeds per
+scenario/planner/K cell, and the nine planners listed in the report. The useful
+negative control is `dynamic_crossing`: vanilla `mppi` fails at both K values,
+while the paper-inspired zoo variants solve the same cells in this smoke run.
+
 ## Index
 
 | Family | Paper / idea | Implementation | Best signal | Limit | Doc |

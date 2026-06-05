@@ -278,7 +278,7 @@ def render_report(
 
     if rows is None:
         lines.extend(["## Results", "", "Dry run only. No CSV was read.", ""])
-        return "\n".join(lines) + "\n"
+        return "\n".join(lines).rstrip() + "\n"
 
     summary = group_summary(rows)
     lines.extend(["## Planner Aggregate", ""])
@@ -287,7 +287,7 @@ def render_report(
     lines.extend(render_best(summary))
     lines.extend(["", "## Per Scenario Details", ""])
     lines.extend(render_details(summary))
-    return "\n".join(lines) + "\n"
+    return "\n".join(lines).rstrip() + "\n"
 
 
 def main() -> None:
