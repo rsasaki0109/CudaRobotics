@@ -11,8 +11,8 @@
   <a href="https://rsasaki0109.github.io/CudaRobotics/comparison_expansion_reset_mcl.gif">
     <img src="https://rsasaki0109.github.io/CudaRobotics/comparison_expansion_reset_mcl.gif" alt="Expansion-reset MCL demo" width="270"/>
   </a>
-  <a href="https://rsasaki0109.github.io/CudaRobotics/gpu_crowd_swarm.gif">
-    <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_crowd_swarm.gif" alt="CUDA crowd swarm simulation demo" width="270"/>
+  <a href="https://rsasaki0109.github.io/CudaRobotics/gpu_multi_robot_planner.gif">
+    <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_multi_robot_planner.gif" alt="CUDA multi-robot planner demo" width="270"/>
   </a>
 </p>
 
@@ -21,7 +21,7 @@
   /
   <a href="https://rsasaki0109.github.io/CudaRobotics/comparison_expansion_reset_mcl.gif">Expansion-reset MCL</a>
   /
-  <a href="https://rsasaki0109.github.io/CudaRobotics/gpu_crowd_swarm.gif">Crowd swarm</a>
+  <a href="https://rsasaki0109.github.io/CudaRobotics/gpu_multi_robot_planner.gif">Multi-robot planner</a>
   /
   <a href="https://rsasaki0109.github.io/CudaRobotics/gpu_gaussian_splatting_slam.gif">Gaussian-Splatting SLAM</a>
   /
