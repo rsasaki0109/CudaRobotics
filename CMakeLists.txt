@@ -436,6 +436,10 @@ add_executable(gpu_multi_robot_planner src/gpu_multi_robot_planner.cu)
 target_link_libraries(gpu_multi_robot_planner ${OpenCV_LIBS})
 target_compile_options(gpu_multi_robot_planner PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
 
+add_executable(gpu_multi_robot_place_graph_slam src/gpu_multi_robot_place_graph_slam.cu)
+target_link_libraries(gpu_multi_robot_place_graph_slam ${OpenCV_LIBS})
+target_compile_options(gpu_multi_robot_place_graph_slam PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
+
 add_executable(gpu_crowd_swarm src/gpu_crowd_swarm.cu)
 target_link_libraries(gpu_crowd_swarm ${OpenCV_LIBS})
 target_compile_options(gpu_crowd_swarm PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
