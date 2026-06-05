@@ -1,15 +1,67 @@
 # CudaRobotics
 
-CUDA-accelerated robotics algorithms in C++/CUDA, inspired by
-[PythonRobotics](https://github.com/AtsushiSakai/PythonRobotics) and
-[CppRobotics](https://github.com/onlytailei/CppRobotics), with additional
-differentiable-control, SLAM, mapping, perception, and learning demos.
+[![GitHub stars](https://img.shields.io/github/stars/rsasaki0109/CudaRobotics?style=social)](https://github.com/rsasaki0109/CudaRobotics/stargazers)
+[![CUDA](https://img.shields.io/badge/CUDA-12.x-76B900)](https://developer.nvidia.com/cuda-toolkit)
+[![Gallery](https://img.shields.io/badge/gallery-animated_demos-blue)](https://rsasaki0109.github.io/CudaRobotics/)
+
+CUDA Robotics is a GPU-first robotics playground and benchmark suite for SLAM,
+mapping, perception, planning, MPPI control, point-cloud registration, and
+learning demos in C++/CUDA.
+
+If you are looking for a reason to star it: this repo turns robotics algorithms
+into small, runnable CUDA examples, then records both the speedups and the
+failure cases.
 
 The core pattern is simple: keep a CPU reference or robotics baseline where it
 helps, then expose the parallel work as one CUDA thread per particle, ray,
 candidate pose, graph node, rollout, voxel, feature, or grid cell.
 
 Full animated gallery: https://rsasaki0109.github.io/CudaRobotics/
+
+## Start Here
+
+| Want to see | Open |
+|---|---|
+| Visual demos | [Full animated gallery](https://rsasaki0109.github.io/CudaRobotics/) |
+| MPPI paper reproduction zoo | [`docs/mppi_reproduction_zoo.md`](docs/mppi_reproduction_zoo.md) |
+| Reproducibility suites | [`docs/reproducibility.md`](docs/reproducibility.md) |
+| Diff-MPPI paper material | [`paper/`](paper/) |
+| Contributing a demo or reproduction | [`CONTRIBUTING.md`](CONTRIBUTING.md) |
+| Current roadmap snapshot | [`docs/next_actions.md`](docs/next_actions.md) |
+
+## Docker Smoke Test
+
+Requires NVIDIA Container Toolkit and a CUDA-capable GPU.
+
+```bash
+docker compose build cudarobotics
+docker compose run --rm cudarobotics bash -lc './bin/benchmark_diff_mppi --quick --scenarios dynamic_crossing,narrow_passage --planners mppi,lp_mppi_smooth,step_mppi_smooth,tsallis_mppi_smooth --k-values 64 --seed-count 2 --csv build/readme_mppi_smoke.csv'
+```
+
+## What Makes It Different
+
+- Self-contained C++/CUDA demos instead of framework-heavy examples.
+- GPU kernels are shaped around robotics workloads: rollouts, particles, rays,
+  voxels, grid cells, graph nodes, feature matches, and candidate poses.
+- Reproduction docs include negative results and limitations, not only wins.
+- The MPPI stack includes a growing benchmarked zoo of paper-inspired variants.
+
+## MPPI Reproduction Zoo
+
+The MPPI work is now indexed as a reproducible research backlog. Each entry is
+a lightweight CUDA implementation plus notes on where the result works, where it
+does not, and what would be required for a paper-faithful reproduction.
+
+| Family | What to open first |
+|---|---|
+| Step-MPPI | [`docs/step_mppi_reproduction.md`](docs/step_mppi_reproduction.md) |
+| Tsallis-MPPI | [`docs/tsallis_mppi_reproduction.md`](docs/tsallis_mppi_reproduction.md) |
+| DRA-MPPI | [`docs/dra_mppi_reproduction.md`](docs/dra_mppi_reproduction.md) |
+| C2U-MPPI | [`docs/c2u_mppi_reproduction.md`](docs/c2u_mppi_reproduction.md) |
+| DUCCT-MPPI | [`docs/ducct_mppi_reproduction.md`](docs/ducct_mppi_reproduction.md) |
+| DBaS-Log-MPPI | [`docs/dbas_log_mppi_reproduction.md`](docs/dbas_log_mppi_reproduction.md) |
+| PA-MPPI | [`docs/pa_mppi_reproduction.md`](docs/pa_mppi_reproduction.md) |
+| Full index | [`docs/mppi_reproduction_zoo.md`](docs/mppi_reproduction_zoo.md) |
 
 ## Highlights
 
@@ -43,7 +95,7 @@ The most visually striking GPU demos, where massive parallelism really shows.
 | <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_sfm_mini.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_tsdf_fusion.gif" width="400"/> |
 | Structure-from-motion (mini) | TSDF fusion |
 | <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_mppi_racing.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_crowd_swarm.gif" width="400"/> |
-| MPPI autonomous racing (2048×40 rollouts) | Crowd / swarm simulation |
+| MPPI autonomous racing (2048 x 40 rollouts) | Crowd / swarm simulation |
 | <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_marching_cubes.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_spectral_clustering.gif" width="400"/> |
 | Marching Cubes | Spectral clustering |
 
@@ -212,6 +264,8 @@ The runner writes CSVs, summaries, logs, `manifest.json`, and a human-readable
 ## Useful Entry Points
 
 - Gallery: https://rsasaki0109.github.io/CudaRobotics/
+- MPPI reproduction zoo: [`docs/mppi_reproduction_zoo.md`](docs/mppi_reproduction_zoo.md)
+- Contributing guide: [`CONTRIBUTING.md`](CONTRIBUTING.md)
 - Repro suite docs: [`docs/reproducibility.md`](docs/reproducibility.md)
 - Next-actions snapshot: [`docs/next_actions.md`](docs/next_actions.md)
 - Diff-MPPI paper draft material: [`paper/`](paper/)
