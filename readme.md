@@ -23,11 +23,31 @@ Full animated gallery: https://rsasaki0109.github.io/CudaRobotics/
 | Want to see | Open |
 |---|---|
 | Visual demos | [Full animated gallery](https://rsasaki0109.github.io/CudaRobotics/) |
+| Latest fixed-seed MPPI result | [`docs/results/mppi_zoo_smoke_2026-06-05.md`](docs/results/mppi_zoo_smoke_2026-06-05.md) |
 | MPPI paper reproduction zoo | [`docs/mppi_reproduction_zoo.md`](docs/mppi_reproduction_zoo.md) |
 | Reproducibility suites | [`docs/reproducibility.md`](docs/reproducibility.md) |
 | Diff-MPPI paper material | [`paper/`](paper/) |
 | Contributing a demo or reproduction | [`CONTRIBUTING.md`](CONTRIBUTING.md) |
 | Current roadmap snapshot | [`docs/next_actions.md`](docs/next_actions.md) |
+
+## Latest Fixed-Seed Result
+
+The checked-in MPPI zoo smoke result was generated on 2026-06-05 with
+`dynamic_crossing,narrow_passage`, `K=64,128`, and 3 seeds per
+scenario/planner/K cell. It is a smoke benchmark, not a paper-faithful claim,
+but it gives a concrete negative control and a reproducible comparison target.
+
+| Scenario | K | Baseline MPPI | Strongest signal |
+|---|---:|---|---|
+| `dynamic_crossing` | 64 | success 0.00, final distance 3.21 | `ducct_mppi_smooth` success 1.00, final distance 1.91 |
+| `dynamic_crossing` | 128 | success 0.00, final distance 3.39 | `step_mppi_smooth` success 1.00, final distance 1.88 |
+| `narrow_passage` | 64 | success 1.00, 253.3 steps | `tsallis_mppi_smooth` success 1.00, 228.3 steps |
+| `narrow_passage` | 128 | success 1.00, 251.7 steps | `tsallis_mppi_smooth` success 1.00, 228.0 steps |
+
+Full report and CSV:
+[`docs/results/mppi_zoo_smoke_2026-06-05.md`](docs/results/mppi_zoo_smoke_2026-06-05.md)
+and
+[`docs/results/mppi_zoo_smoke_2026-06-05.csv`](docs/results/mppi_zoo_smoke_2026-06-05.csv).
 
 ## Docker Smoke Test
 
