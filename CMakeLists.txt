@@ -834,6 +834,11 @@ add_test(NAME check_repro_suite_dry_run
     --suite smoke
     --output-dir ${CMAKE_BINARY_DIR}/repro_suite_dry_run
   WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+add_test(NAME check_mppi_zoo_smoke_dry_run
+  COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/run_mppi_zoo_smoke.py
+    --dry-run
+    --out-dir ${CMAKE_BINARY_DIR}/mppi_zoo_dry_run
+  WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 add_test(NAME check_planner_showdown_summary
   COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/summarize_planner_showdown.py
     --json ${CMAKE_SOURCE_DIR}/gif/gpu_planner_showdown_benchmark.json
@@ -853,7 +858,7 @@ add_test(NAME check_planner_falsifier_summary
     --markdown-out ${CMAKE_BINARY_DIR}/gpu_planner_falsifier_benchmark.md
     --strict
   WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
-set_tests_properties(validate_design_workflow check_design_regressions check_scaffold check_repro_suite_dry_run check_planner_showdown_summary check_planner_showdown_matrix_summary check_planner_falsifier_summary
+set_tests_properties(validate_design_workflow check_design_regressions check_scaffold check_repro_suite_dry_run check_mppi_zoo_smoke_dry_run check_planner_showdown_summary check_planner_showdown_matrix_summary check_planner_falsifier_summary
   PROPERTIES
   TIMEOUT 30
   LABELS "python")

@@ -51,7 +51,7 @@ CUDA smoke for the MPPI stack:
 
 ```bash
 docker compose build cudarobotics
-docker compose run --rm cudarobotics bash -lc './bin/benchmark_diff_mppi --quick --scenarios dynamic_crossing,narrow_passage --planners mppi,lp_mppi_smooth,step_mppi_smooth,tsallis_mppi_smooth --k-values 64 --seed-count 2 --csv build/contrib_mppi_smoke.csv'
+docker compose run --rm cudarobotics bash -lc 'python3 scripts/run_mppi_zoo_smoke.py --bin ./bin/benchmark_diff_mppi --out-dir build/mppi_zoo'
 ```
 
 ## PR Notes

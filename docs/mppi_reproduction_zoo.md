@@ -11,10 +11,11 @@ From a machine with NVIDIA Container Toolkit and a CUDA-capable GPU:
 
 ```bash
 docker compose build cudarobotics
-docker compose run --rm cudarobotics bash -lc './bin/benchmark_diff_mppi --quick --scenarios dynamic_crossing,narrow_passage --planners mppi,lp_mppi_smooth,step_mppi_smooth,tsallis_mppi_smooth --k-values 64,128 --seed-count 3 --csv build/mppi_zoo_smoke.csv'
+docker compose run --rm cudarobotics bash -lc 'python3 scripts/run_mppi_zoo_smoke.py --bin ./bin/benchmark_diff_mppi --out-dir build/mppi_zoo'
 ```
 
-The benchmark writes CSV output under `build/` through the Docker volume mount.
+The script writes CSV and a compact Markdown report under `build/mppi_zoo/`
+through the Docker volume mount.
 
 ## Index
 
@@ -56,7 +57,6 @@ The benchmark writes CSV output under `build/` through the Docker volume mount.
 ## Public-Facing Gaps
 
 - Add one curated GIF for the most visible MPPI variants.
-- Add a wrapper script that runs the zoo smoke benchmark and renders one
-  Markdown summary table.
+- Add a larger fixed-seed zoo suite after the smoke benchmark stabilizes.
 - Promote the strongest stable planners into the main README after each variant
   has a reproducible CSV artifact.
