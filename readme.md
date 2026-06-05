@@ -6,13 +6,19 @@
 
 <p align="center">
   <a href="https://rsasaki0109.github.io/CudaRobotics/gpu_mppi_racing.gif">
-    <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_mppi_racing.gif" alt="CUDA MPPI racing demo" width="270"/>
+    <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_mppi_racing.gif" alt="CUDA MPPI racing demo" width="180"/>
   </a>
   <a href="https://rsasaki0109.github.io/CudaRobotics/comparison_expansion_reset_mcl.gif">
-    <img src="https://rsasaki0109.github.io/CudaRobotics/comparison_expansion_reset_mcl.gif" alt="Expansion-reset MCL demo" width="270"/>
+    <img src="https://rsasaki0109.github.io/CudaRobotics/comparison_expansion_reset_mcl.gif" alt="Expansion-reset MCL demo" width="180"/>
   </a>
   <a href="https://rsasaki0109.github.io/CudaRobotics/gpu_multi_robot_planner.gif">
-    <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_multi_robot_planner.gif" alt="CUDA multi-robot planner demo" width="270"/>
+    <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_multi_robot_planner.gif" alt="CUDA multi-robot planner demo" width="180"/>
+  </a>
+  <a href="https://rsasaki0109.github.io/CudaRobotics/gpu_diffusion_planner.gif">
+    <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_diffusion_planner.gif" alt="CUDA diffusion planner demo" width="180"/>
+  </a>
+  <a href="https://rsasaki0109.github.io/CudaRobotics/gpu_bnb_loop_closure_slam.gif">
+    <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_bnb_loop_closure_slam.gif" alt="CUDA branch-and-bound loop closure demo" width="180"/>
   </a>
 </p>
 
@@ -22,6 +28,10 @@
   <a href="https://rsasaki0109.github.io/CudaRobotics/comparison_expansion_reset_mcl.gif">Expansion-reset MCL</a>
   /
   <a href="https://rsasaki0109.github.io/CudaRobotics/gpu_multi_robot_planner.gif">Multi-robot planner</a>
+  /
+  <a href="https://rsasaki0109.github.io/CudaRobotics/gpu_diffusion_planner.gif">Diffusion planner</a>
+  /
+  <a href="https://rsasaki0109.github.io/CudaRobotics/gpu_bnb_loop_closure_slam.gif">BNB loop closure</a>
   /
   <a href="https://rsasaki0109.github.io/CudaRobotics/gpu_gaussian_splatting_slam.gif">Gaussian-Splatting SLAM</a>
   /
