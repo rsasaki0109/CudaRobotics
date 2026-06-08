@@ -2,7 +2,11 @@ from dataclasses import dataclass
 from typing import Sequence
 
 from core.planner_selector_interface import AggregateBenchmarkRow, PlannerSelector, Recommendation, SelectionRequest
-from experiments.support import rows_for_dataset_scenario
+from experiments.planner_selection.common import (
+    baseline_score,
+    candidates_for_request,
+    recommendation_from_row,
+)
 
 
 @dataclass(frozen=True)
@@ -24,10 +28,7 @@ class PipelineSelector(PlannerSelector):
         rows: Sequence[AggregateBenchmarkRow],
         request: SelectionRequest,
     ) -> Recommendation:
-        candidates = rows_for_dataset_scenario(rows, request.dataset, request.scenario)
-        if not candidates:
-            raise ValueError(f"No candidates for {request.dataset}/{request.scenario}")
-
+        candidates = candidates_for_request(rows, request)
         best_success = max(row.success for row in candidates)
         stage_success = [row for row in candidates if row.success >= best_success]
 
@@ -51,19 +52,10 @@ class PipelineSelector(PlannerSelector):
             "staged filters: max success -> near-best final_distance -> "
             "near-fastest runtime -> near-best steps -> lowest cumulative_cost"
         )
-        score = (
-            100.0 * best.success
-            - best.final_distance
-            - 1.0e-4 * best.cumulative_cost
-            - 0.5 * best.avg_control_ms
-            - 1.0e-3 * best.steps
-        )
-        return Recommendation(
-            variant=self.name,
-            dataset=request.dataset,
-            scenario=request.scenario,
-            planner=best.planner,
-            k_samples=best.k_samples,
-            score=score,
-            rationale=rationale,
+        return recommendation_from_row(
+            self.name,
+            request,
+            best,
+            baseline_score(best, avg_control_ms_weight=0.5),
+            rationale,
         )
