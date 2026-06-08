@@ -46,7 +46,7 @@ namespace cudabot {
 
 constexpr int N_TRAJ = 512;
 constexpr int N_WAYPOINTS = 64;
-constexpr int N_STEPS = 120;
+constexpr int N_STEPS = 96;
 constexpr float ALPHA_START = 0.18f;
 constexpr float ALPHA_END = 0.004f;
 constexpr float NOISE_SCALE_START = 0.55f;
@@ -267,11 +267,14 @@ static cv::Mat draw(const std::vector<float>& xs,
     return img;
 }
 
-static void convert_avi_to_gif(const std::string& avi, const std::string& gif, int fps) {
+static void convert_frames_to_gif(const std::string& frame_pattern, const std::string& gif, int fps) {
     char cmd[1024];
     std::snprintf(cmd, sizeof(cmd),
-                  "ffmpeg -y -i %s -vf \"fps=%d,scale=900:-1:flags=lanczos,split[a][b];[a]palettegen=stats_mode=diff[p];[b][p]paletteuse=dither=bayer:bayer_scale=5:diff_mode=rectangle\" %s 2>/dev/null",
-                  avi.c_str(), fps, gif.c_str());
+                  "ffmpeg -y -framerate %d -i %s "
+                  "-vf \"fps=%d,scale=900:-1:flags=lanczos,split[a][b];"
+                  "[a]palettegen=stats_mode=diff[p];[b][p]paletteuse=dither=bayer:bayer_scale=5:diff_mode=rectangle\" "
+                  "%s 2>/dev/null",
+                  fps, frame_pattern.c_str(), fps, gif.c_str());
     int rc = std::system(cmd);
     if (rc != 0) std::fprintf(stderr, "ffmpeg failed (%d)\n", rc);
 }
@@ -315,72 +318,75 @@ int main() {
 
     std::vector<float> h_x(n_floats), h_y(n_floats), h_cost(N_TRAJ);
 
-    std::system("mkdir -p gif");
-    cv::VideoWriter video("gif/gpu_diffusion_planner.avi",
-                          cv::VideoWriter::fourcc('M', 'J', 'P', 'G'),
-                          VIDEO_FPS, cv::Size(PANEL_W, PANEL_H));
+    int frame_setup_rc = std::system(
+        "mkdir -p gif tmp/gpu_diffusion_planner_frames && rm -f tmp/gpu_diffusion_planner_frames/frame_*.png");
+    if (frame_setup_rc != 0) std::fprintf(stderr, "frame setup failed (%d)\n", frame_setup_rc);
+    int frame_id = 0;
 
-    auto frame_now = [&](int step, float alpha, float ns, float ms,
+    auto frame_now = [&](const float* frame_x, const float* frame_y,
+                         int step, float alpha, float ns, float ms,
                          int best_idx, const std::vector<float>* cost) {
-        CUDA_CHECK(cudaMemcpy(h_x.data(), d_x_a, n_floats * sizeof(float),
+        CUDA_CHECK(cudaMemcpy(h_x.data(), frame_x, n_floats * sizeof(float),
                               cudaMemcpyDeviceToHost));
-        CUDA_CHECK(cudaMemcpy(h_y.data(), d_y_a, n_floats * sizeof(float),
+        CUDA_CHECK(cudaMemcpy(h_y.data(), frame_y, n_floats * sizeof(float),
                               cudaMemcpyDeviceToHost));
         cv::Mat img = draw(h_x, h_y, N_TRAJ, N_WAYPOINTS, obs, cost, best_idx,
                            step, alpha, ns, ms);
-        video.write(img);
+        char path[256];
+        std::snprintf(path, sizeof(path), "tmp/gpu_diffusion_planner_frames/frame_%03d.png", frame_id++);
+        cv::imwrite(path, img);
     };
 
+    float* cur_x = d_x_a;
+    float* cur_y = d_y_a;
+    float* next_x = d_x_b;
+    float* next_y = d_y_b;
+
     // Initial frame
-    frame_now(0, ALPHA_START, NOISE_SCALE_START, 0.0f, -1, nullptr);
+    frame_now(cur_x, cur_y, 0, ALPHA_START, NOISE_SCALE_START, 0.0f, -1, nullptr);
 
     double total_ms = 0.0;
     int counted = 0;
 
-    bool use_a_in = true;
+    cudaEvent_t e0, e1;
+    CUDA_CHECK(cudaEventCreate(&e0));
+    CUDA_CHECK(cudaEventCreate(&e1));
     for (int k = 0; k < N_STEPS; k++) {
         // Linearly anneal alpha and noise scale.
         float t01 = static_cast<float>(k) / (N_STEPS - 1);
         float alpha = (1.0f - t01) * ALPHA_START + t01 * ALPHA_END;
         float noise = (1.0f - t01) * NOISE_SCALE_START + t01 * NOISE_SCALE_END;
 
-        cudaEvent_t e0, e1;
-        cudaEventCreate(&e0); cudaEventCreate(&e1);
-        cudaEventRecord(e0);
-        const float* xi = use_a_in ? d_x_a : d_x_b;
-        const float* yi = use_a_in ? d_y_a : d_y_b;
-        float* xo = use_a_in ? d_x_b : d_x_a;
-        float* yo = use_a_in ? d_y_b : d_y_a;
+        CUDA_CHECK(cudaEventRecord(e0));
         langevin_step_kernel<<<grid, block>>>(N_TRAJ, N_WAYPOINTS,
                                               START_X, START_Y, GOAL_X, GOAL_Y,
                                               alpha, noise, 4019ULL, k,
-                                              xi, yi, xo, yo);
-        cudaEventRecord(e1);
-        cudaEventSynchronize(e1);
-        float ms = 0.0f; cudaEventElapsedTime(&ms, e0, e1);
-        cudaEventDestroy(e0); cudaEventDestroy(e1);
-        use_a_in = !use_a_in;
-        // canonical "input" pointer is d_x_a; copy back so frame_now reads it.
-        // (cleanest is to swap, but we kept naming simple — re-sync to a.)
-        if (!use_a_in) {
-            CUDA_CHECK(cudaMemcpy(d_x_a, d_x_b, n_floats * sizeof(float), cudaMemcpyDeviceToDevice));
-            CUDA_CHECK(cudaMemcpy(d_y_a, d_y_b, n_floats * sizeof(float), cudaMemcpyDeviceToDevice));
-            use_a_in = true;
-        }
+                                              cur_x, cur_y, next_x, next_y);
+        CUDA_CHECK(cudaGetLastError());
+        CUDA_CHECK(cudaEventRecord(e1));
+        CUDA_CHECK(cudaEventSynchronize(e1));
+        float ms = 0.0f;
+        CUDA_CHECK(cudaEventElapsedTime(&ms, e0, e1));
+        // Keep the current trajectory buffer by swapping pointers; no GPU copy.
+        std::swap(cur_x, next_x);
+        std::swap(cur_y, next_y);
 
         if (k >= 5) { total_ms += ms; counted++; }
         if (k % 3 == 0 || k == N_STEPS - 1) {
-            frame_now(k + 1, alpha, noise, ms, -1, nullptr);
+            frame_now(cur_x, cur_y, k + 1, alpha, noise, ms, -1, nullptr);
         }
         if (k % 20 == 0) {
             std::printf("  step %3d  alpha=%.4f  noise=%.3f  %.2f ms\n",
                         k, alpha, noise, ms);
         }
     }
+    CUDA_CHECK(cudaEventDestroy(e0));
+    CUDA_CHECK(cudaEventDestroy(e1));
 
     // Final selection: lowest-cost trajectory
     cost_kernel<<<(N_TRAJ + 127) / 128, 128>>>(N_TRAJ, N_WAYPOINTS,
-                                                d_x_a, d_y_a, d_cost);
+                                                cur_x, cur_y, d_cost);
+    CUDA_CHECK(cudaGetLastError());
     CUDA_CHECK(cudaMemcpy(h_cost.data(), d_cost, N_TRAJ * sizeof(float),
                           cudaMemcpyDeviceToHost));
     int best = 0;
@@ -391,15 +397,17 @@ int main() {
     std::printf("Best trajectory: idx %d  cost %.3f\n", best, best_c);
 
     for (int hold = 0; hold < 30; hold++) {
-        frame_now(N_STEPS + hold, ALPHA_END, NOISE_SCALE_END, 0.0f, best, &h_cost);
+        frame_now(cur_x, cur_y, N_STEPS + hold, ALPHA_END, NOISE_SCALE_END, 0.0f, best, &h_cost);
     }
-    video.release();
-
     if (counted > 0) {
-        std::printf("Avg per-step time: %.2f ms (%d trajectories x %d waypoints)\n",
+        std::printf("Avg copy-free step time: %.2f ms (%d trajectories x %d waypoints)\n",
                     total_ms / counted, N_TRAJ, N_WAYPOINTS);
     }
-    convert_avi_to_gif("gif/gpu_diffusion_planner.avi", "gif/gpu_diffusion_planner.gif", VIDEO_FPS);
+    std::printf("Ping-pong buffers avoided %.1f MiB of per-step device copies.\n",
+                2.0 * static_cast<double>(n_floats) * sizeof(float) * N_STEPS /
+                    (1024.0 * 1024.0));
+    convert_frames_to_gif("tmp/gpu_diffusion_planner_frames/frame_%03d.png",
+                          "gif/gpu_diffusion_planner.gif", VIDEO_FPS);
     std::printf("GIF saved to gif/gpu_diffusion_planner.gif\n");
 
     cudaFree(d_x_a); cudaFree(d_y_a);

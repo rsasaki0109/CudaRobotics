@@ -80,6 +80,10 @@ struct CostParams7 {
     float obs_influence = 0.12f;
     float terminal_weight = 25.0f;
     float terminal_velocity_weight = 0.3f;
+    // Optional joint-space goal cost (fair-rematch vs CDF-MPPI). Default OFF
+    // (qgoal_weight=0) → published workspace-goal numbers are unchanged.
+    float qgoal_weight = 0.0f;
+    float goal_q[NDOF] = {};
 };
 
 struct Scenario {
@@ -297,6 +301,12 @@ __device__ inline float stage_cost_device(
     }
     cost += cp.control_weight * ctrl_cost * params.dt;
     cost += cp.velocity_weight * vel_cost * params.dt;
+    // Optional joint-space goal cost (fair-rematch). Flows into the FD q-gradient.
+    if (cp.qgoal_weight > 0.0f) {
+        float qg = 0.0f;
+        for (int j = 0; j < NDOF; j++) { float d = wrap_anglef(q[j] - cp.goal_q[j]); qg += d * d; }
+        cost += cp.qgoal_weight * qg * params.dt;
+    }
     // Sample 10 points along the arm chain
     for (int link = 0; link < NDOF; link++) {
         float mx = 0.5f * (pos[link][0] + pos[link + 1][0]);
@@ -356,7 +366,13 @@ __host__ __device__ inline float terminal_cost_fn(
     float dist = ee_distance(q, params, cp);
     float vel_sq = 0.0f;
     for (int j = 0; j < NDOF; j++) vel_sq += dq[j] * dq[j];
-    return cp.terminal_weight * dist + cp.terminal_velocity_weight * vel_sq;
+    float term = cp.terminal_weight * dist + cp.terminal_velocity_weight * vel_sq;
+    if (cp.qgoal_weight > 0.0f) {
+        float qg = 0.0f;
+        for (int j = 0; j < NDOF; j++) { float d = wrap_anglef(q[j] - cp.goal_q[j]); qg += d * d; }
+        term += cp.qgoal_weight * 5.0f * qg;  // terminal config pull (5x stage)
+    }
+    return term;
 }
 
 static float host_stage_cost(
@@ -1208,6 +1224,8 @@ int main(int argc, char** argv) {
     float override_feedback_gain_scale = -1.0f;
     int override_grad_steps = -1;
     float override_alpha = -1.0f;
+    string goal_config_dir;       // fair-rematch: load q_goal exported by CDF binary
+    float qgoal_weight = 0.0f;
     for (int i = 1; i < argc; i++) {
         string arg = argv[i];
         if (arg == "--quick") quick = true;
@@ -1219,6 +1237,8 @@ int main(int argc, char** argv) {
         else if (arg == "--override-feedback-gain-scale" && i+1 < argc) override_feedback_gain_scale = atof(argv[++i]);
         else if (arg == "--override-grad-steps" && i+1 < argc) override_grad_steps = atoi(argv[++i]);
         else if (arg == "--override-alpha" && i+1 < argc) override_alpha = atof(argv[++i]);
+        else if (arg == "--goal-config-dir" && i+1 < argc) goal_config_dir = argv[++i];
+        else if (arg == "--qgoal-weight" && i+1 < argc) qgoal_weight = atof(argv[++i]);
     }
 
     ensure_build_dir();
@@ -1236,6 +1256,20 @@ int main(int argc, char** argv) {
             scenarios.push_back(*it);
         }
     } else { scenarios = all_scenarios; }
+
+    // Fair-rematch: load the SAME goal configuration CDF-MPPI was handed, and
+    // add a joint-space goal cost so Diff-MPPI also targets that config.
+    if (!goal_config_dir.empty() && qgoal_weight > 0.0f) {
+        for (auto& s : scenarios) {
+            string path = goal_config_dir + "/qgoal_" + s.name + ".txt";
+            ifstream f(path);
+            if (!f) { fprintf(stderr, "[warn] no goal-config file %s — skipping for %s\n", path.c_str(), s.name.c_str()); continue; }
+            for (int j = 0; j < NDOF; j++) f >> s.cost_params.goal_q[j];
+            s.cost_params.qgoal_weight = qgoal_weight;
+            printf("[fair-rematch] %s: loaded q_goal from %s, qgoal_weight=%.2f\n",
+                   s.name.c_str(), path.c_str(), qgoal_weight);
+        }
+    }
 
     vector<PlannerVariant> variants;
     {

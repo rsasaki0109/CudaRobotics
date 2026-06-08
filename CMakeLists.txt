@@ -157,6 +157,19 @@ add_executable(benchmark_diff_mppi_dynamic_bicycle src/benchmark_diff_mppi_dynam
 add_executable(benchmark_diff_mppi_manipulator src/benchmark_diff_mppi_manipulator.cu)
 add_executable(benchmark_diff_mppi_manipulator_7dof src/benchmark_diff_mppi_manipulator_7dof.cu)
 
+# One-Step CDF-MPPI literature-faithful baseline (arXiv:2509.00836)
+add_executable(benchmark_cdf_mppi_7dof src/benchmark_cdf_mppi_7dof.cu)
+target_link_libraries(benchmark_cdf_mppi_7dof ${OpenCV_LIBS})
+target_compile_options(benchmark_cdf_mppi_7dof PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
+
+# Differentiable planar pushing: autodiff-through-contact test for Diff-MPPI
+add_executable(benchmark_diff_mppi_pushing src/benchmark_diff_mppi_pushing.cu)
+target_compile_options(benchmark_diff_mppi_pushing PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
+
+# Differentiable box pushing (position + orientation): contact-point reasoning
+add_executable(benchmark_diff_mppi_pushing_box src/benchmark_diff_mppi_pushing_box.cu)
+target_compile_options(benchmark_diff_mppi_pushing_box PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
+
 add_executable(neural_sdf src/neural_sdf.cu)
 target_link_libraries(neural_sdf ${OpenCV_LIBS})
 
@@ -387,6 +400,10 @@ add_executable(gpu_branch_and_bound_csm src/gpu_branch_and_bound_csm.cu)
 target_link_libraries(gpu_branch_and_bound_csm ${OpenCV_LIBS})
 target_compile_options(gpu_branch_and_bound_csm PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
 
+add_executable(gpu_bnb_loop_closure_slam src/gpu_bnb_loop_closure_slam.cu)
+target_link_libraries(gpu_bnb_loop_closure_slam ${OpenCV_LIBS})
+target_compile_options(gpu_bnb_loop_closure_slam PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
+
 add_executable(gpu_ndt_3d src/gpu_ndt_3d.cu)
 target_link_libraries(gpu_ndt_3d ${OpenCV_LIBS})
 target_compile_options(gpu_ndt_3d PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
@@ -407,6 +424,10 @@ add_executable(gpu_gaussian_splatting src/gpu_gaussian_splatting.cu)
 target_link_libraries(gpu_gaussian_splatting ${OpenCV_LIBS})
 target_compile_options(gpu_gaussian_splatting PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
 
+add_executable(gpu_gaussian_splatting_slam src/gpu_gaussian_splatting_slam.cu)
+target_link_libraries(gpu_gaussian_splatting_slam ${OpenCV_LIBS})
+target_compile_options(gpu_gaussian_splatting_slam PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
+
 add_executable(gpu_nerf_volume src/gpu_nerf_volume.cu)
 target_link_libraries(gpu_nerf_volume ${OpenCV_LIBS})
 target_compile_options(gpu_nerf_volume PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
@@ -414,6 +435,10 @@ target_compile_options(gpu_nerf_volume PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt
 add_executable(gpu_multi_robot_planner src/gpu_multi_robot_planner.cu)
 target_link_libraries(gpu_multi_robot_planner ${OpenCV_LIBS})
 target_compile_options(gpu_multi_robot_planner PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
+
+add_executable(gpu_multi_robot_place_graph_slam src/gpu_multi_robot_place_graph_slam.cu)
+target_link_libraries(gpu_multi_robot_place_graph_slam ${OpenCV_LIBS})
+target_compile_options(gpu_multi_robot_place_graph_slam PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
 
 add_executable(gpu_crowd_swarm src/gpu_crowd_swarm.cu)
 target_link_libraries(gpu_crowd_swarm ${OpenCV_LIBS})
@@ -606,6 +631,94 @@ add_executable(comparison_lidar3d_realistic src/comparison_lidar3d_realistic.cu)
 target_link_libraries(comparison_lidar3d_realistic ${OpenCV_LIBS})
 target_compile_options(comparison_lidar3d_realistic PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
 
+add_executable(comparison_gaussian_splatting src/comparison_gaussian_splatting.cu)
+target_link_libraries(comparison_gaussian_splatting ${OpenCV_LIBS})
+target_compile_options(comparison_gaussian_splatting PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
+
+add_executable(gpu_batched_ilqr src/gpu_batched_ilqr.cu)
+target_link_libraries(gpu_batched_ilqr ${OpenCV_LIBS})
+target_compile_options(gpu_batched_ilqr PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr --fmad=false>)
+
+add_executable(gpu_parallel_ilqr src/gpu_parallel_ilqr.cu)
+target_link_libraries(gpu_parallel_ilqr ${OpenCV_LIBS})
+target_compile_options(gpu_parallel_ilqr PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr --fmad=false>)
+
+add_executable(gpu_filterreg src/gpu_filterreg.cu)
+target_link_libraries(gpu_filterreg ${OpenCV_LIBS})
+target_compile_options(gpu_filterreg PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
+
+add_executable(gpu_bcpd src/gpu_bcpd.cu)
+target_link_libraries(gpu_bcpd ${OpenCV_LIBS})
+target_compile_options(gpu_bcpd PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
+
+add_executable(gpu_sinkhorn_reg src/gpu_sinkhorn_reg.cu)
+target_link_libraries(gpu_sinkhorn_reg ${OpenCV_LIBS})
+target_compile_options(gpu_sinkhorn_reg PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
+
+add_executable(gpu_robust_treg src/gpu_robust_treg.cu)
+target_link_libraries(gpu_robust_treg ${OpenCV_LIBS})
+target_compile_options(gpu_robust_treg PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
+
+add_executable(gpu_kiss_icp src/gpu_kiss_icp.cu)
+target_link_libraries(gpu_kiss_icp ${OpenCV_LIBS})
+target_compile_options(gpu_kiss_icp PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
+
+add_executable(gpu_mpc_qp src/gpu_mpc_qp.cu)
+target_link_libraries(gpu_mpc_qp ${OpenCV_LIBS})
+target_compile_options(gpu_mpc_qp PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
+
+add_executable(gpu_constrained_mpc src/gpu_constrained_mpc.cu)
+target_link_libraries(gpu_constrained_mpc ${OpenCV_LIBS})
+target_compile_options(gpu_constrained_mpc PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
+
+add_executable(gpu_diff_contact_push src/gpu_diff_contact_push.cu)
+target_link_libraries(gpu_diff_contact_push ${OpenCV_LIBS})
+target_compile_options(gpu_diff_contact_push PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
+
+add_executable(gpu_robust_p2plane_reg src/gpu_robust_p2plane_reg.cu)
+target_link_libraries(gpu_robust_p2plane_reg ${OpenCV_LIBS})
+target_compile_options(gpu_robust_p2plane_reg PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
+
+add_executable(gpu_real_bunny_reg src/gpu_real_bunny_reg.cu)
+target_link_libraries(gpu_real_bunny_reg ${OpenCV_LIBS})
+target_compile_options(gpu_real_bunny_reg PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
+
+add_executable(gpu_fgr src/gpu_fgr.cu)
+target_link_libraries(gpu_fgr ${OpenCV_LIBS})
+target_compile_options(gpu_fgr PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
+
+add_executable(gpu_filterreg_p2plane src/gpu_filterreg_p2plane.cu)
+target_link_libraries(gpu_filterreg_p2plane ${OpenCV_LIBS})
+target_compile_options(gpu_filterreg_p2plane PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
+
+add_executable(gpu_tsdf_fusion src/gpu_tsdf_fusion.cu)
+target_link_libraries(gpu_tsdf_fusion ${OpenCV_LIBS})
+target_compile_options(gpu_tsdf_fusion PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr --fmad=false>)
+
+add_executable(gpu_dbscan src/gpu_dbscan.cu)
+target_link_libraries(gpu_dbscan ${OpenCV_LIBS})
+target_compile_options(gpu_dbscan PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr --fmad=false>)
+
+add_executable(gpu_sgm_stereo src/gpu_sgm_stereo.cu)
+target_link_libraries(gpu_sgm_stereo ${OpenCV_LIBS})
+target_compile_options(gpu_sgm_stereo PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr --fmad=false>)
+
+add_executable(gpu_wavefront_planner src/gpu_wavefront_planner.cu)
+target_link_libraries(gpu_wavefront_planner ${OpenCV_LIBS})
+target_compile_options(gpu_wavefront_planner PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr --fmad=false>)
+
+add_executable(gpu_marching_cubes src/gpu_marching_cubes.cu)
+target_link_libraries(gpu_marching_cubes ${OpenCV_LIBS})
+target_compile_options(gpu_marching_cubes PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr --fmad=false>)
+
+add_executable(gpu_mppi_racing src/gpu_mppi_racing.cu)
+target_link_libraries(gpu_mppi_racing ${OpenCV_LIBS})
+target_compile_options(gpu_mppi_racing PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
+
+add_executable(gpu_direct_vo src/gpu_direct_vo.cu)
+target_link_libraries(gpu_direct_vo ${OpenCV_LIBS})
+target_compile_options(gpu_direct_vo PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr --fmad=false>)
+
 add_executable(comparison_reeds_shepp_fan src/comparison_reeds_shepp_fan.cu)
 target_link_libraries(comparison_reeds_shepp_fan ${OpenCV_LIBS})
 target_compile_options(comparison_reeds_shepp_fan PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
@@ -661,9 +774,17 @@ target_link_libraries(comparison_swarm ${OpenCV_LIBS})
 
 add_executable(cuda_streams_demo src/cuda_streams_demo.cu)
 
+add_executable(gpu_frontier_exploration src/gpu_frontier_exploration.cu)
+target_link_libraries(gpu_frontier_exploration ${OpenCV_LIBS})
+target_compile_options(gpu_frontier_exploration PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr --fmad=false>)
+
 ##############################
 # Common Foundation Tests
 ##############################
+add_executable(gpu_lk_optical_flow src/gpu_lk_optical_flow.cu)
+target_link_libraries(gpu_lk_optical_flow ${OpenCV_LIBS})
+target_compile_options(gpu_lk_optical_flow PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr --fmad=false>)
+
 add_executable(test_autodiff src/test_autodiff.cu)
 add_executable(test_gpu_mlp src/test_gpu_mlp.cu)
 
@@ -717,6 +838,16 @@ add_test(NAME check_repro_suite_dry_run
     --suite smoke
     --output-dir ${CMAKE_BINARY_DIR}/repro_suite_dry_run
   WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+add_test(NAME check_mppi_zoo_smoke_dry_run
+  COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/run_mppi_zoo_smoke.py
+    --dry-run
+    --out-dir ${CMAKE_BINARY_DIR}/mppi_zoo_dry_run
+  WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+add_test(NAME check_mppi_zoo_chart_render
+  COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/render_mppi_zoo_chart.py
+    --csv ${CMAKE_SOURCE_DIR}/docs/results/mppi_zoo_smoke_2026-06-05.csv
+    --svg-out ${CMAKE_BINARY_DIR}/mppi_zoo_smoke_chart.svg
+  WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 add_test(NAME check_planner_showdown_summary
   COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/summarize_planner_showdown.py
     --json ${CMAKE_SOURCE_DIR}/gif/gpu_planner_showdown_benchmark.json
@@ -736,7 +867,7 @@ add_test(NAME check_planner_falsifier_summary
     --markdown-out ${CMAKE_BINARY_DIR}/gpu_planner_falsifier_benchmark.md
     --strict
   WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
-set_tests_properties(validate_design_workflow check_design_regressions check_scaffold check_repro_suite_dry_run check_planner_showdown_summary check_planner_showdown_matrix_summary check_planner_falsifier_summary
+set_tests_properties(validate_design_workflow check_design_regressions check_scaffold check_repro_suite_dry_run check_mppi_zoo_smoke_dry_run check_mppi_zoo_chart_render check_planner_showdown_summary check_planner_showdown_matrix_summary check_planner_falsifier_summary
   PROPERTIES
   TIMEOUT 30
   LABELS "python")
@@ -787,3 +918,11 @@ if(mujoco_FOUND)
       BUILD_RPATH "${mujoco_LIBRARY_DIR}")
   endif()
 endif()
+
+add_executable(gpu_jfa_edt src/gpu_jfa_edt.cu)
+target_link_libraries(gpu_jfa_edt ${OpenCV_LIBS})
+target_compile_options(gpu_jfa_edt PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr --fmad=false>)
+
+add_executable(gpu_kdtree_nn src/gpu_kdtree_nn.cu)
+target_link_libraries(gpu_kdtree_nn ${OpenCV_LIBS})
+target_compile_options(gpu_kdtree_nn PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr --fmad=false>)
