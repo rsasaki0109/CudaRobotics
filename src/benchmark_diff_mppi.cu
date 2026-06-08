@@ -72,6 +72,10 @@ struct Scenario {
     float dyn_time_offset_max = 0.0f;
     float dyn_speed_scale_max = 0.0f;
     float dyn_lateral_jitter = 0.0f;
+    bool use_model_mismatch = false;
+    float eval_wheelbase_scale = 1.0f;
+    float eval_max_speed_scale = 1.0f;
+    float eval_max_steer_scale = 1.0f;
 };
 
 struct PlannerVariant {
@@ -195,6 +199,248 @@ struct PlannerVariant {
     bool use_learned_sampling = false;
     int mlp_hidden_size = 32;   // unused in lightweight mode; kept for API compat
     float mlp_lr = 0.001f;      // EMA learning rate for sampling bias
+    bool use_learned_sigma = false;
+    float learned_sigma_lr = 0.12f;
+    float learned_min_accel_sigma = 0.20f;
+    float learned_min_steer_sigma = 0.020f;
+    float learned_max_accel_sigma = 3.50f;
+    float learned_max_steer_sigma = 0.35f;
+    float learned_init_accel_sigma = 1.50f;
+    float learned_init_steer_sigma = 0.18f;
+    // LP-MPPI: low-pass filtering of sampled control perturbations
+    // (arXiv:2503.11717). This lightweight reproduction uses a one-pole IIR
+    // filter along the horizon; alpha=1.0 recovers vanilla MPPI noise.
+    bool use_low_pass_sampling = false;
+    float lp_alpha = 0.35f;
+    // DBaS-Log-MPPI: Efficient and Safe Trajectory Optimization via Barrier States
+    // (arXiv:2504.06437). Lightweight reproduction: sample MPPI controls
+    // with a symmetric normal-lognormal heavy-tailed perturbation, adapt the
+    // exploration scale from the current barrier state, and add a continuous
+    // obstacle-clearance barrier cost during rollout.
+    bool use_dbas_log_sampling = false;
+    float dbas_safe_margin = 0.45f;
+    float dbas_barrier_eps = 0.40f;
+    float dbas_barrier_cap = 30.0f;
+    float dbas_barrier_weight = 180.0f;
+    float dbas_gamma = 0.25f;
+    float dbas_mu = 0.70f;
+    float dbas_log_sigma = 0.45f;
+    float dbas_lognormal_clip = 4.0f;
+    float dbas_noise_scale = 1.0f;
+    float dbas_speed_damping = 0.15f;
+    // dsMPPI: deterministic sampling MPPI (arXiv:2601.03893).
+    // Lightweight reproduction: replace per-rollout random samples with
+    // antithetic low-discrepancy samples, apply temporal low-pass coloring,
+    // and optionally run multiple MPPI-style proposal updates per control step.
+    bool use_deterministic_sampling = false;
+    int ds_iterations = 2;
+    float ds_alpha = 0.35f;
+    float ds_noise_scale = 1.0f;
+    float ds_momentum = 0.20f;
+    int ds_stride = 4093;
+    bool ds_adapt_sigma = false;
+    float ds_sigma_blend = 0.35f;
+    float ds_min_accel_sigma = 0.20f;
+    float ds_min_steer_sigma = 0.020f;
+    float ds_max_accel_sigma = 4.00f;
+    float ds_max_steer_sigma = 0.35f;
+    bool ds_elite_update = false;
+    int ds_elite_count = 16;
+    float ds_elite_sigma_blend = 0.25f;
+    // pi-MPPI: projection-filtered MPPI (arXiv:2504.10962).
+    // Lightweight reproduction: project sampled control sequences onto box
+    // constraints for controls plus first/second finite differences before
+    // rollout, then project the weighted-average sequence again.
+    bool use_projection_sampling = false;
+    int projection_passes = 2;
+    float projection_max_accel_delta = 1.20f;
+    float projection_max_steer_delta = 0.10f;
+    float projection_max_accel_ddelta = 1.00f;
+    float projection_max_steer_ddelta = 0.08f;
+    // CDF-MPPI: Configuration-space Distance Field MPPI
+    // (arXiv:2509.00836). Lightweight reproduction: use the existing
+    // obstacle layout as a differentiable 2D C-space distance field, seed the
+    // nominal with the negative distance-field potential, and add a smooth CDF
+    // margin cost so shorter horizons can still react to obstacles.
+    bool use_cdf_guidance = false;
+    float cdf_seed_blend = 0.30f;
+    float cdf_goal_pull = 1.0f;
+    float cdf_obs_pull = 3.5f;
+    float cdf_dyn_pull = 1.0f;
+    float cdf_safe_margin = 3.0f;
+    float cdf_obs_cost = 1.2f;
+    float cdf_dyn_cost = 0.6f;
+    // PA-MPPI: Perception-Aware MPPI for unknown-environment navigation
+    // (arXiv:2509.14978). Lightweight reproduction: when the goal is
+    // occluded, bias MPPI weights toward trajectories that improve line of
+    // sight to the goal/frontier direction and align heading with that view.
+    bool use_pa_perception_cost = false;
+    float pa_safe_margin = 0.35f;
+    float pa_poi_weight = 120.0f;
+    float pa_occlusion_weight = 900.0f;
+    float pa_frontier_reward = 500.0f;
+    float pa_forward_occ_weight = 180.0f;
+    float pa_goal_gate = 3.0f;
+    float pa_activation = 0.08f;
+    float pa_ray_length = 8.0f;
+    float pa_score_cap = 300.0f;
+    // SOPPI: Stein-Optimized Path-Integral Inference (arXiv:2511.02015).
+    // Lightweight reproduction: apply SVGD in per-timestep action space after
+    // Gaussian MPPI sampling, then re-rollout the moved samples before weighting.
+    bool use_soppi_sampling = false;
+    int soppi_svgd_iters = 1;
+    float soppi_step_size = 0.045f;
+    float soppi_bandwidth = 2.0f;
+    int soppi_neighbor_count = 0;  // 0 = all particles; >0 = deterministic particle subset
+    // SVG-MPPI: Stein Variational Guided MPPI (arXiv:2309.11040).
+    // Lightweight reproduction: estimate the target mode as the best rollout,
+    // then reweight MPPI samples by a trajectory-space RBF kernel around that
+    // mode before the closed-form MPPI control update.
+    bool use_svg_mode_guidance = false;
+    float svg_bandwidth = 30.0f;
+    float svg_mode_weight = 1.0f;
+    int svg_stride = 2;
+    // PR/EMPPI: parameter-robust MPPI (arXiv:2601.02948 / arXiv:2006.03106).
+    // Lightweight reproduction: each sampled control sequence is evaluated
+    // under a small deterministic set of bicycle-parameter particles, and the
+    // MPPI weight uses an average/worst-case blend of their trajectory costs.
+    bool use_parameter_robust_sampling = false;
+    int pr_param_particles = 3;
+    float pr_wheelbase_span = 0.45f;
+    float pr_max_speed_span = 0.20f;
+    float pr_max_steer_span = 0.18f;
+    float pr_worst_blend = 0.50f;
+    // Shield-MPPI: CBF-augmented MPPI plus local repair
+    // (arXiv:2302.11719). Lightweight reproduction: add a discrete CBF
+    // margin-violation penalty to rollout costs, then repair the first
+    // control by a small host-side safe-action grid before execution.
+    bool use_shield_cost = false;
+    bool use_shield_repair = false;
+    float shield_safe_margin = 1.2f;
+    float shield_cbf_alpha = 0.40f;
+    float shield_cbf_weight = 90.0f;
+    int shield_repair_steps = 8;
+    int shield_repair_grid = 5;
+    float shield_repair_accel_delta = 2.0f;
+    float shield_repair_steer_delta = 0.30f;
+    float shield_repair_safety_weight = 250.0f;
+    float shield_repair_control_weight = 0.25f;
+    // SC-MPPI: Safe Importance Sampling / safety-controlled MPPI
+    // (arXiv:2303.03441). Lightweight reproduction: embed a local
+    // obstacle-margin safety controller inside each sampled rollout before
+    // the dynamics step, so the sampled trajectories themselves are safer.
+    bool use_safety_controlled_sampling = false;
+    float sc_safe_margin = 1.0f;
+    float sc_avoid_gain = 0.55f;
+    float sc_speed_gain = 0.80f;
+    float sc_max_steer_delta = 0.28f;
+    float sc_max_accel_delta = 1.8f;
+    float sc_control_weight = 0.05f;
+    // CSC-MPPI: constrained sampling cluster MPPI (arXiv:2506.16386).
+    // Lightweight reproduction: use constrained/safety-controlled rollouts,
+    // then avoid MPPI's mode-averaging failure by selecting a low-cost
+    // representative trajectory from coarse trajectory-space clusters.
+    bool use_cluster_representative_update = false;
+    int csc_cluster_count = 4;
+    float csc_safe_margin = 0.25f;
+    float csc_constraint_weight = 4000.0f;
+    float csc_update_blend = 0.85f;
+    // DM-MPPI: Datamodel for efficient/safe MPPI (arXiv:2512.00759).
+    // Lightweight reproduction: replace the learned influence predictor with
+    // a cost/margin feature surrogate, prune low-influence samples during the
+    // control update, and boost the score of constraint-violating rollouts.
+    bool use_datamodel_influence_pruning = false;
+    float dm_keep_fraction = 0.40f;
+    float dm_cost_temperature = 8.0f;
+    float dm_safe_margin = 0.75f;
+    float dm_prob_sigma = 0.65f;
+    float dm_violation_weight = 3000.0f;
+    float dm_safety_power = 1.0f;
+    // Tsallis VI-MPC / Tsallis-MPPI (arXiv:2104.00241).
+    // Lightweight reproduction: replace the exponential MPPI optimality
+    // likelihood with a q-exponential over normalized rollout costs.
+    bool use_tsallis_weights = false;
+    float tsallis_q = 0.70f;
+    float tsallis_temperature = 8.0f;
+    float tsallis_min_weight = 1.0e-8f;
+    // CC-MPPI: covariance-controlled trajectory distribution
+    // (arXiv:2109.12147). Lightweight reproduction: penalize terminal
+    // rollout dispersion around the current cost-weighted terminal mode
+    // before the MPPI control update, approximating terminal covariance
+    // steering without solving the full LTV covariance-control subproblem.
+    bool use_covariance_control_weights = false;
+    float cc_terminal_weight = 1.0f;
+    float cc_terminal_target_radius = 4.0f;
+    float cc_heading_weight = 0.35f;
+    float cc_speed_weight = 0.10f;
+    float cc_min_weight = 1.0e-10f;
+    // TD-CD-MPPI: Temporal-Difference Constraint-Discounted MPPI
+    // (IEEE RAL 2026). Lightweight reproduction: replace the learned
+    // terminal value function with an analytic value-to-go surrogate, and
+    // modulate a trajectory survival discount from constraint margins.
+    bool use_td_cd_weights = false;
+    float td_terminal_value_scale = 2.0f;
+    float td_safe_margin = 0.85f;
+    float td_discount_sigma = 0.65f;
+    float td_discount_power = 1.0f;
+    float td_failure_cost = 35000.0f;
+    // C2U-MPPI: chance-constrained unscented MPPI
+    // (arXiv:2501.08520). Lightweight reproduction: propagate dynamic
+    // obstacle prediction uncertainty with a small sigma-point set and
+    // convert the resulting margin distribution into a deterministic
+    // chance-constraint backoff before the MPPI weight update.
+    bool use_c2u_chance_constraints = false;
+    float c2u_safe_margin = 0.0f;
+    float c2u_robot_sigma = 0.12f;
+    float c2u_dyn_sigma0 = 0.30f;
+    float c2u_dyn_sigma_growth = 0.06f;
+    float c2u_risk_z = 1.28f;
+    float c2u_prob_sigma = 0.85f;
+    float c2u_probability_power = 0.80f;
+    float c2u_violation_weight = 1200.0f;
+    float c2u_min_probability = 1.0e-6f;
+    // DUCCT-MPPI: Dual-Uncertainty Chance-Constrained Tube MPPI
+    // (arXiv:2605.28330). Lightweight reproduction: share a simple
+    // localization uncertainty tube across rollouts, aggregate static and
+    // dynamic obstacle collision risks with 1 - prod(1 - p_i), and inject
+    // the joint risk as a soft cost plus hard-threshold rejection penalty.
+    bool use_ducct_risk = false;
+    float ducct_loc_sigma0 = 0.12f;
+    float ducct_loc_sigma_growth = 0.04f;
+    float ducct_pred_sigma0 = 0.35f;
+    float ducct_pred_sigma_growth = 0.06f;
+    float ducct_static_sigma = 0.12f;
+    float ducct_risk_weight = 1800.0f;
+    float ducct_hard_threshold = 0.65f;
+    float ducct_reject_cost = 25000.0f;
+    float ducct_survival_power = 0.60f;
+    float ducct_min_survival = 1.0e-6f;
+    // DRA-MPPI: Dynamic Risk-Aware MPPI
+    // (arXiv:2506.21205). Lightweight reproduction: estimate dynamic
+    // obstacle collision probability with a fixed low-discrepancy Monte
+    // Carlo stencil over each rollout state's collision disk, then inject
+    // CP as a soft risk cost plus hard threshold rejection.
+    bool use_dra_risk = false;
+    int dra_mc_samples = 12;
+    float dra_robot_radius = 0.60f;
+    float dra_pred_sigma0 = 0.35f;
+    float dra_pred_sigma_growth = 0.06f;
+    float dra_mode_weight = 0.0f;
+    float dra_mode_lateral_offset = 1.40f;
+    float dra_soft_weight = 1200.0f;
+    float dra_hard_threshold = 0.45f;
+    float dra_reject_cost = 18000.0f;
+    float dra_survival_power = 0.30f;
+    float dra_min_survival = 1.0e-6f;
+    // BC-MPPI: Bayesian/probabilistic constraint layer
+    // (arXiv:2510.00272). Lightweight reproduction: estimate a rollout's
+    // feasibility probability from obstacle margins and multiply MPPI's
+    // trajectory weight by that scalar instead of adding a penalty cost.
+    bool use_bc_safety_layer = false;
+    float bc_safe_margin = 1.0f;
+    float bc_prob_sigma = 0.75f;
+    float bc_probability_power = 1.0f;
+    float bc_min_probability = 1.0e-5f;
 };
 
 struct EpisodeMetrics {
@@ -213,6 +459,8 @@ struct EpisodeMetrics {
     float min_goal_distance = 0.0f;
     float cumulative_cost = 0.0f;
     int collisions = 0;
+    float mean_control_delta = 0.0f;
+    float control_roughness = 0.0f;
     float avg_control_ms = 0.0f;
     float total_control_ms = 0.0f;
     float episode_ms = 0.0f;
@@ -253,6 +501,8 @@ struct SummaryStats {
     float sum_avg_control_ms = 0.0f;
     float sum_total_control_ms = 0.0f;
     float sum_collisions = 0.0f;
+    float sum_mean_control_delta = 0.0f;
+    float sum_control_roughness = 0.0f;
 };
 
 __global__ void init_curand_kernel(curandState* states, int n, unsigned long long seed) {
@@ -348,6 +598,1410 @@ __global__ void rollout_kernel(
     total_cost += cost_params.terminal_weight * sqrtf(dx * dx + dy * dy + 0.01f);
     d_costs[k] = total_cost;
     d_rng[k] = local_rng;
+}
+
+__global__ void rollout_low_pass_kernel(
+    float sx, float sy, float stheta, float sv,
+    const float* d_nominal,
+    float* d_costs,
+    float* d_perturbed,
+    float* d_rollout_states,
+    curandState* d_rng,
+    BicycleParams params,
+    CostParams cost_params,
+    int n_obs,
+    int n_dyn_obs,
+    int start_step,
+    int K,
+    int T,
+    float lp_alpha)
+{
+    int k = blockIdx.x * blockDim.x + threadIdx.x;
+    if (k >= K) return;
+
+    curandState local_rng = d_rng[k];
+    float x = sx;
+    float y = sy;
+    float theta = stheta;
+    float v = sv;
+    float total_cost = 0.0f;
+    float filt_accel = 0.0f;
+    float filt_steer = 0.0f;
+    float alpha = clampf(lp_alpha, 0.02f, 1.0f);
+    float beta = 1.0f - alpha;
+    float variance_gain = sqrtf((2.0f - alpha) / alpha);
+
+    if (d_rollout_states != nullptr) {
+        d_rollout_states[k * (T + 1) * 4 + 0] = x;
+        d_rollout_states[k * (T + 1) * 4 + 1] = y;
+        d_rollout_states[k * (T + 1) * 4 + 2] = theta;
+        d_rollout_states[k * (T + 1) * 4 + 3] = v;
+    }
+
+    for (int t = 0; t < T; t++) {
+        filt_accel = beta * filt_accel + alpha * curand_normal(&local_rng);
+        filt_steer = beta * filt_steer + alpha * curand_normal(&local_rng);
+        float accel = d_nominal[t * 2 + 0] + filt_accel * variance_gain * 1.5f;
+        float steer = d_nominal[t * 2 + 1] + filt_steer * variance_gain * 0.18f;
+        accel = clampf(accel, -4.0f, 4.0f);
+        steer = clampf(steer, -params.max_steer, params.max_steer);
+
+        d_perturbed[k * T * 2 + t * 2 + 0] = accel;
+        d_perturbed[k * T * 2 + t * 2 + 1] = steer;
+
+        bicycle_step(x, y, theta, v, accel, steer, params);
+
+        if (d_rollout_states != nullptr) {
+            d_rollout_states[k * (T + 1) * 4 + (t + 1) * 4 + 0] = x;
+            d_rollout_states[k * (T + 1) * 4 + (t + 1) * 4 + 1] = y;
+            d_rollout_states[k * (T + 1) * 4 + (t + 1) * 4 + 2] = theta;
+            d_rollout_states[k * (T + 1) * 4 + (t + 1) * 4 + 3] = v;
+        }
+
+        float dxg = x - cost_params.goal_x;
+        float dyg = y - cost_params.goal_y;
+        total_cost += cost_params.goal_weight * sqrtf(dxg * dxg + dyg * dyg + 0.01f) * params.dt;
+        total_cost += cost_params.control_weight * (accel * accel + steer * steer) * params.dt;
+        float desired_heading = atan2f(cost_params.goal_y - y, cost_params.goal_x - x);
+        float heading_err = theta - desired_heading;
+        total_cost += cost_params.heading_weight * heading_err * heading_err * params.dt;
+        float speed_err = v - cost_params.target_speed;
+        total_cost += cost_params.speed_weight * speed_err * speed_err * params.dt;
+
+        for (int i = 0; i < n_obs; i++) {
+            float dx = x - d_obstacles_bench[i].x;
+            float dy = y - d_obstacles_bench[i].y;
+            float margin = sqrtf(dx * dx + dy * dy + 1e-6f) - d_obstacles_bench[i].r;
+            if (margin <= 0.1f) total_cost += cost_params.obs_weight * 100.0f;
+            else if (margin < cost_params.obs_influence) total_cost += cost_params.obs_weight / (margin * margin);
+        }
+
+        float tau = (start_step + t + 1) * params.dt;
+        for (int i = 0; i < n_dyn_obs; i++) {
+            float ox = d_dynamic_obstacles_bench[i].x + d_dynamic_obstacles_bench[i].vx * tau;
+            float oy = d_dynamic_obstacles_bench[i].y + d_dynamic_obstacles_bench[i].vy * tau;
+            float dx = x - ox;
+            float dy = y - oy;
+            float margin = sqrtf(dx * dx + dy * dy + 1e-6f) - d_dynamic_obstacles_bench[i].r;
+            if (margin <= 0.1f) total_cost += cost_params.obs_weight * 100.0f;
+            else if (margin < cost_params.obs_influence) total_cost += cost_params.obs_weight / (margin * margin);
+        }
+
+        if (x < 0.0f || x > WORKSPACE || y < 0.0f || y > WORKSPACE) total_cost += 500.0f;
+    }
+
+    float dx = x - cost_params.goal_x;
+    float dy = y - cost_params.goal_y;
+    total_cost += cost_params.terminal_weight * sqrtf(dx * dx + dy * dy + 0.01f);
+    d_costs[k] = total_cost;
+    d_rng[k] = local_rng;
+}
+
+__device__ inline float min_obstacle_margin_device(
+    float x,
+    float y,
+    int n_obs,
+    int n_dyn_obs,
+    float tau)
+{
+    float best = 1.0e9f;
+    for (int i = 0; i < n_obs; i++) {
+        float dx = x - d_obstacles_bench[i].x;
+        float dy = y - d_obstacles_bench[i].y;
+        float margin = sqrtf(dx * dx + dy * dy + 1e-6f) - d_obstacles_bench[i].r;
+        best = fminf(best, margin);
+    }
+    for (int i = 0; i < n_dyn_obs; i++) {
+        float ox = d_dynamic_obstacles_bench[i].x + d_dynamic_obstacles_bench[i].vx * tau;
+        float oy = d_dynamic_obstacles_bench[i].y + d_dynamic_obstacles_bench[i].vy * tau;
+        float dx = x - ox;
+        float dy = y - oy;
+        float margin = sqrtf(dx * dx + dy * dy + 1e-6f) - d_dynamic_obstacles_bench[i].r;
+        best = fminf(best, margin);
+    }
+    return best;
+}
+
+__device__ inline float dbas_barrier_state_device(
+    float signed_clearance,
+    float eps,
+    float cap)
+{
+    float e = fmaxf(0.05f, eps);
+    float c = fmaxf(1.0f, cap);
+    float z = signed_clearance / e;
+    float barrier;
+    if (z >= 0.0f) {
+        float denom = 1.0f + z;
+        barrier = 1.0f / (denom * denom);
+    } else {
+        barrier = 1.0f + z * z;
+    }
+    return fminf(c, barrier);
+}
+
+__device__ inline float dbas_log_noise_device(
+    curandState* rng,
+    float log_sigma,
+    float clip)
+{
+    float s = fmaxf(0.0f, log_sigma);
+    float log_gain = -0.5f * s * s + s * curand_normal(rng);
+    float gain = expf(clampf(log_gain, -4.0f, logf(fmaxf(1.0f, clip))));
+    return curand_normal(rng) * gain;
+}
+
+__global__ void rollout_dbas_log_kernel(
+    float sx, float sy, float stheta, float sv,
+    const float* d_nominal,
+    float* d_costs,
+    float* d_perturbed,
+    float* d_rollout_states,
+    curandState* d_rng,
+    BicycleParams params,
+    CostParams cost_params,
+    int n_obs,
+    int n_dyn_obs,
+    int start_step,
+    int K,
+    int T,
+    bool use_low_pass,
+    float lp_alpha,
+    float safe_margin,
+    float barrier_eps,
+    float barrier_cap,
+    float barrier_weight,
+    float dbas_gamma,
+    float dbas_mu,
+    float log_sigma,
+    float lognormal_clip,
+    float noise_scale,
+    float speed_damping)
+{
+    int k = blockIdx.x * blockDim.x + threadIdx.x;
+    if (k >= K) return;
+
+    curandState local_rng = d_rng[k];
+    float x = sx;
+    float y = sy;
+    float theta = stheta;
+    float v = sv;
+    float total_cost = 0.0f;
+    float filt_accel = 0.0f;
+    float filt_steer = 0.0f;
+    float alpha = clampf(lp_alpha, 0.02f, 1.0f);
+    float beta = 1.0f - alpha;
+    float variance_gain = use_low_pass ? sqrtf((2.0f - alpha) / alpha) : 1.0f;
+    float gamma = clampf(dbas_gamma, 0.0f, 0.95f);
+    float mu = fmaxf(0.01f, dbas_mu);
+    float scale0 = fmaxf(0.05f, noise_scale);
+    float barrier_scale = fmaxf(0.0f, barrier_weight);
+    float damping = fmaxf(0.0f, speed_damping);
+    float tau0 = start_step * params.dt;
+    float beta_state = dbas_barrier_state_device(
+        min_obstacle_margin_device(sx, sy, n_obs, n_dyn_obs, tau0) - safe_margin,
+        barrier_eps, barrier_cap);
+
+    if (d_rollout_states != nullptr) {
+        d_rollout_states[k * (T + 1) * 4 + 0] = x;
+        d_rollout_states[k * (T + 1) * 4 + 1] = y;
+        d_rollout_states[k * (T + 1) * 4 + 2] = theta;
+        d_rollout_states[k * (T + 1) * 4 + 3] = v;
+    }
+
+    for (int t = 0; t < T; t++) {
+        float exploration = sqrtf(fmaxf(0.05f, mu * logf(2.7182818f + beta_state)));
+        exploration *= scale0;
+        float na = dbas_log_noise_device(&local_rng, log_sigma, lognormal_clip) * exploration;
+        float ns = dbas_log_noise_device(&local_rng, log_sigma, lognormal_clip) * exploration;
+        if (use_low_pass) {
+            filt_accel = beta * filt_accel + alpha * na;
+            filt_steer = beta * filt_steer + alpha * ns;
+            na = filt_accel * variance_gain;
+            ns = filt_steer * variance_gain;
+        }
+        float accel = d_nominal[t * 2 + 0] + na * 1.5f;
+        float steer = d_nominal[t * 2 + 1] + ns * 0.18f;
+        accel = clampf(accel, -4.0f, 4.0f);
+        steer = clampf(steer, -params.max_steer, params.max_steer);
+
+        d_perturbed[k * T * 2 + t * 2 + 0] = accel;
+        d_perturbed[k * T * 2 + t * 2 + 1] = steer;
+
+        bicycle_step(x, y, theta, v, accel, steer, params);
+
+        if (d_rollout_states != nullptr) {
+            d_rollout_states[k * (T + 1) * 4 + (t + 1) * 4 + 0] = x;
+            d_rollout_states[k * (T + 1) * 4 + (t + 1) * 4 + 1] = y;
+            d_rollout_states[k * (T + 1) * 4 + (t + 1) * 4 + 2] = theta;
+            d_rollout_states[k * (T + 1) * 4 + (t + 1) * 4 + 3] = v;
+        }
+
+        float dxg = x - cost_params.goal_x;
+        float dyg = y - cost_params.goal_y;
+        total_cost += cost_params.goal_weight * sqrtf(dxg * dxg + dyg * dyg + 0.01f) * params.dt;
+        total_cost += cost_params.control_weight * (accel * accel + steer * steer) * params.dt;
+        float desired_heading = atan2f(cost_params.goal_y - y, cost_params.goal_x - x);
+        float heading_err = theta - desired_heading;
+        total_cost += cost_params.heading_weight * heading_err * heading_err * params.dt;
+        float speed_err = v - cost_params.target_speed;
+        total_cost += cost_params.speed_weight * speed_err * speed_err * params.dt;
+
+        for (int i = 0; i < n_obs; i++) {
+            float dx = x - d_obstacles_bench[i].x;
+            float dy = y - d_obstacles_bench[i].y;
+            float margin = sqrtf(dx * dx + dy * dy + 1e-6f) - d_obstacles_bench[i].r;
+            if (margin <= 0.1f) total_cost += cost_params.obs_weight * 100.0f;
+            else if (margin < cost_params.obs_influence) total_cost += cost_params.obs_weight / (margin * margin);
+        }
+
+        float tau = (start_step + t + 1) * params.dt;
+        for (int i = 0; i < n_dyn_obs; i++) {
+            float ox = d_dynamic_obstacles_bench[i].x + d_dynamic_obstacles_bench[i].vx * tau;
+            float oy = d_dynamic_obstacles_bench[i].y + d_dynamic_obstacles_bench[i].vy * tau;
+            float dx = x - ox;
+            float dy = y - oy;
+            float margin = sqrtf(dx * dx + dy * dy + 1e-6f) - d_dynamic_obstacles_bench[i].r;
+            if (margin <= 0.1f) total_cost += cost_params.obs_weight * 100.0f;
+            else if (margin < cost_params.obs_influence) total_cost += cost_params.obs_weight / (margin * margin);
+        }
+
+        float clearance = min_obstacle_margin_device(x, y, n_obs, n_dyn_obs, tau) - safe_margin;
+        float barrier = dbas_barrier_state_device(clearance, barrier_eps, barrier_cap);
+        beta_state = (1.0f - gamma) * barrier + gamma * beta_state;
+        total_cost += barrier_scale * beta_state * params.dt;
+        total_cost += damping * barrier_scale * beta_state * v * v * params.dt;
+
+        if (x < 0.0f || x > WORKSPACE || y < 0.0f || y > WORKSPACE) total_cost += 500.0f;
+    }
+
+    float dx = x - cost_params.goal_x;
+    float dy = y - cost_params.goal_y;
+    total_cost += cost_params.terminal_weight * sqrtf(dx * dx + dy * dy + 0.01f);
+    d_costs[k] = total_cost;
+    d_rng[k] = local_rng;
+}
+
+__device__ inline float c2u_chance_margin_device(
+    float x,
+    float y,
+    int n_obs,
+    int n_dyn_obs,
+    float tau,
+    float rel_tau,
+    float safe_margin,
+    float robot_sigma,
+    float dyn_sigma0,
+    float dyn_sigma_growth,
+    float risk_z)
+{
+    float best = 1.0e9f;
+    float z = fmaxf(0.0f, risk_z);
+    float robot_std = fmaxf(0.0f, robot_sigma);
+    float robot_backoff = z * robot_std;
+    for (int i = 0; i < n_obs; i++) {
+        float dx = x - d_obstacles_bench[i].x;
+        float dy = y - d_obstacles_bench[i].y;
+        float margin = sqrtf(dx * dx + dy * dy + 1e-6f) - d_obstacles_bench[i].r;
+        best = fminf(best, margin - safe_margin - robot_backoff);
+    }
+
+    float dyn_std = fmaxf(0.0f, dyn_sigma0) + fmaxf(0.0f, dyn_sigma_growth) * fmaxf(0.0f, rel_tau);
+    for (int i = 0; i < n_dyn_obs; i++) {
+        float ox = d_dynamic_obstacles_bench[i].x + d_dynamic_obstacles_bench[i].vx * tau;
+        float oy = d_dynamic_obstacles_bench[i].y + d_dynamic_obstacles_bench[i].vy * tau;
+        float r = d_dynamic_obstacles_bench[i].r;
+        float offsets[5][2] = {
+            {0.0f, 0.0f},
+            {dyn_std, 0.0f},
+            {-dyn_std, 0.0f},
+            {0.0f, dyn_std},
+            {0.0f, -dyn_std},
+        };
+        float margins[5];
+        float mean = 0.0f;
+        for (int j = 0; j < 5; j++) {
+            float dx = x - (ox + offsets[j][0]);
+            float dy = y - (oy + offsets[j][1]);
+            margins[j] = sqrtf(dx * dx + dy * dy + 1e-6f) - r;
+            mean += margins[j] * 0.2f;
+        }
+        float var = 0.0f;
+        for (int j = 0; j < 5; j++) {
+            float d = margins[j] - mean;
+            var += 0.2f * d * d;
+        }
+        float chance_std = sqrtf(fmaxf(0.0f, var + robot_std * robot_std));
+        best = fminf(best, mean - z * chance_std - safe_margin);
+    }
+    return best;
+}
+
+__device__ inline float ducct_margin_risk_device(float margin, float radius, float sigma)
+{
+    float r = fmaxf(0.25f, radius);
+    float s = fmaxf(0.03f, sigma);
+    float s2 = s * s;
+    float r2 = r * r;
+    float dilution = r2 / (r2 + s2);
+    if (margin <= 0.0f) {
+        float penetration = clampf((-margin) / r, 0.0f, 1.0f);
+        return clampf(dilution + (1.0f - dilution) * penetration, 0.0f, 1.0f);
+    }
+    float denom = fmaxf(1.0e-4f, s2 + 0.10f * r2);
+    float tail = expf(-0.5f * margin * margin / denom);
+    return clampf(dilution * tail, 0.0f, 1.0f);
+}
+
+__device__ inline float ducct_joint_risk_device(
+    float x,
+    float y,
+    int n_obs,
+    int n_dyn_obs,
+    float tau,
+    float rel_tau,
+    float loc_sigma0,
+    float loc_sigma_growth,
+    float pred_sigma0,
+    float pred_sigma_growth,
+    float static_sigma)
+{
+    float loc_sigma = fmaxf(0.0f, loc_sigma0)
+        + fmaxf(0.0f, loc_sigma_growth) * sqrtf(fmaxf(0.0f, rel_tau));
+    float static_total_sigma = sqrtf(loc_sigma * loc_sigma + fmaxf(0.0f, static_sigma) * fmaxf(0.0f, static_sigma));
+    float survival = 1.0f;
+
+    for (int i = 0; i < n_obs; i++) {
+        float dx = x - d_obstacles_bench[i].x;
+        float dy = y - d_obstacles_bench[i].y;
+        float r = d_obstacles_bench[i].r;
+        float margin = sqrtf(dx * dx + dy * dy + 1e-6f) - r;
+        float risk = ducct_margin_risk_device(margin, r, static_total_sigma);
+        survival *= fmaxf(0.0f, 1.0f - risk);
+    }
+
+    float pred_sigma = fmaxf(0.0f, pred_sigma0)
+        + fmaxf(0.0f, pred_sigma_growth) * fmaxf(0.0f, rel_tau);
+    float dyn_total_sigma = sqrtf(loc_sigma * loc_sigma + pred_sigma * pred_sigma);
+    for (int i = 0; i < n_dyn_obs; i++) {
+        float ox = d_dynamic_obstacles_bench[i].x + d_dynamic_obstacles_bench[i].vx * tau;
+        float oy = d_dynamic_obstacles_bench[i].y + d_dynamic_obstacles_bench[i].vy * tau;
+        float dx = x - ox;
+        float dy = y - oy;
+        float r = d_dynamic_obstacles_bench[i].r;
+        float margin = sqrtf(dx * dx + dy * dy + 1e-6f) - r;
+        float risk = ducct_margin_risk_device(margin, r, dyn_total_sigma);
+        survival *= fmaxf(0.0f, 1.0f - risk);
+    }
+    return clampf(1.0f - survival, 0.0f, 1.0f);
+}
+
+__device__ inline float dra_gaussian_occupancy_device(
+    float px,
+    float py,
+    float mx,
+    float my,
+    float sigma)
+{
+    float s = fmaxf(0.05f, sigma);
+    float dx = px - mx;
+    float dy = py - my;
+    return expf(-0.5f * (dx * dx + dy * dy) / (s * s));
+}
+
+__device__ inline float dra_dynamic_occupancy_device(
+    float px,
+    float py,
+    const DynamicObstacle& obstacle,
+    float tau,
+    float sigma,
+    float mode_weight,
+    float mode_lateral_offset)
+{
+    float mx = obstacle.x + obstacle.vx * tau;
+    float my = obstacle.y + obstacle.vy * tau;
+    float w = clampf(mode_weight, 0.0f, 0.45f);
+    float base_w = fmaxf(0.0f, 1.0f - 2.0f * w);
+    float occupancy = base_w * dra_gaussian_occupancy_device(px, py, mx, my, sigma);
+
+    if (w > 1.0e-6f) {
+        float speed = sqrtf(obstacle.vx * obstacle.vx + obstacle.vy * obstacle.vy);
+        float nx = 0.0f;
+        float ny = 1.0f;
+        if (speed > 1.0e-3f) {
+            nx = -obstacle.vy / speed;
+            ny = obstacle.vx / speed;
+        }
+        float offset = fmaxf(0.0f, mode_lateral_offset);
+        occupancy += w * dra_gaussian_occupancy_device(
+            px, py, mx + offset * nx, my + offset * ny, sigma);
+        occupancy += w * dra_gaussian_occupancy_device(
+            px, py, mx - offset * nx, my - offset * ny, sigma);
+    }
+
+    return clampf(occupancy, 0.0f, 1.0f);
+}
+
+__device__ inline float dra_collision_probability_device(
+    float x,
+    float y,
+    int n_dyn_obs,
+    float tau,
+    float rel_tau,
+    int mc_samples,
+    float robot_radius,
+    float pred_sigma0,
+    float pred_sigma_growth,
+    float mode_weight,
+    float mode_lateral_offset)
+{
+    if (n_dyn_obs <= 0) return 0.0f;
+
+    int samples = max(1, min(mc_samples, 32));
+    float pred_sigma = fmaxf(0.05f, pred_sigma0)
+        + fmaxf(0.0f, pred_sigma_growth) * fmaxf(0.0f, rel_tau);
+    float robot_r = fmaxf(0.05f, robot_radius);
+    const float golden_angle = 2.39996323f;
+    float survival = 1.0f;
+
+    for (int i = 0; i < n_dyn_obs; i++) {
+        const DynamicObstacle& obstacle = d_dynamic_obstacles_bench[i];
+        float disk_r = robot_r + fmaxf(0.05f, obstacle.r);
+        float cp = 0.0f;
+        for (int j = 0; j < samples; j++) {
+            float u = (static_cast<float>(j) + 0.5f) / static_cast<float>(samples);
+            float sample_r = sqrtf(u) * disk_r;
+            float angle = golden_angle * static_cast<float>(j)
+                + 0.41f * static_cast<float>(i);
+            float px = x + sample_r * cosf(angle);
+            float py = y + sample_r * sinf(angle);
+            cp += dra_dynamic_occupancy_device(
+                px, py, obstacle, tau, pred_sigma, mode_weight, mode_lateral_offset);
+        }
+        cp = clampf(cp / static_cast<float>(samples), 0.0f, 1.0f);
+        survival *= fmaxf(0.0f, 1.0f - cp);
+    }
+
+    return clampf(1.0f - survival, 0.0f, 1.0f);
+}
+
+__global__ void rollout_shield_kernel(
+    float sx, float sy, float stheta, float sv,
+    const float* d_nominal,
+    float* d_costs,
+    float* d_perturbed,
+    float* d_rollout_states,
+    curandState* d_rng,
+    BicycleParams params,
+    CostParams cost_params,
+    int n_obs,
+    int n_dyn_obs,
+    int start_step,
+    int K,
+    int T,
+    bool use_low_pass,
+    float lp_alpha,
+    float safe_margin,
+    float cbf_alpha,
+    float cbf_weight)
+{
+    int k = blockIdx.x * blockDim.x + threadIdx.x;
+    if (k >= K) return;
+
+    curandState local_rng = d_rng[k];
+    float x = sx;
+    float y = sy;
+    float theta = stheta;
+    float v = sv;
+    float total_cost = 0.0f;
+    float filt_accel = 0.0f;
+    float filt_steer = 0.0f;
+    float alpha = clampf(lp_alpha, 0.02f, 1.0f);
+    float beta = 1.0f - alpha;
+    float variance_gain = use_low_pass ? sqrtf((2.0f - alpha) / alpha) : 1.0f;
+    float prev_h = min_obstacle_margin_device(
+        x, y, n_obs, n_dyn_obs, start_step * params.dt) - safe_margin;
+
+    if (d_rollout_states != nullptr) {
+        d_rollout_states[k * (T + 1) * 4 + 0] = x;
+        d_rollout_states[k * (T + 1) * 4 + 1] = y;
+        d_rollout_states[k * (T + 1) * 4 + 2] = theta;
+        d_rollout_states[k * (T + 1) * 4 + 3] = v;
+    }
+
+    for (int t = 0; t < T; t++) {
+        float na = curand_normal(&local_rng);
+        float ns = curand_normal(&local_rng);
+        if (use_low_pass) {
+            filt_accel = beta * filt_accel + alpha * na;
+            filt_steer = beta * filt_steer + alpha * ns;
+            na = filt_accel * variance_gain;
+            ns = filt_steer * variance_gain;
+        }
+        float accel = d_nominal[t * 2 + 0] + na * 1.5f;
+        float steer = d_nominal[t * 2 + 1] + ns * 0.18f;
+        accel = clampf(accel, -4.0f, 4.0f);
+        steer = clampf(steer, -params.max_steer, params.max_steer);
+
+        d_perturbed[k * T * 2 + t * 2 + 0] = accel;
+        d_perturbed[k * T * 2 + t * 2 + 1] = steer;
+
+        bicycle_step(x, y, theta, v, accel, steer, params);
+
+        if (d_rollout_states != nullptr) {
+            d_rollout_states[k * (T + 1) * 4 + (t + 1) * 4 + 0] = x;
+            d_rollout_states[k * (T + 1) * 4 + (t + 1) * 4 + 1] = y;
+            d_rollout_states[k * (T + 1) * 4 + (t + 1) * 4 + 2] = theta;
+            d_rollout_states[k * (T + 1) * 4 + (t + 1) * 4 + 3] = v;
+        }
+
+        float dxg = x - cost_params.goal_x;
+        float dyg = y - cost_params.goal_y;
+        total_cost += cost_params.goal_weight * sqrtf(dxg * dxg + dyg * dyg + 0.01f) * params.dt;
+        total_cost += cost_params.control_weight * (accel * accel + steer * steer) * params.dt;
+        float desired_heading = atan2f(cost_params.goal_y - y, cost_params.goal_x - x);
+        float heading_err = theta - desired_heading;
+        total_cost += cost_params.heading_weight * heading_err * heading_err * params.dt;
+        float speed_err = v - cost_params.target_speed;
+        total_cost += cost_params.speed_weight * speed_err * speed_err * params.dt;
+
+        for (int i = 0; i < n_obs; i++) {
+            float dx = x - d_obstacles_bench[i].x;
+            float dy = y - d_obstacles_bench[i].y;
+            float margin = sqrtf(dx * dx + dy * dy + 1e-6f) - d_obstacles_bench[i].r;
+            if (margin <= 0.1f) total_cost += cost_params.obs_weight * 100.0f;
+            else if (margin < cost_params.obs_influence) total_cost += cost_params.obs_weight / (margin * margin);
+        }
+
+        float tau = (start_step + t + 1) * params.dt;
+        for (int i = 0; i < n_dyn_obs; i++) {
+            float ox = d_dynamic_obstacles_bench[i].x + d_dynamic_obstacles_bench[i].vx * tau;
+            float oy = d_dynamic_obstacles_bench[i].y + d_dynamic_obstacles_bench[i].vy * tau;
+            float dx = x - ox;
+            float dy = y - oy;
+            float margin = sqrtf(dx * dx + dy * dy + 1e-6f) - d_dynamic_obstacles_bench[i].r;
+            if (margin <= 0.1f) total_cost += cost_params.obs_weight * 100.0f;
+            else if (margin < cost_params.obs_influence) total_cost += cost_params.obs_weight / (margin * margin);
+        }
+
+        float next_h = min_obstacle_margin_device(x, y, n_obs, n_dyn_obs, tau) - safe_margin;
+        float violation = fmaxf(0.0f, (1.0f - cbf_alpha) * prev_h - next_h);
+        total_cost += cbf_weight * violation * violation;
+        if (next_h < 0.0f) total_cost += 0.50f * cbf_weight * next_h * next_h;
+        prev_h = next_h;
+
+        if (x < 0.0f || x > WORKSPACE || y < 0.0f || y > WORKSPACE) total_cost += 500.0f;
+    }
+
+    float dx = x - cost_params.goal_x;
+    float dy = y - cost_params.goal_y;
+    total_cost += cost_params.terminal_weight * sqrtf(dx * dx + dy * dy + 0.01f);
+    d_costs[k] = total_cost;
+    d_rng[k] = local_rng;
+}
+
+__device__ inline BicycleParams robust_param_particle(
+    BicycleParams base,
+    int particle,
+    int particle_count,
+    float wheelbase_span,
+    float max_speed_span,
+    float max_steer_span)
+{
+    BicycleParams p = base;
+    if (particle_count <= 1) return p;
+
+    float wb_scale = 1.0f;
+    float speed_scale = 1.0f;
+    float steer_scale = 1.0f;
+    switch (particle % 5) {
+        case 0:
+            break;
+        case 1:
+            wb_scale = 1.0f + wheelbase_span;
+            speed_scale = 1.0f - max_speed_span;
+            steer_scale = 1.0f - max_steer_span;
+            break;
+        case 2:
+            wb_scale = 1.0f - 0.50f * wheelbase_span;
+            speed_scale = 1.0f + 0.50f * max_speed_span;
+            steer_scale = 1.0f;
+            break;
+        case 3:
+            wb_scale = 1.0f + 0.70f * wheelbase_span;
+            speed_scale = 1.0f;
+            steer_scale = 1.0f - 0.70f * max_steer_span;
+            break;
+        default:
+            wb_scale = 1.0f;
+            speed_scale = 1.0f - max_speed_span;
+            steer_scale = 1.0f - 0.35f * max_steer_span;
+            break;
+    }
+
+    p.L = fmaxf(0.5f, base.L * wb_scale);
+    p.max_speed = fmaxf(0.5f, base.max_speed * speed_scale);
+    p.max_steer = fmaxf(0.05f, base.max_steer * steer_scale);
+    return p;
+}
+
+__device__ inline float nav_stage_cost_float(
+    float x,
+    float y,
+    float theta,
+    float v,
+    float accel,
+    float steer,
+    BicycleParams params,
+    CostParams cost_params,
+    int n_obs,
+    int n_dyn_obs,
+    float tau)
+{
+    float total_cost = 0.0f;
+    float dxg = x - cost_params.goal_x;
+    float dyg = y - cost_params.goal_y;
+    total_cost += cost_params.goal_weight * sqrtf(dxg * dxg + dyg * dyg + 0.01f) * params.dt;
+    total_cost += cost_params.control_weight * (accel * accel + steer * steer) * params.dt;
+    float desired_heading = atan2f(cost_params.goal_y - y, cost_params.goal_x - x);
+    float heading_err = theta - desired_heading;
+    total_cost += cost_params.heading_weight * heading_err * heading_err * params.dt;
+    float speed_err = v - cost_params.target_speed;
+    total_cost += cost_params.speed_weight * speed_err * speed_err * params.dt;
+
+    for (int i = 0; i < n_obs; i++) {
+        float dx = x - d_obstacles_bench[i].x;
+        float dy = y - d_obstacles_bench[i].y;
+        float margin = sqrtf(dx * dx + dy * dy + 1e-6f) - d_obstacles_bench[i].r;
+        if (margin <= 0.1f) total_cost += cost_params.obs_weight * 100.0f;
+        else if (margin < cost_params.obs_influence) total_cost += cost_params.obs_weight / (margin * margin);
+    }
+
+    for (int i = 0; i < n_dyn_obs; i++) {
+        float ox = d_dynamic_obstacles_bench[i].x + d_dynamic_obstacles_bench[i].vx * tau;
+        float oy = d_dynamic_obstacles_bench[i].y + d_dynamic_obstacles_bench[i].vy * tau;
+        float dx = x - ox;
+        float dy = y - oy;
+        float margin = sqrtf(dx * dx + dy * dy + 1e-6f) - d_dynamic_obstacles_bench[i].r;
+        if (margin <= 0.1f) total_cost += cost_params.obs_weight * 100.0f;
+        else if (margin < cost_params.obs_influence) total_cost += cost_params.obs_weight / (margin * margin);
+    }
+
+    if (x < 0.0f || x > WORKSPACE || y < 0.0f || y > WORKSPACE) total_cost += 500.0f;
+    return total_cost;
+}
+
+__global__ void rollout_parameter_robust_kernel(
+    float sx, float sy, float stheta, float sv,
+    const float* d_nominal,
+    float* d_costs,
+    float* d_perturbed,
+    float* d_rollout_states,
+    curandState* d_rng,
+    BicycleParams params,
+    CostParams cost_params,
+    int n_obs,
+    int n_dyn_obs,
+    int start_step,
+    int K,
+    int T,
+    bool use_low_pass,
+    float lp_alpha,
+    int param_particles,
+    float wheelbase_span,
+    float max_speed_span,
+    float max_steer_span,
+    float worst_blend)
+{
+    int k = blockIdx.x * blockDim.x + threadIdx.x;
+    if (k >= K) return;
+
+    curandState local_rng = d_rng[k];
+    float filt_accel = 0.0f;
+    float filt_steer = 0.0f;
+    float alpha = clampf(lp_alpha, 0.02f, 1.0f);
+    float beta = 1.0f - alpha;
+    float variance_gain = use_low_pass ? sqrtf((2.0f - alpha) / alpha) : 1.0f;
+
+    for (int t = 0; t < T; t++) {
+        float na = curand_normal(&local_rng);
+        float ns = curand_normal(&local_rng);
+        if (use_low_pass) {
+            filt_accel = beta * filt_accel + alpha * na;
+            filt_steer = beta * filt_steer + alpha * ns;
+            na = filt_accel * variance_gain;
+            ns = filt_steer * variance_gain;
+        }
+        float accel = d_nominal[t * 2 + 0] + na * 1.5f;
+        float steer = d_nominal[t * 2 + 1] + ns * 0.18f;
+        accel = clampf(accel, -4.0f, 4.0f);
+        steer = clampf(steer, -params.max_steer, params.max_steer);
+        d_perturbed[k * T * 2 + t * 2 + 0] = accel;
+        d_perturbed[k * T * 2 + t * 2 + 1] = steer;
+    }
+
+    int n_particles = max(1, min(param_particles, 5));
+    float sum_cost = 0.0f;
+    float worst_cost = -FLT_MAX;
+    for (int pidx = 0; pidx < n_particles; pidx++) {
+        BicycleParams rp = robust_param_particle(
+            params, pidx, n_particles,
+            wheelbase_span, max_speed_span, max_steer_span);
+        float x = sx;
+        float y = sy;
+        float theta = stheta;
+        float v = sv;
+        float total_cost = 0.0f;
+
+        if (pidx == 0 && d_rollout_states != nullptr) {
+            d_rollout_states[k * (T + 1) * 4 + 0] = x;
+            d_rollout_states[k * (T + 1) * 4 + 1] = y;
+            d_rollout_states[k * (T + 1) * 4 + 2] = theta;
+            d_rollout_states[k * (T + 1) * 4 + 3] = v;
+        }
+
+        for (int t = 0; t < T; t++) {
+            float accel = d_perturbed[k * T * 2 + t * 2 + 0];
+            float steer = clampf(d_perturbed[k * T * 2 + t * 2 + 1],
+                                 -rp.max_steer, rp.max_steer);
+            bicycle_step(x, y, theta, v, accel, steer, rp);
+
+            if (pidx == 0 && d_rollout_states != nullptr) {
+                d_rollout_states[k * (T + 1) * 4 + (t + 1) * 4 + 0] = x;
+                d_rollout_states[k * (T + 1) * 4 + (t + 1) * 4 + 1] = y;
+                d_rollout_states[k * (T + 1) * 4 + (t + 1) * 4 + 2] = theta;
+                d_rollout_states[k * (T + 1) * 4 + (t + 1) * 4 + 3] = v;
+            }
+
+            float tau = (start_step + t + 1) * rp.dt;
+            total_cost += nav_stage_cost_float(
+                x, y, theta, v, accel, steer, rp, cost_params,
+                n_obs, n_dyn_obs, tau);
+        }
+
+        float dx = x - cost_params.goal_x;
+        float dy = y - cost_params.goal_y;
+        total_cost += cost_params.terminal_weight * sqrtf(dx * dx + dy * dy + 0.01f);
+        sum_cost += total_cost;
+        worst_cost = fmaxf(worst_cost, total_cost);
+    }
+
+    float avg_cost = sum_cost / static_cast<float>(n_particles);
+    float blend = clampf(worst_blend, 0.0f, 1.0f);
+    d_costs[k] = (1.0f - blend) * avg_cost + blend * worst_cost;
+    d_rng[k] = local_rng;
+}
+
+__global__ void rollout_learned_sampling_kernel(
+    float sx, float sy, float stheta, float sv,
+    const float* d_nominal,
+    const float* d_sigma,
+    float* d_costs,
+    float* d_perturbed,
+    float* d_rollout_states,
+    curandState* d_rng,
+    BicycleParams params,
+    CostParams cost_params,
+    int n_obs,
+    int n_dyn_obs,
+    int start_step,
+    int K,
+    int T,
+    bool use_low_pass,
+    float lp_alpha)
+{
+    int k = blockIdx.x * blockDim.x + threadIdx.x;
+    if (k >= K) return;
+
+    curandState local_rng = d_rng[k];
+    float x = sx;
+    float y = sy;
+    float theta = stheta;
+    float v = sv;
+    float total_cost = 0.0f;
+    float filt_accel = 0.0f;
+    float filt_steer = 0.0f;
+    float alpha = clampf(lp_alpha, 0.02f, 1.0f);
+    float beta = 1.0f - alpha;
+    float variance_gain = use_low_pass ? sqrtf((2.0f - alpha) / alpha) : 1.0f;
+
+    if (d_rollout_states != nullptr) {
+        d_rollout_states[k * (T + 1) * 4 + 0] = x;
+        d_rollout_states[k * (T + 1) * 4 + 1] = y;
+        d_rollout_states[k * (T + 1) * 4 + 2] = theta;
+        d_rollout_states[k * (T + 1) * 4 + 3] = v;
+    }
+
+    for (int t = 0; t < T; t++) {
+        float na = curand_normal(&local_rng);
+        float ns = curand_normal(&local_rng);
+        if (use_low_pass) {
+            filt_accel = beta * filt_accel + alpha * na;
+            filt_steer = beta * filt_steer + alpha * ns;
+            na = filt_accel * variance_gain;
+            ns = filt_steer * variance_gain;
+        }
+        float accel_sigma = d_sigma ? d_sigma[t * 2 + 0] : 1.5f;
+        float steer_sigma = d_sigma ? d_sigma[t * 2 + 1] : 0.18f;
+        float accel = d_nominal[t * 2 + 0] + na * accel_sigma;
+        float steer = d_nominal[t * 2 + 1] + ns * steer_sigma;
+        accel = clampf(accel, -4.0f, 4.0f);
+        steer = clampf(steer, -params.max_steer, params.max_steer);
+
+        d_perturbed[k * T * 2 + t * 2 + 0] = accel;
+        d_perturbed[k * T * 2 + t * 2 + 1] = steer;
+
+        bicycle_step(x, y, theta, v, accel, steer, params);
+
+        if (d_rollout_states != nullptr) {
+            d_rollout_states[k * (T + 1) * 4 + (t + 1) * 4 + 0] = x;
+            d_rollout_states[k * (T + 1) * 4 + (t + 1) * 4 + 1] = y;
+            d_rollout_states[k * (T + 1) * 4 + (t + 1) * 4 + 2] = theta;
+            d_rollout_states[k * (T + 1) * 4 + (t + 1) * 4 + 3] = v;
+        }
+
+        float dxg = x - cost_params.goal_x;
+        float dyg = y - cost_params.goal_y;
+        total_cost += cost_params.goal_weight * sqrtf(dxg * dxg + dyg * dyg + 0.01f) * params.dt;
+        total_cost += cost_params.control_weight * (accel * accel + steer * steer) * params.dt;
+        float desired_heading = atan2f(cost_params.goal_y - y, cost_params.goal_x - x);
+        float heading_err = theta - desired_heading;
+        total_cost += cost_params.heading_weight * heading_err * heading_err * params.dt;
+        float speed_err = v - cost_params.target_speed;
+        total_cost += cost_params.speed_weight * speed_err * speed_err * params.dt;
+
+        for (int i = 0; i < n_obs; i++) {
+            float dx = x - d_obstacles_bench[i].x;
+            float dy = y - d_obstacles_bench[i].y;
+            float margin = sqrtf(dx * dx + dy * dy + 1e-6f) - d_obstacles_bench[i].r;
+            if (margin <= 0.1f) total_cost += cost_params.obs_weight * 100.0f;
+            else if (margin < cost_params.obs_influence) total_cost += cost_params.obs_weight / (margin * margin);
+        }
+
+        float tau = (start_step + t + 1) * params.dt;
+        for (int i = 0; i < n_dyn_obs; i++) {
+            float ox = d_dynamic_obstacles_bench[i].x + d_dynamic_obstacles_bench[i].vx * tau;
+            float oy = d_dynamic_obstacles_bench[i].y + d_dynamic_obstacles_bench[i].vy * tau;
+            float dx = x - ox;
+            float dy = y - oy;
+            float margin = sqrtf(dx * dx + dy * dy + 1e-6f) - d_dynamic_obstacles_bench[i].r;
+            if (margin <= 0.1f) total_cost += cost_params.obs_weight * 100.0f;
+            else if (margin < cost_params.obs_influence) total_cost += cost_params.obs_weight / (margin * margin);
+        }
+
+        if (x < 0.0f || x > WORKSPACE || y < 0.0f || y > WORKSPACE) total_cost += 500.0f;
+    }
+
+    float dx = x - cost_params.goal_x;
+    float dy = y - cost_params.goal_y;
+    total_cost += cost_params.terminal_weight * sqrtf(dx * dx + dy * dy + 0.01f);
+    d_costs[k] = total_cost;
+    d_rng[k] = local_rng;
+}
+
+__device__ inline float cdf_margin_cost(
+    float x, float y, int n_obs, int n_dyn_obs, int start_step, int t,
+    const BicycleParams& params, float safe_margin, float obs_cost, float dyn_cost)
+{
+    float total = 0.0f;
+    float safe = fmaxf(0.25f, safe_margin);
+    for (int i = 0; i < n_obs; i++) {
+        float dx = x - d_obstacles_bench[i].x;
+        float dy = y - d_obstacles_bench[i].y;
+        float margin = sqrtf(dx * dx + dy * dy + 1.0e-6f) - d_obstacles_bench[i].r;
+        if (margin < safe) {
+            float v = safe - margin;
+            total += fmaxf(0.0f, obs_cost) * v * v * params.dt;
+            if (margin <= 0.0f) total += fmaxf(0.0f, obs_cost) * 50.0f;
+        }
+    }
+    float tau = (start_step + t + 1) * params.dt;
+    for (int i = 0; i < n_dyn_obs; i++) {
+        float ox = d_dynamic_obstacles_bench[i].x + d_dynamic_obstacles_bench[i].vx * tau;
+        float oy = d_dynamic_obstacles_bench[i].y + d_dynamic_obstacles_bench[i].vy * tau;
+        float dx = x - ox;
+        float dy = y - oy;
+        float margin = sqrtf(dx * dx + dy * dy + 1.0e-6f) - d_dynamic_obstacles_bench[i].r;
+        if (margin < safe) {
+            float v = safe - margin;
+            total += fmaxf(0.0f, dyn_cost) * v * v * params.dt;
+            if (margin <= 0.0f) total += fmaxf(0.0f, dyn_cost) * 50.0f;
+        }
+    }
+    return total;
+}
+
+__global__ void rollout_cdf_kernel(
+    float sx, float sy, float stheta, float sv,
+    const float* d_nominal,
+    float* d_costs,
+    float* d_perturbed,
+    float* d_rollout_states,
+    curandState* d_rng,
+    BicycleParams params,
+    CostParams cost_params,
+    int n_obs,
+    int n_dyn_obs,
+    int start_step,
+    int K,
+    int T,
+    bool use_low_pass,
+    float lp_alpha,
+    float cdf_safe_margin,
+    float cdf_obs_cost,
+    float cdf_dyn_cost)
+{
+    int k = blockIdx.x * blockDim.x + threadIdx.x;
+    if (k >= K) return;
+
+    curandState local_rng = d_rng[k];
+    float x = sx;
+    float y = sy;
+    float theta = stheta;
+    float v = sv;
+    float total_cost = 0.0f;
+    float filt_accel = 0.0f;
+    float filt_steer = 0.0f;
+    float alpha = clampf(lp_alpha, 0.02f, 1.0f);
+    float beta = 1.0f - alpha;
+    float variance_gain = use_low_pass ? sqrtf((2.0f - alpha) / alpha) : 1.0f;
+
+    if (d_rollout_states != nullptr) {
+        d_rollout_states[k * (T + 1) * 4 + 0] = x;
+        d_rollout_states[k * (T + 1) * 4 + 1] = y;
+        d_rollout_states[k * (T + 1) * 4 + 2] = theta;
+        d_rollout_states[k * (T + 1) * 4 + 3] = v;
+    }
+
+    for (int t = 0; t < T; t++) {
+        float na = curand_normal(&local_rng);
+        float ns = curand_normal(&local_rng);
+        if (use_low_pass) {
+            filt_accel = beta * filt_accel + alpha * na;
+            filt_steer = beta * filt_steer + alpha * ns;
+            na = filt_accel * variance_gain;
+            ns = filt_steer * variance_gain;
+        }
+        float accel = d_nominal[t * 2 + 0] + na * 1.5f;
+        float steer = d_nominal[t * 2 + 1] + ns * 0.18f;
+        accel = clampf(accel, -4.0f, 4.0f);
+        steer = clampf(steer, -params.max_steer, params.max_steer);
+
+        d_perturbed[k * T * 2 + t * 2 + 0] = accel;
+        d_perturbed[k * T * 2 + t * 2 + 1] = steer;
+
+        bicycle_step(x, y, theta, v, accel, steer, params);
+
+        if (d_rollout_states != nullptr) {
+            d_rollout_states[k * (T + 1) * 4 + (t + 1) * 4 + 0] = x;
+            d_rollout_states[k * (T + 1) * 4 + (t + 1) * 4 + 1] = y;
+            d_rollout_states[k * (T + 1) * 4 + (t + 1) * 4 + 2] = theta;
+            d_rollout_states[k * (T + 1) * 4 + (t + 1) * 4 + 3] = v;
+        }
+
+        float dxg = x - cost_params.goal_x;
+        float dyg = y - cost_params.goal_y;
+        total_cost += cost_params.goal_weight * sqrtf(dxg * dxg + dyg * dyg + 0.01f) * params.dt;
+        total_cost += cost_params.control_weight * (accel * accel + steer * steer) * params.dt;
+        float desired_heading = atan2f(cost_params.goal_y - y, cost_params.goal_x - x);
+        float heading_err = theta - desired_heading;
+        total_cost += cost_params.heading_weight * heading_err * heading_err * params.dt;
+        float speed_err = v - cost_params.target_speed;
+        total_cost += cost_params.speed_weight * speed_err * speed_err * params.dt;
+        total_cost += cdf_margin_cost(x, y, n_obs, n_dyn_obs, start_step, t,
+                                      params, cdf_safe_margin, cdf_obs_cost, cdf_dyn_cost);
+
+        if (x < 0.0f || x > WORKSPACE || y < 0.0f || y > WORKSPACE) total_cost += 500.0f;
+    }
+
+    float dx = x - cost_params.goal_x;
+    float dy = y - cost_params.goal_y;
+    total_cost += cost_params.terminal_weight * sqrtf(dx * dx + dy * dy + 0.01f);
+    d_costs[k] = total_cost;
+    d_rng[k] = local_rng;
+}
+
+__device__ inline float halton01(int index, int base) {
+    float f = 1.0f / static_cast<float>(base);
+    float result = 0.0f;
+    int n = max(index, 1);
+    while (n > 0) {
+        result += f * static_cast<float>(n % base);
+        n /= base;
+        f /= static_cast<float>(base);
+    }
+    return fminf(fmaxf(result, 1.0e-6f), 1.0f - 1.0e-6f);
+}
+
+__device__ inline float deterministic_normal(int index, int base_u, int base_v) {
+    float u = halton01(index, base_u);
+    float v = halton01(index + 7919, base_v);
+    return sqrtf(-2.0f * logf(u)) * cosf(6.28318530718f * v);
+}
+
+__global__ void rollout_deterministic_kernel(
+    float sx, float sy, float stheta, float sv,
+    const float* d_nominal,
+    const float* d_sigma,
+    float* d_costs,
+    float* d_perturbed,
+    float* d_rollout_states,
+    BicycleParams params,
+    CostParams cost_params,
+    int n_obs,
+    int n_dyn_obs,
+    int start_step,
+    int K,
+    int T,
+    int sample_seed,
+    int pass_index,
+    float ds_alpha,
+    float ds_noise_scale,
+    int ds_stride)
+{
+    int k = blockIdx.x * blockDim.x + threadIdx.x;
+    if (k >= K) return;
+
+    float x = sx;
+    float y = sy;
+    float theta = stheta;
+    float v = sv;
+    float total_cost = 0.0f;
+    float filt_accel = 0.0f;
+    float filt_steer = 0.0f;
+    float alpha = clampf(ds_alpha, 0.02f, 1.0f);
+    float beta = 1.0f - alpha;
+    float variance_gain = sqrtf((2.0f - alpha) / alpha);
+    int stride = max(ds_stride, 1);
+    int pair_count = max((K + 1) / 2, 1);
+
+    if (d_rollout_states != nullptr) {
+        d_rollout_states[k * (T + 1) * 4 + 0] = x;
+        d_rollout_states[k * (T + 1) * 4 + 1] = y;
+        d_rollout_states[k * (T + 1) * 4 + 2] = theta;
+        d_rollout_states[k * (T + 1) * 4 + 3] = v;
+    }
+
+    for (int t = 0; t < T; t++) {
+        float raw_accel = 0.0f;
+        float raw_steer = 0.0f;
+        if (k > 0) {
+            int sample_slot = k - 1;
+            int pair = sample_slot / 2;
+            float sign = (sample_slot & 1) ? -1.0f : 1.0f;
+            float steer_sign = ((sample_slot + pass_index) & 2) ? -sign : sign;
+            int idx = 1 + (start_step + 1) * stride
+                    + (sample_seed + 1) * 65537
+                    + (pass_index + 1) * 104729
+                    + (t + 1) * pair_count
+                    + pair;
+            raw_accel = sign * deterministic_normal(idx, 2, 3);
+            raw_steer = steer_sign * deterministic_normal(idx + 3571, 5, 7);
+        }
+
+        filt_accel = beta * filt_accel + alpha * raw_accel;
+        filt_steer = beta * filt_steer + alpha * raw_steer;
+        float accel_sigma = d_sigma ? d_sigma[t * 2 + 0] : 1.5f * ds_noise_scale;
+        float steer_sigma = d_sigma ? d_sigma[t * 2 + 1] : 0.18f * ds_noise_scale;
+        float accel = d_nominal[t * 2 + 0] + filt_accel * variance_gain * accel_sigma;
+        float steer = d_nominal[t * 2 + 1] + filt_steer * variance_gain * steer_sigma;
+        accel = clampf(accel, -4.0f, 4.0f);
+        steer = clampf(steer, -params.max_steer, params.max_steer);
+
+        d_perturbed[k * T * 2 + t * 2 + 0] = accel;
+        d_perturbed[k * T * 2 + t * 2 + 1] = steer;
+
+        bicycle_step(x, y, theta, v, accel, steer, params);
+
+        if (d_rollout_states != nullptr) {
+            d_rollout_states[k * (T + 1) * 4 + (t + 1) * 4 + 0] = x;
+            d_rollout_states[k * (T + 1) * 4 + (t + 1) * 4 + 1] = y;
+            d_rollout_states[k * (T + 1) * 4 + (t + 1) * 4 + 2] = theta;
+            d_rollout_states[k * (T + 1) * 4 + (t + 1) * 4 + 3] = v;
+        }
+
+        float dxg = x - cost_params.goal_x;
+        float dyg = y - cost_params.goal_y;
+        total_cost += cost_params.goal_weight * sqrtf(dxg * dxg + dyg * dyg + 0.01f) * params.dt;
+        total_cost += cost_params.control_weight * (accel * accel + steer * steer) * params.dt;
+        float desired_heading = atan2f(cost_params.goal_y - y, cost_params.goal_x - x);
+        float heading_err = theta - desired_heading;
+        total_cost += cost_params.heading_weight * heading_err * heading_err * params.dt;
+        float speed_err = v - cost_params.target_speed;
+        total_cost += cost_params.speed_weight * speed_err * speed_err * params.dt;
+
+        for (int i = 0; i < n_obs; i++) {
+            float dx = x - d_obstacles_bench[i].x;
+            float dy = y - d_obstacles_bench[i].y;
+            float margin = sqrtf(dx * dx + dy * dy + 1e-6f) - d_obstacles_bench[i].r;
+            if (margin <= 0.1f) total_cost += cost_params.obs_weight * 100.0f;
+            else if (margin < cost_params.obs_influence) total_cost += cost_params.obs_weight / (margin * margin);
+        }
+
+        float tau = (start_step + t + 1) * params.dt;
+        for (int i = 0; i < n_dyn_obs; i++) {
+            float ox = d_dynamic_obstacles_bench[i].x + d_dynamic_obstacles_bench[i].vx * tau;
+            float oy = d_dynamic_obstacles_bench[i].y + d_dynamic_obstacles_bench[i].vy * tau;
+            float dx = x - ox;
+            float dy = y - oy;
+            float margin = sqrtf(dx * dx + dy * dy + 1e-6f) - d_dynamic_obstacles_bench[i].r;
+            if (margin <= 0.1f) total_cost += cost_params.obs_weight * 100.0f;
+            else if (margin < cost_params.obs_influence) total_cost += cost_params.obs_weight / (margin * margin);
+        }
+
+        if (x < 0.0f || x > WORKSPACE || y < 0.0f || y > WORKSPACE) total_cost += 500.0f;
+    }
+
+    float dx = x - cost_params.goal_x;
+    float dy = y - cost_params.goal_y;
+    total_cost += cost_params.terminal_weight * sqrtf(dx * dx + dy * dy + 0.01f);
+    d_costs[k] = total_cost;
+}
+
+__device__ inline void project_control_component(
+    float* d_controls,
+    int base,
+    int T,
+    int component,
+    float lo,
+    float hi,
+    float max_delta,
+    float max_ddelta,
+    int passes)
+{
+    float du = fmaxf(max_delta, 1.0e-4f);
+    float ddu = fmaxf(max_ddelta, 1.0e-4f);
+    int pcount = min(max(passes, 1), 8);
+    for (int t = 0; t < T; t++) {
+        int idx = base + t * 2 + component;
+        d_controls[idx] = clampf(d_controls[idx], lo, hi);
+    }
+    for (int p = 0; p < pcount; p++) {
+        for (int t = 1; t < T; t++) {
+            int idx = base + t * 2 + component;
+            float prev = d_controls[base + (t - 1) * 2 + component];
+            d_controls[idx] = clampf(clampf(d_controls[idx], prev - du, prev + du), lo, hi);
+        }
+        for (int t = T - 2; t >= 0; t--) {
+            int idx = base + t * 2 + component;
+            float next = d_controls[base + (t + 1) * 2 + component];
+            d_controls[idx] = clampf(clampf(d_controls[idx], next - du, next + du), lo, hi);
+        }
+        for (int t = 2; t < T; t++) {
+            int idx = base + t * 2 + component;
+            float prev = d_controls[base + (t - 1) * 2 + component];
+            float prev2 = d_controls[base + (t - 2) * 2 + component];
+            float pred = 2.0f * prev - prev2;
+            d_controls[idx] = clampf(clampf(d_controls[idx], pred - ddu, pred + ddu), lo, hi);
+        }
+        for (int t = T - 3; t >= 0; t--) {
+            int idx = base + t * 2 + component;
+            float next = d_controls[base + (t + 1) * 2 + component];
+            float next2 = d_controls[base + (t + 2) * 2 + component];
+            float pred = 2.0f * next - next2;
+            d_controls[idx] = clampf(clampf(d_controls[idx], pred - ddu, pred + ddu), lo, hi);
+        }
+    }
+}
+
+__global__ void rollout_projection_kernel(
+    float sx, float sy, float stheta, float sv,
+    const float* d_nominal,
+    float* d_costs,
+    float* d_perturbed,
+    float* d_rollout_states,
+    curandState* d_rng,
+    BicycleParams params,
+    CostParams cost_params,
+    int n_obs,
+    int n_dyn_obs,
+    int start_step,
+    int K,
+    int T,
+    int projection_passes,
+    float max_accel_delta,
+    float max_steer_delta,
+    float max_accel_ddelta,
+    float max_steer_ddelta)
+{
+    int k = blockIdx.x * blockDim.x + threadIdx.x;
+    if (k >= K) return;
+
+    curandState local_rng = d_rng[k];
+    int base = k * T * 2;
+    for (int t = 0; t < T; t++) {
+        float accel = d_nominal[t * 2 + 0] + curand_normal(&local_rng) * 1.5f;
+        float steer = d_nominal[t * 2 + 1] + curand_normal(&local_rng) * 0.18f;
+        d_perturbed[base + t * 2 + 0] = accel;
+        d_perturbed[base + t * 2 + 1] = steer;
+    }
+
+    project_control_component(d_perturbed, base, T, 0, -4.0f, 4.0f,
+                              max_accel_delta, max_accel_ddelta, projection_passes);
+    project_control_component(d_perturbed, base, T, 1, -params.max_steer, params.max_steer,
+                              max_steer_delta, max_steer_ddelta, projection_passes);
+
+    float x = sx;
+    float y = sy;
+    float theta = stheta;
+    float v = sv;
+    float total_cost = 0.0f;
+
+    if (d_rollout_states != nullptr) {
+        d_rollout_states[k * (T + 1) * 4 + 0] = x;
+        d_rollout_states[k * (T + 1) * 4 + 1] = y;
+        d_rollout_states[k * (T + 1) * 4 + 2] = theta;
+        d_rollout_states[k * (T + 1) * 4 + 3] = v;
+    }
+
+    for (int t = 0; t < T; t++) {
+        float accel = d_perturbed[base + t * 2 + 0];
+        float steer = d_perturbed[base + t * 2 + 1];
+
+        bicycle_step(x, y, theta, v, accel, steer, params);
+
+        if (d_rollout_states != nullptr) {
+            d_rollout_states[k * (T + 1) * 4 + (t + 1) * 4 + 0] = x;
+            d_rollout_states[k * (T + 1) * 4 + (t + 1) * 4 + 1] = y;
+            d_rollout_states[k * (T + 1) * 4 + (t + 1) * 4 + 2] = theta;
+            d_rollout_states[k * (T + 1) * 4 + (t + 1) * 4 + 3] = v;
+        }
+
+        float dxg = x - cost_params.goal_x;
+        float dyg = y - cost_params.goal_y;
+        total_cost += cost_params.goal_weight * sqrtf(dxg * dxg + dyg * dyg + 0.01f) * params.dt;
+        total_cost += cost_params.control_weight * (accel * accel + steer * steer) * params.dt;
+        float desired_heading = atan2f(cost_params.goal_y - y, cost_params.goal_x - x);
+        float heading_err = theta - desired_heading;
+        total_cost += cost_params.heading_weight * heading_err * heading_err * params.dt;
+        float speed_err = v - cost_params.target_speed;
+        total_cost += cost_params.speed_weight * speed_err * speed_err * params.dt;
+
+        for (int i = 0; i < n_obs; i++) {
+            float dx = x - d_obstacles_bench[i].x;
+            float dy = y - d_obstacles_bench[i].y;
+            float margin = sqrtf(dx * dx + dy * dy + 1e-6f) - d_obstacles_bench[i].r;
+            if (margin <= 0.1f) total_cost += cost_params.obs_weight * 100.0f;
+            else if (margin < cost_params.obs_influence) total_cost += cost_params.obs_weight / (margin * margin);
+        }
+
+        float tau = (start_step + t + 1) * params.dt;
+        for (int i = 0; i < n_dyn_obs; i++) {
+            float ox = d_dynamic_obstacles_bench[i].x + d_dynamic_obstacles_bench[i].vx * tau;
+            float oy = d_dynamic_obstacles_bench[i].y + d_dynamic_obstacles_bench[i].vy * tau;
+            float dx = x - ox;
+            float dy = y - oy;
+            float margin = sqrtf(dx * dx + dy * dy + 1e-6f) - d_dynamic_obstacles_bench[i].r;
+            if (margin <= 0.1f) total_cost += cost_params.obs_weight * 100.0f;
+            else if (margin < cost_params.obs_influence) total_cost += cost_params.obs_weight / (margin * margin);
+        }
+
+        if (x < 0.0f || x > WORKSPACE || y < 0.0f || y > WORKSPACE) total_cost += 500.0f;
+    }
+
+    float dx = x - cost_params.goal_x;
+    float dy = y - cost_params.goal_y;
+    total_cost += cost_params.terminal_weight * sqrtf(dx * dx + dy * dy + 0.01f);
+    d_costs[k] = total_cost;
+    d_rng[k] = local_rng;
+}
+
+__global__ void project_nominal_controls_kernel(
+    float* d_nominal,
+    int T,
+    float max_steer,
+    int projection_passes,
+    float max_accel_delta,
+    float max_steer_delta,
+    float max_accel_ddelta,
+    float max_steer_ddelta)
+{
+    if (blockIdx.x != 0 || threadIdx.x != 0) return;
+    project_control_component(d_nominal, 0, T, 0, -4.0f, 4.0f,
+                              max_accel_delta, max_accel_ddelta, projection_passes);
+    project_control_component(d_nominal, 0, T, 1, -max_steer, max_steer,
+                              max_steer_delta, max_steer_ddelta, projection_passes);
+}
+
+__global__ void rollout_fixed_controls_kernel(
+    float sx, float sy, float stheta, float sv,
+    const float* d_controls,
+    float* d_costs,
+    float* d_rollout_states,
+    BicycleParams params,
+    CostParams cost_params,
+    int n_obs,
+    int n_dyn_obs,
+    int start_step,
+    int K,
+    int T)
+{
+    int k = blockIdx.x * blockDim.x + threadIdx.x;
+    if (k >= K) return;
+
+    float x = sx;
+    float y = sy;
+    float theta = stheta;
+    float v = sv;
+    float total_cost = 0.0f;
+
+    if (d_rollout_states != nullptr) {
+        d_rollout_states[k * (T + 1) * 4 + 0] = x;
+        d_rollout_states[k * (T + 1) * 4 + 1] = y;
+        d_rollout_states[k * (T + 1) * 4 + 2] = theta;
+        d_rollout_states[k * (T + 1) * 4 + 3] = v;
+    }
+
+    for (int t = 0; t < T; t++) {
+        float accel = clampf(d_controls[k * T * 2 + t * 2 + 0], -4.0f, 4.0f);
+        float steer = clampf(d_controls[k * T * 2 + t * 2 + 1],
+                             -params.max_steer, params.max_steer);
+
+        bicycle_step(x, y, theta, v, accel, steer, params);
+
+        if (d_rollout_states != nullptr) {
+            d_rollout_states[k * (T + 1) * 4 + (t + 1) * 4 + 0] = x;
+            d_rollout_states[k * (T + 1) * 4 + (t + 1) * 4 + 1] = y;
+            d_rollout_states[k * (T + 1) * 4 + (t + 1) * 4 + 2] = theta;
+            d_rollout_states[k * (T + 1) * 4 + (t + 1) * 4 + 3] = v;
+        }
+
+        float dxg = x - cost_params.goal_x;
+        float dyg = y - cost_params.goal_y;
+        total_cost += cost_params.goal_weight * sqrtf(dxg * dxg + dyg * dyg + 0.01f) * params.dt;
+        total_cost += cost_params.control_weight * (accel * accel + steer * steer) * params.dt;
+        float desired_heading = atan2f(cost_params.goal_y - y, cost_params.goal_x - x);
+        float heading_err = theta - desired_heading;
+        total_cost += cost_params.heading_weight * heading_err * heading_err * params.dt;
+        float speed_err = v - cost_params.target_speed;
+        total_cost += cost_params.speed_weight * speed_err * speed_err * params.dt;
+
+        for (int i = 0; i < n_obs; i++) {
+            float dx = x - d_obstacles_bench[i].x;
+            float dy = y - d_obstacles_bench[i].y;
+            float margin = sqrtf(dx * dx + dy * dy + 1e-6f) - d_obstacles_bench[i].r;
+            if (margin <= 0.1f) total_cost += cost_params.obs_weight * 100.0f;
+            else if (margin < cost_params.obs_influence) total_cost += cost_params.obs_weight / (margin * margin);
+        }
+
+        float tau = (start_step + t + 1) * params.dt;
+        for (int i = 0; i < n_dyn_obs; i++) {
+            float ox = d_dynamic_obstacles_bench[i].x + d_dynamic_obstacles_bench[i].vx * tau;
+            float oy = d_dynamic_obstacles_bench[i].y + d_dynamic_obstacles_bench[i].vy * tau;
+            float dx = x - ox;
+            float dy = y - oy;
+            float margin = sqrtf(dx * dx + dy * dy + 1e-6f) - d_dynamic_obstacles_bench[i].r;
+            if (margin <= 0.1f) total_cost += cost_params.obs_weight * 100.0f;
+            else if (margin < cost_params.obs_influence) total_cost += cost_params.obs_weight / (margin * margin);
+        }
+
+        if (x < 0.0f || x > WORKSPACE || y < 0.0f || y > WORKSPACE) total_cost += 500.0f;
+    }
+
+    float dx = x - cost_params.goal_x;
+    float dy = y - cost_params.goal_y;
+    total_cost += cost_params.terminal_weight * sqrtf(dx * dx + dy * dy + 0.01f);
+    d_costs[k] = total_cost;
 }
 
 // Hybrid A* + MPPI hybrid rollout: same sampling pipeline as rollout_kernel
@@ -482,6 +2136,169 @@ __host__ __device__ inline float wrap_angle(float angle) {
     while (angle > 3.14159265f) angle -= 6.28318531f;
     while (angle < -3.14159265f) angle += 6.28318531f;
     return angle;
+}
+
+__device__ inline float nearest_obstacle_away_direction_device(
+    float x,
+    float y,
+    int n_obs,
+    int n_dyn_obs,
+    float tau,
+    float& away_x,
+    float& away_y)
+{
+    float best = 1.0e9f;
+    away_x = 0.0f;
+    away_y = 0.0f;
+
+    for (int i = 0; i < n_obs; i++) {
+        float dx = x - d_obstacles_bench[i].x;
+        float dy = y - d_obstacles_bench[i].y;
+        float dist = sqrtf(dx * dx + dy * dy + 1.0e-6f);
+        float margin = dist - d_obstacles_bench[i].r;
+        if (margin < best) {
+            best = margin;
+            away_x = dx / dist;
+            away_y = dy / dist;
+        }
+    }
+
+    for (int i = 0; i < n_dyn_obs; i++) {
+        float ox = d_dynamic_obstacles_bench[i].x + d_dynamic_obstacles_bench[i].vx * tau;
+        float oy = d_dynamic_obstacles_bench[i].y + d_dynamic_obstacles_bench[i].vy * tau;
+        float dx = x - ox;
+        float dy = y - oy;
+        float dist = sqrtf(dx * dx + dy * dy + 1.0e-6f);
+        float margin = dist - d_dynamic_obstacles_bench[i].r;
+        if (margin < best) {
+            best = margin;
+            away_x = dx / dist;
+            away_y = dy / dist;
+        }
+    }
+
+    return best;
+}
+
+__global__ void rollout_safety_controlled_kernel(
+    float sx, float sy, float stheta, float sv,
+    const float* d_nominal,
+    float* d_costs,
+    float* d_perturbed,
+    float* d_rollout_states,
+    curandState* d_rng,
+    BicycleParams params,
+    CostParams cost_params,
+    int n_obs,
+    int n_dyn_obs,
+    int start_step,
+    int K,
+    int T,
+    bool use_low_pass,
+    float lp_alpha,
+    float safe_margin,
+    float avoid_gain,
+    float speed_gain,
+    float max_steer_delta,
+    float max_accel_delta,
+    float control_weight)
+{
+    int k = blockIdx.x * blockDim.x + threadIdx.x;
+    if (k >= K) return;
+
+    curandState local_rng = d_rng[k];
+    float x = sx;
+    float y = sy;
+    float theta = stheta;
+    float v = sv;
+    float total_cost = 0.0f;
+    float filt_accel = 0.0f;
+    float filt_steer = 0.0f;
+    float alpha = clampf(lp_alpha, 0.02f, 1.0f);
+    float beta = 1.0f - alpha;
+    float variance_gain = use_low_pass ? sqrtf((2.0f - alpha) / alpha) : 1.0f;
+    float safe = fmaxf(0.10f, safe_margin);
+
+    if (d_rollout_states != nullptr) {
+        d_rollout_states[k * (T + 1) * 4 + 0] = x;
+        d_rollout_states[k * (T + 1) * 4 + 1] = y;
+        d_rollout_states[k * (T + 1) * 4 + 2] = theta;
+        d_rollout_states[k * (T + 1) * 4 + 3] = v;
+    }
+
+    for (int t = 0; t < T; t++) {
+        float na = curand_normal(&local_rng);
+        float ns = curand_normal(&local_rng);
+        if (use_low_pass) {
+            filt_accel = beta * filt_accel + alpha * na;
+            filt_steer = beta * filt_steer + alpha * ns;
+            na = filt_accel * variance_gain;
+            ns = filt_steer * variance_gain;
+        }
+
+        float raw_accel = clampf(d_nominal[t * 2 + 0] + na * 1.5f, -4.0f, 4.0f);
+        float raw_steer = clampf(d_nominal[t * 2 + 1] + ns * 0.18f,
+                                 -params.max_steer, params.max_steer);
+        float accel = raw_accel;
+        float steer = raw_steer;
+
+        float px = x;
+        float py = y;
+        float ptheta = theta;
+        float pv = v;
+        bicycle_step(px, py, ptheta, pv, raw_accel, raw_steer, params);
+
+        float tau = (start_step + t + 1) * params.dt;
+        float away_x = 0.0f;
+        float away_y = 0.0f;
+        float predicted_margin = nearest_obstacle_away_direction_device(
+            px, py, n_obs, n_dyn_obs, tau, away_x, away_y);
+
+        if (predicted_margin < safe) {
+            float danger = clampf((safe - predicted_margin) / safe, 0.0f, 1.5f);
+            float away_heading = atan2f(away_y, away_x);
+            float heading_err = wrap_angle(away_heading - theta);
+            float steer_delta = clampf(
+                avoid_gain * danger * heading_err,
+                -max_steer_delta,
+                max_steer_delta);
+
+            float obstacle_heading = atan2f(-away_y, -away_x);
+            float closing = fmaxf(0.0f, cosf(wrap_angle(theta - obstacle_heading)));
+            float accel_delta = -clampf(
+                speed_gain * danger * (0.35f + closing + 0.15f * fmaxf(v, 0.0f)),
+                0.0f,
+                max_accel_delta);
+
+            steer = clampf(steer + steer_delta, -params.max_steer, params.max_steer);
+            accel = clampf(accel + accel_delta, -4.0f, 4.0f);
+            total_cost += control_weight *
+                ((accel - raw_accel) * (accel - raw_accel)
+               + 4.0f * (steer - raw_steer) * (steer - raw_steer));
+        }
+
+        d_perturbed[k * T * 2 + t * 2 + 0] = accel;
+        d_perturbed[k * T * 2 + t * 2 + 1] = steer;
+
+        bicycle_step(x, y, theta, v, accel, steer, params);
+
+        if (d_rollout_states != nullptr) {
+            d_rollout_states[k * (T + 1) * 4 + (t + 1) * 4 + 0] = x;
+            d_rollout_states[k * (T + 1) * 4 + (t + 1) * 4 + 1] = y;
+            d_rollout_states[k * (T + 1) * 4 + (t + 1) * 4 + 2] = theta;
+            d_rollout_states[k * (T + 1) * 4 + (t + 1) * 4 + 3] = v;
+        }
+
+        total_cost += nav_stage_cost_float(
+            x, y, theta, v, accel, steer,
+            params, cost_params, n_obs, n_dyn_obs, tau);
+    }
+
+    float dx = x - cost_params.goal_x;
+    float dy = y - cost_params.goal_y;
+    total_cost += cost_params.terminal_weight * sqrtf(dx * dx + dy * dy + 0.01f);
+    d_costs[k] = total_cost;
+    d_rng[k] = local_rng;
 }
 
 __device__ void terminal_grad(float x, float y, const CostParams& cp, float grad[4]);
@@ -1013,6 +2830,810 @@ __global__ void compute_weights_kernel(const float* d_costs, float* d_weights, i
     }
 }
 
+__global__ void compute_tsallis_weights_kernel(
+    const float* d_costs,
+    float* d_weights,
+    int K,
+    float q,
+    float temperature,
+    float min_weight)
+{
+    if (blockIdx.x != 0 || threadIdx.x != 0) return;
+
+    float min_cost = FLT_MAX;
+    float max_cost = -FLT_MAX;
+    for (int k = 0; k < K; k++) {
+        min_cost = fminf(min_cost, d_costs[k]);
+        max_cost = fmaxf(max_cost, d_costs[k]);
+    }
+
+    float span = fmaxf(1.0e-3f, max_cost - min_cost);
+    float temp = fmaxf(1.0e-3f, temperature);
+    float qv = clampf(q, 0.05f, 2.50f);
+    float floor_w = clampf(min_weight, 0.0f, 1.0f);
+    float sum_w = 0.0f;
+
+    for (int k = 0; k < K; k++) {
+        float normalized = clampf((d_costs[k] - min_cost) / span, 0.0f, 1.0f);
+        float x = -temp * normalized;
+        float w;
+        if (fabsf(qv - 1.0f) < 1.0e-4f) {
+            w = expf(x);
+        } else {
+            float base = 1.0f + (1.0f - qv) * x;
+            w = base > 0.0f ? powf(base, 1.0f / (1.0f - qv)) : 0.0f;
+        }
+        w = fmaxf(floor_w, w);
+        d_weights[k] = w;
+        sum_w += w;
+    }
+
+    if (sum_w > 1.0e-12f) {
+        for (int k = 0; k < K; k++) d_weights[k] /= sum_w;
+    } else {
+        float uniform = 1.0f / static_cast<float>(K);
+        for (int k = 0; k < K; k++) d_weights[k] = uniform;
+    }
+}
+
+__global__ void compute_covariance_control_weights_kernel(
+    const float* d_costs,
+    const float* d_rollout_states,
+    float* d_weights,
+    int K,
+    int T,
+    float lambda,
+    float terminal_weight,
+    float target_radius,
+    float heading_weight,
+    float speed_weight,
+    float min_weight)
+{
+    if (blockIdx.x != 0 || threadIdx.x != 0) return;
+
+    float min_cost = FLT_MAX;
+    for (int k = 0; k < K; k++) min_cost = fminf(min_cost, d_costs[k]);
+
+    float sum_pre = 0.0f;
+    float mean_x = 0.0f;
+    float mean_y = 0.0f;
+    float mean_v = 0.0f;
+    float mean_sin = 0.0f;
+    float mean_cos = 0.0f;
+    float inv_lambda = 1.0f / fmaxf(lambda, 1.0e-3f);
+    for (int k = 0; k < K; k++) {
+        float w = expf(-(d_costs[k] - min_cost) * inv_lambda);
+        const float* terminal = &d_rollout_states[k * (T + 1) * 4 + T * 4];
+        mean_x += w * terminal[0];
+        mean_y += w * terminal[1];
+        mean_sin += w * sinf(terminal[2]);
+        mean_cos += w * cosf(terminal[2]);
+        mean_v += w * terminal[3];
+        sum_pre += w;
+    }
+
+    if (sum_pre > 1.0e-12f) {
+        float inv_sum = 1.0f / sum_pre;
+        mean_x *= inv_sum;
+        mean_y *= inv_sum;
+        mean_sin *= inv_sum;
+        mean_cos *= inv_sum;
+        mean_v *= inv_sum;
+    } else {
+        float inv_k = 1.0f / static_cast<float>(K);
+        for (int k = 0; k < K; k++) {
+            const float* terminal = &d_rollout_states[k * (T + 1) * 4 + T * 4];
+            mean_x += inv_k * terminal[0];
+            mean_y += inv_k * terminal[1];
+            mean_sin += inv_k * sinf(terminal[2]);
+            mean_cos += inv_k * cosf(terminal[2]);
+            mean_v += inv_k * terminal[3];
+        }
+    }
+    float mean_theta = atan2f(mean_sin, mean_cos);
+
+    float target2 = fmaxf(0.0f, target_radius) * fmaxf(0.0f, target_radius);
+    float terminal_scale = fmaxf(0.0f, terminal_weight);
+    float h_weight = fmaxf(0.0f, heading_weight);
+    float v_weight = fmaxf(0.0f, speed_weight);
+    float floor_w = clampf(min_weight, 0.0f, 1.0f);
+
+    float min_adjusted = FLT_MAX;
+    for (int k = 0; k < K; k++) {
+        const float* terminal = &d_rollout_states[k * (T + 1) * 4 + T * 4];
+        float dx = terminal[0] - mean_x;
+        float dy = terminal[1] - mean_y;
+        float dtheta = wrap_angle(terminal[2] - mean_theta);
+        float dv = terminal[3] - mean_v;
+        float dispersion = dx * dx + dy * dy + h_weight * dtheta * dtheta + v_weight * dv * dv;
+        float excess = fmaxf(0.0f, dispersion - target2);
+        float adjusted = d_costs[k] + terminal_scale * excess;
+        min_adjusted = fminf(min_adjusted, adjusted);
+    }
+
+    float sum_w = 0.0f;
+    for (int k = 0; k < K; k++) {
+        const float* terminal = &d_rollout_states[k * (T + 1) * 4 + T * 4];
+        float dx = terminal[0] - mean_x;
+        float dy = terminal[1] - mean_y;
+        float dtheta = wrap_angle(terminal[2] - mean_theta);
+        float dv = terminal[3] - mean_v;
+        float dispersion = dx * dx + dy * dy + h_weight * dtheta * dtheta + v_weight * dv * dv;
+        float excess = fmaxf(0.0f, dispersion - target2);
+        float adjusted = d_costs[k] + terminal_scale * excess;
+        float w = expf(-(adjusted - min_adjusted) * inv_lambda);
+        w = fmaxf(floor_w, w);
+        d_weights[k] = w;
+        sum_w += w;
+    }
+
+    if (sum_w > 1.0e-12f) {
+        for (int k = 0; k < K; k++) d_weights[k] /= sum_w;
+    } else {
+        float uniform = 1.0f / static_cast<float>(K);
+        for (int k = 0; k < K; k++) d_weights[k] = uniform;
+    }
+}
+
+__global__ void compute_td_cd_scores_kernel(
+    const float* d_rollout_states,
+    const float* d_perturbed,
+    float* d_scores,
+    BicycleParams params,
+    CostParams cost_params,
+    int n_obs,
+    int n_dyn_obs,
+    int start_step,
+    int K,
+    int T,
+    float terminal_value_scale,
+    float safe_margin,
+    float discount_sigma,
+    float discount_power,
+    float failure_cost)
+{
+    int k = blockIdx.x * blockDim.x + threadIdx.x;
+    if (k >= K) return;
+
+    float sigma = fmaxf(1.0e-3f, discount_sigma);
+    float power = fmaxf(0.0f, discount_power);
+    float fail_cost = fmaxf(0.0f, failure_cost);
+    float value_scale = fmaxf(0.0f, terminal_value_scale);
+    float survival = 1.0f;
+    float score = 0.0f;
+
+    for (int t = 0; t < T; t++) {
+        const float* s = &d_rollout_states[k * (T + 1) * 4 + (t + 1) * 4];
+        const float* u = &d_perturbed[k * T * 2 + t * 2];
+        float tau = (start_step + t + 1) * params.dt;
+        float stage = nav_stage_cost_float(
+            s[0], s[1], s[2], s[3], u[0], u[1],
+            params, cost_params, n_obs, n_dyn_obs, tau);
+
+        float margin = min_obstacle_margin_device(s[0], s[1], n_obs, n_dyn_obs, tau);
+        float z = clampf((margin - safe_margin) / sigma, -20.0f, 20.0f);
+        float feasibility = 1.0f / (1.0f + expf(-z));
+        float step_discount = powf(clampf(feasibility, 1.0e-6f, 1.0f), power);
+        float next_survival = survival * step_discount;
+        float failure_mass = fmaxf(0.0f, survival - next_survival);
+
+        score += survival * stage + failure_mass * fail_cost;
+        survival = next_survival;
+    }
+
+    const float* terminal = &d_rollout_states[k * (T + 1) * 4 + T * 4];
+    float dx = terminal[0] - cost_params.goal_x;
+    float dy = terminal[1] - cost_params.goal_y;
+    float dist = sqrtf(dx * dx + dy * dy + 0.01f);
+    float target_speed = fmaxf(0.5f, cost_params.target_speed);
+    float value_goal = cost_params.terminal_weight * dist
+        + 0.5f * cost_params.goal_weight * dist * dist / target_speed;
+    float desired_heading = atan2f(cost_params.goal_y - terminal[1],
+                                   cost_params.goal_x - terminal[0]);
+    float heading_err = wrap_angle(terminal[2] - desired_heading);
+    float speed_err = terminal[3] - cost_params.target_speed;
+    float value_shape =
+        2.0f * cost_params.heading_weight * heading_err * heading_err
+        + 2.0f * cost_params.speed_weight * speed_err * speed_err;
+    score += survival * value_scale * (value_goal + value_shape);
+
+    d_scores[k] = score;
+}
+
+__global__ void compute_svg_mode_weights_kernel(
+    const float* d_costs,
+    const float* d_rollout_states,
+    float* d_weights,
+    int K,
+    int T,
+    float lambda,
+    float bandwidth,
+    float mode_weight,
+    int stride)
+{
+    if (blockIdx.x != 0 || threadIdx.x != 0) return;
+    float min_cost = FLT_MAX;
+    int best = 0;
+    for (int k = 0; k < K; k++) {
+        if (d_costs[k] < min_cost) {
+            min_cost = d_costs[k];
+            best = k;
+        }
+    }
+
+    int step_stride = max(1, stride);
+    float bw = fmaxf(1.0e-3f, bandwidth);
+    float sum_w = 0.0f;
+    for (int k = 0; k < K; k++) {
+        float d2 = 0.0f;
+        int count = 0;
+        for (int t = step_stride; t <= T; t += step_stride) {
+            int ib = best * (T + 1) * 4 + t * 4;
+            int ik = k * (T + 1) * 4 + t * 4;
+            float dx = d_rollout_states[ik + 0] - d_rollout_states[ib + 0];
+            float dy = d_rollout_states[ik + 1] - d_rollout_states[ib + 1];
+            float dtheta = wrap_angle(d_rollout_states[ik + 2] - d_rollout_states[ib + 2]);
+            float dv = d_rollout_states[ik + 3] - d_rollout_states[ib + 3];
+            d2 += dx * dx + dy * dy + 0.25f * dtheta * dtheta + 0.10f * dv * dv;
+            count++;
+        }
+        if (count > 0) d2 /= static_cast<float>(count);
+        float cost_w = expf(-(d_costs[k] - min_cost) / fmaxf(lambda, 1.0e-3f));
+        float mode_w = expf(-d2 / bw);
+        float w = cost_w * (1.0f + fmaxf(0.0f, mode_weight) * mode_w);
+        d_weights[k] = w;
+        sum_w += w;
+    }
+    if (sum_w > 1.0e-12f) {
+        for (int k = 0; k < K; k++) d_weights[k] /= sum_w;
+    } else {
+        float uniform = 1.0f / static_cast<float>(K);
+        for (int k = 0; k < K; k++) d_weights[k] = uniform;
+    }
+}
+
+__device__ inline float pa_segment_occlusion_device(
+    float x0,
+    float y0,
+    float x1,
+    float y1,
+    int n_obs,
+    int n_dyn_obs,
+    float tau,
+    float safe_margin)
+{
+    float vx = x1 - x0;
+    float vy = y1 - y0;
+    float len2 = vx * vx + vy * vy;
+    if (len2 < 1.0e-6f) return 0.0f;
+
+    float best = 0.0f;
+    for (int i = 0; i < n_obs; i++) {
+        float wx = d_obstacles_bench[i].x - x0;
+        float wy = d_obstacles_bench[i].y - y0;
+        float u = clampf((wx * vx + wy * vy) / len2, 0.0f, 1.0f);
+        if (u < 0.02f || u > 0.98f) continue;
+        float px = x0 + u * vx;
+        float py = y0 + u * vy;
+        float dx = d_obstacles_bench[i].x - px;
+        float dy = d_obstacles_bench[i].y - py;
+        float r = fmaxf(0.05f, d_obstacles_bench[i].r + safe_margin);
+        float dist = sqrtf(dx * dx + dy * dy + 1.0e-6f);
+        float depth = clampf((r - dist) / r, 0.0f, 1.0f);
+        float along_weight = 1.0f - 0.35f * u;
+        best = fmaxf(best, depth * along_weight);
+    }
+
+    for (int i = 0; i < n_dyn_obs; i++) {
+        float ox = d_dynamic_obstacles_bench[i].x + d_dynamic_obstacles_bench[i].vx * tau;
+        float oy = d_dynamic_obstacles_bench[i].y + d_dynamic_obstacles_bench[i].vy * tau;
+        float wx = ox - x0;
+        float wy = oy - y0;
+        float u = clampf((wx * vx + wy * vy) / len2, 0.0f, 1.0f);
+        if (u < 0.02f || u > 0.98f) continue;
+        float px = x0 + u * vx;
+        float py = y0 + u * vy;
+        float dx = ox - px;
+        float dy = oy - py;
+        float r = fmaxf(0.05f, d_dynamic_obstacles_bench[i].r + safe_margin);
+        float dist = sqrtf(dx * dx + dy * dy + 1.0e-6f);
+        float depth = clampf((r - dist) / r, 0.0f, 1.0f);
+        float along_weight = 1.0f - 0.35f * u;
+        best = fmaxf(best, depth * along_weight);
+    }
+    return clampf(best, 0.0f, 1.0f);
+}
+
+__global__ void compute_pa_perception_scores_kernel(
+    const float* d_costs,
+    const float* d_rollout_states,
+    float* d_scores,
+    BicycleParams params,
+    CostParams cost_params,
+    int n_obs,
+    int n_dyn_obs,
+    int start_step,
+    int K,
+    int T,
+    float safe_margin,
+    float poi_weight,
+    float occlusion_weight,
+    float frontier_reward,
+    float forward_occ_weight,
+    float goal_gate,
+    float activation,
+    float ray_length,
+    float score_cap)
+{
+    int k = blockIdx.x * blockDim.x + threadIdx.x;
+    if (k >= K) return;
+
+    const float* start = &d_rollout_states[k * (T + 1) * 4];
+    float gx = cost_params.goal_x;
+    float gy = cost_params.goal_y;
+    float tau0 = start_step * params.dt;
+    float start_occ = pa_segment_occlusion_device(
+        start[0], start[1], gx, gy, n_obs, n_dyn_obs, tau0, safe_margin);
+    float active_threshold = fmaxf(0.0f, activation);
+    float score_delta = 0.0f;
+    float count = 0.0f;
+
+    for (int t = 1; t <= T; t++) {
+        const float* s = &d_rollout_states[k * (T + 1) * 4 + t * 4];
+        float x = s[0];
+        float y = s[1];
+        float theta = s[2];
+        float dxg = gx - x;
+        float dyg = gy - y;
+        float dist_goal = sqrtf(dxg * dxg + dyg * dyg + 1.0e-6f);
+        if (dist_goal <= goal_gate) continue;
+
+        float tau = (start_step + t) * params.dt;
+        float occ = pa_segment_occlusion_device(
+            x, y, gx, gy, n_obs, n_dyn_obs, tau, safe_margin);
+        float active = clampf((fmaxf(start_occ, occ) - active_threshold)
+                              / fmaxf(1.0e-3f, 1.0f - active_threshold),
+                              0.0f, 1.0f);
+        if (active <= 1.0e-5f) continue;
+
+        float bearing = atan2f(dyg, dxg);
+        float heading_err = wrap_angle(theta - bearing);
+        float poi = 1.0f - cosf(heading_err);
+
+        float look_x = x + cosf(theta) * fminf(ray_length, dist_goal);
+        float look_y = y + sinf(theta) * fminf(ray_length, dist_goal);
+        float forward_occ = pa_segment_occlusion_device(
+            x, y, look_x, look_y, n_obs, n_dyn_obs, tau, safe_margin);
+
+        float exposed_gain = fmaxf(0.0f, start_occ - occ);
+        float late_weight = 0.75f + 0.25f * static_cast<float>(t) / fmaxf(1.0f, static_cast<float>(T));
+        score_delta += active * (
+            fmaxf(0.0f, occlusion_weight) * occ * occ
+            + fmaxf(0.0f, poi_weight) * poi * poi
+            + fmaxf(0.0f, forward_occ_weight) * forward_occ * forward_occ
+            - fmaxf(0.0f, frontier_reward) * exposed_gain * late_weight);
+        count += 1.0f;
+    }
+
+    if (count > 0.0f) score_delta /= count;
+    float cap = fmaxf(0.0f, score_cap);
+    if (cap > 0.0f) score_delta = clampf(score_delta, -cap, cap);
+    d_scores[k] = d_costs[k] + score_delta;
+}
+
+__global__ void compute_bc_safety_weights_kernel(
+    const float* d_costs,
+    const float* d_rollout_states,
+    float* d_weights,
+    BicycleParams params,
+    int n_obs,
+    int n_dyn_obs,
+    int start_step,
+    int K,
+    int T,
+    float lambda,
+    float safe_margin,
+    float prob_sigma,
+    float probability_power,
+    float min_probability)
+{
+    if (blockIdx.x != 0 || threadIdx.x != 0) return;
+
+    float min_cost = FLT_MAX;
+    for (int k = 0; k < K; k++) min_cost = fminf(min_cost, d_costs[k]);
+
+    float sigma = fmaxf(1.0e-3f, prob_sigma);
+    float power = fmaxf(0.0f, probability_power);
+    float min_prob = clampf(min_probability, 1.0e-12f, 1.0f);
+    float sum_w = 0.0f;
+
+    for (int k = 0; k < K; k++) {
+        float log_prob = 0.0f;
+        float min_margin_seen = 1.0e9f;
+        for (int t = 1; t <= T; t++) {
+            const float* s = &d_rollout_states[k * (T + 1) * 4 + t * 4];
+            float tau = (start_step + t) * params.dt;
+            float margin = min_obstacle_margin_device(s[0], s[1], n_obs, n_dyn_obs, tau);
+            min_margin_seen = fminf(min_margin_seen, margin);
+            float z = clampf((margin - safe_margin) / sigma, -20.0f, 20.0f);
+            float p = 1.0f / (1.0f + expf(-z));
+            log_prob += logf(fmaxf(min_prob, p));
+        }
+
+        // Lightweight surrogate for trajectory feasibility: the geometric
+        // mean keeps scores comparable across horizons, while min-step
+        // probability still suppresses trajectories with one close pass.
+        float mean_prob = expf(log_prob / fmaxf(1.0f, static_cast<float>(T)));
+        float min_z = clampf((min_margin_seen - safe_margin) / sigma, -20.0f, 20.0f);
+        float min_step_prob = 1.0f / (1.0f + expf(-min_z));
+        float feasibility = sqrtf(fmaxf(min_prob, mean_prob) * fmaxf(min_prob, min_step_prob));
+        feasibility = powf(fmaxf(min_prob, feasibility), power);
+
+        float cost_w = expf(-(d_costs[k] - min_cost) / fmaxf(lambda, 1.0e-3f));
+        float w = cost_w * feasibility;
+        d_weights[k] = w;
+        sum_w += w;
+    }
+
+    if (sum_w > 1.0e-12f) {
+        for (int k = 0; k < K; k++) d_weights[k] /= sum_w;
+    } else {
+        float uniform = 1.0f / static_cast<float>(K);
+        for (int k = 0; k < K; k++) d_weights[k] = uniform;
+    }
+}
+
+__global__ void compute_c2u_chance_scores_kernel(
+    const float* d_costs,
+    const float* d_rollout_states,
+    float* d_scores,
+    BicycleParams params,
+    int n_obs,
+    int n_dyn_obs,
+    int start_step,
+    int K,
+    int T,
+    float lambda,
+    float safe_margin,
+    float robot_sigma,
+    float dyn_sigma0,
+    float dyn_sigma_growth,
+    float risk_z,
+    float prob_sigma,
+    float probability_power,
+    float violation_weight,
+    float min_probability)
+{
+    int k = blockIdx.x * blockDim.x + threadIdx.x;
+    if (k >= K) return;
+
+    float sigma = fmaxf(1.0e-3f, prob_sigma);
+    float power = fmaxf(0.0f, probability_power);
+    float min_prob = clampf(min_probability, 1.0e-12f, 1.0f);
+    float penalty_scale = fmaxf(0.0f, violation_weight);
+
+    float violation_cost = 0.0f;
+    float log_prob = 0.0f;
+    float min_h = 1.0e9f;
+    for (int t = 1; t <= T; t++) {
+        const float* s = &d_rollout_states[k * (T + 1) * 4 + t * 4];
+        float rel_tau = t * params.dt;
+        float tau = (start_step + t) * params.dt;
+        float h = c2u_chance_margin_device(
+            s[0], s[1], n_obs, n_dyn_obs, tau, rel_tau, safe_margin,
+            robot_sigma, dyn_sigma0, dyn_sigma_growth, risk_z);
+        min_h = fminf(min_h, h);
+        float violation = fmaxf(0.0f, -h);
+        violation_cost += violation * violation;
+        float p = 1.0f / (1.0f + expf(-clampf(h / sigma, -20.0f, 20.0f)));
+        log_prob += logf(fmaxf(min_prob, p));
+    }
+
+    float mean_prob = expf(log_prob / fmaxf(1.0f, static_cast<float>(T)));
+    float min_prob_step = 1.0f / (1.0f + expf(-clampf(min_h / sigma, -20.0f, 20.0f)));
+    float feasibility = sqrtf(fmaxf(min_prob, mean_prob) * fmaxf(min_prob, min_prob_step));
+    feasibility = powf(fmaxf(min_prob, feasibility), power);
+
+    float score = d_costs[k]
+        + penalty_scale * violation_cost / fmaxf(1.0f, static_cast<float>(T))
+        - fmaxf(lambda, 1.0e-3f) * logf(fmaxf(min_prob, feasibility));
+    d_scores[k] = score;
+}
+
+__global__ void compute_ducct_risk_scores_kernel(
+    const float* d_costs,
+    const float* d_rollout_states,
+    float* d_scores,
+    BicycleParams params,
+    int n_obs,
+    int n_dyn_obs,
+    int start_step,
+    int K,
+    int T,
+    float lambda,
+    float loc_sigma0,
+    float loc_sigma_growth,
+    float pred_sigma0,
+    float pred_sigma_growth,
+    float static_sigma,
+    float risk_weight,
+    float hard_threshold,
+    float reject_cost,
+    float survival_power,
+    float min_survival)
+{
+    int k = blockIdx.x * blockDim.x + threadIdx.x;
+    if (k >= K) return;
+
+    float threshold = clampf(hard_threshold, 0.0f, 1.0f);
+    float risk_scale = fmaxf(0.0f, risk_weight);
+    float reject_scale = fmaxf(0.0f, reject_cost);
+    float power = fmaxf(0.0f, survival_power);
+    float min_surv = clampf(min_survival, 1.0e-12f, 1.0f);
+
+    float risk_sum = 0.0f;
+    float reject_sum = 0.0f;
+    float log_survival = 0.0f;
+    float max_risk = 0.0f;
+    for (int t = 1; t <= T; t++) {
+        const float* s = &d_rollout_states[k * (T + 1) * 4 + t * 4];
+        float rel_tau = t * params.dt;
+        float tau = (start_step + t) * params.dt;
+        float risk = ducct_joint_risk_device(
+            s[0], s[1], n_obs, n_dyn_obs, tau, rel_tau,
+            loc_sigma0, loc_sigma_growth,
+            pred_sigma0, pred_sigma_growth, static_sigma);
+        risk_sum += risk;
+        max_risk = fmaxf(max_risk, risk);
+        float excess = fmaxf(0.0f, risk - threshold);
+        reject_sum += excess * excess;
+        log_survival += logf(fmaxf(min_surv, 1.0f - risk));
+    }
+
+    float denom = fmaxf(1.0f, static_cast<float>(T));
+    float mean_risk = risk_sum / denom;
+    float survival = expf(log_survival / denom);
+    float score = d_costs[k]
+        + risk_scale * mean_risk
+        + reject_scale * reject_sum / denom
+        - fmaxf(lambda, 1.0e-3f) * power * logf(fmaxf(min_surv, survival));
+    if (max_risk > threshold) {
+        score += reject_scale * (max_risk - threshold);
+    }
+    d_scores[k] = score;
+}
+
+__global__ void compute_dra_risk_scores_kernel(
+    const float* d_costs,
+    const float* d_rollout_states,
+    float* d_scores,
+    BicycleParams params,
+    int n_dyn_obs,
+    int start_step,
+    int K,
+    int T,
+    float lambda,
+    int mc_samples,
+    float robot_radius,
+    float pred_sigma0,
+    float pred_sigma_growth,
+    float mode_weight,
+    float mode_lateral_offset,
+    float soft_weight,
+    float hard_threshold,
+    float reject_cost,
+    float survival_power,
+    float min_survival)
+{
+    int k = blockIdx.x * blockDim.x + threadIdx.x;
+    if (k >= K) return;
+
+    float threshold = clampf(hard_threshold, 0.0f, 1.0f);
+    float soft_scale = fmaxf(0.0f, soft_weight);
+    float reject_scale = fmaxf(0.0f, reject_cost);
+    float power = fmaxf(0.0f, survival_power);
+    float min_surv = clampf(min_survival, 1.0e-12f, 1.0f);
+
+    float cp_sum = 0.0f;
+    float reject_sum = 0.0f;
+    float log_survival = 0.0f;
+    float max_cp = 0.0f;
+    for (int t = 1; t <= T; t++) {
+        const float* s = &d_rollout_states[k * (T + 1) * 4 + t * 4];
+        float rel_tau = t * params.dt;
+        float tau = (start_step + t) * params.dt;
+        float cp = dra_collision_probability_device(
+            s[0], s[1], n_dyn_obs, tau, rel_tau, mc_samples, robot_radius,
+            pred_sigma0, pred_sigma_growth, mode_weight, mode_lateral_offset);
+        cp_sum += cp;
+        max_cp = fmaxf(max_cp, cp);
+        float excess = fmaxf(0.0f, cp - threshold);
+        reject_sum += excess * excess;
+        log_survival += logf(fmaxf(min_surv, 1.0f - cp));
+    }
+
+    float denom = fmaxf(1.0f, static_cast<float>(T));
+    float mean_cp = cp_sum / denom;
+    float survival = expf(log_survival / denom);
+    float score = d_costs[k]
+        + soft_scale * mean_cp
+        + reject_scale * reject_sum / denom
+        - fmaxf(lambda, 1.0e-3f) * power * logf(fmaxf(min_surv, survival));
+    if (max_cp > threshold) {
+        score += reject_scale * (max_cp - threshold);
+    }
+    d_scores[k] = score;
+}
+
+__global__ void compute_dm_influence_weights_kernel(
+    const float* d_costs,
+    const float* d_rollout_states,
+    float* d_weights,
+    BicycleParams params,
+    int n_obs,
+    int n_dyn_obs,
+    int start_step,
+    int K,
+    int T,
+    float keep_fraction,
+    float cost_temperature,
+    float safe_margin,
+    float prob_sigma,
+    float violation_weight,
+    float safety_power)
+{
+    if (blockIdx.x != 0 || threadIdx.x != 0) return;
+
+    float min_score = FLT_MAX;
+    float max_score = -FLT_MAX;
+    for (int k = 0; k < K; k++) {
+        float min_margin = 1.0e9f;
+        for (int t = 1; t <= T; t++) {
+            const float* s = &d_rollout_states[k * (T + 1) * 4 + t * 4];
+            float tau = (start_step + t) * params.dt;
+            min_margin = fminf(min_margin, min_obstacle_margin_device(
+                s[0], s[1], n_obs, n_dyn_obs, tau));
+        }
+        float violation = fmaxf(0.0f, safe_margin - min_margin);
+        float score = d_costs[k] + fmaxf(0.0f, violation_weight) * violation * violation;
+        min_score = fminf(min_score, score);
+        max_score = fmaxf(max_score, score);
+    }
+
+    float score_span = fmaxf(1.0e-3f, max_score - min_score);
+    float sigma = fmaxf(1.0e-3f, prob_sigma);
+    float temp = fmaxf(0.1f, cost_temperature);
+    float power = fmaxf(0.0f, safety_power);
+
+    for (int k = 0; k < K; k++) {
+        float min_margin = 1.0e9f;
+        for (int t = 1; t <= T; t++) {
+            const float* s = &d_rollout_states[k * (T + 1) * 4 + t * 4];
+            float tau = (start_step + t) * params.dt;
+            min_margin = fminf(min_margin, min_obstacle_margin_device(
+                s[0], s[1], n_obs, n_dyn_obs, tau));
+        }
+        float violation = fmaxf(0.0f, safe_margin - min_margin);
+        float score = d_costs[k] + fmaxf(0.0f, violation_weight) * violation * violation;
+        float normalized_score = clampf((score - min_score) / score_span, 0.0f, 1.0f);
+        float z = clampf((min_margin - safe_margin) / sigma, -20.0f, 20.0f);
+        float safety_prob = 1.0f / (1.0f + expf(-z));
+        float influence = expf(-temp * normalized_score)
+            * powf(fmaxf(1.0e-6f, safety_prob), power);
+        d_weights[k] = influence;
+    }
+
+    int keep = max(1, min(K, static_cast<int>(ceilf(
+        clampf(keep_fraction, 1.0f / static_cast<float>(K), 1.0f)
+        * static_cast<float>(K)))));
+    float cutoff = -FLT_MAX;
+    float previous = FLT_MAX;
+    for (int r = 0; r < keep; r++) {
+        float best = -FLT_MAX;
+        for (int k = 0; k < K; k++) {
+            float value = d_weights[k];
+            if (value <= previous + 1.0e-12f && value > best) best = value;
+        }
+        cutoff = best;
+        previous = best - 1.0e-12f;
+    }
+
+    float sum_w = 0.0f;
+    for (int k = 0; k < K; k++) {
+        float w = (d_weights[k] + 1.0e-12f >= cutoff) ? d_weights[k] : 0.0f;
+        d_weights[k] = w;
+        sum_w += w;
+    }
+
+    if (sum_w > 1.0e-12f) {
+        for (int k = 0; k < K; k++) d_weights[k] /= sum_w;
+    } else {
+        float uniform = 1.0f / static_cast<float>(K);
+        for (int k = 0; k < K; k++) d_weights[k] = uniform;
+    }
+}
+
+__global__ void update_controls_from_cluster_representative_kernel(
+    float* d_nominal,
+    const float* d_perturbed,
+    const float* d_costs,
+    const float* d_rollout_states,
+    BicycleParams params,
+    int n_obs,
+    int n_dyn_obs,
+    int start_step,
+    int K,
+    int T,
+    int cluster_count,
+    float safe_margin,
+    float constraint_weight,
+    float update_blend)
+{
+    if (blockIdx.x != 0 || threadIdx.x != 0) return;
+
+    const int max_clusters = 8;
+    int clusters = max(2, min(cluster_count, max_clusters));
+    float best_score[max_clusters];
+    int best_idx[max_clusters];
+    for (int c = 0; c < max_clusters; c++) {
+        best_score[c] = FLT_MAX;
+        best_idx[c] = -1;
+    }
+
+    float global_best_score = FLT_MAX;
+    int global_best_idx = 0;
+    int mid = max(1, T / 2);
+    float safe = fmaxf(-1.0f, safe_margin);
+    float penalty_weight = fmaxf(0.0f, constraint_weight);
+
+    for (int k = 0; k < K; k++) {
+        float min_margin = 1.0e9f;
+        for (int t = 1; t <= T; t++) {
+            const float* s = &d_rollout_states[k * (T + 1) * 4 + t * 4];
+            float tau = (start_step + t) * params.dt;
+            min_margin = fminf(min_margin, min_obstacle_margin_device(
+                s[0], s[1], n_obs, n_dyn_obs, tau));
+        }
+        float violation = fmaxf(0.0f, safe - min_margin);
+        float score = d_costs[k] + penalty_weight * violation * violation;
+
+        int mid_base = k * (T + 1) * 4 + mid * 4;
+        int end_base = k * (T + 1) * 4 + T * 4;
+        float y_feature = 0.55f * d_rollout_states[mid_base + 1]
+                        + 0.45f * d_rollout_states[end_base + 1];
+        int cid = static_cast<int>(floorf(clampf(y_feature / WORKSPACE, 0.0f, 0.9999f)
+                                        * static_cast<float>(clusters)));
+        cid = max(0, min(cid, clusters - 1));
+
+        if (score < best_score[cid]) {
+            best_score[cid] = score;
+            best_idx[cid] = k;
+        }
+        if (score < global_best_score) {
+            global_best_score = score;
+            global_best_idx = k;
+        }
+    }
+
+    int selected = global_best_idx;
+    float selected_score = global_best_score;
+    for (int c = 0; c < clusters; c++) {
+        if (best_idx[c] >= 0 && best_score[c] < selected_score) {
+            selected_score = best_score[c];
+            selected = best_idx[c];
+        }
+    }
+
+    float blend = clampf(update_blend, 0.0f, 1.0f);
+    float keep = 1.0f - blend;
+    for (int t = 0; t < T; t++) {
+        d_nominal[t * 2 + 0] = keep * d_nominal[t * 2 + 0]
+            + blend * d_perturbed[selected * T * 2 + t * 2 + 0];
+        d_nominal[t * 2 + 1] = keep * d_nominal[t * 2 + 1]
+            + blend * d_perturbed[selected * T * 2 + t * 2 + 1];
+    }
+}
+
 __global__ void update_controls_kernel(float* d_nominal, const float* d_perturbed, const float* d_weights, int K, int T) {
     int t = blockIdx.x * blockDim.x + threadIdx.x;
     if (t >= T) return;
@@ -1026,6 +3647,135 @@ __global__ void update_controls_kernel(float* d_nominal, const float* d_perturbe
     }
     d_nominal[t * 2 + 0] = accel;
     d_nominal[t * 2 + 1] = steer;
+}
+
+__global__ void blend_controls_with_previous_kernel(float* d_nominal, const float* d_previous, int T, float momentum) {
+    int t = blockIdx.x * blockDim.x + threadIdx.x;
+    if (t >= T) return;
+    float keep = clampf(momentum, 0.0f, 0.95f);
+    float take = 1.0f - keep;
+    d_nominal[t * 2 + 0] = keep * d_previous[t * 2 + 0] + take * d_nominal[t * 2 + 0];
+    d_nominal[t * 2 + 1] = keep * d_previous[t * 2 + 1] + take * d_nominal[t * 2 + 1];
+}
+
+__global__ void init_deterministic_sigma_kernel(float* d_sigma, int T, float accel_sigma, float steer_sigma) {
+    int t = blockIdx.x * blockDim.x + threadIdx.x;
+    if (t >= T) return;
+    d_sigma[t * 2 + 0] = accel_sigma;
+    d_sigma[t * 2 + 1] = steer_sigma;
+}
+
+__global__ void shift_deterministic_sigma_kernel(float* d_sigma, int T, float accel_sigma, float steer_sigma) {
+    if (blockIdx.x != 0 || threadIdx.x != 0 || T <= 0) return;
+    for (int t = 0; t + 1 < T; t++) {
+        d_sigma[t * 2 + 0] = d_sigma[(t + 1) * 2 + 0];
+        d_sigma[t * 2 + 1] = d_sigma[(t + 1) * 2 + 1];
+    }
+    d_sigma[(T - 1) * 2 + 0] = accel_sigma;
+    d_sigma[(T - 1) * 2 + 1] = steer_sigma;
+}
+
+__global__ void update_deterministic_sigma_kernel(
+    float* d_sigma,
+    const float* d_perturbed,
+    const float* d_weights,
+    const float* d_nominal,
+    int K,
+    int T,
+    float blend,
+    float min_accel_sigma,
+    float min_steer_sigma,
+    float max_accel_sigma,
+    float max_steer_sigma)
+{
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx >= T * 2) return;
+    int t = idx / 2;
+    int c = idx & 1;
+    float mean = d_nominal[idx];
+    float var = 0.0f;
+    for (int k = 0; k < K; k++) {
+        float diff = d_perturbed[k * T * 2 + t * 2 + c] - mean;
+        var += d_weights[k] * diff * diff;
+    }
+    float lo = (c == 0) ? min_accel_sigma : min_steer_sigma;
+    float hi = (c == 0) ? max_accel_sigma : max_steer_sigma;
+    float sigma_new = clampf(sqrtf(fmaxf(var, lo * lo)), lo, hi);
+    float keep = 1.0f - clampf(blend, 0.0f, 1.0f);
+    d_sigma[idx] = clampf(keep * d_sigma[idx] + (1.0f - keep) * sigma_new, lo, hi);
+}
+
+__global__ void update_deterministic_elite_kernel(
+    float* d_nominal,
+    float* d_sigma,
+    const float* d_perturbed,
+    const float* d_costs,
+    int K,
+    int T,
+    int elite_count,
+    float sigma_blend,
+    float max_steer,
+    float min_accel_sigma,
+    float min_steer_sigma,
+    float max_accel_sigma,
+    float max_steer_sigma)
+{
+    if (blockIdx.x != 0 || threadIdx.x != 0) return;
+    int elite_n = min(max(elite_count, 1), min(K, 64));
+    int elite_idx[64];
+    float elite_cost[64];
+    for (int i = 0; i < elite_n; i++) {
+        elite_idx[i] = -1;
+        elite_cost[i] = FLT_MAX;
+    }
+
+    for (int k = 0; k < K; k++) {
+        float c = d_costs[k];
+        int pos = -1;
+        for (int i = 0; i < elite_n; i++) {
+            if (c < elite_cost[i]) {
+                pos = i;
+                break;
+            }
+        }
+        if (pos >= 0) {
+            for (int j = elite_n - 1; j > pos; j--) {
+                elite_cost[j] = elite_cost[j - 1];
+                elite_idx[j] = elite_idx[j - 1];
+            }
+            elite_cost[pos] = c;
+            elite_idx[pos] = k;
+        }
+    }
+
+    float keep_sigma = 1.0f - clampf(sigma_blend, 0.0f, 1.0f);
+    for (int t = 0; t < T; t++) {
+        for (int comp = 0; comp < 2; comp++) {
+            float mean = 0.0f;
+            for (int i = 0; i < elite_n; i++) {
+                int k = max(elite_idx[i], 0);
+                mean += d_perturbed[k * T * 2 + t * 2 + comp];
+            }
+            mean /= static_cast<float>(elite_n);
+            float var = 0.0f;
+            for (int i = 0; i < elite_n; i++) {
+                int k = max(elite_idx[i], 0);
+                float diff = d_perturbed[k * T * 2 + t * 2 + comp] - mean;
+                var += diff * diff;
+            }
+            var /= static_cast<float>(elite_n);
+            int out = t * 2 + comp;
+            d_nominal[out] = (comp == 0)
+                           ? clampf(mean, -4.0f, 4.0f)
+                           : clampf(mean, -max_steer, max_steer);
+            if (d_sigma != nullptr) {
+                float lo = (comp == 0) ? min_accel_sigma : min_steer_sigma;
+                float hi = (comp == 0) ? max_accel_sigma : max_steer_sigma;
+                float sigma_new = clampf(sqrtf(fmaxf(var, lo * lo)), lo, hi);
+                d_sigma[out] = clampf(keep_sigma * d_sigma[out] + (1.0f - keep_sigma) * sigma_new, lo, hi);
+            }
+        }
+    }
 }
 
 // ---- Step-MPPI kernels: learned sampling bias ----
@@ -1241,6 +3991,72 @@ __global__ void gradient_step_kernel(float* d_nominal, const float* d_grad, int 
     if (t >= T) return;
     d_nominal[t * 2 + 0] = clampf(d_nominal[t * 2 + 0] - alpha * d_grad[t * 2 + 0], -4.0f, 4.0f);
     d_nominal[t * 2 + 1] = clampf(d_nominal[t * 2 + 1] - alpha * d_grad[t * 2 + 1], -max_steer, max_steer);
+}
+
+__global__ void soppi_svgd_step_kernel(
+    const float* d_controls,
+    float* d_controls_next,
+    const float* d_rollout_states,
+    BicycleParams params,
+    CostParams cost_params,
+    int n_obs,
+    int n_dyn_obs,
+    int start_step,
+    int K,
+    int T,
+    int neighbor_count,
+    float lambda,
+    float bandwidth,
+    float step_size)
+{
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    int total = K * T;
+    if (idx >= total) return;
+
+    const float noise_accel = 1.5f;
+    const float noise_steer = 0.18f;
+    const float h = fmaxf(0.10f, bandwidth);
+    int k = idx / T;
+    int t = idx - k * T;
+    int base = k * T * 2 + t * 2;
+    float accel_i = d_controls[base + 0];
+    float steer_i = d_controls[base + 1];
+    int neighbor_samples = K;
+    if (neighbor_count > 0 && neighbor_count < K) neighbor_samples = neighbor_count;
+    int stride = K / neighbor_samples;
+    if (stride < 1) stride = 1;
+
+    float phi_accel = 0.0f;
+    float phi_steer = 0.0f;
+    for (int m = 0; m < neighbor_samples; m++) {
+        int j = neighbor_count > 0 ? (k + m * stride) % K : m;
+        int jbase = j * T * 2 + t * 2;
+        float accel_j = d_controls[jbase + 0];
+        float steer_j = d_controls[jbase + 1];
+        float da = (accel_j - accel_i) / noise_accel;
+        float ds = (steer_j - steer_i) / noise_steer;
+        float k_rbf = expf(-(da * da + ds * ds) / h);
+
+        const float* state_j = &d_rollout_states[j * (T + 1) * 4 + t * 4];
+        float tau = (start_step + t) * params.dt;
+        float grad[6];
+        stage_cost_grad(state_j[0], state_j[1], state_j[2], state_j[3],
+                        accel_j, steer_j, cost_params, n_obs, n_dyn_obs, tau, grad);
+        float score_accel = -clampf(grad[4] / fmaxf(lambda, 1.0e-3f), -25.0f, 25.0f);
+        float score_steer = -clampf(grad[5] / fmaxf(lambda, 1.0e-3f), -25.0f, 25.0f);
+
+        float repel_accel = -2.0f * k_rbf * da / (h * noise_accel);
+        float repel_steer = -2.0f * k_rbf * ds / (h * noise_steer);
+        phi_accel += k_rbf * score_accel + repel_accel;
+        phi_steer += k_rbf * score_steer + repel_steer;
+    }
+    phi_accel /= fmaxf(1.0f, static_cast<float>(neighbor_samples));
+    phi_steer /= fmaxf(1.0f, static_cast<float>(neighbor_samples));
+
+    float delta_accel = clampf(step_size * phi_accel, -0.40f, 0.40f);
+    float delta_steer = clampf(step_size * phi_steer, -0.06f, 0.06f);
+    d_controls_next[base + 0] = clampf(accel_i + delta_accel, -4.0f, 4.0f);
+    d_controls_next[base + 1] = clampf(steer_i + delta_steer, -params.max_steer, params.max_steer);
 }
 
 // One thread = one (accel, steer) grid point. Each thread holds its (accel, steer)
@@ -1719,11 +4535,22 @@ public:
         CUDA_CHECK(cudaMalloc(&d_feedback_gains_aux_, t_horizon_ * 2 * 4 * sizeof(float)));
         CUDA_CHECK(cudaMalloc(&d_rng_, k_samples_ * sizeof(curandState)));
 
-        // Step-MPPI: allocate sampling bias buffers
+        // Step-MPPI / dsMPPI: allocate per-horizon auxiliary buffers
         if (variant_.use_learned_sampling) {
             CUDA_CHECK(cudaMalloc(&d_sampling_bias_, t_horizon_ * 2 * sizeof(float)));
             CUDA_CHECK(cudaMemset(d_sampling_bias_, 0, t_horizon_ * 2 * sizeof(float)));
+            if (variant_.use_learned_sigma) {
+                CUDA_CHECK(cudaMalloc(&d_step_sigma_, t_horizon_ * 2 * sizeof(float)));
+            }
+        }
+        if (variant_.use_learned_sampling || variant_.use_deterministic_sampling) {
             CUDA_CHECK(cudaMalloc(&d_nominal_pre_bias_, t_horizon_ * 2 * sizeof(float)));
+        }
+        if (variant_.use_deterministic_sampling && (variant_.ds_adapt_sigma || variant_.ds_elite_update)) {
+            CUDA_CHECK(cudaMalloc(&d_ds_sigma_, t_horizon_ * 2 * sizeof(float)));
+        }
+        if (variant_.use_soppi_sampling) {
+            CUDA_CHECK(cudaMalloc(&d_soppi_scratch_, k_samples_ * t_horizon_ * 2 * sizeof(float)));
         }
 
         if (variant_.planner_kind == 1 || variant_.planner_kind == 4) {
@@ -1764,7 +4591,10 @@ public:
         CUDA_CHECK(cudaFree(d_feedback_gains_aux_));
         CUDA_CHECK(cudaFree(d_rng_));
         if (d_sampling_bias_) CUDA_CHECK(cudaFree(d_sampling_bias_));
+        if (d_step_sigma_) CUDA_CHECK(cudaFree(d_step_sigma_));
         if (d_nominal_pre_bias_) CUDA_CHECK(cudaFree(d_nominal_pre_bias_));
+        if (d_ds_sigma_) CUDA_CHECK(cudaFree(d_ds_sigma_));
+        if (d_soppi_scratch_) CUDA_CHECK(cudaFree(d_soppi_scratch_));
         if (d_dwa_costs_) CUDA_CHECK(cudaFree(d_dwa_costs_));
         if (d_dwa_accels_) CUDA_CHECK(cudaFree(d_dwa_accels_));
         if (d_dwa_steers_) CUDA_CHECK(cudaFree(d_dwa_steers_));
@@ -1777,13 +4607,23 @@ public:
     EpisodeMetrics run() {
         reset_state();
         fill(h_nominal_.begin(), h_nominal_.end(), 0.0f);
+        reset_ds_sigma();
+        reset_step_sigma();
         warmup_controller();
         fill(h_nominal_.begin(), h_nominal_.end(), 0.0f);
+        reset_ds_sigma();
+        reset_step_sigma();
         reset_rng();
 
         auto episode_begin = chrono::steady_clock::now();
         float total_control_ms = 0.0f;
         int controller_updates = 0;
+        float prev_accel = 0.0f;
+        float prev_steer = 0.0f;
+        bool have_prev_control = false;
+        float control_delta_sum = 0.0f;
+        float control_roughness_sum = 0.0f;
+        int control_delta_count = 0;
 
         for (int step = 0; step < eval_scenario_.max_steps; step++) {
             float goal_dx = rx_ - eval_scenario_.cost_params.goal_x;
@@ -1811,6 +4651,19 @@ public:
             if (uses_feedback_local_action()) {
                 compute_feedback_inner_action(accel, steer);
             }
+            if (variant_.use_shield_repair) {
+                apply_shield_repair(accel, steer, step);
+            }
+            if (have_prev_control) {
+                float da = accel - prev_accel;
+                float ds = steer - prev_steer;
+                control_delta_sum += sqrtf(da * da + ds * ds);
+                control_roughness_sum += da * da + ds * ds;
+                control_delta_count++;
+            }
+            prev_accel = accel;
+            prev_steer = steer;
+            have_prev_control = true;
             auto t1 = chrono::steady_clock::now();
             float control_ms = chrono::duration<float, milli>(t1 - t0).count();
             total_control_ms += control_ms;
@@ -1851,10 +4704,13 @@ public:
         metrics.min_goal_distance = min_goal_distance_;
         metrics.cumulative_cost = cumulative_cost_;
         metrics.collisions = collisions_;
+        metrics.mean_control_delta = control_delta_count > 0 ? control_delta_sum / control_delta_count : 0.0f;
+        metrics.control_roughness = control_delta_count > 0 ? control_roughness_sum / control_delta_count : 0.0f;
         metrics.total_control_ms = total_control_ms;
         metrics.avg_control_ms = steps_taken_ > 0 ? total_control_ms / steps_taken_ : 0.0f;
         metrics.episode_ms = chrono::duration<float, milli>(episode_end - episode_begin).count();
-        metrics.sample_budget = static_cast<long long>(controller_updates) * k_samples_ * t_horizon_;
+        int sampling_passes = variant_.use_deterministic_sampling ? max(1, variant_.ds_iterations) : 1;
+        metrics.sample_budget = static_cast<long long>(controller_updates) * sampling_passes * k_samples_ * t_horizon_;
         return metrics;
     }
 
@@ -1863,6 +4719,24 @@ private:
         int block = 256;
         init_curand_kernel<<<(k_samples_ + block - 1) / block, block>>>(d_rng_, k_samples_, static_cast<unsigned long long>(seed_));
         CUDA_CHECK(cudaDeviceSynchronize());
+    }
+
+    void reset_ds_sigma() {
+        if (!d_ds_sigma_) return;
+        int block = 256;
+        init_deterministic_sigma_kernel<<<(t_horizon_ + block - 1) / block, block>>>(
+            d_ds_sigma_, t_horizon_,
+            1.5f * variant_.ds_noise_scale,
+            0.18f * variant_.ds_noise_scale);
+    }
+
+    void reset_step_sigma() {
+        if (!d_step_sigma_) return;
+        int block = 256;
+        init_deterministic_sigma_kernel<<<(t_horizon_ + block - 1) / block, block>>>(
+            d_step_sigma_, t_horizon_,
+            variant_.learned_init_accel_sigma,
+            variant_.learned_init_steer_sigma);
     }
 
     bool uses_feedback_local_action() const {
@@ -1882,6 +4756,163 @@ private:
     void sync_feedback_policy_from_device() {
         CUDA_CHECK(cudaMemcpy(h_states_.data(), d_states_, h_states_.size() * sizeof(float), cudaMemcpyDeviceToHost));
         CUDA_CHECK(cudaMemcpy(h_feedback_gains_host_.data(), d_feedback_gains_, h_feedback_gains_host_.size() * sizeof(float), cudaMemcpyDeviceToHost));
+    }
+
+    float shield_candidate_score(
+        float first_accel,
+        float first_steer,
+        float base_accel,
+        float base_steer,
+        int start_step) const
+    {
+        const Scenario& sc = planning_scenario_;
+        float x = rx_;
+        float y = ry_;
+        float theta = rtheta_;
+        float v = rv_;
+        float safe = fmaxf(0.05f, variant_.shield_safe_margin);
+        float alpha = clampf(variant_.shield_cbf_alpha, 0.02f, 0.98f);
+        float prev_h = min_obstacle_margin(x, y, sc, start_step) - safe;
+        float score = variant_.shield_repair_control_weight
+            * ((first_accel - base_accel) * (first_accel - base_accel)
+               + 12.0f * (first_steer - base_steer) * (first_steer - base_steer));
+        int steps = max(1, min(variant_.shield_repair_steps, t_horizon_));
+
+        for (int i = 0; i < steps; i++) {
+            float accel = (i == 0) ? first_accel : h_nominal_[i * 2 + 0];
+            float steer = (i == 0) ? first_steer : h_nominal_[i * 2 + 1];
+            accel = clampf(accel, -4.0f, 4.0f);
+            steer = clampf(steer, -sc.params.max_steer, sc.params.max_steer);
+            bicycle_step(x, y, theta, v, accel, steer, sc.params);
+
+            int eval_step = start_step + i + 1;
+            float h = min_obstacle_margin(x, y, sc, eval_step) - safe;
+            float violation = fmaxf(0.0f, (1.0f - alpha) * prev_h - h);
+            score += host_step_cost(x, y, theta, v, accel, steer, sc, eval_step);
+            score += variant_.shield_repair_safety_weight * violation * violation;
+            if (h < 0.0f) score += 2.0f * variant_.shield_repair_safety_weight * h * h;
+            prev_h = h;
+        }
+
+        float dx = x - sc.cost_params.goal_x;
+        float dy = y - sc.cost_params.goal_y;
+        score += 0.25f * sc.cost_params.terminal_weight * sqrtf(dx * dx + dy * dy + 0.01f);
+        if (x < 0.0f || x > WORKSPACE || y < 0.0f || y > WORKSPACE) score += 1.0e5f;
+        return score;
+    }
+
+    void apply_shield_repair(float& accel, float& steer, int start_step) {
+        float base_accel = clampf(accel, -4.0f, 4.0f);
+        float base_steer = clampf(steer, -planning_scenario_.params.max_steer,
+                                  planning_scenario_.params.max_steer);
+        float best_accel = base_accel;
+        float best_steer = base_steer;
+        float best_score = shield_candidate_score(
+            best_accel, best_steer, base_accel, base_steer, start_step);
+
+        int grid = max(3, variant_.shield_repair_grid);
+        if ((grid % 2) == 0) grid++;
+        float accel_delta = fmaxf(0.0f, variant_.shield_repair_accel_delta);
+        float steer_delta = fmaxf(0.0f, variant_.shield_repair_steer_delta);
+        for (int ia = 0; ia < grid; ia++) {
+            float fa = (grid == 1) ? 0.0f : (2.0f * ia / static_cast<float>(grid - 1) - 1.0f);
+            float ca = clampf(base_accel + fa * accel_delta, -4.0f, 4.0f);
+            for (int is = 0; is < grid; is++) {
+                float fs = (grid == 1) ? 0.0f : (2.0f * is / static_cast<float>(grid - 1) - 1.0f);
+                float cs = clampf(base_steer + fs * steer_delta,
+                                  -planning_scenario_.params.max_steer,
+                                  planning_scenario_.params.max_steer);
+                float score = shield_candidate_score(ca, cs, base_accel, base_steer, start_step);
+                if (score < best_score) {
+                    best_score = score;
+                    best_accel = ca;
+                    best_steer = cs;
+                }
+            }
+        }
+
+        // Explicit brake candidates matter when the current nominal is already
+        // near the edge of the repair grid.
+        for (int is = 0; is < grid; is++) {
+            float fs = (grid == 1) ? 0.0f : (2.0f * is / static_cast<float>(grid - 1) - 1.0f);
+            float cs = clampf(base_steer + fs * steer_delta,
+                              -planning_scenario_.params.max_steer,
+                              planning_scenario_.params.max_steer);
+            float score = shield_candidate_score(-4.0f, cs, base_accel, base_steer, start_step);
+            if (score < best_score) {
+                best_score = score;
+                best_accel = -4.0f;
+                best_steer = cs;
+            }
+        }
+
+        accel = best_accel;
+        steer = best_steer;
+        h_nominal_[0] = best_accel;
+        h_nominal_[1] = best_steer;
+    }
+
+    void seed_cdf_nominal(float sx, float sy, float stheta, float sv, int start_step) {
+        if (!variant_.use_cdf_guidance || variant_.cdf_seed_blend <= 0.0f) return;
+        const BicycleParams& bp = planning_scenario_.params;
+        const CostParams& cp = planning_scenario_.cost_params;
+        float x = sx, y = sy, theta = stheta, v = sv;
+        float blend0 = clampf(variant_.cdf_seed_blend, 0.0f, 1.0f);
+        float safe = fmaxf(0.25f, variant_.cdf_safe_margin);
+        for (int t = 0; t < t_horizon_; t++) {
+            float vx = 0.0f;
+            float vy = 0.0f;
+            float dxg = cp.goal_x - x;
+            float dyg = cp.goal_y - y;
+            float dg = sqrtf(dxg * dxg + dyg * dyg + 1.0e-6f);
+            vx += variant_.cdf_goal_pull * dxg / dg;
+            vy += variant_.cdf_goal_pull * dyg / dg;
+
+            float nearest_margin = safe;
+            for (int i = 0; i < planning_scenario_.n_obs; i++) {
+                float dx = x - planning_scenario_.obstacles[i].x;
+                float dy = y - planning_scenario_.obstacles[i].y;
+                float dist = sqrtf(dx * dx + dy * dy + 1.0e-6f);
+                float margin = dist - planning_scenario_.obstacles[i].r;
+                nearest_margin = std::min(nearest_margin, margin);
+                if (margin < safe) {
+                    float strength = variant_.cdf_obs_pull * (safe - margin) / (safe * fmaxf(dist, 1.0e-3f));
+                    vx += strength * dx / dist;
+                    vy += strength * dy / dist;
+                }
+            }
+
+            float tau = (start_step + t + 1) * bp.dt;
+            for (int i = 0; i < planning_scenario_.n_dyn_obs; i++) {
+                float ox = planning_scenario_.dynamic_obstacles[i].x + planning_scenario_.dynamic_obstacles[i].vx * tau;
+                float oy = planning_scenario_.dynamic_obstacles[i].y + planning_scenario_.dynamic_obstacles[i].vy * tau;
+                float dx = x - ox;
+                float dy = y - oy;
+                float dist = sqrtf(dx * dx + dy * dy + 1.0e-6f);
+                float margin = dist - planning_scenario_.dynamic_obstacles[i].r;
+                nearest_margin = std::min(nearest_margin, margin);
+                if (margin < safe) {
+                    float strength = variant_.cdf_dyn_pull * (safe - margin) / (safe * fmaxf(dist, 1.0e-3f));
+                    vx += strength * dx / dist;
+                    vy += strength * dy / dist;
+                }
+            }
+
+            float desired_heading = atan2f(vy, vx);
+            float heading_err = wrap_angle(desired_heading - theta);
+            float steer = clampf(0.85f * heading_err, -bp.max_steer, bp.max_steer);
+            float slow = nearest_margin < safe
+                ? clampf(0.65f + 0.35f * nearest_margin / safe, 0.55f, 1.0f)
+                : 1.0f;
+            float target_speed = cp.target_speed * slow;
+            float accel = clampf((target_speed - v) * 1.4f, -4.0f, 4.0f);
+            float blend = blend0 * (1.0f - 0.015f * static_cast<float>(t));
+            blend = clampf(blend, 0.05f, blend0);
+            int base = t * 2;
+            h_nominal_[base + 0] = (1.0f - blend) * h_nominal_[base + 0] + blend * accel;
+            h_nominal_[base + 1] = (1.0f - blend) * h_nominal_[base + 1] + blend * steer;
+            bicycle_step(x, y, theta, v, h_nominal_[base + 0], h_nominal_[base + 1], bp);
+        }
     }
 
     void compute_feedback_inner_action(float& accel, float& steer) {
@@ -1950,6 +4981,20 @@ private:
             shift_sampling_bias_kernel<<<1, 1>>>(d_sampling_bias_, t_horizon_);
             CUDA_CHECK(cudaDeviceSynchronize());
         }
+        if (d_step_sigma_) {
+            shift_deterministic_sigma_kernel<<<1, 1>>>(
+                d_step_sigma_, t_horizon_,
+                variant_.learned_init_accel_sigma,
+                variant_.learned_init_steer_sigma);
+            CUDA_CHECK(cudaDeviceSynchronize());
+        }
+        if (d_ds_sigma_) {
+            shift_deterministic_sigma_kernel<<<1, 1>>>(
+                d_ds_sigma_, t_horizon_,
+                1.5f * variant_.ds_noise_scale,
+                0.18f * variant_.ds_noise_scale);
+            CUDA_CHECK(cudaDeviceSynchronize());
+        }
 
         if (!uses_feedback_local_action()) return;
 
@@ -1999,6 +5044,7 @@ private:
             hybrid_astar_mppi_controller_update(sx, sy, stheta, sv, start_step);
             return;
         }
+        seed_cdf_nominal(sx, sy, stheta, sv, start_step);
         CUDA_CHECK(cudaMemcpy(d_nominal_, h_nominal_.data(), h_nominal_.size() * sizeof(float), cudaMemcpyHostToDevice));
         int block = 256;
         if (variant_.use_sampling) {
@@ -2013,14 +5059,331 @@ private:
             if (variant_.use_feedback && (variant_.feedback_mode == 1 || variant_.feedback_mode == 3 || variant_.feedback_mode == 4 || variant_.feedback_mode == 6 || variant_.feedback_mode == 9)) {
                 open_loop_passes = 2;
             }
+            if (variant_.use_deterministic_sampling) {
+                open_loop_passes = max(open_loop_passes, max(1, variant_.ds_iterations));
+            }
             for (int pass = 0; pass < open_loop_passes; pass++) {
-                rollout_kernel<<<(k_samples_ + block - 1) / block, block>>>(
-                    sx, sy, stheta, sv, d_nominal_, d_costs_, d_perturbed_, d_rollout_states_, d_rng_,
-                    planning_scenario_.params, planning_scenario_.cost_params,
-                    planning_scenario_.n_obs, planning_scenario_.n_dyn_obs, start_step, k_samples_, t_horizon_);
-                compute_weights_kernel<<<1, 1>>>(d_costs_, d_weights_, k_samples_, variant_.sampling_lambda);
-                update_controls_kernel<<<(t_horizon_ + block - 1) / block, block>>>(
-                    d_nominal_, d_perturbed_, d_weights_, k_samples_, t_horizon_);
+                if (variant_.use_deterministic_sampling && d_nominal_pre_bias_ != nullptr) {
+                    CUDA_CHECK(cudaMemcpy(d_nominal_pre_bias_, d_nominal_,
+                                          t_horizon_ * 2 * sizeof(float),
+                                          cudaMemcpyDeviceToDevice));
+                }
+
+                if (variant_.use_safety_controlled_sampling) {
+                    rollout_safety_controlled_kernel<<<(k_samples_ + block - 1) / block, block>>>(
+                        sx, sy, stheta, sv, d_nominal_, d_costs_, d_perturbed_, d_rollout_states_, d_rng_,
+                        planning_scenario_.params, planning_scenario_.cost_params,
+                        planning_scenario_.n_obs, planning_scenario_.n_dyn_obs,
+                        start_step, k_samples_, t_horizon_,
+                        variant_.use_low_pass_sampling, variant_.lp_alpha,
+                        variant_.sc_safe_margin,
+                        variant_.sc_avoid_gain,
+                        variant_.sc_speed_gain,
+                        variant_.sc_max_steer_delta,
+                        variant_.sc_max_accel_delta,
+                        variant_.sc_control_weight);
+                } else if (variant_.use_shield_cost) {
+                    rollout_shield_kernel<<<(k_samples_ + block - 1) / block, block>>>(
+                        sx, sy, stheta, sv, d_nominal_, d_costs_, d_perturbed_, d_rollout_states_, d_rng_,
+                        planning_scenario_.params, planning_scenario_.cost_params,
+                        planning_scenario_.n_obs, planning_scenario_.n_dyn_obs,
+                        start_step, k_samples_, t_horizon_,
+                        variant_.use_low_pass_sampling, variant_.lp_alpha,
+                        variant_.shield_safe_margin,
+                        variant_.shield_cbf_alpha,
+                        variant_.shield_cbf_weight);
+                } else if (variant_.use_parameter_robust_sampling) {
+                    rollout_parameter_robust_kernel<<<(k_samples_ + block - 1) / block, block>>>(
+                        sx, sy, stheta, sv, d_nominal_, d_costs_, d_perturbed_, d_rollout_states_, d_rng_,
+                        planning_scenario_.params, planning_scenario_.cost_params,
+                        planning_scenario_.n_obs, planning_scenario_.n_dyn_obs,
+                        start_step, k_samples_, t_horizon_,
+                        variant_.use_low_pass_sampling, variant_.lp_alpha,
+                        variant_.pr_param_particles,
+                        variant_.pr_wheelbase_span,
+                        variant_.pr_max_speed_span,
+                        variant_.pr_max_steer_span,
+                        variant_.pr_worst_blend);
+                } else if (variant_.use_learned_sigma) {
+                    rollout_learned_sampling_kernel<<<(k_samples_ + block - 1) / block, block>>>(
+                        sx, sy, stheta, sv, d_nominal_, d_step_sigma_, d_costs_, d_perturbed_, d_rollout_states_, d_rng_,
+                        planning_scenario_.params, planning_scenario_.cost_params,
+                        planning_scenario_.n_obs, planning_scenario_.n_dyn_obs,
+                        start_step, k_samples_, t_horizon_,
+                        variant_.use_low_pass_sampling, variant_.lp_alpha);
+                } else if (variant_.use_cdf_guidance) {
+                    rollout_cdf_kernel<<<(k_samples_ + block - 1) / block, block>>>(
+                        sx, sy, stheta, sv, d_nominal_, d_costs_, d_perturbed_, d_rollout_states_, d_rng_,
+                        planning_scenario_.params, planning_scenario_.cost_params,
+                        planning_scenario_.n_obs, planning_scenario_.n_dyn_obs,
+                        start_step, k_samples_, t_horizon_,
+                        variant_.use_low_pass_sampling, variant_.lp_alpha,
+                        variant_.cdf_safe_margin,
+                        variant_.cdf_obs_cost,
+                        variant_.cdf_dyn_cost);
+                } else if (variant_.use_deterministic_sampling) {
+                    rollout_deterministic_kernel<<<(k_samples_ + block - 1) / block, block>>>(
+                        sx, sy, stheta, sv, d_nominal_, d_ds_sigma_, d_costs_, d_perturbed_, d_rollout_states_,
+                        planning_scenario_.params, planning_scenario_.cost_params,
+                        planning_scenario_.n_obs, planning_scenario_.n_dyn_obs,
+                        start_step, k_samples_, t_horizon_, seed_, pass,
+                        variant_.ds_alpha, variant_.ds_noise_scale, variant_.ds_stride);
+                } else if (variant_.use_projection_sampling) {
+                    rollout_projection_kernel<<<(k_samples_ + block - 1) / block, block>>>(
+                        sx, sy, stheta, sv, d_nominal_, d_costs_, d_perturbed_, d_rollout_states_, d_rng_,
+                        planning_scenario_.params, planning_scenario_.cost_params,
+                        planning_scenario_.n_obs, planning_scenario_.n_dyn_obs,
+                        start_step, k_samples_, t_horizon_,
+                        variant_.projection_passes,
+                        variant_.projection_max_accel_delta,
+                        variant_.projection_max_steer_delta,
+                        variant_.projection_max_accel_ddelta,
+                        variant_.projection_max_steer_ddelta);
+                } else if (variant_.use_dbas_log_sampling) {
+                    rollout_dbas_log_kernel<<<(k_samples_ + block - 1) / block, block>>>(
+                        sx, sy, stheta, sv, d_nominal_, d_costs_, d_perturbed_, d_rollout_states_, d_rng_,
+                        planning_scenario_.params, planning_scenario_.cost_params,
+                        planning_scenario_.n_obs, planning_scenario_.n_dyn_obs,
+                        start_step, k_samples_, t_horizon_,
+                        variant_.use_low_pass_sampling, variant_.lp_alpha,
+                        variant_.dbas_safe_margin,
+                        variant_.dbas_barrier_eps,
+                        variant_.dbas_barrier_cap,
+                        variant_.dbas_barrier_weight,
+                        variant_.dbas_gamma,
+                        variant_.dbas_mu,
+                        variant_.dbas_log_sigma,
+                        variant_.dbas_lognormal_clip,
+                        variant_.dbas_noise_scale,
+                        variant_.dbas_speed_damping);
+                } else if (variant_.use_low_pass_sampling) {
+                    rollout_low_pass_kernel<<<(k_samples_ + block - 1) / block, block>>>(
+                        sx, sy, stheta, sv, d_nominal_, d_costs_, d_perturbed_, d_rollout_states_, d_rng_,
+                        planning_scenario_.params, planning_scenario_.cost_params,
+                        planning_scenario_.n_obs, planning_scenario_.n_dyn_obs,
+                        start_step, k_samples_, t_horizon_, variant_.lp_alpha);
+                } else {
+                    rollout_kernel<<<(k_samples_ + block - 1) / block, block>>>(
+                        sx, sy, stheta, sv, d_nominal_, d_costs_, d_perturbed_, d_rollout_states_, d_rng_,
+                        planning_scenario_.params, planning_scenario_.cost_params,
+                        planning_scenario_.n_obs, planning_scenario_.n_dyn_obs, start_step, k_samples_, t_horizon_);
+                }
+                if (variant_.use_soppi_sampling) {
+                    int total_particles = k_samples_ * t_horizon_;
+                    for (int iter = 0; iter < max(1, variant_.soppi_svgd_iters); iter++) {
+                        soppi_svgd_step_kernel<<<(total_particles + block - 1) / block, block>>>(
+                            d_perturbed_, d_soppi_scratch_, d_rollout_states_,
+                            planning_scenario_.params, planning_scenario_.cost_params,
+                            planning_scenario_.n_obs, planning_scenario_.n_dyn_obs,
+                            start_step, k_samples_, t_horizon_, variant_.soppi_neighbor_count,
+                            variant_.sampling_lambda,
+                            variant_.soppi_bandwidth, variant_.soppi_step_size);
+                        CUDA_CHECK(cudaMemcpy(d_perturbed_, d_soppi_scratch_,
+                                              k_samples_ * t_horizon_ * 2 * sizeof(float),
+                                              cudaMemcpyDeviceToDevice));
+                        rollout_fixed_controls_kernel<<<(k_samples_ + block - 1) / block, block>>>(
+                            sx, sy, stheta, sv, d_perturbed_, d_costs_, d_rollout_states_,
+                            planning_scenario_.params, planning_scenario_.cost_params,
+                            planning_scenario_.n_obs, planning_scenario_.n_dyn_obs,
+                            start_step, k_samples_, t_horizon_);
+                    }
+                }
+                if (variant_.use_deterministic_sampling && variant_.ds_elite_update) {
+                    update_deterministic_elite_kernel<<<1, 1>>>(
+                        d_nominal_, d_ds_sigma_, d_perturbed_, d_costs_,
+                        k_samples_, t_horizon_, variant_.ds_elite_count,
+                        variant_.ds_elite_sigma_blend,
+                        planning_scenario_.params.max_steer,
+                        variant_.ds_min_accel_sigma,
+                        variant_.ds_min_steer_sigma,
+                        variant_.ds_max_accel_sigma,
+                        variant_.ds_max_steer_sigma);
+                } else {
+                    if (variant_.use_cluster_representative_update) {
+                        update_controls_from_cluster_representative_kernel<<<1, 1>>>(
+                            d_nominal_, d_perturbed_, d_costs_, d_rollout_states_,
+                            planning_scenario_.params,
+                            planning_scenario_.n_obs, planning_scenario_.n_dyn_obs,
+                            start_step, k_samples_, t_horizon_,
+                            variant_.csc_cluster_count,
+                            variant_.csc_safe_margin,
+                            variant_.csc_constraint_weight,
+                            variant_.csc_update_blend);
+                    } else {
+                        if (variant_.use_datamodel_influence_pruning) {
+                            compute_dm_influence_weights_kernel<<<1, 1>>>(
+                                d_costs_, d_rollout_states_, d_weights_,
+                                planning_scenario_.params,
+                                planning_scenario_.n_obs, planning_scenario_.n_dyn_obs,
+                                start_step, k_samples_, t_horizon_,
+                                variant_.dm_keep_fraction,
+                                variant_.dm_cost_temperature,
+                                variant_.dm_safe_margin,
+                                variant_.dm_prob_sigma,
+                                variant_.dm_violation_weight,
+                                variant_.dm_safety_power);
+                        } else if (variant_.use_tsallis_weights) {
+                            compute_tsallis_weights_kernel<<<1, 1>>>(
+                                d_costs_, d_weights_, k_samples_,
+                                variant_.tsallis_q,
+                                variant_.tsallis_temperature,
+                                variant_.tsallis_min_weight);
+                        } else if (variant_.use_covariance_control_weights) {
+                            compute_covariance_control_weights_kernel<<<1, 1>>>(
+                                d_costs_, d_rollout_states_, d_weights_,
+                                k_samples_, t_horizon_,
+                                variant_.sampling_lambda,
+                                variant_.cc_terminal_weight,
+                                variant_.cc_terminal_target_radius,
+                                variant_.cc_heading_weight,
+                                variant_.cc_speed_weight,
+                                variant_.cc_min_weight);
+                        } else if (variant_.use_td_cd_weights) {
+                            compute_td_cd_scores_kernel<<<(k_samples_ + block - 1) / block, block>>>(
+                                d_rollout_states_, d_perturbed_, d_weights_,
+                                planning_scenario_.params,
+                                planning_scenario_.cost_params,
+                                planning_scenario_.n_obs, planning_scenario_.n_dyn_obs,
+                                start_step, k_samples_, t_horizon_,
+                                variant_.td_terminal_value_scale,
+                                variant_.td_safe_margin,
+                                variant_.td_discount_sigma,
+                                variant_.td_discount_power,
+                                variant_.td_failure_cost);
+                            compute_weights_kernel<<<1, 1>>>(
+                                d_weights_, d_weights_, k_samples_, variant_.sampling_lambda);
+                        } else if (variant_.use_pa_perception_cost) {
+                            compute_pa_perception_scores_kernel<<<(k_samples_ + block - 1) / block, block>>>(
+                                d_costs_, d_rollout_states_, d_weights_,
+                                planning_scenario_.params,
+                                planning_scenario_.cost_params,
+                                planning_scenario_.n_obs, planning_scenario_.n_dyn_obs,
+                                start_step, k_samples_, t_horizon_,
+                                variant_.pa_safe_margin,
+                                variant_.pa_poi_weight,
+                                variant_.pa_occlusion_weight,
+                                variant_.pa_frontier_reward,
+                                variant_.pa_forward_occ_weight,
+                                variant_.pa_goal_gate,
+                                variant_.pa_activation,
+                                variant_.pa_ray_length,
+                                variant_.pa_score_cap);
+                            compute_weights_kernel<<<1, 1>>>(
+                                d_weights_, d_weights_, k_samples_, variant_.sampling_lambda);
+                        } else if (variant_.use_c2u_chance_constraints) {
+                            compute_c2u_chance_scores_kernel<<<(k_samples_ + block - 1) / block, block>>>(
+                                d_costs_, d_rollout_states_, d_weights_,
+                                planning_scenario_.params,
+                                planning_scenario_.n_obs, planning_scenario_.n_dyn_obs,
+                                start_step, k_samples_, t_horizon_,
+                                variant_.sampling_lambda,
+                                variant_.c2u_safe_margin,
+                                variant_.c2u_robot_sigma,
+                                variant_.c2u_dyn_sigma0,
+                                variant_.c2u_dyn_sigma_growth,
+                                variant_.c2u_risk_z,
+                                variant_.c2u_prob_sigma,
+                                variant_.c2u_probability_power,
+                                variant_.c2u_violation_weight,
+                                variant_.c2u_min_probability);
+                            compute_weights_kernel<<<1, 1>>>(
+                                d_weights_, d_weights_, k_samples_, variant_.sampling_lambda);
+                        } else if (variant_.use_ducct_risk) {
+                            compute_ducct_risk_scores_kernel<<<(k_samples_ + block - 1) / block, block>>>(
+                                d_costs_, d_rollout_states_, d_weights_,
+                                planning_scenario_.params,
+                                planning_scenario_.n_obs, planning_scenario_.n_dyn_obs,
+                                start_step, k_samples_, t_horizon_,
+                                variant_.sampling_lambda,
+                                variant_.ducct_loc_sigma0,
+                                variant_.ducct_loc_sigma_growth,
+                                variant_.ducct_pred_sigma0,
+                                variant_.ducct_pred_sigma_growth,
+                                variant_.ducct_static_sigma,
+                                variant_.ducct_risk_weight,
+                                variant_.ducct_hard_threshold,
+                                variant_.ducct_reject_cost,
+                                variant_.ducct_survival_power,
+                                variant_.ducct_min_survival);
+                            compute_weights_kernel<<<1, 1>>>(
+                                d_weights_, d_weights_, k_samples_, variant_.sampling_lambda);
+                        } else if (variant_.use_dra_risk) {
+                            compute_dra_risk_scores_kernel<<<(k_samples_ + block - 1) / block, block>>>(
+                                d_costs_, d_rollout_states_, d_weights_,
+                                planning_scenario_.params,
+                                planning_scenario_.n_dyn_obs,
+                                start_step, k_samples_, t_horizon_,
+                                variant_.sampling_lambda,
+                                variant_.dra_mc_samples,
+                                variant_.dra_robot_radius,
+                                variant_.dra_pred_sigma0,
+                                variant_.dra_pred_sigma_growth,
+                                variant_.dra_mode_weight,
+                                variant_.dra_mode_lateral_offset,
+                                variant_.dra_soft_weight,
+                                variant_.dra_hard_threshold,
+                                variant_.dra_reject_cost,
+                                variant_.dra_survival_power,
+                                variant_.dra_min_survival);
+                            compute_weights_kernel<<<1, 1>>>(
+                                d_weights_, d_weights_, k_samples_, variant_.sampling_lambda);
+                        } else if (variant_.use_bc_safety_layer) {
+                            compute_bc_safety_weights_kernel<<<1, 1>>>(
+                                d_costs_, d_rollout_states_, d_weights_,
+                                planning_scenario_.params,
+                                planning_scenario_.n_obs, planning_scenario_.n_dyn_obs,
+                                start_step, k_samples_, t_horizon_,
+                                variant_.sampling_lambda,
+                                variant_.bc_safe_margin,
+                                variant_.bc_prob_sigma,
+                                variant_.bc_probability_power,
+                                variant_.bc_min_probability);
+                        } else if (variant_.use_svg_mode_guidance) {
+                            compute_svg_mode_weights_kernel<<<1, 1>>>(
+                                d_costs_, d_rollout_states_, d_weights_,
+                                k_samples_, t_horizon_, variant_.sampling_lambda,
+                                variant_.svg_bandwidth, variant_.svg_mode_weight,
+                                variant_.svg_stride);
+                        } else {
+                            compute_weights_kernel<<<1, 1>>>(d_costs_, d_weights_, k_samples_, variant_.sampling_lambda);
+                        }
+                        update_controls_kernel<<<(t_horizon_ + block - 1) / block, block>>>(
+                            d_nominal_, d_perturbed_, d_weights_, k_samples_, t_horizon_);
+                        if (variant_.use_deterministic_sampling && variant_.ds_momentum > 0.0f && d_nominal_pre_bias_ != nullptr) {
+                            blend_controls_with_previous_kernel<<<(t_horizon_ + block - 1) / block, block>>>(
+                                d_nominal_, d_nominal_pre_bias_, t_horizon_, variant_.ds_momentum);
+                        }
+                        if (variant_.use_deterministic_sampling && d_ds_sigma_) {
+                            update_deterministic_sigma_kernel<<<(t_horizon_ * 2 + block - 1) / block, block>>>(
+                                d_ds_sigma_, d_perturbed_, d_weights_, d_nominal_,
+                                k_samples_, t_horizon_,
+                                variant_.ds_sigma_blend,
+                                variant_.ds_min_accel_sigma,
+                                variant_.ds_min_steer_sigma,
+                                variant_.ds_max_accel_sigma,
+                                variant_.ds_max_steer_sigma);
+                        }
+                        if (variant_.use_learned_sigma && d_step_sigma_) {
+                            update_deterministic_sigma_kernel<<<(t_horizon_ * 2 + block - 1) / block, block>>>(
+                                d_step_sigma_, d_perturbed_, d_weights_, d_nominal_,
+                                k_samples_, t_horizon_,
+                                clampf(1.0f - variant_.learned_sigma_lr, 0.0f, 1.0f),
+                                variant_.learned_min_accel_sigma,
+                                variant_.learned_min_steer_sigma,
+                                variant_.learned_max_accel_sigma,
+                                variant_.learned_max_steer_sigma);
+                        }
+                    }
+                }
+                if (variant_.use_projection_sampling) {
+                    project_nominal_controls_kernel<<<1, 1>>>(
+                        d_nominal_, t_horizon_, planning_scenario_.params.max_steer,
+                        variant_.projection_passes,
+                        variant_.projection_max_accel_delta,
+                        variant_.projection_max_steer_delta,
+                        variant_.projection_max_accel_ddelta,
+                        variant_.projection_max_steer_ddelta);
+                }
             }
 
             // Step-MPPI: update the learned bias from cost-weighted control deviations
@@ -2606,7 +5969,10 @@ private:
     curandState* d_rng_ = nullptr;
     // Step-MPPI state
     float* d_sampling_bias_ = nullptr;
+    float* d_step_sigma_ = nullptr;
     float* d_nominal_pre_bias_ = nullptr;
+    float* d_ds_sigma_ = nullptr;
+    float* d_soppi_scratch_ = nullptr;
     // DWA state: host-side argmin over a small grid, so we hold the grid on device
     // and a host mirror for argmin.
     float* d_dwa_costs_ = nullptr;
@@ -2631,6 +5997,11 @@ private:
 
 static Scenario instantiate_eval_scenario(const Scenario& nominal, int seed) {
     Scenario eval = nominal;
+    if (nominal.use_model_mismatch) {
+        eval.params.L *= nominal.eval_wheelbase_scale;
+        eval.params.max_speed *= nominal.eval_max_speed_scale;
+        eval.params.max_steer *= nominal.eval_max_steer_scale;
+    }
     if (!nominal.use_dynamic_mismatch || nominal.n_dyn_obs <= 0) return eval;
 
     std::mt19937 rng(static_cast<uint32_t>(seed) * 747796405u + 2891336453u);
@@ -2990,6 +6361,34 @@ static Scenario make_uncertain_slalom_scene() {
     return s;
 }
 
+static Scenario make_model_mismatch_slalom_scene() {
+    Scenario s = make_slalom_scene();
+    s.name = "model_mismatch_slalom";
+    s.use_model_mismatch = true;
+    s.eval_wheelbase_scale = 1.45f;
+    s.eval_max_speed_scale = 0.82f;
+    s.eval_max_steer_scale = 0.80f;
+    s.max_steps = 280;
+    s.cost_params.target_speed = 3.4f;
+    s.cost_params.obs_weight = 12.0f;
+    s.cost_params.obs_influence = 5.4f;
+    return s;
+}
+
+static Scenario make_model_mismatch_crossing_scene() {
+    Scenario s = make_dynamic_crossing_scene();
+    s.name = "model_mismatch_crossing";
+    s.use_model_mismatch = true;
+    s.eval_wheelbase_scale = 1.45f;
+    s.eval_max_speed_scale = 0.82f;
+    s.eval_max_steer_scale = 0.80f;
+    s.max_steps = 300;
+    s.cost_params.target_speed = 3.1f;
+    s.cost_params.obs_weight = 12.5f;
+    s.cost_params.obs_influence = 5.5f;
+    return s;
+}
+
 static void ensure_build_dir() {
     mkdir("build", 0755);
 }
@@ -3021,7 +6420,7 @@ static vector<string> parse_string_list(const string& text) {
 
 static void write_csv(const vector<EpisodeMetrics>& rows, const string& path) {
     ofstream out(path);
-    out << "scenario,planner,seed,k_samples,t_horizon,grad_steps,alpha,reached_goal,collision_free,success,steps,final_distance,min_goal_distance,cumulative_cost,collisions,avg_control_ms,total_control_ms,episode_ms,sample_budget\n";
+    out << "scenario,planner,seed,k_samples,t_horizon,grad_steps,alpha,reached_goal,collision_free,success,steps,final_distance,min_goal_distance,cumulative_cost,collisions,mean_control_delta,control_roughness,avg_control_ms,total_control_ms,episode_ms,sample_budget\n";
     for (const auto& r : rows) {
         out << r.scenario << ','
             << r.planner << ','
@@ -3038,6 +6437,8 @@ static void write_csv(const vector<EpisodeMetrics>& rows, const string& path) {
             << r.min_goal_distance << ','
             << r.cumulative_cost << ','
             << r.collisions << ','
+            << r.mean_control_delta << ','
+            << r.control_roughness << ','
             << r.avg_control_ms << ','
             << r.total_control_ms << ','
             << r.episode_ms << ','
@@ -3088,19 +6489,23 @@ static void print_summary(const vector<EpisodeMetrics>& rows) {
         s.sum_avg_control_ms += r.avg_control_ms;
         s.sum_total_control_ms += r.total_control_ms;
         s.sum_collisions += r.collisions;
+        s.sum_mean_control_delta += r.mean_control_delta;
+        s.sum_control_roughness += r.control_roughness;
     }
 
     cout << "=== benchmark_diff_mppi summary ===" << endl;
     for (const auto& kv : stats) {
         const SummaryStats& s = kv.second;
         float n = static_cast<float>(s.episodes);
-        printf("%s : success=%.2f steps=%.1f final_dist=%.2f min_dist=%.2f cost=%.1f avg_ms=%.2f collisions=%.2f\n",
+        printf("%s : success=%.2f steps=%.1f final_dist=%.2f min_dist=%.2f cost=%.1f du=%.3f rough=%.3f avg_ms=%.2f collisions=%.2f\n",
                kv.first.c_str(),
                s.successes / n,
                s.sum_steps / n,
                s.sum_final_distance / n,
                s.sum_min_goal_distance / n,
                s.sum_cumulative_cost / n,
+               s.sum_mean_control_delta / n,
+               s.sum_control_roughness / n,
                s.sum_avg_control_ms / n,
                s.sum_collisions / n);
     }
@@ -3124,7 +6529,23 @@ int main(int argc, char** argv) {
     int override_grad_steps = -1;
     int override_grad_update_horizon = -1;
     float override_alpha = -1.0f;
+    float override_sampling_lambda = -1.0f;
     float override_mlp_lr = -1.0f;
+    float override_lp_alpha = -1.0f;
+    int override_ds_iterations = -1;
+    float override_ds_alpha = -1.0f;
+    float override_ds_noise_scale = -1.0f;
+    float override_ds_momentum = -1.0f;
+    int override_ds_stride = -1;
+    int override_projection_passes = -1;
+    float override_projection_accel_delta = -1.0f;
+    float override_projection_steer_delta = -1.0f;
+    float override_projection_accel_ddelta = -1.0f;
+    float override_projection_steer_ddelta = -1.0f;
+    int override_soppi_iters = -1;
+    int override_soppi_neighbor_count = -1;
+    float override_soppi_step_size = -1.0f;
+    float override_soppi_bandwidth = -1.0f;
     float override_dyn_speed_scale = -1.0f;
     float override_dyn_radius_scale = -1.0f;
     // DWA cost-weight overrides. Sentinel < 0 = unset (weights are non-negative).
@@ -3154,7 +6575,23 @@ int main(int argc, char** argv) {
         else if (arg == "--override-grad-steps" && i + 1 < argc) override_grad_steps = atoi(argv[++i]);
         else if (arg == "--override-grad-update-horizon" && i + 1 < argc) override_grad_update_horizon = atoi(argv[++i]);
         else if (arg == "--override-alpha" && i + 1 < argc) override_alpha = atof(argv[++i]);
+        else if (arg == "--override-lambda" && i + 1 < argc) override_sampling_lambda = atof(argv[++i]);
         else if (arg == "--override-mlp-lr" && i + 1 < argc) override_mlp_lr = atof(argv[++i]);
+        else if (arg == "--override-lp-alpha" && i + 1 < argc) override_lp_alpha = atof(argv[++i]);
+        else if (arg == "--override-ds-iters" && i + 1 < argc) override_ds_iterations = atoi(argv[++i]);
+        else if (arg == "--override-ds-alpha" && i + 1 < argc) override_ds_alpha = atof(argv[++i]);
+        else if (arg == "--override-ds-noise-scale" && i + 1 < argc) override_ds_noise_scale = atof(argv[++i]);
+        else if (arg == "--override-ds-momentum" && i + 1 < argc) override_ds_momentum = atof(argv[++i]);
+        else if (arg == "--override-ds-stride" && i + 1 < argc) override_ds_stride = atoi(argv[++i]);
+        else if (arg == "--override-pi-passes" && i + 1 < argc) override_projection_passes = atoi(argv[++i]);
+        else if (arg == "--override-pi-accel-delta" && i + 1 < argc) override_projection_accel_delta = atof(argv[++i]);
+        else if (arg == "--override-pi-steer-delta" && i + 1 < argc) override_projection_steer_delta = atof(argv[++i]);
+        else if (arg == "--override-pi-accel-ddelta" && i + 1 < argc) override_projection_accel_ddelta = atof(argv[++i]);
+        else if (arg == "--override-pi-steer-ddelta" && i + 1 < argc) override_projection_steer_ddelta = atof(argv[++i]);
+        else if (arg == "--override-soppi-iters" && i + 1 < argc) override_soppi_iters = atoi(argv[++i]);
+        else if (arg == "--override-soppi-neighbors" && i + 1 < argc) override_soppi_neighbor_count = std::max(0, atoi(argv[++i]));
+        else if (arg == "--override-soppi-step-size" && i + 1 < argc) override_soppi_step_size = atof(argv[++i]);
+        else if (arg == "--override-soppi-bandwidth" && i + 1 < argc) override_soppi_bandwidth = atof(argv[++i]);
         else if (arg == "--override-dyn-speed-scale" && i + 1 < argc) override_dyn_speed_scale = atof(argv[++i]);
         else if (arg == "--override-dyn-radius-scale" && i + 1 < argc) override_dyn_radius_scale = atof(argv[++i]);
         else if (arg == "--override-dwa-w-goal" && i + 1 < argc) override_dwa_w_goal = atof(argv[++i]);
@@ -3180,6 +6617,8 @@ int main(int argc, char** argv) {
     all_scenarios.push_back(make_static_s_corridor_scene());
     all_scenarios.push_back(make_dynamic_bottleneck_scene());
     all_scenarios.push_back(make_dynamic_crossing_with_topology_scene());
+    all_scenarios.push_back(make_model_mismatch_slalom_scene());
+    all_scenarios.push_back(make_model_mismatch_crossing_scene());
 
     vector<Scenario> scenarios;
     if (!scenario_names.empty()) {
@@ -3206,6 +6645,889 @@ int main(int argc, char** argv) {
     {
         PlannerVariant v;
         v.name = "mppi";
+        variants.push_back(v);
+    }
+    {
+        PlannerVariant v;
+        v.name = "lp_mppi";
+        v.use_low_pass_sampling = true;
+        v.lp_alpha = 0.35f;
+        variants.push_back(v);
+    }
+    {
+        PlannerVariant v;
+        v.name = "lp_mppi_smooth";
+        v.use_low_pass_sampling = true;
+        v.lp_alpha = 0.20f;
+        variants.push_back(v);
+    }
+    {
+        PlannerVariant v;
+        v.name = "log_mppi";
+        v.use_dbas_log_sampling = true;
+        v.dbas_barrier_weight = 0.0f;
+        v.dbas_speed_damping = 0.0f;
+        v.dbas_mu = 1.00f;
+        v.dbas_log_sigma = 0.45f;
+        v.dbas_lognormal_clip = 3.50f;
+        v.dbas_noise_scale = 1.0f;
+        v.sampling_lambda = 6.0f;
+        variants.push_back(v);
+    }
+    {
+        PlannerVariant v;
+        v.name = "dbas_log_mppi";
+        v.use_dbas_log_sampling = true;
+        v.dbas_safe_margin = 0.45f;
+        v.dbas_barrier_eps = 0.45f;
+        v.dbas_barrier_cap = 24.0f;
+        v.dbas_barrier_weight = 220.0f;
+        v.dbas_gamma = 0.25f;
+        v.dbas_mu = 0.70f;
+        v.dbas_log_sigma = 0.45f;
+        v.dbas_lognormal_clip = 3.50f;
+        v.dbas_noise_scale = 1.0f;
+        v.dbas_speed_damping = 0.10f;
+        v.sampling_lambda = 6.0f;
+        variants.push_back(v);
+    }
+    {
+        PlannerVariant v;
+        v.name = "dbas_log_mppi_smooth";
+        v.use_dbas_log_sampling = true;
+        v.use_low_pass_sampling = true;
+        v.lp_alpha = 0.22f;
+        v.dbas_safe_margin = 0.55f;
+        v.dbas_barrier_eps = 0.50f;
+        v.dbas_barrier_cap = 28.0f;
+        v.dbas_barrier_weight = 260.0f;
+        v.dbas_gamma = 0.35f;
+        v.dbas_mu = 0.62f;
+        v.dbas_log_sigma = 0.38f;
+        v.dbas_lognormal_clip = 3.00f;
+        v.dbas_noise_scale = 0.95f;
+        v.dbas_speed_damping = 0.14f;
+        v.sampling_lambda = 7.0f;
+        variants.push_back(v);
+    }
+    {
+        PlannerVariant v;
+        v.name = "dbas_log_mppi_agile";
+        v.use_dbas_log_sampling = true;
+        v.use_low_pass_sampling = true;
+        v.lp_alpha = 0.18f;
+        v.dbas_safe_margin = 0.20f;
+        v.dbas_barrier_eps = 0.65f;
+        v.dbas_barrier_cap = 18.0f;
+        v.dbas_barrier_weight = 90.0f;
+        v.dbas_gamma = 0.18f;
+        v.dbas_mu = 1.15f;
+        v.dbas_log_sigma = 0.65f;
+        v.dbas_lognormal_clip = 5.50f;
+        v.dbas_noise_scale = 1.25f;
+        v.dbas_speed_damping = 0.02f;
+        v.sampling_lambda = 6.5f;
+        variants.push_back(v);
+    }
+    {
+        PlannerVariant v;
+        v.name = "dbas_log_mppi_safe";
+        v.use_dbas_log_sampling = true;
+        v.use_low_pass_sampling = true;
+        v.lp_alpha = 0.24f;
+        v.dbas_safe_margin = 0.75f;
+        v.dbas_barrier_eps = 0.45f;
+        v.dbas_barrier_cap = 36.0f;
+        v.dbas_barrier_weight = 420.0f;
+        v.dbas_gamma = 0.40f;
+        v.dbas_mu = 0.78f;
+        v.dbas_log_sigma = 0.55f;
+        v.dbas_lognormal_clip = 4.50f;
+        v.dbas_noise_scale = 1.10f;
+        v.dbas_speed_damping = 0.22f;
+        v.sampling_lambda = 8.0f;
+        variants.push_back(v);
+    }
+    {
+        PlannerVariant v;
+        v.name = "sc_mppi";
+        v.use_safety_controlled_sampling = true;
+        v.sc_safe_margin = 1.0f;
+        v.sc_avoid_gain = 0.55f;
+        v.sc_speed_gain = 0.80f;
+        v.sc_max_steer_delta = 0.28f;
+        v.sc_max_accel_delta = 1.8f;
+        v.sc_control_weight = 0.05f;
+        v.sampling_lambda = 6.0f;
+        variants.push_back(v);
+    }
+    {
+        PlannerVariant v;
+        v.name = "sc_mppi_smooth";
+        v.use_safety_controlled_sampling = true;
+        v.use_low_pass_sampling = true;
+        v.lp_alpha = 0.22f;
+        v.sc_safe_margin = 1.0f;
+        v.sc_avoid_gain = 0.55f;
+        v.sc_speed_gain = 0.80f;
+        v.sc_max_steer_delta = 0.28f;
+        v.sc_max_accel_delta = 1.8f;
+        v.sc_control_weight = 0.05f;
+        v.sampling_lambda = 6.0f;
+        variants.push_back(v);
+    }
+    {
+        PlannerVariant v;
+        v.name = "sc_mppi_timing";
+        v.use_safety_controlled_sampling = true;
+        v.use_low_pass_sampling = true;
+        v.lp_alpha = 0.30f;
+        v.t_horizon = 12;
+        v.sc_safe_margin = 0.65f;
+        v.sc_avoid_gain = 0.32f;
+        v.sc_speed_gain = 0.30f;
+        v.sc_max_steer_delta = 0.16f;
+        v.sc_max_accel_delta = 0.9f;
+        v.sc_control_weight = 0.03f;
+        v.sampling_lambda = 5.0f;
+        variants.push_back(v);
+    }
+    {
+        PlannerVariant v;
+        v.name = "csc_mppi";
+        v.use_safety_controlled_sampling = true;
+        v.use_cluster_representative_update = true;
+        v.sc_safe_margin = 0.80f;
+        v.sc_avoid_gain = 0.45f;
+        v.sc_speed_gain = 0.55f;
+        v.sc_max_steer_delta = 0.24f;
+        v.sc_max_accel_delta = 1.3f;
+        v.csc_cluster_count = 4;
+        v.csc_safe_margin = 0.15f;
+        v.csc_constraint_weight = 3500.0f;
+        v.csc_update_blend = 0.75f;
+        v.sampling_lambda = 6.0f;
+        variants.push_back(v);
+    }
+    {
+        PlannerVariant v;
+        v.name = "csc_mppi_smooth";
+        v.use_safety_controlled_sampling = true;
+        v.use_low_pass_sampling = true;
+        v.use_cluster_representative_update = true;
+        v.lp_alpha = 0.22f;
+        v.sc_safe_margin = 0.85f;
+        v.sc_avoid_gain = 0.50f;
+        v.sc_speed_gain = 0.60f;
+        v.sc_max_steer_delta = 0.24f;
+        v.sc_max_accel_delta = 1.4f;
+        v.csc_cluster_count = 4;
+        v.csc_safe_margin = 0.20f;
+        v.csc_constraint_weight = 4000.0f;
+        v.csc_update_blend = 0.65f;
+        v.sampling_lambda = 6.0f;
+        variants.push_back(v);
+    }
+    {
+        PlannerVariant v;
+        v.name = "csc_mppi_strict";
+        v.use_safety_controlled_sampling = true;
+        v.use_low_pass_sampling = true;
+        v.use_cluster_representative_update = true;
+        v.lp_alpha = 0.26f;
+        v.sc_safe_margin = 1.10f;
+        v.sc_avoid_gain = 0.62f;
+        v.sc_speed_gain = 0.75f;
+        v.sc_max_steer_delta = 0.30f;
+        v.sc_max_accel_delta = 1.7f;
+        v.csc_cluster_count = 5;
+        v.csc_safe_margin = 0.45f;
+        v.csc_constraint_weight = 6500.0f;
+        v.csc_update_blend = 0.55f;
+        v.sampling_lambda = 7.0f;
+        variants.push_back(v);
+    }
+    {
+        PlannerVariant v;
+        v.name = "dm_mppi";
+        v.use_datamodel_influence_pruning = true;
+        v.dm_keep_fraction = 0.35f;
+        v.dm_cost_temperature = 8.0f;
+        v.dm_safe_margin = 0.65f;
+        v.dm_prob_sigma = 0.70f;
+        v.dm_violation_weight = 2500.0f;
+        v.dm_safety_power = 0.75f;
+        v.sampling_lambda = 6.0f;
+        variants.push_back(v);
+    }
+    {
+        PlannerVariant v;
+        v.name = "dm_mppi_smooth";
+        v.use_datamodel_influence_pruning = true;
+        v.use_low_pass_sampling = true;
+        v.lp_alpha = 0.20f;
+        v.dm_keep_fraction = 0.35f;
+        v.dm_cost_temperature = 8.0f;
+        v.dm_safe_margin = 0.70f;
+        v.dm_prob_sigma = 0.70f;
+        v.dm_violation_weight = 3000.0f;
+        v.dm_safety_power = 0.85f;
+        v.sampling_lambda = 6.0f;
+        variants.push_back(v);
+    }
+    {
+        PlannerVariant v;
+        v.name = "dm_mppi_safe";
+        v.use_datamodel_influence_pruning = true;
+        v.use_low_pass_sampling = true;
+        v.lp_alpha = 0.24f;
+        v.dm_keep_fraction = 0.25f;
+        v.dm_cost_temperature = 10.0f;
+        v.dm_safe_margin = 1.05f;
+        v.dm_prob_sigma = 0.55f;
+        v.dm_violation_weight = 6500.0f;
+        v.dm_safety_power = 1.40f;
+        v.sampling_lambda = 7.0f;
+        variants.push_back(v);
+    }
+    {
+        PlannerVariant v;
+        v.name = "tsallis_mppi_q07";
+        v.use_tsallis_weights = true;
+        v.tsallis_q = 0.70f;
+        v.tsallis_temperature = 8.0f;
+        v.tsallis_min_weight = 0.0f;
+        v.sampling_lambda = 6.0f;
+        variants.push_back(v);
+    }
+    {
+        PlannerVariant v;
+        v.name = "tsallis_mppi_smooth";
+        v.use_tsallis_weights = true;
+        v.use_low_pass_sampling = true;
+        v.lp_alpha = 0.20f;
+        v.tsallis_q = 0.70f;
+        v.tsallis_temperature = 8.0f;
+        v.tsallis_min_weight = 0.0f;
+        v.sampling_lambda = 6.0f;
+        variants.push_back(v);
+    }
+    {
+        PlannerVariant v;
+        v.name = "tsallis_mppi_q13";
+        v.use_tsallis_weights = true;
+        v.tsallis_q = 1.30f;
+        v.tsallis_temperature = 5.0f;
+        v.tsallis_min_weight = 1.0e-8f;
+        v.sampling_lambda = 6.0f;
+        variants.push_back(v);
+    }
+    {
+        PlannerVariant v;
+        v.name = "cc_mppi";
+        v.use_covariance_control_weights = true;
+        v.cc_terminal_weight = 1.25f;
+        v.cc_terminal_target_radius = 4.5f;
+        v.cc_heading_weight = 0.35f;
+        v.cc_speed_weight = 0.10f;
+        v.sampling_lambda = 6.0f;
+        variants.push_back(v);
+    }
+    {
+        PlannerVariant v;
+        v.name = "cc_mppi_smooth";
+        v.use_covariance_control_weights = true;
+        v.use_low_pass_sampling = true;
+        v.lp_alpha = 0.22f;
+        v.cc_terminal_weight = 1.00f;
+        v.cc_terminal_target_radius = 4.0f;
+        v.cc_heading_weight = 0.30f;
+        v.cc_speed_weight = 0.08f;
+        v.sampling_lambda = 6.0f;
+        variants.push_back(v);
+    }
+    {
+        PlannerVariant v;
+        v.name = "cc_mppi_tight";
+        v.use_covariance_control_weights = true;
+        v.use_low_pass_sampling = true;
+        v.lp_alpha = 0.26f;
+        v.cc_terminal_weight = 2.50f;
+        v.cc_terminal_target_radius = 2.8f;
+        v.cc_heading_weight = 0.45f;
+        v.cc_speed_weight = 0.12f;
+        v.sampling_lambda = 7.0f;
+        variants.push_back(v);
+    }
+    {
+        PlannerVariant v;
+        v.name = "td_v_mppi_short";
+        v.use_td_cd_weights = true;
+        v.use_low_pass_sampling = true;
+        v.t_horizon = 12;
+        v.lp_alpha = 0.24f;
+        v.td_terminal_value_scale = 5.0f;
+        v.td_safe_margin = -5.0f;
+        v.td_discount_sigma = 10.0f;
+        v.td_discount_power = 0.0f;
+        v.td_failure_cost = 0.0f;
+        v.sampling_lambda = 8.0f;
+        variants.push_back(v);
+    }
+    {
+        PlannerVariant v;
+        v.name = "td_cd_mppi_soft";
+        v.use_td_cd_weights = true;
+        v.use_low_pass_sampling = true;
+        v.t_horizon = 12;
+        v.lp_alpha = 0.24f;
+        v.td_terminal_value_scale = 4.0f;
+        v.td_safe_margin = -0.25f;
+        v.td_discount_sigma = 2.0f;
+        v.td_discount_power = 0.08f;
+        v.td_failure_cost = 1200.0f;
+        v.sampling_lambda = 8.0f;
+        variants.push_back(v);
+    }
+    {
+        PlannerVariant v;
+        v.name = "td_cd_mppi_guarded";
+        v.use_td_cd_weights = true;
+        v.use_low_pass_sampling = true;
+        v.t_horizon = 16;
+        v.lp_alpha = 0.26f;
+        v.td_terminal_value_scale = 3.0f;
+        v.td_safe_margin = -0.10f;
+        v.td_discount_sigma = 2.5f;
+        v.td_discount_power = 0.12f;
+        v.td_failure_cost = 2200.0f;
+        v.sampling_lambda = 8.0f;
+        variants.push_back(v);
+    }
+    {
+        PlannerVariant v;
+        v.name = "shield_mppi";
+        v.use_shield_cost = true;
+        v.use_shield_repair = true;
+        v.t_horizon = 12;
+        v.shield_safe_margin = 1.2f;
+        v.shield_cbf_alpha = 0.40f;
+        v.shield_cbf_weight = 90.0f;
+        v.shield_repair_steps = 8;
+        v.shield_repair_grid = 5;
+        v.shield_repair_safety_weight = 250.0f;
+        v.sampling_lambda = 6.0f;
+        variants.push_back(v);
+    }
+    {
+        PlannerVariant v;
+        v.name = "shield_mppi_smooth";
+        v.use_shield_cost = true;
+        v.use_shield_repair = true;
+        v.use_low_pass_sampling = true;
+        v.lp_alpha = 0.25f;
+        v.t_horizon = 12;
+        v.shield_safe_margin = 1.2f;
+        v.shield_cbf_alpha = 0.40f;
+        v.shield_cbf_weight = 90.0f;
+        v.shield_repair_steps = 8;
+        v.shield_repair_grid = 5;
+        v.shield_repair_safety_weight = 250.0f;
+        v.sampling_lambda = 6.0f;
+        variants.push_back(v);
+    }
+    {
+        PlannerVariant v;
+        v.name = "shield_mppi_repair";
+        v.use_shield_repair = true;
+        v.t_horizon = 12;
+        v.shield_safe_margin = 1.2f;
+        v.shield_cbf_alpha = 0.40f;
+        v.shield_repair_steps = 8;
+        v.shield_repair_grid = 5;
+        v.shield_repair_safety_weight = 250.0f;
+        v.sampling_lambda = 6.0f;
+        variants.push_back(v);
+    }
+    {
+        PlannerVariant v;
+        v.name = "c2u_mppi";
+        v.use_c2u_chance_constraints = true;
+        v.c2u_safe_margin = 0.0f;
+        v.c2u_robot_sigma = 0.10f;
+        v.c2u_dyn_sigma0 = 0.28f;
+        v.c2u_dyn_sigma_growth = 0.05f;
+        v.c2u_risk_z = 1.28f;
+        v.c2u_prob_sigma = 0.90f;
+        v.c2u_probability_power = 0.70f;
+        v.c2u_violation_weight = 900.0f;
+        v.sampling_lambda = 7.0f;
+        variants.push_back(v);
+    }
+    {
+        PlannerVariant v;
+        v.name = "c2u_mppi_smooth";
+        v.use_c2u_chance_constraints = true;
+        v.use_low_pass_sampling = true;
+        v.lp_alpha = 0.20f;
+        v.c2u_safe_margin = 0.0f;
+        v.c2u_robot_sigma = 0.12f;
+        v.c2u_dyn_sigma0 = 0.35f;
+        v.c2u_dyn_sigma_growth = 0.06f;
+        v.c2u_risk_z = 1.28f;
+        v.c2u_prob_sigma = 1.00f;
+        v.c2u_probability_power = 0.80f;
+        v.c2u_violation_weight = 1200.0f;
+        v.sampling_lambda = 7.0f;
+        variants.push_back(v);
+    }
+    {
+        PlannerVariant v;
+        v.name = "c2u_mppi_strict";
+        v.use_c2u_chance_constraints = true;
+        v.use_low_pass_sampling = true;
+        v.lp_alpha = 0.24f;
+        v.c2u_safe_margin = 0.20f;
+        v.c2u_robot_sigma = 0.18f;
+        v.c2u_dyn_sigma0 = 0.45f;
+        v.c2u_dyn_sigma_growth = 0.08f;
+        v.c2u_risk_z = 1.64f;
+        v.c2u_prob_sigma = 0.80f;
+        v.c2u_probability_power = 1.20f;
+        v.c2u_violation_weight = 2200.0f;
+        v.sampling_lambda = 8.0f;
+        variants.push_back(v);
+    }
+    {
+        PlannerVariant v;
+        v.name = "ducct_mppi_smooth";
+        v.use_ducct_risk = true;
+        v.use_low_pass_sampling = true;
+        v.lp_alpha = 0.20f;
+        v.ducct_loc_sigma0 = 0.08f;
+        v.ducct_loc_sigma_growth = 0.02f;
+        v.ducct_pred_sigma0 = 0.24f;
+        v.ducct_pred_sigma_growth = 0.035f;
+        v.ducct_static_sigma = 0.08f;
+        v.ducct_risk_weight = 650.0f;
+        v.ducct_hard_threshold = 0.88f;
+        v.ducct_reject_cost = 7000.0f;
+        v.ducct_survival_power = 0.20f;
+        v.sampling_lambda = 7.0f;
+        variants.push_back(v);
+    }
+    {
+        PlannerVariant v;
+        v.name = "ducct_mppi_cautious";
+        v.use_ducct_risk = true;
+        v.use_low_pass_sampling = true;
+        v.lp_alpha = 0.22f;
+        v.ducct_loc_sigma0 = 0.18f;
+        v.ducct_loc_sigma_growth = 0.06f;
+        v.ducct_pred_sigma0 = 0.50f;
+        v.ducct_pred_sigma_growth = 0.08f;
+        v.ducct_static_sigma = 0.18f;
+        v.ducct_risk_weight = 2600.0f;
+        v.ducct_hard_threshold = 0.55f;
+        v.ducct_reject_cost = 38000.0f;
+        v.ducct_survival_power = 0.75f;
+        v.sampling_lambda = 8.0f;
+        variants.push_back(v);
+    }
+    {
+        PlannerVariant v;
+        v.name = "ducct_mppi_diluted";
+        v.use_ducct_risk = true;
+        v.use_low_pass_sampling = true;
+        v.lp_alpha = 0.22f;
+        v.ducct_loc_sigma0 = 0.55f;
+        v.ducct_loc_sigma_growth = 0.12f;
+        v.ducct_pred_sigma0 = 1.20f;
+        v.ducct_pred_sigma_growth = 0.16f;
+        v.ducct_static_sigma = 0.45f;
+        v.ducct_risk_weight = 2200.0f;
+        v.ducct_hard_threshold = 0.50f;
+        v.ducct_reject_cost = 32000.0f;
+        v.ducct_survival_power = 0.70f;
+        v.sampling_lambda = 8.0f;
+        variants.push_back(v);
+    }
+    {
+        PlannerVariant v;
+        v.name = "dra_mppi_soft";
+        v.use_dra_risk = true;
+        v.use_low_pass_sampling = true;
+        v.lp_alpha = 0.20f;
+        v.dra_mc_samples = 12;
+        v.dra_robot_radius = 0.55f;
+        v.dra_pred_sigma0 = 0.30f;
+        v.dra_pred_sigma_growth = 0.045f;
+        v.dra_mode_weight = 0.0f;
+        v.dra_soft_weight = 500.0f;
+        v.dra_hard_threshold = 0.85f;
+        v.dra_reject_cost = 5000.0f;
+        v.dra_survival_power = 0.15f;
+        v.sampling_lambda = 7.0f;
+        variants.push_back(v);
+    }
+    {
+        PlannerVariant v;
+        v.name = "dra_mppi_hard";
+        v.use_dra_risk = true;
+        v.use_low_pass_sampling = true;
+        v.lp_alpha = 0.22f;
+        v.dra_mc_samples = 16;
+        v.dra_robot_radius = 0.60f;
+        v.dra_pred_sigma0 = 0.35f;
+        v.dra_pred_sigma_growth = 0.06f;
+        v.dra_mode_weight = 0.0f;
+        v.dra_soft_weight = 900.0f;
+        v.dra_hard_threshold = 0.55f;
+        v.dra_reject_cost = 18000.0f;
+        v.dra_survival_power = 0.30f;
+        v.sampling_lambda = 8.0f;
+        variants.push_back(v);
+    }
+    {
+        PlannerVariant v;
+        v.name = "dra_mppi_multimodal";
+        v.use_dra_risk = true;
+        v.use_low_pass_sampling = true;
+        v.lp_alpha = 0.22f;
+        v.dra_mc_samples = 16;
+        v.dra_robot_radius = 0.60f;
+        v.dra_pred_sigma0 = 0.34f;
+        v.dra_pred_sigma_growth = 0.055f;
+        v.dra_mode_weight = 0.14f;
+        v.dra_mode_lateral_offset = 1.35f;
+        v.dra_soft_weight = 850.0f;
+        v.dra_hard_threshold = 0.60f;
+        v.dra_reject_cost = 16000.0f;
+        v.dra_survival_power = 0.30f;
+        v.sampling_lambda = 8.0f;
+        variants.push_back(v);
+    }
+    {
+        PlannerVariant v;
+        v.name = "bc_mppi";
+        v.use_bc_safety_layer = true;
+        v.bc_safe_margin = 1.0f;
+        v.bc_prob_sigma = 0.80f;
+        v.bc_probability_power = 1.25f;
+        v.sampling_lambda = 6.0f;
+        variants.push_back(v);
+    }
+    {
+        PlannerVariant v;
+        v.name = "bc_mppi_smooth";
+        v.use_bc_safety_layer = true;
+        v.use_low_pass_sampling = true;
+        v.lp_alpha = 0.20f;
+        v.bc_safe_margin = 1.0f;
+        v.bc_prob_sigma = 0.80f;
+        v.bc_probability_power = 1.25f;
+        v.sampling_lambda = 6.0f;
+        variants.push_back(v);
+    }
+    {
+        PlannerVariant v;
+        v.name = "bc_mppi_strict";
+        v.use_bc_safety_layer = true;
+        v.use_low_pass_sampling = true;
+        v.lp_alpha = 0.25f;
+        v.bc_safe_margin = 1.4f;
+        v.bc_prob_sigma = 0.55f;
+        v.bc_probability_power = 2.0f;
+        v.sampling_lambda = 7.0f;
+        variants.push_back(v);
+    }
+    {
+        PlannerVariant v;
+        v.name = "pr_mppi";
+        v.use_parameter_robust_sampling = true;
+        v.pr_param_particles = 3;
+        v.pr_wheelbase_span = 0.45f;
+        v.pr_max_speed_span = 0.18f;
+        v.pr_max_steer_span = 0.20f;
+        v.pr_worst_blend = 0.45f;
+        v.sampling_lambda = 6.0f;
+        variants.push_back(v);
+    }
+    {
+        PlannerVariant v;
+        v.name = "pr_mppi_smooth";
+        v.use_parameter_robust_sampling = true;
+        v.use_low_pass_sampling = true;
+        v.lp_alpha = 0.20f;
+        v.pr_param_particles = 3;
+        v.pr_wheelbase_span = 0.45f;
+        v.pr_max_speed_span = 0.18f;
+        v.pr_max_steer_span = 0.20f;
+        v.pr_worst_blend = 0.45f;
+        v.sampling_lambda = 6.0f;
+        variants.push_back(v);
+    }
+    {
+        PlannerVariant v;
+        v.name = "pr_mppi_cautious";
+        v.use_parameter_robust_sampling = true;
+        v.use_low_pass_sampling = true;
+        v.lp_alpha = 0.25f;
+        v.pr_param_particles = 5;
+        v.pr_wheelbase_span = 0.50f;
+        v.pr_max_speed_span = 0.22f;
+        v.pr_max_steer_span = 0.22f;
+        v.pr_worst_blend = 0.75f;
+        v.sampling_lambda = 7.0f;
+        variants.push_back(v);
+    }
+    {
+        PlannerVariant v;
+        v.name = "cdf_mppi";
+        v.use_cdf_guidance = true;
+        v.t_horizon = 16;
+        v.cdf_seed_blend = 0.25f;
+        v.cdf_safe_margin = 3.0f;
+        v.cdf_obs_cost = 1.2f;
+        v.cdf_dyn_pull = 1.0f;
+        v.cdf_dyn_cost = 0.6f;
+        v.sampling_lambda = 6.0f;
+        variants.push_back(v);
+    }
+    {
+        PlannerVariant v;
+        v.name = "cdf_lp_mppi";
+        v.use_cdf_guidance = true;
+        v.use_low_pass_sampling = true;
+        v.lp_alpha = 0.25f;
+        v.t_horizon = 16;
+        v.cdf_seed_blend = 0.25f;
+        v.cdf_safe_margin = 3.0f;
+        v.cdf_obs_cost = 1.2f;
+        v.cdf_dyn_pull = 1.0f;
+        v.cdf_dyn_cost = 0.6f;
+        v.sampling_lambda = 6.0f;
+        variants.push_back(v);
+    }
+    {
+        PlannerVariant v;
+        v.name = "cdf_mppi_one_step";
+        v.use_cdf_guidance = true;
+        v.t_horizon = 1;
+        v.cdf_seed_blend = 0.90f;
+        v.cdf_goal_pull = 1.2f;
+        v.cdf_obs_pull = 4.0f;
+        v.cdf_dyn_pull = 1.2f;
+        v.cdf_safe_margin = 3.0f;
+        v.cdf_obs_cost = 1.5f;
+        v.cdf_dyn_cost = 0.8f;
+        v.sampling_lambda = 5.0f;
+        variants.push_back(v);
+    }
+    {
+        PlannerVariant v;
+        v.name = "pa_mppi";
+        v.use_pa_perception_cost = true;
+        v.pa_safe_margin = 0.40f;
+        v.pa_poi_weight = 120.0f;
+        v.pa_occlusion_weight = 850.0f;
+        v.pa_frontier_reward = 420.0f;
+        v.pa_forward_occ_weight = 160.0f;
+        v.pa_goal_gate = 3.0f;
+        v.pa_activation = 0.06f;
+        v.pa_ray_length = 8.0f;
+        v.pa_score_cap = 350.0f;
+        v.sampling_lambda = 6.0f;
+        variants.push_back(v);
+    }
+    {
+        PlannerVariant v;
+        v.name = "pa_mppi_soft";
+        v.use_pa_perception_cost = true;
+        v.use_low_pass_sampling = true;
+        v.lp_alpha = 0.20f;
+        v.pa_safe_margin = 0.30f;
+        v.pa_poi_weight = 35.0f;
+        v.pa_occlusion_weight = 160.0f;
+        v.pa_frontier_reward = 90.0f;
+        v.pa_forward_occ_weight = 35.0f;
+        v.pa_goal_gate = 3.0f;
+        v.pa_activation = 0.12f;
+        v.pa_ray_length = 8.0f;
+        v.pa_score_cap = 120.0f;
+        v.sampling_lambda = 6.0f;
+        variants.push_back(v);
+    }
+    {
+        PlannerVariant v;
+        v.name = "pa_mppi_smooth";
+        v.use_pa_perception_cost = true;
+        v.use_low_pass_sampling = true;
+        v.lp_alpha = 0.22f;
+        v.pa_safe_margin = 0.45f;
+        v.pa_poi_weight = 140.0f;
+        v.pa_occlusion_weight = 950.0f;
+        v.pa_frontier_reward = 520.0f;
+        v.pa_forward_occ_weight = 180.0f;
+        v.pa_goal_gate = 3.0f;
+        v.pa_activation = 0.06f;
+        v.pa_ray_length = 8.0f;
+        v.pa_score_cap = 300.0f;
+        v.sampling_lambda = 6.5f;
+        variants.push_back(v);
+    }
+    {
+        PlannerVariant v;
+        v.name = "pa_mppi_frontier";
+        v.use_pa_perception_cost = true;
+        v.use_low_pass_sampling = true;
+        v.lp_alpha = 0.18f;
+        v.pa_safe_margin = 0.30f;
+        v.pa_poi_weight = 90.0f;
+        v.pa_occlusion_weight = 650.0f;
+        v.pa_frontier_reward = 900.0f;
+        v.pa_forward_occ_weight = 120.0f;
+        v.pa_goal_gate = 3.5f;
+        v.pa_activation = 0.04f;
+        v.pa_ray_length = 10.0f;
+        v.pa_score_cap = 400.0f;
+        v.sampling_lambda = 6.0f;
+        variants.push_back(v);
+    }
+    {
+        PlannerVariant v;
+        v.name = "ds_mppi";
+        v.use_deterministic_sampling = true;
+        v.ds_iterations = 2;
+        v.ds_alpha = 0.35f;
+        v.ds_noise_scale = 2.0f;
+        v.ds_momentum = 0.0f;
+        v.sampling_lambda = 4.0f;
+        variants.push_back(v);
+    }
+    {
+        PlannerVariant v;
+        v.name = "ds_mppi_smooth";
+        v.use_deterministic_sampling = true;
+        v.ds_iterations = 2;
+        v.ds_alpha = 0.35f;
+        v.ds_noise_scale = 2.0f;
+        v.ds_momentum = 0.0f;
+        v.sampling_lambda = 6.0f;
+        variants.push_back(v);
+    }
+    {
+        PlannerVariant v;
+        v.name = "ds_mppi_cov";
+        v.use_deterministic_sampling = true;
+        v.ds_iterations = 2;
+        v.ds_alpha = 0.35f;
+        v.ds_noise_scale = 2.0f;
+        v.ds_momentum = 0.0f;
+        v.ds_adapt_sigma = true;
+        v.ds_sigma_blend = 0.35f;
+        v.sampling_lambda = 4.0f;
+        variants.push_back(v);
+    }
+    {
+        PlannerVariant v;
+        v.name = "ds_mppi_cov_smooth";
+        v.use_deterministic_sampling = true;
+        v.ds_iterations = 2;
+        v.ds_alpha = 0.35f;
+        v.ds_noise_scale = 2.0f;
+        v.ds_momentum = 0.0f;
+        v.ds_adapt_sigma = true;
+        v.ds_sigma_blend = 0.50f;
+        v.ds_min_accel_sigma = 0.15f;
+        v.ds_min_steer_sigma = 0.015f;
+        v.sampling_lambda = 6.0f;
+        variants.push_back(v);
+    }
+    {
+        PlannerVariant v;
+        v.name = "ds_mppi_elite";
+        v.use_deterministic_sampling = true;
+        v.ds_iterations = 2;
+        v.ds_alpha = 0.35f;
+        v.ds_noise_scale = 2.0f;
+        v.ds_momentum = 0.0f;
+        v.ds_elite_update = true;
+        v.ds_elite_count = 16;
+        v.ds_elite_sigma_blend = 0.20f;
+        v.sampling_lambda = 4.0f;
+        variants.push_back(v);
+    }
+    {
+        PlannerVariant v;
+        v.name = "ds_mppi_elite_smooth";
+        v.use_deterministic_sampling = true;
+        v.ds_iterations = 2;
+        v.ds_alpha = 0.35f;
+        v.ds_noise_scale = 2.0f;
+        v.ds_momentum = 0.0f;
+        v.ds_elite_update = true;
+        v.ds_elite_count = 32;
+        v.ds_elite_sigma_blend = 0.35f;
+        v.ds_min_accel_sigma = 0.15f;
+        v.ds_min_steer_sigma = 0.015f;
+        v.sampling_lambda = 6.0f;
+        variants.push_back(v);
+    }
+    {
+        PlannerVariant v;
+        v.name = "pi_mppi";
+        v.use_projection_sampling = true;
+        v.projection_passes = 2;
+        v.projection_max_accel_delta = 1.20f;
+        v.projection_max_steer_delta = 0.10f;
+        v.projection_max_accel_ddelta = 1.00f;
+        v.projection_max_steer_ddelta = 0.08f;
+        variants.push_back(v);
+    }
+    {
+        PlannerVariant v;
+        v.name = "pi_mppi_smooth";
+        v.use_projection_sampling = true;
+        v.projection_passes = 4;
+        v.projection_max_accel_delta = 0.60f;
+        v.projection_max_steer_delta = 0.045f;
+        v.projection_max_accel_ddelta = 0.40f;
+        v.projection_max_steer_ddelta = 0.030f;
+        variants.push_back(v);
+    }
+    {
+        PlannerVariant v;
+        v.name = "svg_mppi";
+        v.use_svg_mode_guidance = true;
+        v.svg_bandwidth = 24.0f;
+        v.svg_mode_weight = 3.0f;
+        v.svg_stride = 2;
+        v.sampling_lambda = 6.0f;
+        variants.push_back(v);
+    }
+    {
+        PlannerVariant v;
+        v.name = "svg_mppi_smooth";
+        v.use_svg_mode_guidance = true;
+        v.use_low_pass_sampling = true;
+        v.lp_alpha = 0.20f;
+        v.svg_bandwidth = 24.0f;
+        v.svg_mode_weight = 3.0f;
+        v.svg_stride = 2;
+        v.sampling_lambda = 6.0f;
+        variants.push_back(v);
+    }
+    {
+        PlannerVariant v;
+        v.name = "svg_mppi_strong";
+        v.use_svg_mode_guidance = true;
+        v.use_low_pass_sampling = true;
+        v.lp_alpha = 0.25f;
+        v.svg_bandwidth = 16.0f;
+        v.svg_mode_weight = 8.0f;
+        v.svg_stride = 2;
+        v.sampling_lambda = 5.0f;
         variants.push_back(v);
     }
     {
@@ -3494,6 +7816,72 @@ int main(int argc, char** argv) {
         v.mlp_lr = 0.001f;
         variants.push_back(v);
     }
+    {
+        PlannerVariant v;
+        v.name = "step_mppi_fast";
+        v.use_learned_sampling = true;
+        v.mlp_lr = 0.025f;
+        v.sampling_lambda = 6.0f;
+        variants.push_back(v);
+    }
+    {
+        PlannerVariant v;
+        v.name = "step_mppi_smooth";
+        v.use_learned_sampling = true;
+        v.use_low_pass_sampling = true;
+        v.lp_alpha = 0.20f;
+        v.mlp_lr = 0.020f;
+        v.sampling_lambda = 6.0f;
+        variants.push_back(v);
+    }
+    {
+        PlannerVariant v;
+        v.name = "step_mppi_adaptive";
+        v.use_learned_sampling = true;
+        v.use_learned_sigma = true;
+        v.mlp_lr = 0.025f;
+        v.learned_sigma_lr = 0.12f;
+        v.learned_min_accel_sigma = 0.25f;
+        v.learned_min_steer_sigma = 0.025f;
+        v.learned_max_accel_sigma = 3.0f;
+        v.learned_max_steer_sigma = 0.30f;
+        v.sampling_lambda = 6.0f;
+        variants.push_back(v);
+    }
+    {
+        PlannerVariant v;
+        v.name = "step_mppi_single";
+        v.use_learned_sampling = true;
+        v.use_learned_sigma = true;
+        v.t_horizon = 1;
+        v.mlp_lr = 0.10f;
+        v.learned_sigma_lr = 0.20f;
+        v.learned_min_accel_sigma = 0.40f;
+        v.learned_min_steer_sigma = 0.050f;
+        v.learned_max_accel_sigma = 3.5f;
+        v.learned_max_steer_sigma = 0.35f;
+        v.sampling_lambda = 5.0f;
+        variants.push_back(v);
+    }
+    {
+        PlannerVariant v;
+        v.name = "soppi";
+        v.use_soppi_sampling = true;
+        v.soppi_svgd_iters = 1;
+        v.soppi_step_size = 0.045f;
+        v.soppi_bandwidth = 2.0f;
+        variants.push_back(v);
+    }
+    {
+        PlannerVariant v;
+        v.name = "soppi_fast";
+        v.use_soppi_sampling = true;
+        v.soppi_svgd_iters = 1;
+        v.soppi_step_size = 0.075f;
+        v.soppi_bandwidth = 2.0f;
+        v.soppi_neighbor_count = 32;
+        variants.push_back(v);
+    }
     // DWA variants: discrete dynamic-window search over (accel, steer). Costs are
     // tuned to roughly match MPPI's cost weights so the comparison stays apples
     // to apples. dwa_med is the headline variant; fast/fine bracket it on cost.
@@ -3683,8 +8071,40 @@ int main(int argc, char** argv) {
             v.grad_update_horizon = override_grad_update_horizon;
         if (override_alpha >= 0.0f && v.use_gradient)
             v.alpha = override_alpha;
+        if (override_sampling_lambda >= 0.0f)
+            v.sampling_lambda = override_sampling_lambda;
         if (override_mlp_lr >= 0.0f && v.use_learned_sampling)
             v.mlp_lr = override_mlp_lr;
+        if (override_lp_alpha >= 0.0f && v.use_low_pass_sampling)
+            v.lp_alpha = override_lp_alpha;
+        if (override_ds_iterations > 0 && v.use_deterministic_sampling)
+            v.ds_iterations = override_ds_iterations;
+        if (override_ds_alpha >= 0.0f && v.use_deterministic_sampling)
+            v.ds_alpha = override_ds_alpha;
+        if (override_ds_noise_scale >= 0.0f && v.use_deterministic_sampling)
+            v.ds_noise_scale = override_ds_noise_scale;
+        if (override_ds_momentum >= 0.0f && v.use_deterministic_sampling)
+            v.ds_momentum = override_ds_momentum;
+        if (override_ds_stride > 0 && v.use_deterministic_sampling)
+            v.ds_stride = override_ds_stride;
+        if (override_projection_passes > 0 && v.use_projection_sampling)
+            v.projection_passes = override_projection_passes;
+        if (override_projection_accel_delta >= 0.0f && v.use_projection_sampling)
+            v.projection_max_accel_delta = override_projection_accel_delta;
+        if (override_projection_steer_delta >= 0.0f && v.use_projection_sampling)
+            v.projection_max_steer_delta = override_projection_steer_delta;
+        if (override_projection_accel_ddelta >= 0.0f && v.use_projection_sampling)
+            v.projection_max_accel_ddelta = override_projection_accel_ddelta;
+        if (override_projection_steer_ddelta >= 0.0f && v.use_projection_sampling)
+            v.projection_max_steer_ddelta = override_projection_steer_ddelta;
+        if (override_soppi_iters >= 0 && v.use_soppi_sampling)
+            v.soppi_svgd_iters = override_soppi_iters;
+        if (override_soppi_neighbor_count >= 0 && v.use_soppi_sampling)
+            v.soppi_neighbor_count = override_soppi_neighbor_count;
+        if (override_soppi_step_size >= 0.0f && v.use_soppi_sampling)
+            v.soppi_step_size = override_soppi_step_size;
+        if (override_soppi_bandwidth >= 0.0f && v.use_soppi_sampling)
+            v.soppi_bandwidth = override_soppi_bandwidth;
         if (override_dwa_w_goal >= 0.0f && v.planner_kind == 1)
             v.dwa_w_goal = override_dwa_w_goal;
         if (override_dwa_w_speed >= 0.0f && v.planner_kind == 1)

@@ -1,0 +1,79 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1060" height="760" viewBox="0 0 1060 760" role="img" aria-labelledby="title desc">
+<title id="title">MPPI Zoo fixed-seed smoke chart</title>
+<desc id="desc">A two-panel chart comparing MPPI zoo planners on dynamic crossing final distance and narrow passage steps.</desc>
+<rect x="0.0" y="0.0" width="1060.0" height="760.0" rx="0.0" fill="#FFFFFF"/>
+<text x="42.0" y="45.0" font-family="Arial, Helvetica, sans-serif" font-size="28" fill="#101820" text-anchor="start">MPPI Zoo Fixed-Seed Smoke Result</text>
+<text x="42.0" y="72.0" font-family="Arial, Helvetica, sans-serif" font-size="14" fill="#586A7A" text-anchor="start">Mean over K=64,128 and 3 seeds per scenario/planner/K cell. Longer bars improve more over vanilla MPPI.</text>
+<text x="42.0" y="112.0" font-family="Arial, Helvetica, sans-serif" font-size="20" fill="#101820" text-anchor="start">Dynamic crossing exposes the baseline failure</text>
+<text x="42.0" y="136.0" font-family="Arial, Helvetica, sans-serif" font-size="13" fill="#586A7A" text-anchor="start">Final-distance reduction versus vanilla MPPI; labels also show mean success rate.</text>
+<line x1="247.0" y1="155.0" x2="247.0" y2="390.0" stroke="#E5EAF0" stroke-width="1"/>
+<text x="247.0" y="149.0" font-family="Arial, Helvetica, sans-serif" font-size="11" fill="#6B7C8D" text-anchor="middle">0.00</text>
+<line x1="577.0" y1="155.0" x2="577.0" y2="390.0" stroke="#E5EAF0" stroke-width="1"/>
+<text x="577.0" y="149.0" font-family="Arial, Helvetica, sans-serif" font-size="11" fill="#6B7C8D" text-anchor="middle">0.70</text>
+<line x1="907.0" y1="155.0" x2="907.0" y2="390.0" stroke="#E5EAF0" stroke-width="1"/>
+<text x="907.0" y="149.0" font-family="Arial, Helvetica, sans-serif" font-size="11" fill="#6B7C8D" text-anchor="middle">1.40</text>
+<text x="42.0" y="183.0" font-family="Arial, Helvetica, sans-serif" font-size="12" fill="#24313D" text-anchor="start">ducct_mppi_smooth</text>
+<rect x="247.0" y="170.0" width="660.0" height="17.0" rx="3.0" fill="#188F5A"/>
+<text x="915.0" y="183.0" font-family="Arial, Helvetica, sans-serif" font-size="12" fill="#24313D" text-anchor="start">+1.40  s=1.00</text>
+<text x="42.0" y="207.0" font-family="Arial, Helvetica, sans-serif" font-size="12" fill="#24313D" text-anchor="start">step_mppi_smooth</text>
+<rect x="247.0" y="194.0" width="658.6" height="17.0" rx="3.0" fill="#3478C5"/>
+<text x="913.6" y="207.0" font-family="Arial, Helvetica, sans-serif" font-size="12" fill="#24313D" text-anchor="start">+1.39  s=1.00</text>
+<text x="42.0" y="231.0" font-family="Arial, Helvetica, sans-serif" font-size="12" fill="#24313D" text-anchor="start">dbas_log_mppi_agile</text>
+<rect x="247.0" y="218.0" width="654.1" height="17.0" rx="3.0" fill="#3478C5"/>
+<text x="909.1" y="231.0" font-family="Arial, Helvetica, sans-serif" font-size="12" fill="#24313D" text-anchor="start">+1.38  s=1.00</text>
+<text x="42.0" y="255.0" font-family="Arial, Helvetica, sans-serif" font-size="12" fill="#24313D" text-anchor="start">tsallis_mppi_smooth</text>
+<rect x="247.0" y="242.0" width="652.9" height="17.0" rx="3.0" fill="#3478C5"/>
+<text x="907.9" y="255.0" font-family="Arial, Helvetica, sans-serif" font-size="12" fill="#24313D" text-anchor="start">+1.38  s=1.00</text>
+<text x="42.0" y="279.0" font-family="Arial, Helvetica, sans-serif" font-size="12" fill="#24313D" text-anchor="start">lp_mppi_smooth</text>
+<rect x="247.0" y="266.0" width="651.4" height="17.0" rx="3.0" fill="#3478C5"/>
+<text x="906.4" y="279.0" font-family="Arial, Helvetica, sans-serif" font-size="12" fill="#24313D" text-anchor="start">+1.38  s=1.00</text>
+<text x="42.0" y="303.0" font-family="Arial, Helvetica, sans-serif" font-size="12" fill="#24313D" text-anchor="start">dra_mppi_soft</text>
+<rect x="247.0" y="290.0" width="644.6" height="17.0" rx="3.0" fill="#3478C5"/>
+<text x="899.6" y="303.0" font-family="Arial, Helvetica, sans-serif" font-size="12" fill="#24313D" text-anchor="start">+1.36  s=1.00</text>
+<text x="42.0" y="327.0" font-family="Arial, Helvetica, sans-serif" font-size="12" fill="#24313D" text-anchor="start">pa_mppi_smooth</text>
+<rect x="247.0" y="314.0" width="644.0" height="17.0" rx="3.0" fill="#3478C5"/>
+<text x="899.0" y="327.0" font-family="Arial, Helvetica, sans-serif" font-size="12" fill="#24313D" text-anchor="start">+1.36  s=1.00</text>
+<text x="42.0" y="351.0" font-family="Arial, Helvetica, sans-serif" font-size="12" fill="#24313D" text-anchor="start">c2u_mppi_smooth</text>
+<rect x="247.0" y="338.0" width="637.8" height="17.0" rx="3.0" fill="#3478C5"/>
+<text x="892.8" y="351.0" font-family="Arial, Helvetica, sans-serif" font-size="12" fill="#24313D" text-anchor="start">+1.35  s=1.00</text>
+<text x="42.0" y="375.0" font-family="Arial, Helvetica, sans-serif" font-size="12" fill="#24313D" text-anchor="start">mppi</text>
+<rect x="247.0" y="362.0" width="0.0" height="17.0" rx="3.0" fill="#D84A45"/>
+<text x="255.0" y="375.0" font-family="Arial, Helvetica, sans-serif" font-size="12" fill="#24313D" text-anchor="start">+0.00  s=0.00</text>
+<text x="907.0" y="406.0" font-family="Arial, Helvetica, sans-serif" font-size="12" fill="#586A7A" text-anchor="end">final-distance reduction vs MPPI</text>
+<text x="42.0" y="445.0" font-family="Arial, Helvetica, sans-serif" font-size="20" fill="#101820" text-anchor="start">Narrow passage is solved by MPPI, but smooth variants finish sooner</text>
+<text x="42.0" y="469.0" font-family="Arial, Helvetica, sans-serif" font-size="13" fill="#586A7A" text-anchor="start">Average step reduction versus vanilla MPPI; labels also show mean success rate.</text>
+<line x1="247.0" y1="488.0" x2="247.0" y2="723.0" stroke="#E5EAF0" stroke-width="1"/>
+<text x="247.0" y="482.0" font-family="Arial, Helvetica, sans-serif" font-size="11" fill="#6B7C8D" text-anchor="middle">0.00</text>
+<line x1="577.0" y1="488.0" x2="577.0" y2="723.0" stroke="#E5EAF0" stroke-width="1"/>
+<text x="577.0" y="482.0" font-family="Arial, Helvetica, sans-serif" font-size="11" fill="#6B7C8D" text-anchor="middle">12.17</text>
+<line x1="907.0" y1="488.0" x2="907.0" y2="723.0" stroke="#E5EAF0" stroke-width="1"/>
+<text x="907.0" y="482.0" font-family="Arial, Helvetica, sans-serif" font-size="11" fill="#6B7C8D" text-anchor="middle">24.33</text>
+<text x="42.0" y="516.0" font-family="Arial, Helvetica, sans-serif" font-size="12" fill="#24313D" text-anchor="start">tsallis_mppi_smooth</text>
+<rect x="247.0" y="503.0" width="660.0" height="17.0" rx="3.0" fill="#188F5A"/>
+<text x="915.0" y="516.0" font-family="Arial, Helvetica, sans-serif" font-size="12" fill="#24313D" text-anchor="start">+24.3  s=1.00</text>
+<text x="42.0" y="540.0" font-family="Arial, Helvetica, sans-serif" font-size="12" fill="#24313D" text-anchor="start">step_mppi_smooth</text>
+<rect x="247.0" y="527.0" width="596.7" height="17.0" rx="3.0" fill="#3478C5"/>
+<text x="851.7" y="540.0" font-family="Arial, Helvetica, sans-serif" font-size="12" fill="#24313D" text-anchor="start">+22.0  s=1.00</text>
+<text x="42.0" y="564.0" font-family="Arial, Helvetica, sans-serif" font-size="12" fill="#24313D" text-anchor="start">dbas_log_mppi_agile</text>
+<rect x="247.0" y="551.0" width="569.6" height="17.0" rx="3.0" fill="#3478C5"/>
+<text x="824.6" y="564.0" font-family="Arial, Helvetica, sans-serif" font-size="12" fill="#24313D" text-anchor="start">+21.0  s=1.00</text>
+<text x="42.0" y="588.0" font-family="Arial, Helvetica, sans-serif" font-size="12" fill="#24313D" text-anchor="start">pa_mppi_smooth</text>
+<rect x="247.0" y="575.0" width="569.6" height="17.0" rx="3.0" fill="#3478C5"/>
+<text x="824.6" y="588.0" font-family="Arial, Helvetica, sans-serif" font-size="12" fill="#24313D" text-anchor="start">+21.0  s=1.00</text>
+<text x="42.0" y="612.0" font-family="Arial, Helvetica, sans-serif" font-size="12" fill="#24313D" text-anchor="start">dra_mppi_soft</text>
+<rect x="247.0" y="599.0" width="565.1" height="17.0" rx="3.0" fill="#3478C5"/>
+<text x="820.1" y="612.0" font-family="Arial, Helvetica, sans-serif" font-size="12" fill="#24313D" text-anchor="start">+20.8  s=1.00</text>
+<text x="42.0" y="636.0" font-family="Arial, Helvetica, sans-serif" font-size="12" fill="#24313D" text-anchor="start">c2u_mppi_smooth</text>
+<rect x="247.0" y="623.0" width="560.5" height="17.0" rx="3.0" fill="#3478C5"/>
+<text x="815.5" y="636.0" font-family="Arial, Helvetica, sans-serif" font-size="12" fill="#24313D" text-anchor="start">+20.7  s=1.00</text>
+<text x="42.0" y="660.0" font-family="Arial, Helvetica, sans-serif" font-size="12" fill="#24313D" text-anchor="start">ducct_mppi_smooth</text>
+<rect x="247.0" y="647.0" width="556.0" height="17.0" rx="3.0" fill="#3478C5"/>
+<text x="811.0" y="660.0" font-family="Arial, Helvetica, sans-serif" font-size="12" fill="#24313D" text-anchor="start">+20.5  s=1.00</text>
+<text x="42.0" y="684.0" font-family="Arial, Helvetica, sans-serif" font-size="12" fill="#24313D" text-anchor="start">lp_mppi_smooth</text>
+<rect x="247.0" y="671.0" width="542.5" height="17.0" rx="3.0" fill="#3478C5"/>
+<text x="797.5" y="684.0" font-family="Arial, Helvetica, sans-serif" font-size="12" fill="#24313D" text-anchor="start">+20.0  s=1.00</text>
+<text x="42.0" y="708.0" font-family="Arial, Helvetica, sans-serif" font-size="12" fill="#24313D" text-anchor="start">mppi</text>
+<rect x="247.0" y="695.0" width="0.0" height="17.0" rx="3.0" fill="#D84A45"/>
+<text x="255.0" y="708.0" font-family="Arial, Helvetica, sans-serif" font-size="12" fill="#24313D" text-anchor="start">+0.0  s=1.00</text>
+<text x="907.0" y="739.0" font-family="Arial, Helvetica, sans-serif" font-size="12" fill="#586A7A" text-anchor="end">step reduction vs MPPI</text>
+</svg>

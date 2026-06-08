@@ -50,6 +50,8 @@ struct EpisodeMetrics {
     float min_goal_distance = 0.0f;
     float cumulative_cost = 0.0f;
     int collisions = 0;
+    float mean_control_delta = 0.0f;
+    float control_roughness = 0.0f;
     float avg_control_ms = 0.0f;
     float total_control_ms = 0.0f;
     float episode_ms = 0.0f;
@@ -118,6 +120,20 @@ struct PlannerVariant {
     int grad_steps = 0;
     float alpha = 0.0f;
     float noise_sigma = DEFAULT_NOISE_SIGMA;
+    float sampling_lambda = DEFAULT_LAMBDA;
+    bool use_low_pass_sampling = false;
+    float lp_alpha = 0.35f;
+    bool use_deterministic_sampling = false;
+    int ds_iterations = 2;
+    float ds_alpha = 0.35f;
+    float ds_noise_scale = 1.5f;
+    float ds_momentum = 0.0f;
+    int ds_stride = 4093;
+    bool use_soppi_sampling = false;
+    int soppi_svgd_iters = 1;
+    float soppi_step_size = 0.060f;
+    float soppi_bandwidth = 2.0f;
+    int soppi_neighbor_count = 0;  // 0 = all particles; >0 = deterministic particle subset
 };
 
 __host__ __device__ inline float clampf_local(float v, float lo, float hi) {
@@ -263,6 +279,7 @@ __global__ void rollout_kernel(
     const float* d_nominal,
     float* d_costs,
     float* d_perturbed,
+    float* d_rollout_states,
     curandState* d_rng,
     CartPoleParams params,
     CartPoleCostParams cost_params,
@@ -279,22 +296,246 @@ __global__ void rollout_kernel(
     float theta = stheta;
     float theta_dot = stheta_dot;
     float total_cost = 0.0f;
+    bool terminated = false;
+
+    if (d_rollout_states != nullptr) {
+        d_rollout_states[k * (T + 1) * 4 + 0] = x;
+        d_rollout_states[k * (T + 1) * 4 + 1] = x_dot;
+        d_rollout_states[k * (T + 1) * 4 + 2] = theta;
+        d_rollout_states[k * (T + 1) * 4 + 3] = theta_dot;
+    }
 
     for (int t = 0; t < T; t++) {
         float action = d_nominal[t] + curand_normal(&local_rng) * noise_sigma;
         action = clampf_local(action, -1.0f, 1.0f);
         d_perturbed[k * T + t] = action;
-        cartpole_step(x, x_dot, theta, theta_dot, action, params);
-        total_cost += stage_cost(x, x_dot, theta, theta_dot, action, cost_params);
-        if (fabsf(x) > params.x_threshold) {
-            total_cost += cost_params.out_of_bounds_penalty;
-            break;
+        if (!terminated) {
+            cartpole_step(x, x_dot, theta, theta_dot, action, params);
+            total_cost += stage_cost(x, x_dot, theta, theta_dot, action, cost_params);
+            if (fabsf(x) > params.x_threshold) {
+                total_cost += cost_params.out_of_bounds_penalty;
+                terminated = true;
+            }
+        }
+        if (d_rollout_states != nullptr) {
+            d_rollout_states[k * (T + 1) * 4 + (t + 1) * 4 + 0] = x;
+            d_rollout_states[k * (T + 1) * 4 + (t + 1) * 4 + 1] = x_dot;
+            d_rollout_states[k * (T + 1) * 4 + (t + 1) * 4 + 2] = theta;
+            d_rollout_states[k * (T + 1) * 4 + (t + 1) * 4 + 3] = theta_dot;
         }
     }
 
     total_cost += terminal_cost(x, x_dot, theta, theta_dot, cost_params);
     d_costs[k] = total_cost;
     d_rng[k] = local_rng;
+}
+
+__global__ void rollout_low_pass_kernel(
+    float sx, float sx_dot, float stheta, float stheta_dot,
+    const float* d_nominal,
+    float* d_costs,
+    float* d_perturbed,
+    float* d_rollout_states,
+    curandState* d_rng,
+    CartPoleParams params,
+    CartPoleCostParams cost_params,
+    float noise_sigma,
+    float lp_alpha,
+    int K,
+    int T)
+{
+    int k = blockIdx.x * blockDim.x + threadIdx.x;
+    if (k >= K) return;
+
+    curandState local_rng = d_rng[k];
+    float x = sx;
+    float x_dot = sx_dot;
+    float theta = stheta;
+    float theta_dot = stheta_dot;
+    float total_cost = 0.0f;
+    bool terminated = false;
+    float filtered_noise = 0.0f;
+    float alpha = clampf_local(lp_alpha, 0.02f, 1.0f);
+    float beta = 1.0f - alpha;
+    float variance_gain = sqrtf((2.0f - alpha) / alpha);
+
+    if (d_rollout_states != nullptr) {
+        d_rollout_states[k * (T + 1) * 4 + 0] = x;
+        d_rollout_states[k * (T + 1) * 4 + 1] = x_dot;
+        d_rollout_states[k * (T + 1) * 4 + 2] = theta;
+        d_rollout_states[k * (T + 1) * 4 + 3] = theta_dot;
+    }
+
+    for (int t = 0; t < T; t++) {
+        filtered_noise = beta * filtered_noise + alpha * curand_normal(&local_rng);
+        float action = d_nominal[t] + filtered_noise * variance_gain * noise_sigma;
+        action = clampf_local(action, -1.0f, 1.0f);
+        d_perturbed[k * T + t] = action;
+        if (!terminated) {
+            cartpole_step(x, x_dot, theta, theta_dot, action, params);
+            total_cost += stage_cost(x, x_dot, theta, theta_dot, action, cost_params);
+            if (fabsf(x) > params.x_threshold) {
+                total_cost += cost_params.out_of_bounds_penalty;
+                terminated = true;
+            }
+        }
+        if (d_rollout_states != nullptr) {
+            d_rollout_states[k * (T + 1) * 4 + (t + 1) * 4 + 0] = x;
+            d_rollout_states[k * (T + 1) * 4 + (t + 1) * 4 + 1] = x_dot;
+            d_rollout_states[k * (T + 1) * 4 + (t + 1) * 4 + 2] = theta;
+            d_rollout_states[k * (T + 1) * 4 + (t + 1) * 4 + 3] = theta_dot;
+        }
+    }
+
+    total_cost += terminal_cost(x, x_dot, theta, theta_dot, cost_params);
+    d_costs[k] = total_cost;
+    d_rng[k] = local_rng;
+}
+
+__device__ inline float halton01_cartpole(int index, int base) {
+    float f = 1.0f / static_cast<float>(base);
+    float result = 0.0f;
+    int n = max(index, 1);
+    while (n > 0) {
+        result += f * static_cast<float>(n % base);
+        n /= base;
+        f /= static_cast<float>(base);
+    }
+    return fminf(fmaxf(result, 1.0e-6f), 1.0f - 1.0e-6f);
+}
+
+__device__ inline float deterministic_normal_cartpole(int index) {
+    float u = halton01_cartpole(index, 2);
+    float v = halton01_cartpole(index + 7919, 3);
+    return sqrtf(-2.0f * logf(u)) * cosf(6.28318530718f * v);
+}
+
+__global__ void rollout_deterministic_kernel(
+    float sx, float sx_dot, float stheta, float stheta_dot,
+    const float* d_nominal,
+    float* d_costs,
+    float* d_perturbed,
+    float* d_rollout_states,
+    CartPoleParams params,
+    CartPoleCostParams cost_params,
+    float noise_sigma,
+    int K,
+    int T,
+    int sample_seed,
+    int update_index,
+    int pass_index,
+    float ds_alpha,
+    float ds_noise_scale,
+    int ds_stride)
+{
+    int k = blockIdx.x * blockDim.x + threadIdx.x;
+    if (k >= K) return;
+
+    float x = sx;
+    float x_dot = sx_dot;
+    float theta = stheta;
+    float theta_dot = stheta_dot;
+    float total_cost = 0.0f;
+    bool terminated = false;
+    float filtered_noise = 0.0f;
+    float alpha = clampf_local(ds_alpha, 0.02f, 1.0f);
+    float beta = 1.0f - alpha;
+    float variance_gain = sqrtf((2.0f - alpha) / alpha);
+    int stride = max(ds_stride, 1);
+    int pair_count = max((K + 1) / 2, 1);
+
+    if (d_rollout_states != nullptr) {
+        d_rollout_states[k * (T + 1) * 4 + 0] = x;
+        d_rollout_states[k * (T + 1) * 4 + 1] = x_dot;
+        d_rollout_states[k * (T + 1) * 4 + 2] = theta;
+        d_rollout_states[k * (T + 1) * 4 + 3] = theta_dot;
+    }
+
+    for (int t = 0; t < T; t++) {
+        float raw_noise = 0.0f;
+        if (k > 0) {
+            int sample_slot = k - 1;
+            int pair = sample_slot / 2;
+            float sign = (sample_slot & 1) ? -1.0f : 1.0f;
+            int idx = 1 + (sample_seed + 1) * 65537
+                    + (update_index + 1) * stride
+                    + (pass_index + 1) * 104729
+                    + (t + 1) * pair_count
+                    + pair;
+            raw_noise = sign * deterministic_normal_cartpole(idx);
+        }
+
+        filtered_noise = beta * filtered_noise + alpha * raw_noise;
+        float action = d_nominal[t] + filtered_noise * variance_gain * noise_sigma * ds_noise_scale;
+        action = clampf_local(action, -1.0f, 1.0f);
+        d_perturbed[k * T + t] = action;
+        if (!terminated) {
+            cartpole_step(x, x_dot, theta, theta_dot, action, params);
+            total_cost += stage_cost(x, x_dot, theta, theta_dot, action, cost_params);
+            if (fabsf(x) > params.x_threshold) {
+                total_cost += cost_params.out_of_bounds_penalty;
+                terminated = true;
+            }
+        }
+        if (d_rollout_states != nullptr) {
+            d_rollout_states[k * (T + 1) * 4 + (t + 1) * 4 + 0] = x;
+            d_rollout_states[k * (T + 1) * 4 + (t + 1) * 4 + 1] = x_dot;
+            d_rollout_states[k * (T + 1) * 4 + (t + 1) * 4 + 2] = theta;
+            d_rollout_states[k * (T + 1) * 4 + (t + 1) * 4 + 3] = theta_dot;
+        }
+    }
+
+    total_cost += terminal_cost(x, x_dot, theta, theta_dot, cost_params);
+    d_costs[k] = total_cost;
+}
+
+__global__ void rollout_fixed_controls_kernel(
+    float sx, float sx_dot, float stheta, float stheta_dot,
+    const float* d_controls,
+    float* d_costs,
+    float* d_rollout_states,
+    CartPoleParams params,
+    CartPoleCostParams cost_params,
+    int K,
+    int T)
+{
+    int k = blockIdx.x * blockDim.x + threadIdx.x;
+    if (k >= K) return;
+
+    float x = sx;
+    float x_dot = sx_dot;
+    float theta = stheta;
+    float theta_dot = stheta_dot;
+    float total_cost = 0.0f;
+    bool terminated = false;
+
+    if (d_rollout_states != nullptr) {
+        d_rollout_states[k * (T + 1) * 4 + 0] = x;
+        d_rollout_states[k * (T + 1) * 4 + 1] = x_dot;
+        d_rollout_states[k * (T + 1) * 4 + 2] = theta;
+        d_rollout_states[k * (T + 1) * 4 + 3] = theta_dot;
+    }
+
+    for (int t = 0; t < T; t++) {
+        float action = clampf_local(d_controls[k * T + t], -1.0f, 1.0f);
+        if (!terminated) {
+            cartpole_step(x, x_dot, theta, theta_dot, action, params);
+            total_cost += stage_cost(x, x_dot, theta, theta_dot, action, cost_params);
+            if (fabsf(x) > params.x_threshold) {
+                total_cost += cost_params.out_of_bounds_penalty;
+                terminated = true;
+            }
+        }
+        if (d_rollout_states != nullptr) {
+            d_rollout_states[k * (T + 1) * 4 + (t + 1) * 4 + 0] = x;
+            d_rollout_states[k * (T + 1) * 4 + (t + 1) * 4 + 1] = x_dot;
+            d_rollout_states[k * (T + 1) * 4 + (t + 1) * 4 + 2] = theta;
+            d_rollout_states[k * (T + 1) * 4 + (t + 1) * 4 + 3] = theta_dot;
+        }
+    }
+
+    total_cost += terminal_cost(x, x_dot, theta, theta_dot, cost_params);
+    d_costs[k] = total_cost;
 }
 
 __global__ void compute_weights_kernel(const float* d_costs, float* d_weights, int K, float lambda) {
@@ -320,6 +561,13 @@ __global__ void update_controls_kernel(float* d_nominal, const float* d_perturbe
     float action = 0.0f;
     for (int k = 0; k < K; k++) action += d_weights[k] * d_perturbed[k * T + t];
     d_nominal[t] = clampf_local(action, -1.0f, 1.0f);
+}
+
+__global__ void blend_controls_with_previous_kernel(float* d_nominal, const float* d_previous, int T, float momentum) {
+    int t = blockIdx.x * blockDim.x + threadIdx.x;
+    if (t >= T) return;
+    float keep = clampf_local(momentum, 0.0f, 0.95f);
+    d_nominal[t] = clampf_local(keep * d_previous[t] + (1.0f - keep) * d_nominal[t], -1.0f, 1.0f);
 }
 
 __global__ void rollout_nominal_kernel(
@@ -388,6 +636,93 @@ __global__ void gradient_step_kernel(float* d_nominal, const float* d_grad, floa
     int t = blockIdx.x * blockDim.x + threadIdx.x;
     if (t >= T) return;
     d_nominal[t] = clampf_local(d_nominal[t] - alpha * d_grad[t], -1.0f, 1.0f);
+}
+
+__global__ void sample_action_gradient_kernel(
+    const float* d_controls,
+    const float* d_rollout_states,
+    float* d_action_grads,
+    CartPoleParams params,
+    CartPoleCostParams cost_params,
+    int K,
+    int T)
+{
+    int k = blockIdx.x * blockDim.x + threadIdx.x;
+    if (k >= K) return;
+
+    const float* states = &d_rollout_states[k * (T + 1) * 4];
+    float adj[4];
+    terminal_grad(
+        states[T * 4 + 0], states[T * 4 + 1], states[T * 4 + 2], states[T * 4 + 3],
+        cost_params, adj);
+
+    for (int t = T - 1; t >= 0; t--) {
+        float x = states[t * 4 + 0];
+        float x_dot = states[t * 4 + 1];
+        float theta = states[t * 4 + 2];
+        float theta_dot = states[t * 4 + 3];
+        float action = d_controls[k * T + t];
+
+        float J[4][5];
+        float stage_grad_vec[5];
+        float next_adj[4];
+
+        cartpole_jacobian(x, x_dot, theta, theta_dot, action, params, J);
+        stage_cost_grad(x, x_dot, theta, theta_dot, action, cost_params, stage_grad_vec);
+
+        float action_grad = stage_grad_vec[4];
+        for (int row = 0; row < 4; row++) action_grad += J[row][4] * adj[row];
+        d_action_grads[k * T + t] = action_grad;
+
+        for (int col = 0; col < 4; col++) {
+            next_adj[col] = stage_grad_vec[col];
+            for (int row = 0; row < 4; row++) next_adj[col] += J[row][col] * adj[row];
+        }
+        for (int i = 0; i < 4; i++) adj[i] = next_adj[i];
+    }
+}
+
+__global__ void soppi_svgd_step_kernel(
+    const float* d_controls,
+    float* d_controls_next,
+    const float* d_action_grads,
+    int K,
+    int T,
+    int neighbor_count,
+    float lambda,
+    float bandwidth,
+    float step_size,
+    float noise_sigma)
+{
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    int total = K * T;
+    if (idx >= total) return;
+
+    const float sigma = fmaxf(0.05f, noise_sigma);
+    const float h = fmaxf(0.10f, bandwidth);
+    int k = idx / T;
+    int t = idx - k * T;
+    float action_i = d_controls[k * T + t];
+    int neighbor_samples = K;
+    if (neighbor_count > 0 && neighbor_count < K) neighbor_samples = neighbor_count;
+    int stride = K / neighbor_samples;
+    if (stride < 1) stride = 1;
+
+    float phi = 0.0f;
+    for (int m = 0; m < neighbor_samples; m++) {
+        int j = neighbor_count > 0 ? (k + m * stride) % K : m;
+        float action_j = d_controls[j * T + t];
+        float du = (action_j - action_i) / sigma;
+        float k_rbf = expf(-(du * du) / h);
+
+        float grad_action = d_action_grads[j * T + t];
+        float score = -clampf_local(grad_action / fmaxf(lambda, 1.0e-3f), -25.0f, 25.0f);
+        float repel = -2.0f * k_rbf * du / (h * sigma);
+        phi += k_rbf * score + repel;
+    }
+    phi /= fmaxf(1.0f, static_cast<float>(neighbor_samples));
+    float delta = clampf_local(step_size * phi, -0.20f, 0.20f);
+    d_controls_next[k * T + t] = clampf_local(action_i + delta, -1.0f, 1.0f);
 }
 
 static vector<int> parse_int_list(const string& text) {
@@ -470,8 +805,16 @@ public:
         CUDA_CHECK(cudaMalloc(&d_perturbed_, k_samples_ * t_horizon_ * sizeof(float)));
         CUDA_CHECK(cudaMalloc(&d_weights_, k_samples_ * sizeof(float)));
         CUDA_CHECK(cudaMalloc(&d_states_, (t_horizon_ + 1) * 4 * sizeof(float)));
+        CUDA_CHECK(cudaMalloc(&d_rollout_states_, k_samples_ * (t_horizon_ + 1) * 4 * sizeof(float)));
         CUDA_CHECK(cudaMalloc(&d_grad_, t_horizon_ * sizeof(float)));
         CUDA_CHECK(cudaMalloc(&d_rng_, k_samples_ * sizeof(curandState)));
+        if (variant_.use_deterministic_sampling) {
+            CUDA_CHECK(cudaMalloc(&d_nominal_prev_, t_horizon_ * sizeof(float)));
+        }
+        if (variant_.use_soppi_sampling) {
+            CUDA_CHECK(cudaMalloc(&d_soppi_scratch_, k_samples_ * t_horizon_ * sizeof(float)));
+            CUDA_CHECK(cudaMalloc(&d_soppi_grad_, k_samples_ * t_horizon_ * sizeof(float)));
+        }
 
         CUDA_CHECK(cudaMemcpy(d_nominal_, h_nominal_.data(), t_horizon_ * sizeof(float), cudaMemcpyHostToDevice));
         init_curand();
@@ -485,8 +828,12 @@ public:
         if (d_perturbed_) cudaFree(d_perturbed_);
         if (d_weights_) cudaFree(d_weights_);
         if (d_states_) cudaFree(d_states_);
+        if (d_rollout_states_) cudaFree(d_rollout_states_);
         if (d_grad_) cudaFree(d_grad_);
         if (d_rng_) cudaFree(d_rng_);
+        if (d_nominal_prev_) cudaFree(d_nominal_prev_);
+        if (d_soppi_scratch_) cudaFree(d_soppi_scratch_);
+        if (d_soppi_grad_) cudaFree(d_soppi_grad_);
     }
 
     EpisodeMetrics run() {
@@ -502,6 +849,12 @@ public:
         bool track_violation = false;
         int stable_steps = 0;
         int executed_steps = 0;
+        float prev_action = 0.0f;
+        bool have_prev_action = false;
+        float control_delta_sum = 0.0f;
+        float control_roughness_sum = 0.0f;
+        int control_delta_count = 0;
+        controller_update_count_ = 0;
 
         for (int step = 0; step < scenario_.max_steps; step++) {
             auto control_begin = chrono::steady_clock::now();
@@ -512,6 +865,14 @@ public:
             control_ms_total += control_ms;
 
             float action = h_nominal_[0];
+            if (have_prev_action) {
+                float du = action - prev_action;
+                control_delta_sum += fabsf(du);
+                control_roughness_sum += du * du;
+                control_delta_count++;
+            }
+            prev_action = action;
+            have_prev_action = true;
             cartpole_step(x_, x_dot_, theta_, theta_dot_, action, scenario_.params);
             cumulative_cost += stage_cost(x_, x_dot_, theta_, theta_dot_, action, scenario_.cost_params);
             executed_steps = step + 1;
@@ -559,10 +920,13 @@ public:
         metrics.min_goal_distance = best_error;
         metrics.cumulative_cost = cumulative_cost;
         metrics.collisions = track_violation ? 1 : 0;
+        metrics.mean_control_delta = control_delta_count > 0 ? control_delta_sum / control_delta_count : 0.0f;
+        metrics.control_roughness = control_delta_count > 0 ? control_roughness_sum / control_delta_count : 0.0f;
         metrics.avg_control_ms = control_ms_total / max(1, executed_steps);
         metrics.total_control_ms = control_ms_total;
         metrics.episode_ms = episode_ms;
-        metrics.sample_budget = static_cast<long long>(executed_steps) * static_cast<long long>(k_samples_);
+        int sampling_passes = variant_.use_deterministic_sampling ? max(1, variant_.ds_iterations) : 1;
+        metrics.sample_budget = static_cast<long long>(executed_steps) * sampling_passes * static_cast<long long>(k_samples_);
         return metrics;
     }
 
@@ -587,12 +951,55 @@ private:
 
     void controller_update() {
         int block = 256;
-        rollout_kernel<<<(k_samples_ + block - 1) / block, block>>>(
-            x_, x_dot_, theta_, theta_dot_, d_nominal_, d_costs_, d_perturbed_, d_rng_,
-            scenario_.params, scenario_.cost_params, variant_.noise_sigma, k_samples_, t_horizon_);
-        compute_weights_kernel<<<1, 1>>>(d_costs_, d_weights_, k_samples_, DEFAULT_LAMBDA);
-        update_controls_kernel<<<(t_horizon_ + block - 1) / block, block>>>(
-            d_nominal_, d_perturbed_, d_weights_, k_samples_, t_horizon_);
+        int open_loop_passes = variant_.use_deterministic_sampling ? max(1, variant_.ds_iterations) : 1;
+        for (int pass = 0; pass < open_loop_passes; pass++) {
+            if (variant_.use_deterministic_sampling && d_nominal_prev_ != nullptr) {
+                CUDA_CHECK(cudaMemcpy(d_nominal_prev_, d_nominal_, t_horizon_ * sizeof(float), cudaMemcpyDeviceToDevice));
+            }
+
+            if (variant_.use_deterministic_sampling) {
+                rollout_deterministic_kernel<<<(k_samples_ + block - 1) / block, block>>>(
+                    x_, x_dot_, theta_, theta_dot_, d_nominal_, d_costs_, d_perturbed_, d_rollout_states_,
+                    scenario_.params, scenario_.cost_params, variant_.noise_sigma, k_samples_, t_horizon_,
+                    seed_, controller_update_count_, pass, variant_.ds_alpha, variant_.ds_noise_scale,
+                    variant_.ds_stride);
+            } else if (variant_.use_low_pass_sampling) {
+                rollout_low_pass_kernel<<<(k_samples_ + block - 1) / block, block>>>(
+                    x_, x_dot_, theta_, theta_dot_, d_nominal_, d_costs_, d_perturbed_, d_rollout_states_, d_rng_,
+                    scenario_.params, scenario_.cost_params, variant_.noise_sigma, variant_.lp_alpha,
+                    k_samples_, t_horizon_);
+            } else {
+                rollout_kernel<<<(k_samples_ + block - 1) / block, block>>>(
+                    x_, x_dot_, theta_, theta_dot_, d_nominal_, d_costs_, d_perturbed_, d_rollout_states_, d_rng_,
+                    scenario_.params, scenario_.cost_params, variant_.noise_sigma, k_samples_, t_horizon_);
+            }
+            if (variant_.use_soppi_sampling) {
+                int total_particles = k_samples_ * t_horizon_;
+                for (int iter = 0; iter < max(1, variant_.soppi_svgd_iters); iter++) {
+                    sample_action_gradient_kernel<<<(k_samples_ + block - 1) / block, block>>>(
+                        d_perturbed_, d_rollout_states_, d_soppi_grad_,
+                        scenario_.params, scenario_.cost_params, k_samples_, t_horizon_);
+                    soppi_svgd_step_kernel<<<(total_particles + block - 1) / block, block>>>(
+                        d_perturbed_, d_soppi_scratch_, d_soppi_grad_,
+                        k_samples_, t_horizon_, variant_.soppi_neighbor_count,
+                        variant_.sampling_lambda, variant_.soppi_bandwidth, variant_.soppi_step_size,
+                        variant_.noise_sigma);
+                    CUDA_CHECK(cudaMemcpy(d_perturbed_, d_soppi_scratch_,
+                                          k_samples_ * t_horizon_ * sizeof(float),
+                                          cudaMemcpyDeviceToDevice));
+                    rollout_fixed_controls_kernel<<<(k_samples_ + block - 1) / block, block>>>(
+                        x_, x_dot_, theta_, theta_dot_, d_perturbed_, d_costs_, d_rollout_states_,
+                        scenario_.params, scenario_.cost_params, k_samples_, t_horizon_);
+                }
+            }
+            compute_weights_kernel<<<1, 1>>>(d_costs_, d_weights_, k_samples_, variant_.sampling_lambda);
+            update_controls_kernel<<<(t_horizon_ + block - 1) / block, block>>>(
+                d_nominal_, d_perturbed_, d_weights_, k_samples_, t_horizon_);
+            if (variant_.use_deterministic_sampling && variant_.ds_momentum > 0.0f && d_nominal_prev_ != nullptr) {
+                blend_controls_with_previous_kernel<<<(t_horizon_ + block - 1) / block, block>>>(
+                    d_nominal_, d_nominal_prev_, t_horizon_, variant_.ds_momentum);
+            }
+        }
 
         if (variant_.use_gradient) {
             for (int gs = 0; gs < variant_.grad_steps; gs++) {
@@ -603,6 +1010,7 @@ private:
         }
 
         CUDA_CHECK(cudaDeviceSynchronize());
+        controller_update_count_++;
     }
 
     void shift_nominal() {
@@ -639,14 +1047,19 @@ private:
     float* d_perturbed_ = nullptr;
     float* d_weights_ = nullptr;
     float* d_states_ = nullptr;
+    float* d_rollout_states_ = nullptr;
     float* d_grad_ = nullptr;
     curandState* d_rng_ = nullptr;
+    float* d_nominal_prev_ = nullptr;
+    float* d_soppi_scratch_ = nullptr;
+    float* d_soppi_grad_ = nullptr;
+    int controller_update_count_ = 0;
 };
 
 static void write_csv(const vector<EpisodeMetrics>& rows, const string& path) {
     ofstream out(path);
     out << "scenario,planner,seed,k_samples,t_horizon,grad_steps,alpha,reached_goal,collision_free,success,steps,"
-           "final_distance,min_goal_distance,cumulative_cost,collisions,avg_control_ms,total_control_ms,episode_ms,sample_budget\n";
+           "final_distance,min_goal_distance,cumulative_cost,collisions,mean_control_delta,control_roughness,avg_control_ms,total_control_ms,episode_ms,sample_budget\n";
     for (const auto& r : rows) {
         out << r.scenario << ','
             << r.planner << ','
@@ -663,6 +1076,8 @@ static void write_csv(const vector<EpisodeMetrics>& rows, const string& path) {
             << r.min_goal_distance << ','
             << r.cumulative_cost << ','
             << r.collisions << ','
+            << r.mean_control_delta << ','
+            << r.control_roughness << ','
             << r.avg_control_ms << ','
             << r.total_control_ms << ','
             << r.episode_ms << ','
@@ -707,6 +1122,17 @@ int main(int argc, char** argv) {
     int seed_count = -1;
     int override_grad_steps = -1;
     float override_alpha = -1.0f;
+    float override_sampling_lambda = -1.0f;
+    float override_lp_alpha = -1.0f;
+    int override_ds_iterations = -1;
+    float override_ds_alpha = -1.0f;
+    float override_ds_noise_scale = -1.0f;
+    float override_ds_momentum = -1.0f;
+    int override_ds_stride = -1;
+    int override_soppi_iters = -1;
+    int override_soppi_neighbor_count = -1;
+    float override_soppi_step_size = -1.0f;
+    float override_soppi_bandwidth = -1.0f;
 
     for (int i = 1; i < argc; i++) {
         string arg = argv[i];
@@ -718,6 +1144,17 @@ int main(int argc, char** argv) {
         else if (arg == "--planners" && i + 1 < argc) planner_names = parse_string_list(argv[++i]);
         else if (arg == "--override-grad-steps" && i + 1 < argc) override_grad_steps = atoi(argv[++i]);
         else if (arg == "--override-alpha" && i + 1 < argc) override_alpha = atof(argv[++i]);
+        else if (arg == "--override-lambda" && i + 1 < argc) override_sampling_lambda = atof(argv[++i]);
+        else if (arg == "--override-lp-alpha" && i + 1 < argc) override_lp_alpha = atof(argv[++i]);
+        else if (arg == "--override-ds-iters" && i + 1 < argc) override_ds_iterations = atoi(argv[++i]);
+        else if (arg == "--override-ds-alpha" && i + 1 < argc) override_ds_alpha = atof(argv[++i]);
+        else if (arg == "--override-ds-noise-scale" && i + 1 < argc) override_ds_noise_scale = atof(argv[++i]);
+        else if (arg == "--override-ds-momentum" && i + 1 < argc) override_ds_momentum = atof(argv[++i]);
+        else if (arg == "--override-ds-stride" && i + 1 < argc) override_ds_stride = atoi(argv[++i]);
+        else if (arg == "--override-soppi-iters" && i + 1 < argc) override_soppi_iters = atoi(argv[++i]);
+        else if (arg == "--override-soppi-neighbors" && i + 1 < argc) override_soppi_neighbor_count = max(0, atoi(argv[++i]));
+        else if (arg == "--override-soppi-step-size" && i + 1 < argc) override_soppi_step_size = atof(argv[++i]);
+        else if (arg == "--override-soppi-bandwidth" && i + 1 < argc) override_soppi_bandwidth = atof(argv[++i]);
     }
 
     if (k_values.empty()) k_values = quick ? vector<int>{256, 512} : vector<int>{256, 512, 1024, 2048};
@@ -738,11 +1175,92 @@ int main(int argc, char** argv) {
         return 1;
     }
 
-    vector<PlannerVariant> variants = {
-        {"mppi", false, 0, 0.0f, 0.40f},
-        {"diff_mppi_1", true, 1, 0.020f, 0.36f},
-        {"diff_mppi_3", true, 3, 0.010f, 0.36f},
-    };
+    vector<PlannerVariant> variants;
+    {
+        PlannerVariant v;
+        v.name = "mppi";
+        v.noise_sigma = 0.40f;
+        variants.push_back(v);
+    }
+    {
+        PlannerVariant v;
+        v.name = "lp_mppi";
+        v.noise_sigma = 0.40f;
+        v.use_low_pass_sampling = true;
+        v.lp_alpha = 0.35f;
+        variants.push_back(v);
+    }
+    {
+        PlannerVariant v;
+        v.name = "lp_mppi_smooth";
+        v.noise_sigma = 0.40f;
+        v.use_low_pass_sampling = true;
+        v.lp_alpha = 0.20f;
+        variants.push_back(v);
+    }
+    {
+        PlannerVariant v;
+        v.name = "ds_mppi";
+        v.noise_sigma = 0.55f;
+        v.sampling_lambda = 1.0f;
+        v.use_deterministic_sampling = true;
+        v.ds_iterations = 2;
+        v.ds_alpha = 0.20f;
+        v.ds_noise_scale = 0.80f;
+        v.ds_momentum = 0.0f;
+        variants.push_back(v);
+    }
+    {
+        PlannerVariant v;
+        v.name = "ds_mppi_smooth";
+        v.noise_sigma = 0.50f;
+        v.sampling_lambda = 0.8f;
+        v.use_deterministic_sampling = true;
+        v.ds_iterations = 2;
+        v.ds_alpha = 0.35f;
+        v.ds_noise_scale = 0.60f;
+        v.ds_momentum = 0.0f;
+        variants.push_back(v);
+    }
+    {
+        PlannerVariant v;
+        v.name = "diff_mppi_1";
+        v.use_gradient = true;
+        v.grad_steps = 1;
+        v.alpha = 0.020f;
+        v.noise_sigma = 0.36f;
+        variants.push_back(v);
+    }
+    {
+        PlannerVariant v;
+        v.name = "diff_mppi_3";
+        v.use_gradient = true;
+        v.grad_steps = 3;
+        v.alpha = 0.010f;
+        v.noise_sigma = 0.36f;
+        variants.push_back(v);
+    }
+    {
+        PlannerVariant v;
+        v.name = "soppi";
+        v.use_soppi_sampling = true;
+        v.noise_sigma = 0.40f;
+        v.soppi_svgd_iters = 1;
+        v.soppi_step_size = 0.060f;
+        v.soppi_bandwidth = 2.0f;
+        variants.push_back(v);
+    }
+    {
+        PlannerVariant v;
+        v.name = "soppi_fast";
+        v.use_soppi_sampling = true;
+        v.noise_sigma = 0.40f;
+        v.soppi_svgd_iters = 1;
+        v.soppi_step_size = 0.060f;
+        v.soppi_bandwidth = 2.0f;
+        v.soppi_neighbor_count = 32;
+        variants.push_back(v);
+    }
     if (!planner_names.empty()) {
         vector<PlannerVariant> filtered;
         for (const auto& variant : variants) {
@@ -763,6 +1281,28 @@ int main(int argc, char** argv) {
             v.grad_steps = override_grad_steps;
         if (override_alpha >= 0.0f && v.use_gradient)
             v.alpha = override_alpha;
+        if (override_sampling_lambda >= 0.0f)
+            v.sampling_lambda = override_sampling_lambda;
+        if (override_lp_alpha >= 0.0f && v.use_low_pass_sampling)
+            v.lp_alpha = override_lp_alpha;
+        if (override_ds_iterations > 0 && v.use_deterministic_sampling)
+            v.ds_iterations = override_ds_iterations;
+        if (override_ds_alpha >= 0.0f && v.use_deterministic_sampling)
+            v.ds_alpha = override_ds_alpha;
+        if (override_ds_noise_scale >= 0.0f && v.use_deterministic_sampling)
+            v.ds_noise_scale = override_ds_noise_scale;
+        if (override_ds_momentum >= 0.0f && v.use_deterministic_sampling)
+            v.ds_momentum = override_ds_momentum;
+        if (override_ds_stride > 0 && v.use_deterministic_sampling)
+            v.ds_stride = override_ds_stride;
+        if (override_soppi_iters >= 0 && v.use_soppi_sampling)
+            v.soppi_svgd_iters = override_soppi_iters;
+        if (override_soppi_neighbor_count >= 0 && v.use_soppi_sampling)
+            v.soppi_neighbor_count = override_soppi_neighbor_count;
+        if (override_soppi_step_size >= 0.0f && v.use_soppi_sampling)
+            v.soppi_step_size = override_soppi_step_size;
+        if (override_soppi_bandwidth >= 0.0f && v.use_soppi_sampling)
+            v.soppi_bandwidth = override_soppi_bandwidth;
     }
 
     vector<EpisodeMetrics> rows;
@@ -774,7 +1314,7 @@ int main(int argc, char** argv) {
             for (size_t vi = 0; vi < variants.size(); vi++) {
                 const auto& variant = variants[vi];
                 for (int seed = 0; seed < seed_count; seed++) {
-                    int run_seed = static_cast<int>(4000 + si * 100 + vi * 20 + seed * 7 + k_samples);
+                    int run_seed = static_cast<int>(4000 + si * 100 + seed * 7 + k_samples);
                     EpisodeRunner runner(variant, scenario, k_samples, DEFAULT_T_HORIZON, run_seed);
                     EpisodeMetrics metrics = runner.run();
                     rows.push_back(metrics);
