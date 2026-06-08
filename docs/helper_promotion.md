@@ -11,8 +11,8 @@ This report watches shared helper extraction without auto-promoting helpers into
 | `best_scored_row` | 2 | 2 | 4 | `promotion_watch` |
 | `fastest_row` | 1 | 3 | 4 | `keep_in_experiments` |
 | `feasible_rows` | 1 | 3 | 4 | `keep_in_experiments` |
-| `normalized_row_values` | 2 | 2 | 4 | `promotion_watch` |
-| `rows_for_dataset_scenario` | 2 | 6 | 4 | `promotion_watch` |
+| `normalized_row_values` | 1 | 1 | 4 | `keep_in_experiments` |
+| `rows_for_dataset_scenario` | 1 | 3 | 4 | `keep_in_experiments` |
 
 ## Details
 
@@ -65,34 +65,30 @@ Imported by:
 
 ### `normalized_row_values`
 
-Classification: `promotion_watch`
+Classification: `keep_in_experiments`
 
-shared across multiple problems and has survived enough snapshots to watch closely
+still too local or too young to promote beyond the experiment layer
 
-Problems: `planner_selection, time_budget_selection`
+Problems: `time_budget_selection`
 
 Min snapshots across those problems: `4`
 
 Imported by:
 
-- `experiments/planner_selection/functional_selector.py`
 - `experiments/time_budget_selection/functional_budget_selector.py`
 
 ### `rows_for_dataset_scenario`
 
-Classification: `promotion_watch`
+Classification: `keep_in_experiments`
 
-shared across multiple problems and has survived enough snapshots to watch closely
+still too local or too young to promote beyond the experiment layer
 
-Problems: `planner_selection, time_budget_selection`
+Problems: `time_budget_selection`
 
 Min snapshots across those problems: `4`
 
 Imported by:
 
-- `experiments/planner_selection/functional_selector.py`
-- `experiments/planner_selection/oop_selector.py`
-- `experiments/planner_selection/pipeline_selector.py`
 - `experiments/time_budget_selection/functional_budget_selector.py`
 - `experiments/time_budget_selection/oop_budget_selector.py`
 - `experiments/time_budget_selection/pipeline_budget_selector.py`
