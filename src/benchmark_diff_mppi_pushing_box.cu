@@ -622,16 +622,26 @@ __global__ void grad_vec_kernel(
         d_grad[kp] = dcost_dparam_box(start, d_nominal, T, kp, gx, gy, gth, p);
 }
 
-__global__ void sample_grad_kernel(
-    const float* d_start, const float* d_controls, float* d_control_grads,
-    BoxParams p, float gx, float gy, float gth, int K, int T)
+__global__ void soppi_timestep_score_kernel(
+    const float* d_start, const float* d_controls, float* d_scores,
+    BoxParams p, float gx, float gy, float gth, int K, int T, float lambda)
 {
-    int k = blockIdx.x * blockDim.x + threadIdx.x;
-    if (k >= K) return;
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    int total = K * T;
+    if (idx >= total) return;
+
+    int k = idx / T;
+    int t = idx - k * T;
+    int base = k * T * CTRL_DIM + t * CTRL_DIM;
     float start[STATE_DIM] = { d_start[0], d_start[1], d_start[2], d_start[3], d_start[4] };
-    const float* controls = &d_controls[k*T*CTRL_DIM];
-    for (int param = 0; param < T*CTRL_DIM; param++)
-        d_control_grads[k*T*CTRL_DIM + param] = dcost_dparam_box(start, controls, T, param, gx, gy, gth, p);
+    const float* controls = &d_controls[k * T * CTRL_DIM];
+    float inv_lambda = 1.0f / fmaxf(lambda, 1.0e-3f);
+    d_scores[base + 0] = -clampf_local(
+        dcost_dparam_box(start, controls, T, t * CTRL_DIM + 0, gx, gy, gth, p) * inv_lambda,
+        -25.0f, 25.0f);
+    d_scores[base + 1] = -clampf_local(
+        dcost_dparam_box(start, controls, T, t * CTRL_DIM + 1, gx, gy, gth, p) * inv_lambda,
+        -25.0f, 25.0f);
 }
 
 __global__ void soppi_svgd_step_kernel(
@@ -876,19 +886,26 @@ private:
             rollout_kernel<<<(K_+b-1)/b,b>>>(d_start_, d_nominal_, d_costs_, d_perturbed_, d_rng_, sc_.params, sc_.gx, sc_.gy, sc_.gth, K_, T_, v_.sigma);
         if (v_.use_soppi_sampling) {
             int total_particles = K_ * T_;
+            float* d_controls_src = d_perturbed_;
+            float* d_controls_dst = d_soppi_scratch_;
             for (int iter = 0; iter < max(1, v_.soppi_svgd_iters); iter++) {
-                sample_grad_kernel<<<(K_+b-1)/b,b>>>(
-                    d_start_, d_perturbed_, d_soppi_grad_,
-                    sc_.params, sc_.gx, sc_.gy, sc_.gth, K_, T_);
+                soppi_timestep_score_kernel<<<(total_particles+b-1)/b,b>>>(
+                    d_start_, d_controls_src, d_soppi_grad_,
+                    sc_.params, sc_.gx, sc_.gy, sc_.gth, K_, T_, v_.lambda);
                 soppi_svgd_step_kernel<<<(total_particles+b-1)/b,b>>>(
-                    d_perturbed_, d_soppi_scratch_, d_soppi_grad_,
+                    d_controls_src, d_controls_dst, d_soppi_grad_,
                     sc_.params, K_, T_, v_.soppi_neighbor_count,
                     v_.lambda, v_.soppi_bandwidth, v_.soppi_step_size, v_.sigma);
-                CUDA_CHECK(cudaMemcpy(d_perturbed_, d_soppi_scratch_,
-                                      K_*T_*CTRL_DIM*sizeof(float), cudaMemcpyDeviceToDevice));
                 fixed_rollout_kernel<<<(K_+b-1)/b,b>>>(
-                    d_start_, d_perturbed_, d_costs_,
+                    d_start_, d_controls_dst, d_costs_,
                     sc_.params, sc_.gx, sc_.gy, sc_.gth, K_, T_);
+                float* tmp = d_controls_src;
+                d_controls_src = d_controls_dst;
+                d_controls_dst = tmp;
+            }
+            if (d_controls_src != d_perturbed_) {
+                CUDA_CHECK(cudaMemcpy(d_perturbed_, d_controls_src,
+                                      K_*T_*CTRL_DIM*sizeof(float), cudaMemcpyDeviceToDevice));
             }
         }
         weights_kernel<<<1,1>>>(d_costs_, d_weights_, K_, v_.lambda);
