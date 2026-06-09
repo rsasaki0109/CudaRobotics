@@ -67,6 +67,7 @@ This is a reproduction scaffold, not yet a full paper-faithful reproduction:
 - The box-pushing SVGD score also uses differentiable contact cost gradients through each sampled control sequence. It exposes stronger sample-distribution effects than disk pushing, but the built-in success thresholds are still strict enough that many cells improve final error/cost without reaching success.
 - The implementation applies SVGD independently at each horizon timestep to keep the kernel dimension meaningful, matching the paper's motivation, but it does not reproduce the paper's RNN gradient approximation for non-differentiable dynamics.
 - Runtime is `O(K^2 * T)` when `soppi_neighbor_count=0`. `soppi_fast` reduces this to `O(K * N * T)` with a deterministic particle subset of size `N`, which is much faster but approximate.
+- The 2026-06-09 kernel pass precomputes per-timestep SVGD scores in `O(K * T)` before the neighbor aggregation, and removes per-iteration control-buffer copies.
 - Current validation is on the existing 2D bicycle navigation, CartPole, planar pushing, and box-pushing benchmarks, not the paper's 7-DOF arm pushing or planar biped tasks.
 - Scenario filtering can change the scenario index used in the benchmark seed formula. Planner comparisons within a single command share seeds, but separate commands with different `--scenarios` ordering should not be treated as exact seed-matched reruns.
 
@@ -380,6 +381,10 @@ Default planner comparison, seed-count 4, `K=256`:
 | box_swivel | diff_mppi_3 | 0.75 | 100.0 | 0.27 | 1.8 | 1.82 |
 | box_swivel | soppi | 1.00 | 89.0 | 0.22 | 1.5 | 1.08 |
 | box_swivel | soppi_fast | 1.00 | 86.0 | 0.22 | 1.5 | 1.00 |
+
+After the 2026-06-09 kernel pass on the same benchmark, a fresh local rerun at
+`K=256`, seed-count 4 reports `soppi_fast` at `0.53 ms` and `soppi` at
+`0.61 ms` with `1.00` success on `box_swivel`.
 | box_turn | mppi | 0.00 | 260.0 | 0.41 | 4.6 | 0.10 |
 | box_turn | diff_mppi_3 | 0.00 | 260.0 | 0.39 | 4.1 | 1.88 |
 | box_turn | soppi | 0.00 | 260.0 | 0.41 | 4.6 | 1.06 |
@@ -404,10 +409,74 @@ Observed pattern:
 - `box_align` shows a large final-distance/cost reduction (`0.43 -> 0.28`, `7.8 -> 3.8` for `soppi_fast`) even though it does not cross the strict success threshold in this quick run.
 - `box_turn` and `box_pivot` are mostly insensitive under the current quick budget.
 - `soppi_fast` is the better practical default for this benchmark; it keeps most of the quality signal while avoiding the all-pairs kernel.
-- SOPPI is still roughly 9x to 10x slower than vanilla MPPI for `K=256` in this implementation, so kernel optimization matters before larger-scale benchmarking.
+- Before the 2026-06-09 kernel pass, SOPPI was roughly 9x to 10x slower than vanilla MPPI for `K=256` on box pushing.
+
+## Navigation Suite, 2026-06-10
+
+Checked-in fixed-seed suite row:
+
+- Report: [`results/mppi_zoo_suite_2026-06-10.md`](results/mppi_zoo_suite_2026-06-10.md)
+- CSV: [`results/mppi_zoo_suite_2026-06-10.csv`](results/mppi_zoo_suite_2026-06-10.csv)
+
+Reproduce just the SOPPI cells:
+
+```bash
+python3 scripts/run_mppi_zoo_suite.py \
+  --bin bin/benchmark_diff_mppi \
+  --planners mppi,soppi,soppi_fast \
+  --stem mppi_zoo_soppi_nav_check
+```
+
+Aggregate over five scenarios and `K=64,128`:
+
+| Planner | Solved | Success | Final d | Avg ms |
+|---|---:|---:|---:|---:|
+| mppi | 2/10 | 0.20 | 4.95 | 0.126 |
+| soppi | 2/10 | 0.20 | 4.46 | 0.302 |
+| soppi_fast | 2/10 | 0.20 | 4.51 | 0.251 |
+
+Observed pattern:
+
+- Both SOPPI variants clear only `narrow_passage` at `K=64` and `K=128`.
+- On dynamic stress scenes (`dynamic_crossing`, `dynamic_pincer`,
+  `uncertain_crossing`, `model_mismatch_crossing`) SOPPI matches vanilla MPPI
+  failure modes in this lightweight score implementation.
+- `soppi_fast` is about 1.2x to 1.7x faster than all-pairs `soppi`, but still
+  1.5x to 3x slower than `step_mppi_smooth` on the same cells.
+- Treat this row as honest negative coverage on navigation; box pushing remains
+  the stronger reproduction target.
+
+## Kernel Optimization, 2026-06-09
+
+The first SOPPI pass spent too much time inside the SVGD loop:
+
+- Navigation (`benchmark_diff_mppi.cu`) recomputed `stage_cost_grad` inside every neighbor lookup.
+- Box/pushing benchmarks (`benchmark_diff_mppi_pushing_box.cu`, `benchmark_diff_mppi_pushing.cu`) computed full `2T` autodiff gradients from only `K` threads, then copied controls with `cudaMemcpy` every SVGD iteration.
+
+Changes:
+
+- Navigation now uses `soppi_stage_score_kernel` (`K*T` threads, one stage score each) plus a score-only `soppi_svgd_step_kernel`.
+- Box/pushing now use `soppi_timestep_score_kernel` / `push_soppi_timestep_score_kernel` with `K*T` parallelism.
+- All three benchmarks ping-pong control buffers instead of device-to-device copying every SVGD iteration.
+
+Local rerun on `box_swivel`, `K=256`, seed-count 4:
+
+| Planner | Success | Steps | Final Dist | Cost | Avg ms |
+|---|---:|---:|---:|---:|---:|
+| mppi | 1.00 | 73.0 | 0.213 | 1.2 | 0.43 |
+| soppi | 1.00 | 65.5 | 0.216 | 1.1 | 0.61 |
+| soppi_fast | 1.00 | 66.0 | 0.215 | 1.1 | 0.53 |
+
+Observed speedup versus the old checked-in box-pushing note:
+
+- `soppi_fast`: about **1.9x faster** (1.00 ms -> 0.53 ms) while keeping the same success/steps signal.
+- `soppi` all-pairs: about **1.8x faster** (1.08 ms -> 0.61 ms).
+- Navigation at `K=256` is now about **1.5x to 1.7x slower than MPPI**, not an order of magnitude slower.
+
+Quality check: the optimized `box_swivel` run still reaches `1.00` success for both `soppi` and `soppi_fast`, with the same step-count advantage over MPPI.
 
 ## Next Steps
 
-1. Profile the SOPPI kernels and reduce the per-sample gradient cost, especially for box pushing.
-2. Add a `--baseline-planners` option to `scripts/sweep_soppi.py` if repeated comparisons against Diff-MPPI are needed.
-3. Add a harder pushing benchmark with contact loss, obstacle detours, or stricter box orientation goals.
+1. Add a `--baseline-planners` option to `scripts/sweep_soppi.py` if repeated comparisons against Diff-MPPI are needed.
+2. Add a harder pushing benchmark with contact loss, obstacle detours, or stricter box orientation goals.
+3. Consider caching partial rollout states for the box autodiff score kernel if another speed pass is needed.
