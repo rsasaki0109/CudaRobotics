@@ -10,10 +10,10 @@ impractical on CPU stay comfortably inside a 20 Hz control budget:
 
 | batch_size (K) | mean solve time | max | control budget @ 20 Hz |
 |---:|---:|---:|---:|
-| 2,048  | 0.7 ms | 5.5 ms | 50 ms |
-| 8,192  | 1.8 ms | 6.3 ms | 50 ms |
-| 16,384 | 2.7 ms | 9.3 ms | 50 ms |
-| 65,536 | 9.0 ms | 17.8 ms | 50 ms |
+| 2,048  | 1.4 ms | 8.5 ms | 50 ms |
+| 8,192  | 2.6 ms | 11.2 ms | 50 ms |
+| 16,384 | 3.3 ms | 11.6 ms | 50 ms |
+| 65,536 | 9.6 ms | 18.4 ms | 50 ms |
 
 Measured with `mppi_gpu_standalone` (T=56, dt=0.05, 200×200 costmap upload
 included) on an RTX 4070 Ti SUPER, ROS 2 Jazzy, CUDA 12.0. For reference,
@@ -28,8 +28,8 @@ the same plant through the same costmap and plan at 20 Hz
 
 | | K=1–2k | K=5k | K=10k | K=16k | K=65k |
 |---|---:|---:|---:|---:|---:|
-| nav2 MPPI (CPU) mean | 2.0–4.3 ms | 10.6 ms | 20.7 ms | — | — |
-| CUDA MPPI (GPU) mean | 1.0 ms | — | — | 2.8 ms | 8.3 ms |
+| nav2 MPPI (CPU) mean | 2.2–4.5 ms | 11.4 ms | 22.9 ms | — | — |
+| CUDA MPPI (GPU) mean | 1.8 ms | — | — | 3.3 ms | 9.6 ms |
 
 Full setup, honest caveats (the stock CPU critic set still reaches the goal
 ~15% sooner in sim time — tuning, not architecture), and reproduction steps:
@@ -59,7 +59,8 @@ python3 scripts/render_nav2_loopback_demo.py /tmp/nav2_demo
 (Gazebo physics simulation not exercised yet — the loopback sim covers the
 full Nav2 software stack but not sensor pipelines.)
 
-Differential-drive (`v`, `ω`) only for now. Costs implemented:
+Motion models: **DiffDrive** (`vx`, `ωz`), **Ackermann** (curvature limit
+`|ωz| ≤ |vx| / min_turning_r`), **Omni** (adds `vy`). Costs implemented:
 
 - **Path align** — squared lateral distance to the global plan window
 - **Path follow** — distance to a point `follow_lookahead` ahead on the plan
@@ -68,10 +69,14 @@ Differential-drive (`v`, `ω`) only for now. Costs implemented:
   the final goal
 - **Costmap** — per-step lookup in the local costmap; lethal/inscribed cells
   add a collision penalty, inflated cells add a graded cost
+- **Footprint** (optional, `consider_footprint`) — the robot's polygon
+  footprint is swept along each rollout; edge cells are sampled at costmap
+  resolution and lethal hits count as collisions. Gated on non-zero inflated
+  cost, so it requires an inflation layer and stays cheap in free space
 - **Smoothness / backward motion / control limits**
 
-Not yet implemented: footprint (robot is treated as a point — use an
-inflated costmap), Ackermann/omni motion models, retreat behaviors.
+Not yet implemented: retreat/recovery behaviors, SE(2) footprint check for
+rotation-in-place on point-symmetric footprints.
 
 ## Build
 
@@ -93,6 +98,7 @@ ros2 run cuda_mppi_controller plugin_load_test
 # closed-loop synthetic scenario (wall with a gap) + solve-time report
 ros2 run cuda_mppi_controller mppi_gpu_standalone           # default K=2048
 ros2 run cuda_mppi_controller mppi_gpu_standalone 16384     # K sweep
+ros2 run cuda_mppi_controller mppi_gpu_standalone 2048 ackermann   # or omni / footprint
 ```
 
 ## Use with Nav2
@@ -119,8 +125,13 @@ controller_server:
 | `time_steps` | 56 | horizon length |
 | `model_dt` | 0.05 | [s] integration step |
 | `iteration_count` | 1 | optimizer iterations per control cycle |
+| `motion_model` | DiffDrive | DiffDrive / Ackermann / Omni |
 | `v_max` / `v_min` / `w_max` | 0.5 / -0.35 / 1.9 | control limits |
+| `vy_max` | 0.5 | lateral velocity limit (Omni) |
+| `min_turning_r` | 0.2 | [m] minimum turning radius (Ackermann) |
 | `v_std` / `w_std` | 0.2 / 0.4 | sampling noise std |
+| `vy_std` | 0.2 | lateral noise std (Omni) |
+| `consider_footprint` | false | polygon footprint collision check (needs inflation layer) |
 | `temperature` | 0.35 | MPPI softmin λ |
 | `goal_weight` | 20.0 | terminal local-goal distance (linear) |
 | `goal_yaw_weight` | 3.0 | terminal yaw error near the final goal |

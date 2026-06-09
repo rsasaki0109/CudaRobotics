@@ -25,14 +25,18 @@ and `cuda_mppi_controller` (GPU), both loaded through pluginlib exactly as
 
 | controller | K | result | sim time to goal | mean solve | p95 | max |
 |---|---:|---|---:|---:|---:|---:|
-| nav2 MPPI (CPU) | 1,000 | success | 16.0 s | 2.05 ms | 2.87 ms | 3.31 ms |
-| nav2 MPPI (CPU) | 2,000 | success | 16.2 s | 4.27 ms | 5.49 ms | 6.32 ms |
-| nav2 MPPI (CPU) | 5,000 | success | 16.5 s | 10.57 ms | 13.65 ms | 19.01 ms |
-| nav2 MPPI (CPU) | 10,000 | success | 16.3 s | 20.73 ms | 24.94 ms | 28.93 ms |
-| CUDA MPPI (GPU) | 2,048 | success | 19.4 s | 1.04 ms | 4.68 ms | 5.70 ms |
-| CUDA MPPI (GPU) | 8,192 | success | 19.1 s | 1.89 ms | 5.00 ms | 6.15 ms |
-| CUDA MPPI (GPU) | 16,384 | success | 18.9 s | 2.76 ms | 5.68 ms | 6.33 ms |
-| CUDA MPPI (GPU) | 65,536 | success | 18.8 s | 8.31 ms | 11.85 ms | 12.71 ms |
+| nav2 MPPI (CPU) | 1,000 | success | 16.0 s | 2.17 ms | 2.80 ms | 3.11 ms |
+| nav2 MPPI (CPU) | 2,000 | success | 16.2 s | 4.52 ms | 5.71 ms | 6.21 ms |
+| nav2 MPPI (CPU) | 5,000 | success | 16.5 s | 11.40 ms | 15.72 ms | 17.00 ms |
+| nav2 MPPI (CPU) | 10,000 | success | 16.3 s | 22.94 ms | 27.68 ms | 33.17 ms |
+| CUDA MPPI (GPU) | 2,048 | success | 19.4 s | 1.80 ms | 4.93 ms | 10.44 ms |
+| CUDA MPPI (GPU) | 8,192 | success | 19.1 s | 2.40 ms | 5.24 ms | 7.01 ms |
+| CUDA MPPI (GPU) | 16,384 | success | 18.9 s | 3.26 ms | 6.11 ms | 10.45 ms |
+| CUDA MPPI (GPU) | 65,536 | success | 18.8 s | 9.65 ms | 12.21 ms | 19.29 ms |
+
+(Numbers from the 3-DOF-control kernel that also supports Ackermann/Omni
+and footprint checking; the GPU rollout pays ~0.5 ms over the earlier
+diff-drive-only kernel.)
 
 Side-by-side rollout (CPU K=2,000 vs GPU K=16,384):
 [`gif/cuda_mppi_vs_nav2_cpu.gif`](../../gif/cuda_mppi_vs_nav2_cpu.gif)

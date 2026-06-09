@@ -18,8 +18,9 @@ namespace cuda_mppi_controller
 namespace
 {
 
-constexpr int kCtrlDim = 2;       // (v, w)
+constexpr int kCtrlDim = 3;       // (vx, vy, wz); vy stays 0 outside Omni
 constexpr int kMaxPathPoints = 256;
+constexpr int kMaxFootprint = 16;
 
 #define CUDA_CHECK(expr) \
   do { \
@@ -36,8 +37,10 @@ struct DeviceParams
   int K;
   int T;
   float dt;
-  float v_max, v_min, w_max;
-  float v_std, w_std;
+  int motion_model;   // 0 DiffDrive, 1 Ackermann, 2 Omni
+  float v_max, v_min, vy_max, w_max;
+  float min_turning_r;
+  float v_std, vy_std, w_std;
   float goal_w, goal_yaw_w, path_w, follow_w, costmap_w, smooth_w, backward_w;
   int follow_offset;   // path index offset for the path-follow cost
   float collision_cost;
@@ -52,12 +55,56 @@ struct DeviceParams
   float goal_x, goal_y, goal_yaw;
   int goal_is_final;
 
+  // footprint polygon, base frame (footprint_len == 0 -> point robot)
+  int footprint_len;
+  float fp[kMaxFootprint * 2];
+
   float start_x, start_y, start_yaw;
 };
 
 __device__ __forceinline__ float wrap_angle(float a)
 {
   return atan2f(sinf(a), cosf(a));
+}
+
+__device__ __forceinline__ unsigned char cell_cost(
+  const unsigned char * __restrict__ costmap, const DeviceParams & p,
+  float x, float y)
+{
+  int mx = __float2int_rd((x - p.origin_x) / p.resolution);
+  int my = __float2int_rd((y - p.origin_y) / p.resolution);
+  if (mx < 0 || mx >= p.size_x || my < 0 || my >= p.size_y) {
+    return 0;  // out of the local costmap -> treat as free
+  }
+  return costmap[my * p.size_x + mx];
+}
+
+// Sample the footprint polygon edges at costmap resolution and report
+// whether any cell under them is lethal.
+__device__ bool footprint_collides(
+  const unsigned char * __restrict__ costmap, const DeviceParams & p,
+  float x, float y, float yaw)
+{
+  const float c = cosf(yaw);
+  const float s = sinf(yaw);
+  for (int i = 0; i < p.footprint_len; ++i) {
+    const int j = (i + 1) % p.footprint_len;
+    const float ax = x + p.fp[2 * i + 0] * c - p.fp[2 * i + 1] * s;
+    const float ay = y + p.fp[2 * i + 0] * s + p.fp[2 * i + 1] * c;
+    const float bx = x + p.fp[2 * j + 0] * c - p.fp[2 * j + 1] * s;
+    const float by = y + p.fp[2 * j + 0] * s + p.fp[2 * j + 1] * c;
+    const float len = hypotf(bx - ax, by - ay);
+    const int n = max(1, __float2int_ru(len / p.resolution));
+    for (int t = 0; t <= n; ++t) {
+      const float u = static_cast<float>(t) / n;
+      const unsigned char cost =
+        cell_cost(costmap, p, ax + u * (bx - ax), ay + u * (by - ay));
+      if (cost == 254) {  // LETHAL_OBSTACLE
+        return true;
+      }
+    }
+  }
+  return false;
 }
 
 __global__ void init_rng_kernel(curandState * states, unsigned long long seed, int n)
@@ -89,33 +136,55 @@ __global__ void rollout_kernel(
   float yaw = p.start_yaw;
   float cost = 0.0f;
   float prev_v = nominal[0];
-  float prev_w = nominal[1];
+  float prev_vy = nominal[1];
+  float prev_w = nominal[2];
 
   for (int t = 0; t < p.T; ++t) {
     // Sample k==0 carries the unperturbed nominal so the previous solution
     // always stays in the candidate set.
-    float nv = (k == 0) ? 0.0f : curand_normal(&rng) * p.v_std;
-    float nw = (k == 0) ? 0.0f : curand_normal(&rng) * p.w_std;
+    const bool perturb = (k != 0);
+    float nv = perturb ? curand_normal(&rng) * p.v_std : 0.0f;
+    float nw = perturb ? curand_normal(&rng) * p.w_std : 0.0f;
     float v = fminf(fmaxf(nominal[t * kCtrlDim + 0] + nv, p.v_min), p.v_max);
-    float w = fminf(fmaxf(nominal[t * kCtrlDim + 1] + nw, -p.w_max), p.w_max);
+    float vy = 0.0f;
+    if (p.motion_model == 2) {  // Omni
+      float nvy = perturb ? curand_normal(&rng) * p.vy_std : 0.0f;
+      vy = fminf(fmaxf(nominal[t * kCtrlDim + 1] + nvy, -p.vy_max), p.vy_max);
+    }
+    float w = fminf(fmaxf(nominal[t * kCtrlDim + 2] + nw, -p.w_max), p.w_max);
+    if (p.motion_model == 1) {  // Ackermann: curvature limit
+      const float w_dyn = fabsf(v) / p.min_turning_r;
+      w = fminf(fmaxf(w, -w_dyn), w_dyn);
+    }
     perturbed[(k * p.T + t) * kCtrlDim + 0] = v;
-    perturbed[(k * p.T + t) * kCtrlDim + 1] = w;
+    perturbed[(k * p.T + t) * kCtrlDim + 1] = vy;
+    perturbed[(k * p.T + t) * kCtrlDim + 2] = w;
 
-    // unicycle / diff-drive integration
-    x += p.dt * v * cosf(yaw);
-    y += p.dt * v * sinf(yaw);
+    const float cy = cosf(yaw);
+    const float sy = sinf(yaw);
+    x += p.dt * (v * cy - vy * sy);
+    y += p.dt * (v * sy + vy * cy);
     yaw = wrap_angle(yaw + p.dt * w);
 
     // costmap cost (treat out-of-bounds as free: local costmap edge)
     if (p.size_x > 0) {
-      int mx = __float2int_rd((x - p.origin_x) / p.resolution);
-      int my = __float2int_rd((y - p.origin_y) / p.resolution);
-      if (mx >= 0 && mx < p.size_x && my >= 0 && my < p.size_y) {
-        unsigned char c = costmap[my * p.size_x + mx];
-        if (c >= p.lethal_threshold && c != 255) {  // 255 = NO_INFORMATION
+      const unsigned char c = cell_cost(costmap, p, x, y);
+      if (c != 255) {  // 255 = NO_INFORMATION
+        if (p.footprint_len > 0) {
+          // footprint mode: lethal center always collides; otherwise run the
+          // polygon edge check, gated on inflated cost so free space is cheap
+          if (c == 254 ||
+            (c > 0 && footprint_collides(costmap, p, x, y, yaw)))
+          {
+            cost += p.collision_cost;
+          } else {
+            const float cn = static_cast<float>(c) / 252.0f;
+            cost += p.costmap_w * cn * cn * p.dt;
+          }
+        } else if (c >= p.lethal_threshold) {
           cost += p.collision_cost;
-        } else if (c != 255) {
-          float cn = static_cast<float>(c) / 252.0f;
+        } else {
+          const float cn = static_cast<float>(c) / 252.0f;
           cost += p.costmap_w * cn * cn * p.dt;
         }
       }
@@ -147,10 +216,12 @@ __global__ void rollout_kernel(
 
     // smoothness + backward motion penalties
     float dv = v - prev_v;
+    float dvy = vy - prev_vy;
     float dw = w - prev_w;
-    cost += p.smooth_w * (dv * dv + dw * dw);
+    cost += p.smooth_w * (dv * dv + dvy * dvy + dw * dw);
     cost += p.backward_w * fmaxf(-v, 0.0f) * p.dt;
     prev_v = v;
+    prev_vy = vy;
     prev_w = w;
   }
 
@@ -282,7 +353,8 @@ MppiResult MppiGpu::compute(
   const unsigned char * costmap, int size_x, int size_y,
   float origin_x, float origin_y, float resolution,
   const float * path_xy, int path_len,
-  float goal_x, float goal_y, float goal_yaw, bool goal_is_final)
+  float goal_x, float goal_y, float goal_yaw, bool goal_is_final,
+  const float * footprint_xy, int footprint_len)
 {
   Impl & im = *impl_;
   const MppiParams & mp = im.params;
@@ -321,10 +393,14 @@ MppiResult MppiGpu::compute(
   dp.K = K;
   dp.T = T;
   dp.dt = mp.model_dt;
+  dp.motion_model = static_cast<int>(mp.motion_model);
   dp.v_max = std::min(mp.v_max, im.v_max_limit);
   dp.v_min = mp.v_min;
+  dp.vy_max = mp.vy_max;
   dp.w_max = mp.w_max;
+  dp.min_turning_r = std::max(mp.min_turning_r, 1.0e-3f);
   dp.v_std = mp.v_std;
+  dp.vy_std = mp.vy_std;
   dp.w_std = mp.w_std;
   dp.goal_w = mp.goal_weight;
   dp.goal_yaw_w = mp.goal_yaw_weight;
@@ -347,6 +423,13 @@ MppiResult MppiGpu::compute(
   dp.goal_y = goal_y;
   dp.goal_yaw = goal_yaw;
   dp.goal_is_final = goal_is_final ? 1 : 0;
+  dp.footprint_len = 0;
+  if (mp.consider_footprint && footprint_xy != nullptr && footprint_len >= 3) {
+    dp.footprint_len = std::min(footprint_len, kMaxFootprint);
+    for (int i = 0; i < dp.footprint_len * 2; ++i) {
+      dp.fp[i] = footprint_xy[i];
+    }
+  }
   dp.start_x = robot_x;
   dp.start_y = robot_y;
   dp.start_yaw = robot_yaw;
@@ -389,14 +472,16 @@ MppiResult MppiGpu::compute(
 
   MppiResult res;
   res.v = im.h_nominal[0];
-  res.w = im.h_nominal[1];
+  res.vy = im.h_nominal[1];
+  res.w = im.h_nominal[2];
   res.best_cost = min_cost;
   res.all_colliding = min_cost >= mp.collision_cost;
 
   // warm start: shift the horizon one step, repeat the last control
   for (int t = 0; t < T - 1; ++t) {
-    im.h_nominal[t * kCtrlDim + 0] = im.h_nominal[(t + 1) * kCtrlDim + 0];
-    im.h_nominal[t * kCtrlDim + 1] = im.h_nominal[(t + 1) * kCtrlDim + 1];
+    for (int d = 0; d < kCtrlDim; ++d) {
+      im.h_nominal[t * kCtrlDim + d] = im.h_nominal[(t + 1) * kCtrlDim + d];
+    }
   }
   CUDA_CHECK(cudaMemcpy(
       im.d_nominal, im.h_nominal.data(),

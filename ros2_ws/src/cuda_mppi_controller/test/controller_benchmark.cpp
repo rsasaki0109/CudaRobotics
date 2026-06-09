@@ -10,6 +10,7 @@
 #include <chrono>
 #include <cmath>
 #include <cstdio>
+#include <filesystem>
 #include <fstream>
 #include <memory>
 #include <string>
@@ -196,6 +197,7 @@ int main(int argc, char ** argv)
 {
   rclcpp::init(argc, argv);
   const std::string out_dir = argc > 1 ? argv[1] : ".";
+  std::filesystem::create_directories(out_dir);
 
   // shared synthetic costmap, configured but never activated (no sensors)
   rclcpp::NodeOptions costmap_options;

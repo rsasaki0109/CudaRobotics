@@ -11,11 +11,16 @@ controller_server:
       time_steps: 56            # horizon length
       model_dt: 0.05            # [s]
       iteration_count: 1
+      motion_model: "DiffDrive" # DiffDrive / Ackermann / Omni
       v_max: 0.5                # [m/s]
       v_min: -0.35              # [m/s]
+      vy_max: 0.5               # [m/s] (Omni)
       w_max: 1.9                # [rad/s]
+      min_turning_r: 0.2        # [m] (Ackermann)
       v_std: 0.2
+      vy_std: 0.2               # (Omni)
       w_std: 0.4
+      consider_footprint: false # polygon footprint check (needs inflation layer)
       temperature: 0.35         # MPPI softmin lambda
       goal_weight: 20.0         # terminal local-goal distance (linear)
       goal_yaw_weight: 3.0

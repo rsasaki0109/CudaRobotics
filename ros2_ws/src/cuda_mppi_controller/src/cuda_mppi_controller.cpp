@@ -42,8 +42,11 @@ void CudaMppiController::configure(
   int time_steps = params_.time_steps;
   int iteration_count = params_.iteration_count;
   double model_dt = params_.model_dt;
+  std::string motion_model = "DiffDrive";
   double v_max = params_.v_max, v_min = params_.v_min, w_max = params_.w_max;
-  double v_std = params_.v_std, w_std = params_.w_std;
+  double vy_max = params_.vy_max, min_turning_r = params_.min_turning_r;
+  double v_std = params_.v_std, vy_std = params_.vy_std, w_std = params_.w_std;
+  bool consider_footprint = params_.consider_footprint;
   double lambda = params_.lambda;
   double goal_weight = params_.goal_weight;
   double goal_yaw_weight = params_.goal_yaw_weight;
@@ -59,11 +62,16 @@ void CudaMppiController::configure(
   declare_get("time_steps", time_steps, time_steps);
   declare_get("iteration_count", iteration_count, iteration_count);
   declare_get("model_dt", model_dt, model_dt);
+  declare_get("motion_model", motion_model, motion_model);
   declare_get("v_max", v_max, v_max);
   declare_get("v_min", v_min, v_min);
+  declare_get("vy_max", vy_max, vy_max);
   declare_get("w_max", w_max, w_max);
+  declare_get("min_turning_r", min_turning_r, min_turning_r);
   declare_get("v_std", v_std, v_std);
+  declare_get("vy_std", vy_std, vy_std);
   declare_get("w_std", w_std, w_std);
+  declare_get("consider_footprint", consider_footprint, consider_footprint);
   declare_get("temperature", lambda, lambda);
   declare_get("goal_weight", goal_weight, goal_weight);
   declare_get("goal_yaw_weight", goal_yaw_weight, goal_yaw_weight);
@@ -81,11 +89,26 @@ void CudaMppiController::configure(
   params_.time_steps = time_steps;
   params_.iteration_count = iteration_count;
   params_.model_dt = static_cast<float>(model_dt);
+  if (motion_model == "DiffDrive") {
+    params_.motion_model = MotionModel::DiffDrive;
+  } else if (motion_model == "Ackermann") {
+    params_.motion_model = MotionModel::Ackermann;
+  } else if (motion_model == "Omni") {
+    params_.motion_model = MotionModel::Omni;
+  } else {
+    throw std::runtime_error(
+            "CudaMppiController: unknown motion_model '" + motion_model +
+            "' (DiffDrive / Ackermann / Omni)");
+  }
   params_.v_max = static_cast<float>(v_max);
   params_.v_min = static_cast<float>(v_min);
+  params_.vy_max = static_cast<float>(vy_max);
   params_.w_max = static_cast<float>(w_max);
+  params_.min_turning_r = static_cast<float>(min_turning_r);
   params_.v_std = static_cast<float>(v_std);
+  params_.vy_std = static_cast<float>(vy_std);
   params_.w_std = static_cast<float>(w_std);
+  params_.consider_footprint = consider_footprint;
   params_.lambda = static_cast<float>(lambda);
   params_.goal_weight = static_cast<float>(goal_weight);
   params_.goal_yaw_weight = static_cast<float>(goal_yaw_weight);
@@ -212,6 +235,14 @@ geometry_msgs::msg::TwistStamped CudaMppiController::computeVelocityCommands(
   const std::vector<float> path_xy =
     extractLocalPath(pose, goal_x, goal_y, goal_yaw, goal_is_final);
 
+  std::vector<float> footprint_xy;
+  if (params_.consider_footprint) {
+    for (const auto & pt : costmap_ros_->getRobotFootprint()) {
+      footprint_xy.push_back(static_cast<float>(pt.x));
+      footprint_xy.push_back(static_cast<float>(pt.y));
+    }
+  }
+
   nav2_costmap_2d::Costmap2D * costmap = costmap_ros_->getCostmap();
   MppiResult result;
   {
@@ -227,7 +258,8 @@ geometry_msgs::msg::TwistStamped CudaMppiController::computeVelocityCommands(
       static_cast<float>(costmap->getOriginY()),
       static_cast<float>(costmap->getResolution()),
       path_xy.data(), static_cast<int>(path_xy.size() / 2),
-      goal_x, goal_y, goal_yaw, goal_is_final);
+      goal_x, goal_y, goal_yaw, goal_is_final,
+      footprint_xy.data(), static_cast<int>(footprint_xy.size() / 2));
   }
 
   if (result.all_colliding) {
@@ -239,6 +271,9 @@ geometry_msgs::msg::TwistStamped CudaMppiController::computeVelocityCommands(
   cmd.header.stamp = pose.header.stamp;
   cmd.header.frame_id = costmap_ros_->getBaseFrameID();
   cmd.twist.linear.x = result.v;
+  if (params_.motion_model == MotionModel::Omni) {
+    cmd.twist.linear.y = result.vy;
+  }
   cmd.twist.angular.z = result.w;
   return cmd;
 }

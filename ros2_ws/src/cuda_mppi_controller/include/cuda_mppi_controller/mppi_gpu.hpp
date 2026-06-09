@@ -8,6 +8,13 @@
 namespace cuda_mppi_controller
 {
 
+enum class MotionModel
+{
+  DiffDrive,
+  Ackermann,   // curvature-limited: |wz| <= |vx| / min_turning_r
+  Omni         // adds lateral velocity vy
+};
+
 struct MppiParams
 {
   int batch_size = 2048;        // K: sampled trajectories (1 CUDA thread each)
@@ -15,13 +22,18 @@ struct MppiParams
   float model_dt = 0.05f;       // [s] integration step
   int iteration_count = 1;      // optimizer iterations per control cycle
 
-  // control limits (diff drive)
-  float v_max = 0.5f;           // [m/s]
+  MotionModel motion_model = MotionModel::DiffDrive;
+
+  // control limits
+  float v_max = 0.5f;           // [m/s] forward
   float v_min = -0.35f;         // [m/s]
+  float vy_max = 0.5f;          // [m/s] lateral (Omni only)
   float w_max = 1.9f;           // [rad/s]
+  float min_turning_r = 0.2f;   // [m] (Ackermann only)
 
   // sampling noise std
   float v_std = 0.2f;
+  float vy_std = 0.2f;          // (Omni only)
   float w_std = 0.4f;
 
   float lambda = 0.35f;         // softmin temperature
@@ -39,11 +51,17 @@ struct MppiParams
 
   float yaw_goal_activation_dist = 0.5f;  // [m] enable yaw cost within this range of final goal
   unsigned char lethal_threshold = 253;   // costmap value >= this counts as collision
+
+  // footprint collision checking (instead of the point-robot threshold).
+  // Requires an inflation layer: the polygon edge check only runs on cells
+  // with non-zero inflated cost.
+  bool consider_footprint = false;
 };
 
 struct MppiResult
 {
   float v = 0.0f;
+  float vy = 0.0f;
   float w = 0.0f;
   float best_cost = 0.0f;   // min sampled trajectory cost (collision diagnosis)
   bool all_colliding = false;
@@ -67,12 +85,15 @@ public:
   // costmap: row-major uchar grid (size_x * size_y), nullptr allowed (free space).
   // path_xy: [path_len * 2] reference path points; goal is the local goal
   //          (window end), goal_is_final enables the terminal yaw cost.
+  // footprint_xy: [footprint_len * 2] polygon in base frame, used when
+  //          consider_footprint is set (max 16 vertices).
   MppiResult compute(
     float robot_x, float robot_y, float robot_yaw,
     const unsigned char * costmap, int size_x, int size_y,
     float origin_x, float origin_y, float resolution,
     const float * path_xy, int path_len,
-    float goal_x, float goal_y, float goal_yaw, bool goal_is_final);
+    float goal_x, float goal_y, float goal_yaw, bool goal_is_final,
+    const float * footprint_xy = nullptr, int footprint_len = 0);
 
 private:
   struct Impl;

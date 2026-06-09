@@ -2,10 +2,12 @@
 // costmap with a wall gap, a straight reference path, and a closed-loop
 // simulation. Prints per-cycle solve time and exits non-zero if the goal
 // is not reached or the wall is hit.
+#include <algorithm>
 #include <chrono>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <string>
 #include <vector>
 
 #include "cuda_mppi_controller/mppi_gpu.hpp"
@@ -33,6 +35,33 @@ void paintWallWithGap(std::vector<unsigned char> & map)
       map[my * kSizeX + mx] = 254;  // LETHAL
     }
   }
+  // exponential inflation ring (needed by the footprint-mode cost gate)
+  const float inscribed = 0.2f, scaling = 3.0f;
+  auto aabb_dist = [](float x, float y, float x0, float y0, float x1, float y1) {
+      const float ddx = std::max({x0 - x, 0.0f, x - x1});
+      const float ddy = std::max({y0 - y, 0.0f, y - y1});
+      return std::hypot(ddx, ddy);
+    };
+  for (int my = 0; my < kSizeY; ++my) {
+    for (int mx = 0; mx < kSizeX; ++mx) {
+      if (map[my * kSizeX + mx] == 254) {
+        continue;
+      }
+      const float x = (mx + 0.5f) * kRes;
+      const float y = (my + 0.5f) * kRes;
+      const float dist = std::min(
+        aabb_dist(x, y, 4.9f, 0.0f, 5.1f, 4.0f),     // wall below the gap
+        aabb_dist(x, y, 4.9f, 6.0f, 5.1f, 10.0f));   // wall above the gap
+      if (dist <= inscribed) {
+        map[my * kSizeX + mx] = 253;  // INSCRIBED
+      } else if (dist < 1.0f) {
+        const float c = 252.0f * std::exp(-scaling * (dist - inscribed));
+        if (c >= 1.0f) {
+          map[my * kSizeX + mx] = static_cast<unsigned char>(c);
+        }
+      }
+    }
+  }
 }
 
 bool isLethal(const std::vector<unsigned char> & map, float x, float y)
@@ -49,9 +78,24 @@ bool isLethal(const std::vector<unsigned char> & map, float x, float y)
 
 int main(int argc, char ** argv)
 {
+  // usage: mppi_gpu_standalone [K] [diff|ackermann|omni|footprint]
   cuda_mppi_controller::MppiParams params;
   if (argc > 1) {
     params.batch_size = std::atoi(argv[1]);  // K sweep for benchmarking
+  }
+  const std::string mode = argc > 2 ? argv[2] : "diff";
+  std::vector<float> footprint;
+  if (mode == "ackermann") {
+    params.motion_model = cuda_mppi_controller::MotionModel::Ackermann;
+    params.min_turning_r = 0.5f;
+  } else if (mode == "omni") {
+    params.motion_model = cuda_mppi_controller::MotionModel::Omni;
+  } else if (mode == "footprint") {
+    params.consider_footprint = true;
+    footprint = {0.15f, 0.15f, -0.15f, 0.15f, -0.15f, -0.15f, 0.15f, -0.15f};
+  } else if (mode != "diff") {
+    std::printf("unknown mode '%s'\n", mode.c_str());
+    return 2;
   }
   cuda_mppi_controller::MppiGpu mppi(params);
 
@@ -106,7 +150,8 @@ int main(int argc, char ** argv)
       x, y, yaw,
       map.data(), kSizeX, kSizeY, kOrigin, kOrigin, kRes,
       path_xy.data() + nearest * 2, win_end - nearest + 1,
-      local_gx, local_gy, goal_yaw, goal_is_final);
+      local_gx, local_gy, goal_yaw, goal_is_final,
+      footprint.data(), static_cast<int>(footprint.size() / 2));
     const auto t1 = std::chrono::steady_clock::now();
     const double ms = std::chrono::duration<double, std::milli>(t1 - t0).count();
     total_ms += ms;
@@ -117,9 +162,9 @@ int main(int argc, char ** argv)
       return 1;
     }
 
-    // apply first control to the plant (same unicycle model)
-    x += params.model_dt * res.v * std::cos(yaw);
-    y += params.model_dt * res.v * std::sin(yaw);
+    // apply first control to the plant (same model as the rollouts)
+    x += params.model_dt * (res.v * std::cos(yaw) - res.vy * std::sin(yaw));
+    y += params.model_dt * (res.v * std::sin(yaw) + res.vy * std::cos(yaw));
     yaw = std::atan2(
       std::sin(yaw + params.model_dt * res.w),
       std::cos(yaw + params.model_dt * res.w));
@@ -141,8 +186,8 @@ int main(int argc, char ** argv)
   }
 
   std::printf(
-    "PASS: goal reached in %d steps (%.1f sim-seconds)\n",
-    steps, steps * params.model_dt);
+    "PASS [%s]: goal reached in %d steps (%.1f sim-seconds)\n",
+    mode.c_str(), steps, steps * params.model_dt);
   std::printf(
     "solve time: mean %.2f ms, max %.2f ms (K=%d, T=%d, incl. costmap upload)\n",
     total_ms / (steps + 1), max_ms, params.batch_size, params.time_steps);
