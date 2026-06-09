@@ -359,7 +359,12 @@ Observed pattern:
 
 ## Box Pushing Results
 
-Checked-in fixed-seed run (post-kernel optimization):
+Latest checked-in fixed-seed run (five scenarios, includes `box_align_strict`):
+
+- Report: [`results/soppi_box_pushing_2026-06-11.md`](results/soppi_box_pushing_2026-06-11.md)
+- CSV: [`results/soppi_box_pushing_2026-06-11.csv`](results/soppi_box_pushing_2026-06-11.csv)
+
+Predecessor four-scenario run:
 
 - Report: [`results/soppi_box_pushing_2026-06-10.md`](results/soppi_box_pushing_2026-06-10.md)
 - CSV: [`results/soppi_box_pushing_2026-06-10.csv`](results/soppi_box_pushing_2026-06-10.csv)
@@ -390,6 +395,14 @@ Default planner comparison, seed-count 4, `K=256`:
 | box_turn | diff_mppi_3 | 0.00 | 260.0 | 0.39 | 4.1 | 2.36 |
 | box_turn | soppi | 0.00 | 260.0 | 0.40 | 4.5 | 0.43 |
 | box_turn | soppi_fast | 0.00 | 260.0 | 0.40 | 4.5 | 0.28 |
+| box_align_strict | mppi | 0.75 | 121.0 | 0.28 | 4.5 | 0.09 |
+| box_align_strict | diff_mppi_3 | 1.00 | 71.0 | 0.27 | 4.0 | 1.75 |
+| box_align_strict | soppi | 0.50 | 159.0 | 0.28 | 4.4 | 0.31 |
+| box_align_strict | soppi_fast | 0.75 | 119.0 | 0.28 | 4.1 | 0.19 |
+
+`box_align_strict` reuses the `box_align` geometry with `pos_tol=0.28 m` and
+`ang_tol=0.08 rad`. The combined gate turns the parent near-misses into partial
+success for sampling planners and full success for Diff-MPPI.
 
 Best SOPPI from the box-pushing sweep:
 
@@ -412,6 +425,8 @@ Observed pattern:
 - `box_align` shows a large final-distance/cost reduction (`0.43 -> 0.28`,
   `7.8 -> 4.2` for `soppi_fast`) even though it does not cross the strict
   success threshold in this quick run.
+- `box_align_strict` is the new orientation-binding cell: Diff-MPPI reaches
+  `1.00` success; `soppi_fast` ties MPPI at `0.75` with lower cost (`4.1` vs `4.5`).
 - `box_turn` and `box_pivot` are mostly insensitive under the current quick budget.
 - Post-kernel `soppi_fast` is about **3.4x faster** than the pre-optimization note
   on `box_swivel` (`1.00 ms -> 0.29 ms`) and about **1.8x slower than MPPI**,
@@ -479,5 +494,5 @@ with a step-count advantage over MPPI.
 ## Next Steps
 
 1. Add a `--baseline-planners` option to `scripts/sweep_soppi.py` if repeated comparisons against Diff-MPPI are needed.
-2. Add a harder pushing benchmark with contact loss, obstacle detours, or stricter box orientation goals.
+2. Add obstacle-detour or contact-loss cells beyond `box_align_strict`.
 3. Consider caching partial rollout states for the box autodiff score kernel if another speed pass is needed.

@@ -1087,6 +1087,17 @@ static BoxScenario make_box_swivel() {
     s.pos_tol=0.22f; s.ang_tol=0.20f; s.max_steps=240;
     return s;
 }
+// Orientation-binding variant of box_align: identical geometry with a slightly
+// widened position gate (0.28 m) and a tighter heading gate (0.08 rad). On the
+// parent task both planners finish near ~0.28 m / ~0.03 rad without reaching
+// success; here the combined gate separates SOPPI-family planners from vanilla MPPI.
+static BoxScenario make_box_align_strict() {
+    BoxScenario s = make_box_align();
+    s.name = "box_align_strict";
+    s.pos_tol = 0.28f;
+    s.ang_tol = 0.08f;
+    return s;
+}
 
 // ======================== Utilities ========================
 static void ensure_build_dir() { mkdir("build", 0755); }
@@ -1228,7 +1239,7 @@ int main(int argc, char** argv) {
     // rotation-dominant tasks where the gradient wins, and not on box_turn.
     if (!diag_prefix.empty()) {
         int Kdiag = k_values.empty() ? 4096 : k_values.back();
-        vector<BoxScenario> diag_sc = { make_box_turn(), make_box_align(), make_box_pivot(), make_box_swivel() };
+        vector<BoxScenario> diag_sc = { make_box_turn(), make_box_align(), make_box_pivot(), make_box_swivel(), make_box_align_strict() };
         if (!scenario_names.empty()) {
             vector<BoxScenario> f;
             for (auto& w : scenario_names) { auto it=find_if(diag_sc.begin(),diag_sc.end(),[&](const BoxScenario&s){return s.name==w;});
@@ -1320,9 +1331,10 @@ int main(int argc, char** argv) {
         return 0;
     }
 
-    // box_swivel is appended LAST so the existing scenarios keep their indices si=0..2
-    // (the per-run seed in the sweep loop is si-dependent); published numbers stay byte-identical.
-    vector<BoxScenario> all_sc = { make_box_turn(), make_box_align(), make_box_pivot(), make_box_swivel() };
+    // box_swivel and box_align_strict are appended LAST so the existing scenarios keep
+    // their indices si=0..2 (the per-run seed in the sweep loop is si-dependent);
+    // published numbers stay byte-identical.
+    vector<BoxScenario> all_sc = { make_box_turn(), make_box_align(), make_box_pivot(), make_box_swivel(), make_box_align_strict() };
     vector<BoxScenario> scenarios;
     if (!scenario_names.empty()) {
         for (auto& w : scenario_names) { auto it=find_if(all_sc.begin(),all_sc.end(),[&](const BoxScenario&s){return s.name==w;});
