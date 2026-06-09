@@ -467,6 +467,19 @@ struct EpisodeMetrics {
     long long sample_budget = 0;
 };
 
+struct TrajectoryRow {
+    string scenario;
+    string planner;
+    int seed = 0;
+    int k_samples = 0;
+    int episode_step = 0;
+    float x = 0.0f;
+    float y = 0.0f;
+    float theta = 0.0f;
+    float v = 0.0f;
+    float goal_distance = 0.0f;
+};
+
 struct TraceRow {
     string scenario;
     string planner;
@@ -3993,9 +4006,8 @@ __global__ void gradient_step_kernel(float* d_nominal, const float* d_grad, int 
     d_nominal[t * 2 + 1] = clampf(d_nominal[t * 2 + 1] - alpha * d_grad[t * 2 + 1], -max_steer, max_steer);
 }
 
-__global__ void soppi_svgd_step_kernel(
+__global__ void soppi_stage_score_kernel(
     const float* d_controls,
-    float* d_controls_next,
     const float* d_rollout_states,
     BicycleParams params,
     CostParams cost_params,
@@ -4004,8 +4016,35 @@ __global__ void soppi_svgd_step_kernel(
     int start_step,
     int K,
     int T,
-    int neighbor_count,
     float lambda,
+    float* d_scores)
+{
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    int total = K * T;
+    if (idx >= total) return;
+
+    int k = idx / T;
+    int t = idx - k * T;
+    int base = k * T * 2 + t * 2;
+    const float* state = &d_rollout_states[k * (T + 1) * 4 + t * 4];
+    float tau = (start_step + t) * params.dt;
+    float grad[6];
+    stage_cost_grad(state[0], state[1], state[2], state[3],
+                    d_controls[base + 0], d_controls[base + 1],
+                    cost_params, n_obs, n_dyn_obs, tau, grad);
+    float inv_lambda = 1.0f / fmaxf(lambda, 1.0e-3f);
+    d_scores[base + 0] = -clampf(grad[4] * inv_lambda, -25.0f, 25.0f);
+    d_scores[base + 1] = -clampf(grad[5] * inv_lambda, -25.0f, 25.0f);
+}
+
+__global__ void soppi_svgd_step_kernel(
+    const float* d_controls,
+    float* d_controls_next,
+    const float* d_scores,
+    BicycleParams params,
+    int K,
+    int T,
+    int neighbor_count,
     float bandwidth,
     float step_size)
 {
@@ -4037,18 +4076,10 @@ __global__ void soppi_svgd_step_kernel(
         float ds = (steer_j - steer_i) / noise_steer;
         float k_rbf = expf(-(da * da + ds * ds) / h);
 
-        const float* state_j = &d_rollout_states[j * (T + 1) * 4 + t * 4];
-        float tau = (start_step + t) * params.dt;
-        float grad[6];
-        stage_cost_grad(state_j[0], state_j[1], state_j[2], state_j[3],
-                        accel_j, steer_j, cost_params, n_obs, n_dyn_obs, tau, grad);
-        float score_accel = -clampf(grad[4] / fmaxf(lambda, 1.0e-3f), -25.0f, 25.0f);
-        float score_steer = -clampf(grad[5] / fmaxf(lambda, 1.0e-3f), -25.0f, 25.0f);
-
         float repel_accel = -2.0f * k_rbf * da / (h * noise_accel);
         float repel_steer = -2.0f * k_rbf * ds / (h * noise_steer);
-        phi_accel += k_rbf * score_accel + repel_accel;
-        phi_steer += k_rbf * score_steer + repel_steer;
+        phi_accel += k_rbf * d_scores[jbase + 0] + repel_accel;
+        phi_steer += k_rbf * d_scores[jbase + 1] + repel_steer;
     }
     phi_accel /= fmaxf(1.0f, static_cast<float>(neighbor_samples));
     phi_steer /= fmaxf(1.0f, static_cast<float>(neighbor_samples));
@@ -4505,10 +4536,12 @@ class EpisodeRunner {
 public:
     EpisodeRunner(const PlannerVariant& variant, const Scenario& planning_scenario, const Scenario& eval_scenario,
                   int k_samples, int t_horizon, int seed,
-                  vector<TraceRow>* trace_rows = nullptr, int trace_max_steps = 0)
+                  vector<TraceRow>* trace_rows = nullptr, int trace_max_steps = 0,
+                  vector<TrajectoryRow>* trajectory_rows = nullptr)
         : variant_(variant), planning_scenario_(planning_scenario), eval_scenario_(eval_scenario),
           k_samples_(k_samples), t_horizon_(t_horizon), seed_(seed),
-          trace_rows_(trace_rows), trace_max_steps_(trace_max_steps) {
+          trace_rows_(trace_rows), trace_max_steps_(trace_max_steps),
+          trajectory_rows_(trajectory_rows) {
         reset_state();
 
         h_nominal_.assign(t_horizon_ * 2, 0.0f);
@@ -4551,6 +4584,7 @@ public:
         }
         if (variant_.use_soppi_sampling) {
             CUDA_CHECK(cudaMalloc(&d_soppi_scratch_, k_samples_ * t_horizon_ * 2 * sizeof(float)));
+            CUDA_CHECK(cudaMalloc(&d_soppi_scores_, k_samples_ * t_horizon_ * 2 * sizeof(float)));
         }
 
         if (variant_.planner_kind == 1 || variant_.planner_kind == 4) {
@@ -4595,6 +4629,7 @@ public:
         if (d_nominal_pre_bias_) CUDA_CHECK(cudaFree(d_nominal_pre_bias_));
         if (d_ds_sigma_) CUDA_CHECK(cudaFree(d_ds_sigma_));
         if (d_soppi_scratch_) CUDA_CHECK(cudaFree(d_soppi_scratch_));
+        if (d_soppi_scores_) CUDA_CHECK(cudaFree(d_soppi_scores_));
         if (d_dwa_costs_) CUDA_CHECK(cudaFree(d_dwa_costs_));
         if (d_dwa_accels_) CUDA_CHECK(cudaFree(d_dwa_accels_));
         if (d_dwa_steers_) CUDA_CHECK(cudaFree(d_dwa_steers_));
@@ -4614,6 +4649,12 @@ public:
         reset_ds_sigma();
         reset_step_sigma();
         reset_rng();
+
+        if (trajectory_rows_ != nullptr) {
+            float goal_dx = rx_ - eval_scenario_.cost_params.goal_x;
+            float goal_dy = ry_ - eval_scenario_.cost_params.goal_y;
+            append_trajectory_row(0, sqrtf(goal_dx * goal_dx + goal_dy * goal_dy));
+        }
 
         auto episode_begin = chrono::steady_clock::now();
         float total_control_ms = 0.0f;
@@ -4680,6 +4721,12 @@ public:
 
             shift_host_policy();
             steps_taken_ = step + 1;
+
+            if (trajectory_rows_ != nullptr) {
+                float gdx = rx_ - eval_scenario_.cost_params.goal_x;
+                float gdy = ry_ - eval_scenario_.cost_params.goal_y;
+                append_trajectory_row(step + 1, sqrtf(gdx * gdx + gdy * gdy));
+            }
         }
 
         auto episode_end = chrono::steady_clock::now();
@@ -5170,22 +5217,33 @@ private:
                 }
                 if (variant_.use_soppi_sampling) {
                     int total_particles = k_samples_ * t_horizon_;
+                    float* d_controls_src = d_perturbed_;
+                    float* d_controls_dst = d_soppi_scratch_;
                     for (int iter = 0; iter < max(1, variant_.soppi_svgd_iters); iter++) {
-                        soppi_svgd_step_kernel<<<(total_particles + block - 1) / block, block>>>(
-                            d_perturbed_, d_soppi_scratch_, d_rollout_states_,
+                        soppi_stage_score_kernel<<<(total_particles + block - 1) / block, block>>>(
+                            d_controls_src, d_rollout_states_,
                             planning_scenario_.params, planning_scenario_.cost_params,
                             planning_scenario_.n_obs, planning_scenario_.n_dyn_obs,
-                            start_step, k_samples_, t_horizon_, variant_.soppi_neighbor_count,
-                            variant_.sampling_lambda,
+                            start_step, k_samples_, t_horizon_, variant_.sampling_lambda,
+                            d_soppi_scores_);
+                        soppi_svgd_step_kernel<<<(total_particles + block - 1) / block, block>>>(
+                            d_controls_src, d_controls_dst, d_soppi_scores_,
+                            planning_scenario_.params, k_samples_, t_horizon_,
+                            variant_.soppi_neighbor_count,
                             variant_.soppi_bandwidth, variant_.soppi_step_size);
-                        CUDA_CHECK(cudaMemcpy(d_perturbed_, d_soppi_scratch_,
-                                              k_samples_ * t_horizon_ * 2 * sizeof(float),
-                                              cudaMemcpyDeviceToDevice));
                         rollout_fixed_controls_kernel<<<(k_samples_ + block - 1) / block, block>>>(
-                            sx, sy, stheta, sv, d_perturbed_, d_costs_, d_rollout_states_,
+                            sx, sy, stheta, sv, d_controls_dst, d_costs_, d_rollout_states_,
                             planning_scenario_.params, planning_scenario_.cost_params,
                             planning_scenario_.n_obs, planning_scenario_.n_dyn_obs,
                             start_step, k_samples_, t_horizon_);
+                        float* tmp = d_controls_src;
+                        d_controls_src = d_controls_dst;
+                        d_controls_dst = tmp;
+                    }
+                    if (d_controls_src != d_perturbed_) {
+                        CUDA_CHECK(cudaMemcpy(d_perturbed_, d_controls_src,
+                                              k_samples_ * t_horizon_ * 2 * sizeof(float),
+                                              cudaMemcpyDeviceToDevice));
                     }
                 }
                 if (variant_.use_deterministic_sampling && variant_.ds_elite_update) {
@@ -5567,6 +5625,21 @@ private:
                 CUDA_CHECK(cudaMemcpy(h_grad_snapshot_.data(), d_grad_, h_grad_snapshot_.size() * sizeof(float), cudaMemcpyDeviceToHost));
             }
         }
+    }
+
+    void append_trajectory_row(int episode_step, float goal_distance) {
+        TrajectoryRow row;
+        row.scenario = eval_scenario_.name;
+        row.planner = variant_.name;
+        row.seed = seed_;
+        row.k_samples = k_samples_;
+        row.episode_step = episode_step;
+        row.x = rx_;
+        row.y = ry_;
+        row.theta = rtheta_;
+        row.v = rv_;
+        row.goal_distance = goal_distance;
+        trajectory_rows_->push_back(row);
     }
 
     void append_trace_rows(int episode_step, float goal_distance, float min_margin, float control_ms) {
@@ -5973,6 +6046,7 @@ private:
     float* d_nominal_pre_bias_ = nullptr;
     float* d_ds_sigma_ = nullptr;
     float* d_soppi_scratch_ = nullptr;
+    float* d_soppi_scores_ = nullptr;
     // DWA state: host-side argmin over a small grid, so we hold the grid on device
     // and a host mirror for argmin.
     float* d_dwa_costs_ = nullptr;
@@ -5993,6 +6067,7 @@ private:
     int had_path_n_ = 0;
     vector<TraceRow>* trace_rows_ = nullptr;
     int trace_max_steps_ = 0;
+    vector<TrajectoryRow>* trajectory_rows_ = nullptr;
 };
 
 static Scenario instantiate_eval_scenario(const Scenario& nominal, int seed) {
@@ -6148,19 +6223,24 @@ static Scenario make_dynamic_slalom_scene() {
     s.start_y = 6.0f;
     s.cost_params.goal_x = 46.0f;
     s.cost_params.goal_y = 44.0f;
-    s.max_steps = 260;
-    s.cost_params.target_speed = 3.5f;
+    // Slalom geometry needs more steps than crossing; diff-MPPI / hybrid
+    // planners still solve this cell, but the lightweight sampling zoo at
+    // K<=128 typically stalls ~5 m from goal without gradient guidance.
+    s.max_steps = 320;
+    s.cost_params.target_speed = 3.2f;
     s.cost_params.goal_weight = 5.2f;
     s.cost_params.obs_weight = 11.5f;
-    s.cost_params.obs_influence = 5.4f;
-    s.cost_params.heading_weight = 0.38f;
-    s.grad_alpha_scale = 0.22f;
+    s.cost_params.obs_influence = 5.2f;
+    s.cost_params.heading_weight = 0.40f;
+    s.grad_alpha_scale = 0.20f;
     const Obstacle obs[] = {
-        {10.0f, 14.0f, 2.7f}, {16.0f, 32.0f, 2.8f}, {22.0f, 14.0f, 2.8f},
-        {28.0f, 33.0f, 2.8f}, {34.0f, 15.0f, 2.8f}, {40.0f, 33.0f, 2.8f}
+        {10.0f, 14.0f, 2.4f}, {16.0f, 32.0f, 2.5f}, {22.0f, 14.0f, 2.5f},
+        {28.0f, 33.0f, 2.5f}, {34.0f, 15.0f, 2.5f}, {40.0f, 33.0f, 2.5f}
     };
     const DynamicObstacle dyn[] = {
-        {24.0f, 40.0f, 0.0f, -1.45f, 2.4f}
+        // Keep a lateral mover for DRA-family scoring, but start it high and
+        // slow so it does not dominate the static slalom timing budget.
+        {24.0f, 44.0f, 0.0f, -0.85f, 2.0f}
     };
     s.n_obs = static_cast<int>(sizeof(obs) / sizeof(obs[0]));
     for (int i = 0; i < s.n_obs; i++) s.obstacles[i] = obs[i];
@@ -6446,6 +6526,23 @@ static void write_csv(const vector<EpisodeMetrics>& rows, const string& path) {
     }
 }
 
+static void write_trajectory_csv(const vector<TrajectoryRow>& rows, const string& path) {
+    ofstream out(path);
+    out << "scenario,planner,seed,k_samples,episode_step,x,y,theta,v,goal_distance\n";
+    for (const auto& r : rows) {
+        out << r.scenario << ','
+            << r.planner << ','
+            << r.seed << ','
+            << r.k_samples << ','
+            << r.episode_step << ','
+            << r.x << ','
+            << r.y << ','
+            << r.theta << ','
+            << r.v << ','
+            << r.goal_distance << '\n';
+    }
+}
+
 static void write_trace_csv(const vector<TraceRow>& rows, const string& path) {
     ofstream out(path);
     out << "scenario,planner,seed,k_samples,grad_steps,alpha,episode_step,horizon_step,goal_distance,min_obstacle_margin,control_ms,"
@@ -6515,6 +6612,7 @@ int main(int argc, char** argv) {
     bool quick = false;
     string csv_path = "build/benchmark_diff_mppi.csv";
     string trace_csv_path;
+    string trajectory_csv_path;
     vector<int> k_values;
     vector<string> scenario_names;
     vector<string> planner_names;
@@ -6560,6 +6658,7 @@ int main(int argc, char** argv) {
         if (arg == "--quick") quick = true;
         else if (arg == "--csv" && i + 1 < argc) csv_path = argv[++i];
         else if (arg == "--trace-csv" && i + 1 < argc) trace_csv_path = argv[++i];
+        else if (arg == "--trajectory-csv" && i + 1 < argc) trajectory_csv_path = argv[++i];
         else if (arg == "--trace-max-steps" && i + 1 < argc) trace_max_steps = std::max(0, atoi(argv[++i]));
         else if (arg == "--k-values" && i + 1 < argc) k_values = parse_int_list(argv[++i]);
         else if (arg == "--seed-count" && i + 1 < argc) seed_count = std::max(1, atoi(argv[++i]));
@@ -8137,7 +8236,9 @@ int main(int argc, char** argv) {
     vector<EpisodeMetrics> rows;
     rows.reserve(scenarios.size() * variants.size() * k_values.size() * seed_count);
     vector<TraceRow> trace_rows;
+    vector<TrajectoryRow> trajectory_rows;
     bool trace_enabled = !trace_csv_path.empty();
+    bool trajectory_enabled = !trajectory_csv_path.empty();
     if (trace_enabled && trace_max_steps <= 0) trace_max_steps = 64;
 
     for (size_t si = 0; si < scenarios.size(); si++) {
@@ -8164,7 +8265,8 @@ int main(int argc, char** argv) {
                     if (override_t_horizon > 0) t_horizon_to_use = override_t_horizon;
                     EpisodeRunner runner(
                         variant, scenario, eval_scenario, k_samples, t_horizon_to_use, run_seed,
-                        trace_enabled ? &trace_rows : nullptr, trace_max_steps);
+                        trace_enabled ? &trace_rows : nullptr, trace_max_steps,
+                        trajectory_enabled ? &trajectory_rows : nullptr);
                     EpisodeMetrics metrics = runner.run();
                     rows.push_back(metrics);
                     printf("[%s] %s K=%d seed=%d success=%d steps=%d final_dist=%.2f avg_ms=%.2f collisions=%d\n",
@@ -8178,8 +8280,10 @@ int main(int argc, char** argv) {
 
     write_csv(rows, csv_path);
     if (trace_enabled) write_trace_csv(trace_rows, trace_csv_path);
+    if (trajectory_enabled) write_trajectory_csv(trajectory_rows, trajectory_csv_path);
     print_summary(rows);
     cout << "CSV saved to " << csv_path << endl;
     if (trace_enabled) cout << "Trace CSV saved to " << trace_csv_path << endl;
+    if (trajectory_enabled) cout << "Trajectory CSV saved to " << trajectory_csv_path << endl;
     return 0;
 }
