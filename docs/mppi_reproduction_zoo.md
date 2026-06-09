@@ -123,3 +123,5 @@ Useful signals from the checked-in run:
 
 - Tune SOPPI navigation hyperparameters or score kernel if a stronger navigation
   signal is needed; the current suite row documents the modest gain honestly.
+- Box pushing checked-in row: [`results/soppi_box_pushing_2026-06-10.md`](results/soppi_box_pushing_2026-06-10.md).
+  Next engineering step is a harder pushing scenario with contact loss or obstacle detours.
