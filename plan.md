@@ -1,15 +1,209 @@
 # CudaRobotics Plan / Handoff (for Codex / Claude)
 
-Last updated: 2026-05-27 JST (branch-and-bound loop-closure SLAM in flight)
+Last updated: 2026-06-14 JST (SOPPI box-pushing contact-loss cell merged)
 
 This document is the long-form handoff for the next coding agent (Codex).
 It captures: (1) where the repo is right now, (2) what was just done over
-the 2026-05-21 → 2026-05-25 sprint, (3) house rules and conventions, (4)
-known sharp edges and lessons learned from the last few attempts, and (5)
-a prioritised menu of candidate next tasks with enough specificity that a
-fresh agent can pick one and start.
+recent sprints, (3) house rules and conventions, (4) known sharp edges and
+lessons learned from the last few attempts, and (5) a prioritised menu of
+candidate next tasks with enough specificity that a fresh agent can pick one
+and start.
 
-PR (`feat/gpu-bnb-loop-closure-slam` -> `master`) is **IN FLIGHT** as of 2026-05-27:
+**Read the "Current State" section first.** Everything below it through the
+2026-05-21 → 2026-05-25 sprint narrative is preserved as historical context;
+do not treat the old "IN FLIGHT" / "Recommended Next Session" paragraphs as
+authoritative without cross-checking the current-state block.
+
+---
+
+## Current State (2026-06-14)
+
+Mainline: **`master` at `5545dfd`**, in sync with `origin/master`. **No in-flight
+PR.** The active research line is the **SOPPI / Diff-MPPI box-pushing
+reproduction zoo** — not SLAM, not MegaParticles, not shared-header cleanup.
+
+### What just landed (2026-06-04 → 2026-06-14)
+
+Seven squash merges on the SOPPI box-pushing line, building a scenario taxonomy
+where different planner families win for *different mechanistic reasons*:
+
+| PR | Commit theme | Key artifact |
+|---|---|---|
+| #167 | Fixed-seed MPPI zoo suite + comparison GIF | `docs/results/mppi_zoo_suite_2026-06-10.*` |
+| #168 | SOPPI kernel speed pass (`K*T` score kernels, ping-pong buffers) | `benchmark_diff_mppi*.cu` |
+| #169 | Check in post-kernel box pushing results | `soppi_box_pushing_2026-06-10.*` |
+| #170 | `box_align_strict` orientation-binding cell | scenario in `benchmark_diff_mppi_pushing_box.cu` |
+| #171 | `box_align_detour` obstacle-detour cell | axis-aligned wall + `w_obs` barrier |
+| #172 | `soppi_g3` / `soppi_fast_g3` hybrid planners | SVGD + 3 nominal Diff-MPPI grad steps |
+| #173 | `box_align_contact_loss` + `w_contact_loss` penalty | pure `soppi` 0.25 vs `mppi` 0.00 |
+
+Full reproduction notes: [`docs/soppi_reproduction.md`](docs/soppi_reproduction.md).
+Latest checked-in box row: [`docs/results/soppi_box_pushing_2026-06-14.md`](docs/results/soppi_box_pushing_2026-06-14.md).
+
+### Box pushing scenario taxonomy (7 scenarios, append-only seed discipline)
+
+Scenarios are registered in `src/benchmark_diff_mppi_pushing_box.cu` in this
+order (seed formula `6000 + si*100 + seed*7 + K`; **append new scenarios LAST**
+so published numbers for `si=0..N-1` stay byte-identical):
+
+| Scenario | Mechanism under test | Notes |
+|---|---|---|
+| `box_turn` | translate + rotate, loose tol | All planners fail at quick budget; not a SOPPI signal cell |
+| `box_align` | orientation-dominant off-centre push | Large cost/distance reduction for SOPPI; success still 0.00 at strict tol |
+| `box_pivot` | opposite handedness, tight `ang_tol=0.11` | Gradient-positive but quick budget insensitive |
+| `box_swivel` | **negative control** — wide tol, corner push | MPPI 0.75; pure `soppi` **1.00** (sampling NOT contact-starved) |
+| `box_align_strict` | orientation-binding gate | `pos_tol=0.28`, `ang_tol=0.08`; Diff-MPPI 1.00, `soppi_fast` 0.75 |
+| `box_align_detour` | obstacle wall on direct push lane | **gradient-positive / sampling-negative**; only `diff_mppi_3` and `soppi_fast_g3` at 0.25 |
+| `box_align_contact_loss` | **contact-loss cell** (NEW) | `w_contact_loss=47`, `w_near=0`; pure `soppi` 0.25 vs `mppi` 0.00 |
+
+### Benchmark cell labels (use these when writing results)
+
+1. **Sampling-positive / contact-easy** — `box_swivel`: isotropic noise routinely
+   produces correct torque; SVGD can improve success (`soppi` 1.00) and steps.
+2. **Orientation-binding** — `box_align_strict`: combined pos/ang gate separates
+   Diff-MPPI from vanilla MPPI; SOPPI-family partial wins without nominal grad.
+3. **Obstacle / nominal-grad-positive** — `box_align_detour`: pure SVGD fails;
+   needs nominal trajectory grad steps (`diff_mppi_3`, `soppi_fast_g3`).
+4. **Contact-loss / SVGD-positive** — `box_align_contact_loss`: stage penalty on
+   pusher-box gap; differentiable contact gradient in SVGD score helps **without**
+   nominal grad steps (all-pairs `soppi` 0.25, `mppi` 0.00, `soppi_fast` 0.00).
+
+Do NOT collapse these into one headline. Each cell tests a different failure mode.
+
+### Latest numbers (`K=256`, seed-count 4, `--quick`)
+
+From `docs/results/soppi_box_pushing_2026-06-14.csv`:
+
+| Scenario | mppi | soppi | soppi_fast | diff_mppi_3 | soppi_fast_g3 |
+|---|---:|---:|---:|---:|---:|
+| box_swivel | 0.75 | **1.00** | 0.75 | 0.75 | — |
+| box_align_strict | 0.75 | 0.50 | 0.75 | **1.00** | — |
+| box_align_detour | 0.00 | 0.00 | 0.00 | 0.25 | 0.25 |
+| box_align_contact_loss | 0.00 | **0.25** | 0.00 | **1.00** | — |
+
+Navigation suite (separate benchmark): SOPPI still **2/10** solved cells
+(`narrow_passage` only). Treat navigation as honest negative coverage; box
+pushing is the stronger SOPPI signal. See
+[`docs/results/mppi_zoo_suite_2026-06-10.md`](docs/results/mppi_zoo_suite_2026-06-10.md).
+
+### Implementation map (SOPPI box pushing)
+
+File: `src/benchmark_diff_mppi_pushing_box.cu`
+
+- **Plants**: smooth quasi-static contact (`push_step_box_f`) + optional hard
+  Coulomb plant (`push_step_box_hard_f`) for sim-to-sim / fidelity arms.
+- **Costs**: stage + terminal pose; `w_near` shaping; `w_obs` obstacle barrier;
+  **`w_contact_loss`** squared gap when pusher leaves smooth contact (float +
+  dual autodiff + SOPPI score kernel).
+- **Planners registered**: `mppi`, `lp_mppi*`, `oi_mppi*`, `diff_mppi_{1,3,5}`,
+  `soppi`, `soppi_fast`, `soppi_g3`, `soppi_fast_g3`, `mppi_hardmodel`.
+- **SOPPI kernels**: `soppi_timestep_score_kernel` (per `(k,t)` autodiff score),
+  `soppi_svgd_step_kernel` (RBF SVGD in normalized action space),
+  `fixed_rollout_kernel` (re-evaluate moved samples before MPPI weighting).
+- **CLI overrides**: `--override-soppi-iters`, `--override-soppi-step-size`,
+  `--override-soppi-bandwidth`, `--override-soppi-neighbors`.
+- **Diagnostics** (optional modes): mechanism diag (`escape_frac`, `contact_frac`),
+  gradient-agreement capstone (smooth autodiff vs hard-plant FD).
+
+Related SOPPI ports (same pattern, weaker signal today):
+
+- `src/benchmark_diff_mppi.cu` — 2D bicycle nav (local stage-cost score, not
+  full trajectory gradient).
+- `src/benchmark_diff_mppi_cartpole.cu` — differentiable cost-to-go score.
+- `src/benchmark_diff_mppi_pushing.cu` — disk pushing (saturated: all planners 1.00).
+- `scripts/sweep_soppi.py` — grid sweeps for navigation SOPPI hyperparameters.
+
+Paper target: Aldrich & Jenkins, arXiv:2511.02015 (SOPPI). This repo is a
+**reproduction scaffold**, not paper-faithful on nav score or RNN gradient approx.
+
+### Reproduce the latest box row
+
+```bash
+cmake --build build --target benchmark_diff_mppi_pushing_box -j$(nproc)
+./bin/benchmark_diff_mppi_pushing_box \
+  --quick \
+  --planners mppi,diff_mppi_1,diff_mppi_3,soppi,soppi_fast \
+  --k-values 256 \
+  --seed-count 4 \
+  --csv docs/results/soppi_box_pushing_2026-06-14.csv
+```
+
+Probe a single new cell:
+
+```bash
+./bin/benchmark_diff_mppi_pushing_box \
+  --quick \
+  --scenarios box_align_contact_loss \
+  --planners mppi,soppi,soppi_fast,diff_mppi_3 \
+  --k-values 256 \
+  --seed-count 4
+```
+
+CI: GitHub Actions `build` job ~15 min (CUDA install + full build + Python/CPU
+tests). Recent PRs #172/#173 both green.
+
+### Lessons learned (SOPPI sprint, do not re-learn)
+
+1. **Append scenarios last** — seed formula is `si`-dependent; inserting in the
+   middle invalidates all prior published numbers.
+2. **Tune on full-suite seeds** — isolated `--scenarios X` probes can look great
+   then regress when `si` shifts (happened twice tuning `w_contact_loss`).
+3. **`w_contact_loss` is a knife** — too low: MPPI still wins; too high: everyone
+   fails. Sweet spot for current geometry: `w_contact_loss=47`, `pen_thresh=0.007`,
+   `w_near=0`.
+4. **Pure SVGD ≠ subset SVGD** — all-pairs `soppi` can beat MPPI where `soppi_fast`
+   (32-neighbor subset) still fails (`box_align_contact_loss`). Do not assume
+   `soppi_fast` tracks `soppi` on hard cells.
+5. **Obstacle detour needs nominal grad** — SVGD on sample distribution does not
+   substitute for Diff-MPPI nominal trajectory steps on `box_align_detour`; hybrid
+   `soppi_fast_g3` is the honest fix, not more SVGD tuning alone.
+6. **`box_pivot_contact_loss` was tried and dropped** — pivot geometry + contact
+   penalty did not yield a clean pure-SOPPI > MPPI cell under full-suite seeds;
+   kept only `box_align_contact_loss`.
+
+### Recommended next (pick ONE)
+
+Priority order for the next coding agent:
+
+1. **Lift `soppi_fast` on `box_align_contact_loss`** — currently 0.00 vs all-pairs
+   `soppi` 0.25. Try `--override-soppi-neighbors`, bandwidth/step-size sweep, or
+   score-kernel partial rollout cache (Next Step #3 in `soppi_reproduction.md`).
+   Success criterion: `soppi_fast` > `mppi` without adding nominal grad steps.
+
+2. **Stronger contact-loss cell** — design a scenario where pure `soppi` reaches
+   ≥0.50 success (not just 0.25). Candidate knobs: `ang_tol`, `w_contact_loss`,
+   pusher start offset, or a two-phase contact gate (must maintain contact while
+   rotating past θ threshold). Avoid re-tuning `box_align_detour` (already solved
+   by hybrid planners).
+
+3. **`--baseline-planners` for `scripts/sweep_soppi.py`** — reduce repeated manual
+   MPPI baseline runs when grid-sweeping SOPPI hyperparameters on box cells.
+
+4. **Navigation SOPPI score upgrade** — replace local stage-cost score with
+   trajectory-level gradient (like CartPole port) if navigation 2/10 must improve.
+   High effort; box pushing remains the better reproduction story today.
+
+5. **Mechanical / unrelated** — Open Threads A (readme headline table refresh,
+   `cuda_check.cuh` back-migration) if user wants a low-risk maintenance PR instead.
+
+Start on a fresh branch:
+
+```bash
+git switch -c feat/soppi-fast-contact-loss master
+# or
+git switch -c feat/soppi-sweep-baseline-planners master
+```
+
+---
+
+## Historical Handoff (preserved below)
+
+The sections below document the 2026-05-21 → 2026-05-27 sprint (SLAM / CSM /
+BnB / MegaParticles / graph-MPPI demos). They remain useful for file-map and
+house-rule context but **do not reflect current priority**.
+
+PR (`feat/gpu-bnb-loop-closure-slam` -> `master`) was **MERGED** (#127) on
+2026-05-27; historical note preserved:
 the capstone of the CSM line -- branch-and-bound (#124) wired into the SLAM
 loop-closure front-end (#121/#123). New single file
 `src/gpu_bnb_loop_closure_slam.cu` runs the SAME closed-lap submap SLAM as #123,
@@ -560,6 +754,34 @@ separate parked work, not active blockers for new feature work.
 
 ---
 
+## What Was Done (2026-06-04 → 2026-06-14) — SOPPI box pushing line
+
+Compact PR list for the current active research thread.
+
+| PR | Title | Headline |
+|---|---|---|
+| #167 | Fixed-seed MPPI zoo suite + GIF | 5 nav scenarios, 10 planners, `K=64,128`, 3 seeds |
+| #168 | SOPPI kernel speed pass | `K*T` score kernels; ~3.4x `soppi_fast` on `box_swivel` |
+| #169 | Post-kernel box pushing results | 4-scenario row checked in |
+| #170 | `box_align_strict` scenario | Orientation-binding gate; Diff-MPPI 1.00 |
+| #171 | `box_align_detour` scenario | Obstacle wall; gradient-positive / sampling-negative |
+| #172 | `soppi_fast_g3` hybrid planner | SVGD + nominal grad; matches `diff_mppi_3` on detour 0.25 |
+| #173 | `box_align_contact_loss` + `w_contact_loss` | Pure `soppi` 0.25 vs `mppi` 0.00 |
+
+Adjacent merged work (same period, Diff-MPPI contact paper line):
+
+| PR | Theme |
+|---|---|
+| #164–#166 | Contact fidelity arm, contact-depth study, gradient-agreement capstone |
+
+Key docs touched across #167–#173:
+
+- `src/benchmark_diff_mppi_pushing_box.cu`
+- `docs/results/soppi_box_pushing_2026-06-{10,11,12,13,14}.*`
+- `docs/soppi_reproduction.md`, `docs/mppi_reproduction_zoo.md`, `readme.md`
+
+---
+
 ## What Was Done (2026-05-21 → 2026-05-25)
 
 Compact PR list. Format: `#PR  Title  | headline number`.
@@ -879,6 +1101,19 @@ any new scan-matching / SLAM / optimisation work.
 
 ## Open Threads (parked but not abandoned)
 
+### SOPPI / box pushing (ACTIVE — see Current State)
+- **`soppi_fast` on `box_align_contact_loss`**: subset SVGD at 0.00 while
+  all-pairs `soppi` at 0.25; primary next lift.
+- **Stronger pure-SOPPI cell**: current contact-loss win is 1/4 seeds; aim for
+  ≥0.50 without nominal grad or hybrid planners.
+- **`scripts/sweep_soppi.py --baseline-planners`**: not implemented; would speed
+  repeated Diff-MPPI comparisons during sweeps.
+- **Partial rollout cache for box autodiff score**: `soppi_timestep_score_kernel`
+  recomputes full rollout per `(k,t)`; caching intermediate states is the main
+  remaining speed lever if another kernel pass is needed.
+- **Navigation SOPPI**: 2/10 solved; score kernel is simplified vs paper; low
+  priority unless user explicitly wants nav headline numbers.
+
 ### A. Mechanical cleanup
 - **Refresh the `readme.md` Headline benchmarks table** for the newer
   demos: NeRF, online SLAM, diffusion planner, multi-resolution NDT 3D,
@@ -939,7 +1174,16 @@ any new scan-matching / SLAM / optimisation work.
 
 ## Recommended Next Session
 
-Immediate next action: PR #98 (GPU switchable-constraint 3D pose-graph SLAM,
+**Superseded for priority by "Current State (2026-06-14)" above.** The block
+below is the 2026-05-27 handoff (MegaParticles / shared-header / 3D SLAM era).
+Keep it for file-map cross-references only.
+
+Historical immediate next action (2026-05-27): PR #98 / #104 / #105 era —
+localization-depth and 3D-SLAM switchable lines were considered exhausted;
+recommended mechanical shared-header cleanup or MegaParticles GICP follow-ups.
+None of that is the active line today.
+
+---
 the "explicit switch variables optimised alongside poses" slice of the 3D SLAM
 follow-up) is already merged (squash) and its branch deleted; local `master`
 is at `a4dab88` and in sync with origin. There is no in-flight PR to babysit.
@@ -1099,7 +1343,21 @@ rtk git switch -c chore/shared-cuda-cleanup    # A: cleanup
 - `src/gpu_gaussian_splatting.cu` (PR #59) — isotropic alpha-composite.
 - `src/gpu_nerf_volume.cu` (PR #64) — volumetric ray-march renderer.
 
-### Planning / control
+### Planning / control / MPPI reproduction zoo
+- `src/benchmark_diff_mppi.cu` — 2D bicycle nav; 12+ planner variants;
+  topology suite; SOPPI with local stage-cost score.
+- `src/benchmark_diff_mppi_cartpole.cu` — CartPole; SOPPI with trajectory
+  cost-to-go autodiff score.
+- `src/benchmark_diff_mppi_pushing.cu` — planar disk pushing; saturated SOPPI
+  signal (all planners succeed).
+- `src/benchmark_diff_mppi_pushing_box.cu` — **primary SOPPI reproduction target**:
+  rectangular box + orientation; 7 scenarios; `w_contact_loss`; hybrid
+  `soppi_g3` / `soppi_fast_g3`; mechanism + gradient-agreement diagnostics.
+  Results: `docs/results/soppi_box_pushing_2026-06-14.csv`.
+- `scripts/sweep_soppi.py` — navigation SOPPI hyperparameter grid sweeps.
+- `scripts/run_mppi_zoo_suite.py` — fixed-seed MPPI zoo suite runner.
+- `docs/soppi_reproduction.md` — SOPPI implementation notes + checked-in rows.
+- `docs/mppi_reproduction_zoo.md` — MPPI-family paper index.
 - `src/gpu_diffusion_planner.cu` (PR #65) — 512 trajectories × 64
   waypoints, 120 Langevin steps.
 - `src/gpu_hungarian_assignment.cu` (PR #72) — 512 batched 64x64 dense
@@ -1130,7 +1388,7 @@ rtk git switch -c chore/shared-cuda-cleanup    # A: cleanup
 ### Earlier (carried over)
 - `src/diff_pf.cu` / `src/diff_pf_mlp.cu` — DPF base + MLP obs model.
 - `src/diff_e2e_slam.cu` (PR #61) — differentiable end-to-end SLAM.
-- `src/benchmark_diff_mppi.cu` — 12-planner sweep + topology suite.
+- `src/benchmark_diff_mppi.cu` — see "Planning / control / MPPI reproduction zoo".
 
 ### ROS2 (`ros2_ws/`)
 - `src/esdf_node.cpp` (PR #46) — GPU JFA ESDF node.
@@ -1196,4 +1454,5 @@ rtk bash -lc 'export PATH="$HOME/.local/bin:$PATH"; gh pr merge <N> --squash --d
 
 ---
 
-End of handoff. Good hunting.
+End of handoff. **Start from "Current State (2026-06-14)"** for SOPPI work.
+Good hunting.
