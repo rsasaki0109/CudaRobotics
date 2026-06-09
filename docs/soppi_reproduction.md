@@ -195,7 +195,7 @@ Box pushing comparison:
   --planners mppi,diff_mppi_1,diff_mppi_3,soppi,soppi_fast \
   --k-values 256 \
   --seed-count 4 \
-  --csv build-docker-smoke/soppi_pushing_box_compare.csv
+  --csv docs/results/soppi_box_pushing_2026-06-10.csv
 ```
 
 Box pushing SOPPI sweep:
@@ -359,7 +359,12 @@ Observed pattern:
 
 ## Box Pushing Results
 
-Artifacts:
+Checked-in fixed-seed run (post-kernel optimization):
+
+- Report: [`results/soppi_box_pushing_2026-06-10.md`](results/soppi_box_pushing_2026-06-10.md)
+- CSV: [`results/soppi_box_pushing_2026-06-10.csv`](results/soppi_box_pushing_2026-06-10.csv)
+
+Legacy smoke artifacts (pre-check-in):
 
 - `build-docker-smoke/soppi_pushing_box_compare.csv`
 - `build-docker-smoke/soppi_pushing_box_compare_summary.md`
@@ -369,26 +374,22 @@ Default planner comparison, seed-count 4, `K=256`:
 
 | Scenario | Planner | Success | Steps | Final Dist | Cost | Avg ms |
 |---|---|---:|---:|---:|---:|---:|
-| box_align | mppi | 0.00 | 240.0 | 0.43 | 7.8 | 0.10 |
-| box_align | diff_mppi_3 | 0.50 | 149.8 | 0.40 | 7.1 | 1.88 |
-| box_align | soppi | 0.00 | 240.0 | 0.28 | 4.1 | 1.08 |
-| box_align | soppi_fast | 0.00 | 240.0 | 0.28 | 3.8 | 1.00 |
-| box_pivot | mppi | 0.00 | 240.0 | 0.11 | 1.2 | 0.10 |
-| box_pivot | diff_mppi_3 | 0.00 | 240.0 | 0.12 | 1.0 | 1.84 |
-| box_pivot | soppi | 0.00 | 240.0 | 0.11 | 1.1 | 1.08 |
-| box_pivot | soppi_fast | 0.00 | 240.0 | 0.11 | 1.1 | 0.97 |
-| box_swivel | mppi | 0.75 | 103.0 | 0.27 | 1.8 | 0.11 |
-| box_swivel | diff_mppi_3 | 0.75 | 100.0 | 0.27 | 1.8 | 1.82 |
-| box_swivel | soppi | 1.00 | 89.0 | 0.22 | 1.5 | 1.08 |
-| box_swivel | soppi_fast | 1.00 | 86.0 | 0.22 | 1.5 | 1.00 |
-
-After the 2026-06-09 kernel pass on the same benchmark, a fresh local rerun at
-`K=256`, seed-count 4 reports `soppi_fast` at `0.53 ms` and `soppi` at
-`0.61 ms` with `1.00` success on `box_swivel`.
-| box_turn | mppi | 0.00 | 260.0 | 0.41 | 4.6 | 0.10 |
-| box_turn | diff_mppi_3 | 0.00 | 260.0 | 0.39 | 4.1 | 1.88 |
-| box_turn | soppi | 0.00 | 260.0 | 0.41 | 4.6 | 1.06 |
-| box_turn | soppi_fast | 0.00 | 260.0 | 0.41 | 4.5 | 0.96 |
+| box_align | mppi | 0.00 | 240.0 | 0.43 | 7.8 | 0.12 |
+| box_align | diff_mppi_3 | 0.50 | 149.8 | 0.40 | 7.1 | 2.36 |
+| box_align | soppi | 0.00 | 240.0 | 0.28 | 4.2 | 0.50 |
+| box_align | soppi_fast | 0.00 | 240.0 | 0.28 | 4.2 | 0.28 |
+| box_pivot | mppi | 0.00 | 240.0 | 0.11 | 1.2 | 0.13 |
+| box_pivot | diff_mppi_3 | 0.00 | 240.0 | 0.12 | 1.0 | 2.28 |
+| box_pivot | soppi | 0.00 | 240.0 | 0.11 | 1.1 | 0.47 |
+| box_pivot | soppi_fast | 0.00 | 240.0 | 0.11 | 1.1 | 0.31 |
+| box_swivel | mppi | 0.75 | 103.0 | 0.28 | 1.8 | 0.16 |
+| box_swivel | diff_mppi_3 | 0.75 | 100.0 | 0.27 | 1.8 | 2.35 |
+| box_swivel | soppi | 1.00 | 98.0 | 0.22 | 1.7 | 0.55 |
+| box_swivel | soppi_fast | 0.75 | 100.8 | 0.24 | 1.8 | 0.29 |
+| box_turn | mppi | 0.00 | 260.0 | 0.41 | 4.6 | 0.15 |
+| box_turn | diff_mppi_3 | 0.00 | 260.0 | 0.39 | 4.1 | 2.36 |
+| box_turn | soppi | 0.00 | 260.0 | 0.40 | 4.5 | 0.43 |
+| box_turn | soppi_fast | 0.00 | 260.0 | 0.40 | 4.5 | 0.28 |
 
 Best SOPPI from the box-pushing sweep:
 
@@ -405,11 +406,16 @@ Best SOPPI from the box-pushing sweep:
 
 Observed pattern:
 
-- Box pushing is a better SOPPI reproduction target than disk pushing. `box_swivel` improves from `0.75` MPPI success to `1.00` SOPPI success in the default planner comparison.
-- `box_align` shows a large final-distance/cost reduction (`0.43 -> 0.28`, `7.8 -> 3.8` for `soppi_fast`) even though it does not cross the strict success threshold in this quick run.
+- Box pushing is a better SOPPI reproduction target than disk pushing. All-pairs
+  `soppi` improves `box_swivel` from `0.75` MPPI success to `1.00` in the
+  checked-in run; `soppi_fast` matches MPPI at `0.75` on this cell.
+- `box_align` shows a large final-distance/cost reduction (`0.43 -> 0.28`,
+  `7.8 -> 4.2` for `soppi_fast`) even though it does not cross the strict
+  success threshold in this quick run.
 - `box_turn` and `box_pivot` are mostly insensitive under the current quick budget.
-- `soppi_fast` is the better practical default for this benchmark; it keeps most of the quality signal while avoiding the all-pairs kernel.
-- Before the 2026-06-09 kernel pass, SOPPI was roughly 9x to 10x slower than vanilla MPPI for `K=256` on box pushing.
+- Post-kernel `soppi_fast` is about **3.4x faster** than the pre-optimization note
+  on `box_swivel` (`1.00 ms -> 0.29 ms`) and about **1.8x slower than MPPI**,
+  down from roughly 9x slower before the kernel pass.
 
 ## Navigation Suite, 2026-06-10
 
@@ -459,21 +465,16 @@ Changes:
 - Box/pushing now use `soppi_timestep_score_kernel` / `push_soppi_timestep_score_kernel` with `K*T` parallelism.
 - All three benchmarks ping-pong control buffers instead of device-to-device copying every SVGD iteration.
 
-Local rerun on `box_swivel`, `K=256`, seed-count 4:
+The checked-in four-scenario run above supersedes the earlier single-scenario
+`box_swivel` smoke note. Speedup versus the pre-kernel box-pushing artifacts:
 
-| Planner | Success | Steps | Final Dist | Cost | Avg ms |
-|---|---:|---:|---:|---:|---:|
-| mppi | 1.00 | 73.0 | 0.213 | 1.2 | 0.43 |
-| soppi | 1.00 | 65.5 | 0.216 | 1.1 | 0.61 |
-| soppi_fast | 1.00 | 66.0 | 0.215 | 1.1 | 0.53 |
+- `soppi_fast`: about **3.4x faster** on `box_swivel` (`1.00 ms -> 0.29 ms`).
+- `soppi` all-pairs: about **2.0x faster** on `box_swivel` (`1.08 ms -> 0.55 ms`).
+- Navigation at `K=256` is now about **1.5x to 1.7x slower than MPPI**, not an
+  order of magnitude slower.
 
-Observed speedup versus the old checked-in box-pushing note:
-
-- `soppi_fast`: about **1.9x faster** (1.00 ms -> 0.53 ms) while keeping the same success/steps signal.
-- `soppi` all-pairs: about **1.8x faster** (1.08 ms -> 0.61 ms).
-- Navigation at `K=256` is now about **1.5x to 1.7x slower than MPPI**, not an order of magnitude slower.
-
-Quality check: the optimized `box_swivel` run still reaches `1.00` success for both `soppi` and `soppi_fast`, with the same step-count advantage over MPPI.
+Quality check: all-pairs `soppi` still reaches `1.00` success on `box_swivel`
+with a step-count advantage over MPPI.
 
 ## Next Steps
 
