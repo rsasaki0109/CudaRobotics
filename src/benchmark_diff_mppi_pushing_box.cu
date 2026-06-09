@@ -58,6 +58,7 @@ struct BoxParams {
     float w_ang = 0.6f;             // stage orientation
     float w_ctrl = 0.01f;
     float w_near = 0.04f;           // pusher-near-box shaping
+    float w_contact_loss = 0.0f;    // squared gap penalty when pusher leaves contact
     float w_term_pos = 90.0f;       // terminal position
     float w_term_ang = 40.0f;       // terminal orientation
     int obstacle_count = 0;         // axis-aligned obstacle count (0 or 1)
@@ -153,6 +154,29 @@ __host__ __device__ inline float box_obstacle_penetration_f(
         max_pen = fmaxf(max_pen, pen);
     }
     return max_pen;
+}
+
+// Signed distance from pusher centre to box surface (>0 outside, <0 inside).
+__host__ __device__ inline float pusher_box_sd_f(
+    float px, float py, float ox, float oy, float oth, const BoxParams& p)
+{
+    float c = cosf(oth), s = sinf(oth);
+    float dx = px - ox, dy = py - oy;
+    float lx =  c*dx + s*dy;
+    float ly = -s*dx + c*dy;
+    float qx = fabsf(lx) - p.hx, qy = fabsf(ly) - p.hy;
+    float rqx = fmaxf(qx, 0.0f), rqy = fmaxf(qy, 0.0f);
+    float outside = sqrtf(rqx*rqx + rqy*rqy + 1e-9f);
+    float inside = fminf(fmaxf(qx, qy), 0.0f);
+    return outside + inside;
+}
+
+__host__ __device__ inline float contact_loss_stage_cost_box_f(
+    float px, float py, float ox, float oy, float oth, const BoxParams& p)
+{
+    if (p.w_contact_loss <= 0.0f) return 0.0f;
+    float gap = fmaxf(pusher_box_sd_f(px, py, ox, oy, oth, p) - p.push_r, 0.0f);
+    return p.w_contact_loss * gap * gap * p.dt;
 }
 
 __host__ __device__ inline float obstacle_stage_cost_box_f(
@@ -337,6 +361,7 @@ __host__ __device__ inline float stage_cost_box_f(
     c += p.w_ctrl * (ux*ux + uy*uy) * p.dt;
     float ex = px - ox, ey = py - oy;
     c += p.w_near * (ex*ex + ey*ey) * p.dt;
+    c += contact_loss_stage_cost_box_f(px, py, ox, oy, oth, p);
     c += obstacle_stage_cost_box_f(ox, oy, oth, p);
     return c;
 }
@@ -442,6 +467,10 @@ __device__ inline float dcost_dparam_box(
         cost = cost + Dualf::constant(p.w_ctrl) * (ux*ux + uy*uy) * Dualf::constant(p.dt);
         Dualf ex = px - ox, ey = py - oy;
         cost = cost + Dualf::constant(p.w_near) * (ex*ex + ey*ey) * Dualf::constant(p.dt);
+        if (p.w_contact_loss > 0.0f) {
+            Dualf gap = d_relu(sd - Dualf::constant(p.push_r));
+            cost = cost + Dualf::constant(p.w_contact_loss) * gap * gap * Dualf::constant(p.dt);
+        }
         cost = cost + obstacle_stage_cost_dual(ox, oy, oth, p);
     }
     Dualf dpx = ox - Dualf::constant(gx), dpy = oy - Dualf::constant(gy);
@@ -1233,6 +1262,17 @@ static BoxScenario make_box_align_detour() {
     s.params.w_obs = 85.0f;
     return s;
 }
+// Contact-loss variant of box_align_strict: orientation-binding gate plus a gap
+// penalty that punishes losing face contact during the rotation arc.
+static BoxScenario make_box_align_contact_loss() {
+    BoxScenario s = make_box_align_strict();
+    s.name = "box_align_contact_loss";
+    s.params.w_near = 0.0f;
+    s.params.w_contact_loss = 47.0f;
+    s.params.rot_gain = 15.0f;
+    s.params.pen_thresh = 0.007f;
+    return s;
+}
 
 // ======================== Utilities ========================
 static void ensure_build_dir() { mkdir("build", 0755); }
@@ -1374,7 +1414,7 @@ int main(int argc, char** argv) {
     // rotation-dominant tasks where the gradient wins, and not on box_turn.
     if (!diag_prefix.empty()) {
         int Kdiag = k_values.empty() ? 4096 : k_values.back();
-        vector<BoxScenario> diag_sc = { make_box_turn(), make_box_align(), make_box_pivot(), make_box_swivel(), make_box_align_strict(), make_box_align_detour() };
+        vector<BoxScenario> diag_sc = { make_box_turn(), make_box_align(), make_box_pivot(), make_box_swivel(), make_box_align_strict(), make_box_align_detour(), make_box_align_contact_loss() };
         if (!scenario_names.empty()) {
             vector<BoxScenario> f;
             for (auto& w : scenario_names) { auto it=find_if(diag_sc.begin(),diag_sc.end(),[&](const BoxScenario&s){return s.name==w;});
@@ -1469,7 +1509,7 @@ int main(int argc, char** argv) {
     // box_swivel and box_align_strict are appended LAST so the existing scenarios keep
     // their indices si=0..2 (the per-run seed in the sweep loop is si-dependent);
     // published numbers stay byte-identical.
-    vector<BoxScenario> all_sc = { make_box_turn(), make_box_align(), make_box_pivot(), make_box_swivel(), make_box_align_strict(), make_box_align_detour() };
+    vector<BoxScenario> all_sc = { make_box_turn(), make_box_align(), make_box_pivot(), make_box_swivel(), make_box_align_strict(), make_box_align_detour(), make_box_align_contact_loss() };
     vector<BoxScenario> scenarios;
     if (!scenario_names.empty()) {
         for (auto& w : scenario_names) { auto it=find_if(all_sc.begin(),all_sc.end(),[&](const BoxScenario&s){return s.name==w;});

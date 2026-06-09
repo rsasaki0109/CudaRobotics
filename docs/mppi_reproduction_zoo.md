@@ -123,5 +123,6 @@ Useful signals from the checked-in run:
 
 - Tune SOPPI navigation hyperparameters or score kernel if a stronger navigation
   signal is needed; the current suite row documents the modest gain honestly.
-- Box pushing checked-in row: [`results/soppi_box_pushing_2026-06-13.md`](results/soppi_box_pushing_2026-06-13.md)
-  (`soppi_fast_g3` matches `diff_mppi_3` on `box_align_detour`). Next step: contact-loss cells.
+- Box pushing checked-in row: [`results/soppi_box_pushing_2026-06-14.md`](results/soppi_box_pushing_2026-06-14.md)
+  (`soppi_fast_g3` matches `diff_mppi_3` on `box_align_detour`; pure `soppi` clears
+  `box_align_contact_loss` at `0.25` vs MPPI `0.00`).

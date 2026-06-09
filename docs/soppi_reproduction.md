@@ -58,6 +58,10 @@ Implemented a box pushing SOPPI variant in `src/benchmark_diff_mppi_pushing_box.
 - Added `sample_grad_kernel`, which evaluates the existing differentiable box-contact rollout gradient for every sampled control sequence.
 - Added `fixed_rollout_kernel` to re-evaluate moved samples before MPPI weighting.
 - Fixed box-pushing benchmark seeds so planners share the same scenario/K/seed initial condition within a run.
+- Added `w_contact_loss` stage penalty (squared pusher-box gap) to `BoxParams`, wired
+  through float rollout cost, dual autodiff, and the SOPPI score kernel.
+- Added `box_align_contact_loss` scenario (`box_align_strict` geometry,
+  `w_near=0`, `w_contact_loss=47`).
 
 ## Scope Caveats
 
@@ -361,7 +365,12 @@ Observed pattern:
 
 ## Box Pushing Results
 
-Latest checked-in fixed-seed run (six scenarios, includes `box_align_detour`):
+Latest checked-in fixed-seed run (seven scenarios, includes `box_align_contact_loss`):
+
+- Report: [`results/soppi_box_pushing_2026-06-14.md`](results/soppi_box_pushing_2026-06-14.md)
+- CSV: [`results/soppi_box_pushing_2026-06-14.csv`](results/soppi_box_pushing_2026-06-14.csv)
+
+Predecessor hybrid-detour row:
 
 - Report: [`results/soppi_box_pushing_2026-06-13.md`](results/soppi_box_pushing_2026-06-13.md)
 - CSV: [`results/soppi_box_pushing_2026-06-13.csv`](results/soppi_box_pushing_2026-06-13.csv)
@@ -426,6 +435,17 @@ success for sampling planners and full success for Diff-MPPI.
 `box_align_detour` adds a narrow axis-aligned wall on the direct push lane and
 requires collision-free success. Only `diff_mppi_3` clears a seed in the checked-in
 run; treat this as a gradient-positive / sampling-negative obstacle cell.
+
+| Scenario | Planner | Success | Steps | Final Dist | Cost | Avg ms |
+|---|---|---:|---:|---:|---:|---:|
+| box_align_contact_loss | mppi | 0.00 | 240.0 | 0.29 | 4.9 | 0.29 |
+| box_align_contact_loss | diff_mppi_3 | 1.00 | 44.0 | 0.28 | 2.8 | 2.77 |
+| box_align_contact_loss | soppi | 0.25 | 216.2 | 0.29 | 4.7 | 0.87 |
+| box_align_contact_loss | soppi_fast | 0.00 | 240.0 | 0.29 | 4.9 | 0.55 |
+
+`box_align_contact_loss` penalizes pusher-box gap during rollout. Pure all-pairs
+`soppi` reaches `0.25` success while vanilla `mppi` stays at `0.00` — a
+contact-loss cell where SVGD helps without nominal Diff-MPPI grad steps.
 
 Best SOPPI from the box-pushing sweep:
 
@@ -517,5 +537,5 @@ with a step-count advantage over MPPI.
 ## Next Steps
 
 1. Add a `--baseline-planners` option to `scripts/sweep_soppi.py` if repeated comparisons against Diff-MPPI are needed.
-2. Add contact-loss cells or harder obstacle geometry where pure SVGD must improve without nominal grad steps.
+2. Lift `soppi_fast` on `box_align_contact_loss` (currently `0.00` vs all-pairs `soppi` `0.25`) or add harder geometry where subset SVGD must match all-pairs.
 3. Consider caching partial rollout states for the box autodiff score kernel if another speed pass is needed.
