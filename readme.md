@@ -57,6 +57,7 @@ Full animated gallery: https://rsasaki0109.github.io/CudaRobotics/
 | Want to see | Open |
 |---|---|
 | Visual demos | [Full animated gallery](https://rsasaki0109.github.io/CudaRobotics/) |
+| **GPU MPPI controller plugin for Nav2** | [`ros2_ws/src/cuda_mppi_controller/`](ros2_ws/src/cuda_mppi_controller/) |
 | Latest fixed-seed MPPI result | [`docs/results/mppi_zoo_suite_2026-06-10.md`](docs/results/mppi_zoo_suite_2026-06-10.md) |
 | Quick MPPI smoke result | [`docs/results/mppi_zoo_smoke_2026-06-05.md`](docs/results/mppi_zoo_smoke_2026-06-05.md) |
 | MPPI paper reproduction zoo | [`docs/mppi_reproduction_zoo.md`](docs/mppi_reproduction_zoo.md) |

@@ -1,0 +1,30 @@
+# Example nav2 controller_server configuration using CudaMppiController.
+# Drop-in replacement slot for nav2_mppi_controller / DWB in your nav2 params.
+controller_server:
+  ros__parameters:
+    controller_frequency: 20.0
+    controller_plugins: ["FollowPath"]
+
+    FollowPath:
+      plugin: "cuda_mppi_controller::CudaMppiController"
+      batch_size: 2048          # sampled trajectories per cycle (1 CUDA thread each)
+      time_steps: 56            # horizon length
+      model_dt: 0.05            # [s]
+      iteration_count: 1
+      v_max: 0.5                # [m/s]
+      v_min: -0.35              # [m/s]
+      w_max: 1.9                # [rad/s]
+      v_std: 0.2
+      w_std: 0.4
+      temperature: 0.35         # MPPI softmin lambda
+      goal_weight: 20.0         # terminal local-goal distance (linear)
+      goal_yaw_weight: 3.0
+      path_weight: 2.0          # lateral deviation^2 from the plan
+      path_follow_weight: 5.0   # pull toward a point ahead on the plan
+      follow_lookahead: 0.6     # [m]
+      costmap_weight: 3.0
+      smoothness_weight: 0.2
+      backward_weight: 0.5
+      yaw_goal_activation_dist: 0.5
+      lookahead_dist: 3.0       # [m] global plan window fed to the GPU
+      transform_tolerance: 0.1

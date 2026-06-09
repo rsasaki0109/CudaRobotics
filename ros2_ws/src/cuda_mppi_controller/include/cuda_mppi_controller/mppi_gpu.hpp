@@ -1,0 +1,84 @@
+// GPU MPPI optimizer core. Pure C++ interface — no ROS, no CUDA headers here.
+// The CUDA implementation lives in src/mppi_gpu.cu behind a PIMPL.
+#ifndef CUDA_MPPI_CONTROLLER__MPPI_GPU_HPP_
+#define CUDA_MPPI_CONTROLLER__MPPI_GPU_HPP_
+
+#include <memory>
+
+namespace cuda_mppi_controller
+{
+
+struct MppiParams
+{
+  int batch_size = 2048;        // K: sampled trajectories (1 CUDA thread each)
+  int time_steps = 56;          // T: horizon length
+  float model_dt = 0.05f;       // [s] integration step
+  int iteration_count = 1;      // optimizer iterations per control cycle
+
+  // control limits (diff drive)
+  float v_max = 0.5f;           // [m/s]
+  float v_min = -0.35f;         // [m/s]
+  float w_max = 1.9f;           // [rad/s]
+
+  // sampling noise std
+  float v_std = 0.2f;
+  float w_std = 0.4f;
+
+  float lambda = 0.35f;         // softmin temperature
+
+  // cost weights
+  float goal_weight = 20.0f;         // terminal distance to local goal (linear)
+  float goal_yaw_weight = 3.0f;      // terminal yaw error (active near final goal)
+  float path_weight = 2.0f;          // stage lateral distance² to reference path
+  float path_follow_weight = 5.0f;   // stage distance to a point ahead on the path
+  float follow_lookahead = 0.6f;     // [m] how far ahead that point is
+  float costmap_weight = 3.0f;       // stage costmap cost (normalized 0..1, squared)
+  float smoothness_weight = 0.2f;    // stage (du)^2 between consecutive steps
+  float backward_weight = 0.5f;      // stage penalty on v < 0
+  float collision_cost = 1.0e6f;     // added per step inside lethal/inscribed cells
+
+  float yaw_goal_activation_dist = 0.5f;  // [m] enable yaw cost within this range of final goal
+  unsigned char lethal_threshold = 253;   // costmap value >= this counts as collision
+};
+
+struct MppiResult
+{
+  float v = 0.0f;
+  float w = 0.0f;
+  float best_cost = 0.0f;   // min sampled trajectory cost (collision diagnosis)
+  bool all_colliding = false;
+};
+
+class MppiGpu
+{
+public:
+  explicit MppiGpu(const MppiParams & params);
+  ~MppiGpu();
+
+  MppiGpu(const MppiGpu &) = delete;
+  MppiGpu & operator=(const MppiGpu &) = delete;
+
+  // Clear the warm-started nominal control sequence.
+  void reset();
+
+  void setSpeedLimit(float v_max);
+
+  // All poses are in the costmap global frame.
+  // costmap: row-major uchar grid (size_x * size_y), nullptr allowed (free space).
+  // path_xy: [path_len * 2] reference path points; goal is the local goal
+  //          (window end), goal_is_final enables the terminal yaw cost.
+  MppiResult compute(
+    float robot_x, float robot_y, float robot_yaw,
+    const unsigned char * costmap, int size_x, int size_y,
+    float origin_x, float origin_y, float resolution,
+    const float * path_xy, int path_len,
+    float goal_x, float goal_y, float goal_yaw, bool goal_is_final);
+
+private:
+  struct Impl;
+  std::unique_ptr<Impl> impl_;
+};
+
+}  // namespace cuda_mppi_controller
+
+#endif  // CUDA_MPPI_CONTROLLER__MPPI_GPU_HPP_
