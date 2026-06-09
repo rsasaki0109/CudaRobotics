@@ -57,7 +57,8 @@ Full animated gallery: https://rsasaki0109.github.io/CudaRobotics/
 | Want to see | Open |
 |---|---|
 | Visual demos | [Full animated gallery](https://rsasaki0109.github.io/CudaRobotics/) |
-| Latest fixed-seed MPPI result | [`docs/results/mppi_zoo_smoke_2026-06-05.md`](docs/results/mppi_zoo_smoke_2026-06-05.md) |
+| Latest fixed-seed MPPI result | [`docs/results/mppi_zoo_suite_2026-06-10.md`](docs/results/mppi_zoo_suite_2026-06-10.md) |
+| Quick MPPI smoke result | [`docs/results/mppi_zoo_smoke_2026-06-05.md`](docs/results/mppi_zoo_smoke_2026-06-05.md) |
 | MPPI paper reproduction zoo | [`docs/mppi_reproduction_zoo.md`](docs/mppi_reproduction_zoo.md) |
 | Reproducibility suites | [`docs/reproducibility.md`](docs/reproducibility.md) |
 | Diff-MPPI paper material | [`paper/`](paper/) |
@@ -66,32 +67,70 @@ Full animated gallery: https://rsasaki0109.github.io/CudaRobotics/
 
 ## Latest Fixed-Seed Result
 
-The checked-in MPPI zoo smoke result was generated on 2026-06-05 with
-`dynamic_crossing,narrow_passage`, `K=64,128`, and 3 seeds per
-scenario/planner/K cell. It is a smoke benchmark, not a paper-faithful claim,
-but it gives a concrete negative control and a reproducible comparison target.
+The checked-in MPPI zoo suite was generated on 2026-06-10 with five navigation
+scenarios, ten curated planners (including `soppi` / `soppi_fast`), `K=64,128`,
+and 3 seeds per scenario/planner/K cell. It is a fixed-seed benchmark, not a
+paper-faithful claim, but it adds stress scenes beyond the earlier smoke pair
+and keeps the failures visible.
 
-<img src="docs/results/mppi_zoo_smoke_2026-06-05.svg" alt="MPPI Zoo fixed-seed smoke chart" width="900"/>
+<img src="docs/results/mppi_zoo_suite_2026-06-10.svg" alt="MPPI Zoo fixed-seed suite chart" width="900"/>
 
-| Scenario | K | Baseline MPPI | Strongest signal |
-|---|---:|---|---|
-| `dynamic_crossing` | 64 | success 0.00, final distance 3.21 | `ducct_mppi_smooth` success 1.00, final distance 1.91 |
-| `dynamic_crossing` | 128 | success 0.00, final distance 3.39 | `step_mppi_smooth` success 1.00, final distance 1.88 |
-| `narrow_passage` | 64 | success 1.00, 253.3 steps | `tsallis_mppi_smooth` success 1.00, 228.3 steps |
-| `narrow_passage` | 128 | success 1.00, 251.7 steps | `tsallis_mppi_smooth` success 1.00, 228.0 steps |
+Side-by-side rollout on `dynamic_crossing` (`K=128`): vanilla `mppi` stalls short
+of the goal while `step_mppi_smooth` reaches it.
+
+<img src="https://rsasaki0109.github.io/CudaRobotics/gpu_mppi_zoo_dynamic_crossing.gif" alt="MPPI zoo dynamic crossing comparison" width="840"/>
+
+| Scenario | Signal in this suite |
+|---|---|
+| `dynamic_crossing` | Vanilla `mppi` fails; curated zoo variants solve all cells. |
+| `model_mismatch_crossing` | Vanilla `mppi` fails; `step_mppi_smooth` / `tsallis_mppi_smooth` reach 1.00 at `K=128`. |
+| `dynamic_pincer` | Vanilla `mppi` fails with large final distance; zoo variants succeed. |
+| `uncertain_crossing` | Same pattern as dynamic crossing: vanilla `mppi` fails, zoo variants succeed. |
+| `narrow_passage` | All smooth zoo planners succeed; `soppi` also clears both K cells here. |
 
 Full report and CSV:
-[`docs/results/mppi_zoo_smoke_2026-06-05.md`](docs/results/mppi_zoo_smoke_2026-06-05.md)
+[`docs/results/mppi_zoo_suite_2026-06-10.md`](docs/results/mppi_zoo_suite_2026-06-10.md)
 and
-[`docs/results/mppi_zoo_smoke_2026-06-05.csv`](docs/results/mppi_zoo_smoke_2026-06-05.csv).
+[`docs/results/mppi_zoo_suite_2026-06-10.csv`](docs/results/mppi_zoo_suite_2026-06-10.csv).
 
-## Docker Smoke Test
+Suite leaders (5 scenarios × 2 K values, 3 seeds per cell):
+
+| Planner | Solved | Success | Avg ms | Notes |
+|---|---|---|---|---|
+| `step_mppi_smooth` | 9/10 | 0.97 | 0.116 | Fastest curated planner in the suite |
+| `tsallis_mppi_smooth` | 9/10 | 0.97 | 0.175 | Tied for best solve rate |
+| `sc_mppi_smooth` | 9/10 | 0.97 | 0.198 | Strong safety-controlled baseline |
+| `soppi` / `soppi_fast` | 2/10 | 0.20 | 0.30 / 0.25 | Navigation negative control; wins only on `narrow_passage` |
+| `mppi` | 2/10 | 0.20 | 0.126 | Baseline negative control |
+
+The eight-planner suite from 2026-06-09 remains at
+[`docs/results/mppi_zoo_suite_2026-06-09.md`](docs/results/mppi_zoo_suite_2026-06-09.md).
+The smaller two-scenario smoke artifact from 2026-06-05 remains at
+[`docs/results/mppi_zoo_smoke_2026-06-05.md`](docs/results/mppi_zoo_smoke_2026-06-05.md).
+
+## Docker MPPI Benchmark
 
 Requires NVIDIA Container Toolkit and a CUDA-capable GPU.
+
+Quick smoke:
 
 ```bash
 docker compose build cudarobotics
 docker compose run --rm cudarobotics bash -lc 'python3 scripts/run_mppi_zoo_smoke.py --bin ./bin/benchmark_diff_mppi --out-dir build/mppi_zoo'
+```
+
+Expanded fixed-seed suite:
+
+```bash
+docker compose build cudarobotics
+docker compose run --rm cudarobotics bash -lc 'python3 scripts/run_mppi_zoo_suite.py --bin ./bin/benchmark_diff_mppi && python3 scripts/render_mppi_zoo_suite_chart.py'
+```
+
+Comparison GIF (`dynamic_crossing`, vanilla `mppi` vs `step_mppi_smooth`):
+
+```bash
+cmake --build build --target benchmark_diff_mppi -j$(nproc)
+python3 scripts/render_mppi_zoo_gif.py --bin bin/benchmark_diff_mppi
 ```
 
 ## What Makes It Different
@@ -108,16 +147,19 @@ The MPPI work is now indexed as a reproducible research backlog. Each entry is
 a lightweight CUDA implementation plus notes on where the result works, where it
 does not, and what would be required for a paper-faithful reproduction.
 
-| Family | What to open first |
-|---|---|
-| Step-MPPI | [`docs/step_mppi_reproduction.md`](docs/step_mppi_reproduction.md) |
-| Tsallis-MPPI | [`docs/tsallis_mppi_reproduction.md`](docs/tsallis_mppi_reproduction.md) |
-| DRA-MPPI | [`docs/dra_mppi_reproduction.md`](docs/dra_mppi_reproduction.md) |
-| C2U-MPPI | [`docs/c2u_mppi_reproduction.md`](docs/c2u_mppi_reproduction.md) |
-| DUCCT-MPPI | [`docs/ducct_mppi_reproduction.md`](docs/ducct_mppi_reproduction.md) |
-| DBaS-Log-MPPI | [`docs/dbas_log_mppi_reproduction.md`](docs/dbas_log_mppi_reproduction.md) |
-| PA-MPPI | [`docs/pa_mppi_reproduction.md`](docs/pa_mppi_reproduction.md) |
-| Full index | [`docs/mppi_reproduction_zoo.md`](docs/mppi_reproduction_zoo.md) |
+| Family | Suite signal (2026-06-09) | What to open first |
+|---|---|---|
+| Tsallis-MPPI | 10/10 solved; best overall | [`docs/tsallis_mppi_reproduction.md`](docs/tsallis_mppi_reproduction.md) |
+| Step-MPPI | 9/10 solved; fastest curated planner | [`docs/step_mppi_reproduction.md`](docs/step_mppi_reproduction.md) |
+| SC-MPPI | 9/10 solved; safety-controlled baseline | [`docs/sc_mppi_reproduction.md`](docs/sc_mppi_reproduction.md) |
+| DRA-MPPI | 8/10 solved; strong on `dynamic_pincer` | [`docs/dra_mppi_reproduction.md`](docs/dra_mppi_reproduction.md) |
+| C2U-MPPI | 8/10 solved | [`docs/c2u_mppi_reproduction.md`](docs/c2u_mppi_reproduction.md) |
+| DUCCT-MPPI | 8/10 solved | [`docs/ducct_mppi_reproduction.md`](docs/ducct_mppi_reproduction.md) |
+| LP-MPPI | 8/10 solved | [`docs/lp_mppi_reproduction.md`](docs/lp_mppi_reproduction.md) |
+| DBaS-Log-MPPI | not in suite; smoke benchmark only | [`docs/dbas_log_mppi_reproduction.md`](docs/dbas_log_mppi_reproduction.md) |
+| PA-MPPI | not in suite; narrow-passage smoke | [`docs/pa_mppi_reproduction.md`](docs/pa_mppi_reproduction.md) |
+| SOPPI | 2/10 solved; navigation coverage only | [`docs/soppi_reproduction.md`](docs/soppi_reproduction.md) |
+| Full index + CSV | [`docs/results/mppi_zoo_suite_2026-06-10.csv`](docs/results/mppi_zoo_suite_2026-06-10.csv) | [`docs/mppi_reproduction_zoo.md`](docs/mppi_reproduction_zoo.md) |
 
 ## Highlights
 
@@ -190,6 +232,8 @@ The most visually striking GPU demos, where massive parallelism really shows.
 |---|---|
 | <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_mppi_racing.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/comparison_diff_mppi.gif" width="400"/> |
 | MPPI autonomous racing | MPPI vs Diff-MPPI |
+| <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_mppi_zoo_dynamic_crossing.gif" width="400"/> | |
+| MPPI zoo: vanilla vs `step_mppi_smooth` on `dynamic_crossing` | |
 | <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_wavefront_planner.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_diffusion_planner.gif" width="400"/> |
 | Wavefront planner | Diffusion planner |
 | <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_batched_ilqr.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/sdf_mppi.gif" width="400"/> |
