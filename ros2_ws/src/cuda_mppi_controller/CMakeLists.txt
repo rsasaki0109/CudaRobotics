@@ -65,12 +65,16 @@ target_link_libraries(mppi_gpu_standalone ${PROJECT_NAME})
 add_executable(plugin_load_test test/plugin_load_test.cpp)
 ament_target_dependencies(plugin_load_test ${ROS_DEPS})
 
+# Closed-loop CPU (nav2_mppi_controller) vs GPU head-to-head benchmark.
+add_executable(controller_benchmark test/controller_benchmark.cpp)
+ament_target_dependencies(controller_benchmark ${ROS_DEPS})
+
 install(TARGETS ${PROJECT_NAME}
   ARCHIVE DESTINATION lib
   LIBRARY DESTINATION lib
   RUNTIME DESTINATION bin
 )
-install(TARGETS mppi_gpu_standalone plugin_load_test
+install(TARGETS mppi_gpu_standalone plugin_load_test controller_benchmark
   RUNTIME DESTINATION lib/${PROJECT_NAME}
 )
 install(DIRECTORY include/ DESTINATION include)

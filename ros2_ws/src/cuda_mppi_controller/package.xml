@@ -21,6 +21,9 @@
   <depend>tf2_ros</depend>
   <depend>tf2_geometry_msgs</depend>
 
+  <!-- CPU baseline loaded at runtime by the head-to-head benchmark -->
+  <exec_depend>nav2_mppi_controller</exec_depend>
+
   <export>
     <build_type>ament_cmake</build_type>
     <nav2_core plugin="${prefix}/cuda_mppi_plugin.xml" />

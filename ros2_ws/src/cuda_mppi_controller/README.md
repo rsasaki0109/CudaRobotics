@@ -20,6 +20,23 @@ included) on an RTX 4070 Ti SUPER, ROS 2 Jazzy, CUDA 12.0. For reference,
 the stock CPU MPPI controller typically runs K≈2,000; here K=65,536 still
 fits the cycle with room to spare.
 
+## Head-to-head vs nav2_mppi_controller (CPU)
+
+`controller_benchmark` loads both controllers through pluginlib and drives
+the same plant through the same costmap and plan at 20 Hz
+(i9-10900 vs RTX 4070 Ti SUPER):
+
+| | K=1–2k | K=5k | K=10k | K=16k | K=65k |
+|---|---:|---:|---:|---:|---:|
+| nav2 MPPI (CPU) mean | 2.0–4.3 ms | 10.6 ms | 20.7 ms | — | — |
+| CUDA MPPI (GPU) mean | 1.0 ms | — | — | 2.8 ms | 8.3 ms |
+
+Full setup, honest caveats (the stock CPU critic set still reaches the goal
+~15% sooner in sim time — tuning, not architecture), and reproduction steps:
+[`docs/results/cuda_mppi_vs_nav2_2026-06-10.md`](../../../docs/results/cuda_mppi_vs_nav2_2026-06-10.md).
+
+![side-by-side rollout](../../../gif/cuda_mppi_vs_nav2_cpu.gif)
+
 ## Status
 
 Experimental. Differential-drive (`v`, `ω`) only for now. Costs implemented:
