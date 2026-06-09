@@ -158,7 +158,7 @@ does not, and what would be required for a paper-faithful reproduction.
 | LP-MPPI | 8/10 solved | [`docs/lp_mppi_reproduction.md`](docs/lp_mppi_reproduction.md) |
 | DBaS-Log-MPPI | not in suite; smoke benchmark only | [`docs/dbas_log_mppi_reproduction.md`](docs/dbas_log_mppi_reproduction.md) |
 | PA-MPPI | not in suite; narrow-passage smoke | [`docs/pa_mppi_reproduction.md`](docs/pa_mppi_reproduction.md) |
-| SOPPI | 2/10 nav; `box_swivel` 1.00; detour cell is gradient-positive | [`docs/soppi_reproduction.md`](docs/soppi_reproduction.md) |
+| SOPPI | 2/10 nav; `box_swivel` 1.00; `soppi_fast_g3` matches `diff_mppi_3` on detour | [`docs/soppi_reproduction.md`](docs/soppi_reproduction.md) |
 | Full index + CSV | [`docs/results/mppi_zoo_suite_2026-06-10.csv`](docs/results/mppi_zoo_suite_2026-06-10.csv) | [`docs/mppi_reproduction_zoo.md`](docs/mppi_reproduction_zoo.md) |
 
 ## Highlights
