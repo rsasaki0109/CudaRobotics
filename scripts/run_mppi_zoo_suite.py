@@ -28,10 +28,12 @@ DEFAULT_PLANNERS = (
     "dra_mppi_soft,"
     "lp_mppi_smooth,"
     "c2u_mppi_smooth,"
-    "sc_mppi_smooth"
+    "sc_mppi_smooth,"
+    "soppi,"
+    "soppi_fast"
 )
 DEFAULT_K_VALUES = "64,128"
-DEFAULT_RESULTS_STEM = "mppi_zoo_suite_2026-06-09"
+DEFAULT_RESULTS_STEM = "mppi_zoo_suite_2026-06-10"
 
 
 def parse_args() -> argparse.Namespace:

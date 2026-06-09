@@ -32,16 +32,20 @@ while the paper-inspired zoo variants solve the same cells in this smoke run.
 ## Checked-In Suite Result
 
 The expanded fixed-seed suite artifact is
-[`results/mppi_zoo_suite_2026-06-09.md`](results/mppi_zoo_suite_2026-06-09.md)
+[`results/mppi_zoo_suite_2026-06-10.md`](results/mppi_zoo_suite_2026-06-10.md)
 with its source CSV at
-[`results/mppi_zoo_suite_2026-06-09.csv`](results/mppi_zoo_suite_2026-06-09.csv)
+[`results/mppi_zoo_suite_2026-06-10.csv`](results/mppi_zoo_suite_2026-06-10.csv)
 and chart at
-[`results/mppi_zoo_suite_2026-06-09.svg`](results/mppi_zoo_suite_2026-06-09.svg).
+[`results/mppi_zoo_suite_2026-06-10.svg`](results/mppi_zoo_suite_2026-06-10.svg).
 
 Scope: five navigation scenarios
 (`dynamic_crossing`, `narrow_passage`, `model_mismatch_crossing`,
-`dynamic_pincer`, `uncertain_crossing`), eight curated planners, `K=64,128`,
-and 3 seeds per scenario/planner/K cell.
+`dynamic_pincer`, `uncertain_crossing`), ten curated planners (including
+`soppi` and `soppi_fast`), `K=64,128`, and 3 seeds per scenario/planner/K
+cell.
+
+The earlier eight-planner run from 2026-06-09 remains at
+[`results/mppi_zoo_suite_2026-06-09.md`](results/mppi_zoo_suite_2026-06-09.md).
 
 Reproduce:
 
@@ -68,8 +72,11 @@ python3 scripts/render_mppi_zoo_gif.py --bin bin/benchmark_diff_mppi
 Useful signals from the checked-in run:
 
 - Vanilla `mppi` solves only 2/10 scenario-K cells in this suite.
-- `tsallis_mppi_smooth` is the only curated planner with 10/10 solved cells;
-  `step_mppi_smooth` and `sc_mppi_smooth` follow at 9/10.
+- `step_mppi_smooth`, `tsallis_mppi_smooth`, and `sc_mppi_smooth` lead at 9/10
+  solved cells in the 2026-06-10 rerun.
+- `soppi` and `soppi_fast` also solve 2/10 cells, matching vanilla `mppi` on
+  navigation; both clear only `narrow_passage`. Treat SOPPI as a coverage row,
+  not a headline navigation win. Box pushing remains the stronger SOPPI signal.
 - `model_mismatch_crossing` replaces `dynamic_slalom` in the suite because
   the slalom geometry needs gradient/hybrid guidance at low K; mismatch crossing
   still discriminates vanilla `mppi` from Step/Tsallis.
@@ -82,7 +89,7 @@ Useful signals from the checked-in run:
 | LP-MPPI | Low-pass filtered control noise | `lp_mppi`, `lp_mppi_smooth` | Strong dynamic-crossing success where vanilla MPPI fails | Reproduction scaffold, not the full paper system | [`lp_mppi_reproduction.md`](lp_mppi_reproduction.md) |
 | Step-MPPI | State-conditioned or step-wise proposal shaping | `step_mppi_fast`, `step_mppi_smooth`, adaptive variants | Preferred lightweight default in dynamic crossing; smooth variant keeps success with lower roughness | Uses EMA/table-like proposal logic instead of a trained proposal network | [`step_mppi_reproduction.md`](step_mppi_reproduction.md) |
 | Tsallis-MPPI | q-exponential / Tsallis weighting | `tsallis_mppi_q07`, `tsallis_mppi_smooth`, `tsallis_mppi_q13` | Strong cheap fix for dynamic bottlenecks and open crossings | Sensitive to q shape; harder scenes still need more structure | [`tsallis_mppi_reproduction.md`](tsallis_mppi_reproduction.md) |
-| SOPPI | SVGD-style sample optimization | `soppi`, `soppi_fast` across navigation, CartPole, pushing, box pushing | Box pushing exposes useful final-error and success improvements | Navigation gains are modest; SVGD score is simplified | [`soppi_reproduction.md`](soppi_reproduction.md) |
+| SOPPI | SVGD-style sample optimization | `soppi`, `soppi_fast` across navigation, CartPole, pushing, box pushing | Box pushing exposes useful final-error and success improvements; suite row now checked in | Navigation: 2/10 solved (`narrow_passage` only); SVGD score is simplified | [`soppi_reproduction.md`](soppi_reproduction.md) |
 | SVG-MPPI | Stein-mode guidance | `svg_mppi` variants | Adds Stein-style mode guidance in the shared benchmark | Lightweight scaffold rather than full differentiable-through-time reproduction | [`svg_mppi_reproduction.md`](svg_mppi_reproduction.md) |
 | pi-MPPI | Projection-informed controls | `pi_mppi` variants | Tests projection-filtered controls in the same navigation scenarios | Helpful as a constraint layer, not a standalone default | [`pi_mppi_reproduction.md`](pi_mppi_reproduction.md) |
 | CDF-MPPI | Configuration-space distance field guidance | `cdf_*` variants | Useful C-space guidance experiment in 2D navigation | Paper target is manipulator motion planning; current benchmark is 2D nav | [`cdf_mppi_reproduction.md`](cdf_mppi_reproduction.md) |
@@ -114,6 +121,5 @@ Useful signals from the checked-in run:
 
 ## Public-Facing Gaps
 
-- Add `soppi` / `soppi_fast` to the fixed-seed suite now that the navigation
-  kernel is faster; navigation gains are still modest, so treat it as coverage
-  rather than a headline win.
+- Tune SOPPI navigation hyperparameters or score kernel if a stronger navigation
+  signal is needed; the current suite row documents the modest gain honestly.

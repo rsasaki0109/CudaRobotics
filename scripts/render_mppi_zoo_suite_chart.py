@@ -11,8 +11,8 @@ from statistics import mean
 
 
 ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_CSV = "docs/results/mppi_zoo_suite_2026-06-09.csv"
-DEFAULT_SVG = "docs/results/mppi_zoo_suite_2026-06-09.svg"
+DEFAULT_CSV = "docs/results/mppi_zoo_suite_2026-06-10.csv"
+DEFAULT_SVG = "docs/results/mppi_zoo_suite_2026-06-10.svg"
 PLANNER_ORDER = [
     "mppi",
     "step_mppi_smooth",
@@ -22,6 +22,8 @@ PLANNER_ORDER = [
     "lp_mppi_smooth",
     "c2u_mppi_smooth",
     "sc_mppi_smooth",
+    "soppi",
+    "soppi_fast",
 ]
 PANELS = [
     {

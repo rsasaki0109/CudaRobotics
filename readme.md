@@ -57,7 +57,7 @@ Full animated gallery: https://rsasaki0109.github.io/CudaRobotics/
 | Want to see | Open |
 |---|---|
 | Visual demos | [Full animated gallery](https://rsasaki0109.github.io/CudaRobotics/) |
-| Latest fixed-seed MPPI result | [`docs/results/mppi_zoo_suite_2026-06-09.md`](docs/results/mppi_zoo_suite_2026-06-09.md) |
+| Latest fixed-seed MPPI result | [`docs/results/mppi_zoo_suite_2026-06-10.md`](docs/results/mppi_zoo_suite_2026-06-10.md) |
 | Quick MPPI smoke result | [`docs/results/mppi_zoo_smoke_2026-06-05.md`](docs/results/mppi_zoo_smoke_2026-06-05.md) |
 | MPPI paper reproduction zoo | [`docs/mppi_reproduction_zoo.md`](docs/mppi_reproduction_zoo.md) |
 | Reproducibility suites | [`docs/reproducibility.md`](docs/reproducibility.md) |
@@ -67,13 +67,13 @@ Full animated gallery: https://rsasaki0109.github.io/CudaRobotics/
 
 ## Latest Fixed-Seed Result
 
-The checked-in MPPI zoo suite was generated on 2026-06-09 with five navigation
-scenarios, eight curated planners, `K=64,128`, and 3 seeds per
-scenario/planner/K cell. It is a fixed-seed benchmark, not a paper-faithful
-claim, but it adds stress scenes beyond the earlier smoke pair and keeps the
-failures visible.
+The checked-in MPPI zoo suite was generated on 2026-06-10 with five navigation
+scenarios, ten curated planners (including `soppi` / `soppi_fast`), `K=64,128`,
+and 3 seeds per scenario/planner/K cell. It is a fixed-seed benchmark, not a
+paper-faithful claim, but it adds stress scenes beyond the earlier smoke pair
+and keeps the failures visible.
 
-<img src="docs/results/mppi_zoo_suite_2026-06-09.svg" alt="MPPI Zoo fixed-seed suite chart" width="900"/>
+<img src="docs/results/mppi_zoo_suite_2026-06-10.svg" alt="MPPI Zoo fixed-seed suite chart" width="900"/>
 
 Side-by-side rollout on `dynamic_crossing` (`K=128`): vanilla `mppi` stalls short
 of the goal while `step_mppi_smooth` reaches it.
@@ -86,22 +86,25 @@ of the goal while `step_mppi_smooth` reaches it.
 | `model_mismatch_crossing` | Vanilla `mppi` fails; `step_mppi_smooth` / `tsallis_mppi_smooth` reach 1.00 at `K=128`. |
 | `dynamic_pincer` | Vanilla `mppi` fails with large final distance; zoo variants succeed. |
 | `uncertain_crossing` | Same pattern as dynamic crossing: vanilla `mppi` fails, zoo variants succeed. |
-| `narrow_passage` | All curated planners succeed and finish sooner than vanilla `mppi`. |
+| `narrow_passage` | All smooth zoo planners succeed; `soppi` also clears both K cells here. |
 
 Full report and CSV:
-[`docs/results/mppi_zoo_suite_2026-06-09.md`](docs/results/mppi_zoo_suite_2026-06-09.md)
+[`docs/results/mppi_zoo_suite_2026-06-10.md`](docs/results/mppi_zoo_suite_2026-06-10.md)
 and
-[`docs/results/mppi_zoo_suite_2026-06-09.csv`](docs/results/mppi_zoo_suite_2026-06-09.csv).
+[`docs/results/mppi_zoo_suite_2026-06-10.csv`](docs/results/mppi_zoo_suite_2026-06-10.csv).
 
 Suite leaders (5 scenarios × 2 K values, 3 seeds per cell):
 
 | Planner | Solved | Success | Avg ms | Notes |
 |---|---|---|---|---|
-| `tsallis_mppi_smooth` | 10/10 | 1.00 | 0.133 | Only planner to clear every cell |
-| `step_mppi_smooth` | 9/10 | 0.97 | 0.089 | Fastest curated planner in the suite |
-| `sc_mppi_smooth` | 9/10 | 0.97 | 0.149 | Strong safety-controlled baseline |
-| `mppi` | 2/10 | 0.20 | 0.097 | Negative control; fails dynamic stress scenes |
+| `step_mppi_smooth` | 9/10 | 0.97 | 0.116 | Fastest curated planner in the suite |
+| `tsallis_mppi_smooth` | 9/10 | 0.97 | 0.175 | Tied for best solve rate |
+| `sc_mppi_smooth` | 9/10 | 0.97 | 0.198 | Strong safety-controlled baseline |
+| `soppi` / `soppi_fast` | 2/10 | 0.20 | 0.30 / 0.25 | Navigation negative control; wins only on `narrow_passage` |
+| `mppi` | 2/10 | 0.20 | 0.126 | Baseline negative control |
 
+The eight-planner suite from 2026-06-09 remains at
+[`docs/results/mppi_zoo_suite_2026-06-09.md`](docs/results/mppi_zoo_suite_2026-06-09.md).
 The smaller two-scenario smoke artifact from 2026-06-05 remains at
 [`docs/results/mppi_zoo_smoke_2026-06-05.md`](docs/results/mppi_zoo_smoke_2026-06-05.md).
 
@@ -155,7 +158,8 @@ does not, and what would be required for a paper-faithful reproduction.
 | LP-MPPI | 8/10 solved | [`docs/lp_mppi_reproduction.md`](docs/lp_mppi_reproduction.md) |
 | DBaS-Log-MPPI | not in suite; smoke benchmark only | [`docs/dbas_log_mppi_reproduction.md`](docs/dbas_log_mppi_reproduction.md) |
 | PA-MPPI | not in suite; narrow-passage smoke | [`docs/pa_mppi_reproduction.md`](docs/pa_mppi_reproduction.md) |
-| Full index + CSV | [`docs/results/mppi_zoo_suite_2026-06-09.csv`](docs/results/mppi_zoo_suite_2026-06-09.csv) | [`docs/mppi_reproduction_zoo.md`](docs/mppi_reproduction_zoo.md) |
+| SOPPI | 2/10 solved; navigation coverage only | [`docs/soppi_reproduction.md`](docs/soppi_reproduction.md) |
+| Full index + CSV | [`docs/results/mppi_zoo_suite_2026-06-10.csv`](docs/results/mppi_zoo_suite_2026-06-10.csv) | [`docs/mppi_reproduction_zoo.md`](docs/mppi_reproduction_zoo.md) |
 
 ## Highlights
 

@@ -31,16 +31,17 @@ Key signals:
 - `narrow_passage` is an efficiency check: vanilla `mppi` succeeds, but the
   smooth variants reduce the average number of control steps in this smoke run.
 
-## MPPI Zoo Suite, 2026-06-09
+## MPPI Zoo Suite, 2026-06-10
 
-- Report: [`mppi_zoo_suite_2026-06-09.md`](mppi_zoo_suite_2026-06-09.md)
-- CSV: [`mppi_zoo_suite_2026-06-09.csv`](mppi_zoo_suite_2026-06-09.csv)
-- Chart: [`mppi_zoo_suite_2026-06-09.svg`](mppi_zoo_suite_2026-06-09.svg)
+- Report: [`mppi_zoo_suite_2026-06-10.md`](mppi_zoo_suite_2026-06-10.md)
+- CSV: [`mppi_zoo_suite_2026-06-10.csv`](mppi_zoo_suite_2026-06-10.csv)
+- Chart: [`mppi_zoo_suite_2026-06-10.svg`](mppi_zoo_suite_2026-06-10.svg)
 - GIF: [gh-pages](https://rsasaki0109.github.io/CudaRobotics/gpu_mppi_zoo_dynamic_crossing.gif)
   (local: [`../gif/gpu_mppi_zoo_dynamic_crossing.gif`](../gif/gpu_mppi_zoo_dynamic_crossing.gif))
 - Scope: `dynamic_crossing,narrow_passage,model_mismatch_crossing,dynamic_pincer,uncertain_crossing`
 - Planners: `mppi`, `step_mppi_smooth`, `tsallis_mppi_smooth`, `ducct_mppi_smooth`,
-  `dra_mppi_soft`, `lp_mppi_smooth`, `c2u_mppi_smooth`, `sc_mppi_smooth`
+  `dra_mppi_soft`, `lp_mppi_smooth`, `c2u_mppi_smooth`, `sc_mppi_smooth`,
+  `soppi`, `soppi_fast`
 - Sample counts: `K=64,128`
 - Seeds: 3 per scenario/planner/K cell
 
@@ -72,5 +73,14 @@ Key signals:
   at low K and remains a separate benchmark cell in `benchmark_diff_mppi`.
 - `narrow_passage` stays an efficiency check: all curated planners succeed and
   finish in fewer steps than vanilla `mppi`.
-- Aggregate: `tsallis_mppi_smooth` 10/10 solved cells, `step_mppi_smooth` and
-  `sc_mppi_smooth` 9/10, vanilla `mppi` 2/10.
+- Aggregate: `step_mppi_smooth`, `tsallis_mppi_smooth`, and `sc_mppi_smooth`
+  9/10 solved cells; `soppi` and `soppi_fast` 2/10 (navigation coverage only);
+  vanilla `mppi` 2/10.
+
+## MPPI Zoo Suite, 2026-06-09
+
+Eight-planner predecessor run, kept for comparison:
+
+- Report: [`mppi_zoo_suite_2026-06-09.md`](mppi_zoo_suite_2026-06-09.md)
+- CSV: [`mppi_zoo_suite_2026-06-09.csv`](mppi_zoo_suite_2026-06-09.csv)
+- Chart: [`mppi_zoo_suite_2026-06-09.svg`](mppi_zoo_suite_2026-06-09.svg)
