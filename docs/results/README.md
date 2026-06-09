@@ -77,6 +77,33 @@ Key signals:
   9/10 solved cells; `soppi` and `soppi_fast` 2/10 (navigation coverage only);
   vanilla `mppi` 2/10.
 
+## SOPPI Box Pushing, 2026-06-11
+
+- Report: [`soppi_box_pushing_2026-06-11.md`](soppi_box_pushing_2026-06-11.md)
+- CSV: [`soppi_box_pushing_2026-06-11.csv`](soppi_box_pushing_2026-06-11.csv)
+- Scope: `box_turn,box_align,box_pivot,box_swivel,box_align_strict`
+- Planners: `mppi`, `diff_mppi_1`, `diff_mppi_3`, `soppi`, `soppi_fast`
+- Sample count: `K=256`
+- Seeds: 4 per scenario/planner cell
+
+Reproduce from the repository root:
+
+```bash
+cmake --build build --target benchmark_diff_mppi_pushing_box -j$(nproc)
+./bin/benchmark_diff_mppi_pushing_box \
+  --quick \
+  --planners mppi,diff_mppi_1,diff_mppi_3,soppi,soppi_fast \
+  --k-values 256 \
+  --seed-count 4 \
+  --csv docs/results/soppi_box_pushing_2026-06-11.csv
+```
+
+Key signals:
+
+- `box_align_strict` is the new orientation-binding cell: Diff-MPPI `1.00`,
+  `soppi_fast` ties MPPI at `0.75` with lower cost.
+- `box_swivel` still shows all-pairs `soppi` at `1.00` vs MPPI `0.75`.
+
 ## SOPPI Box Pushing, 2026-06-10
 
 - Report: [`soppi_box_pushing_2026-06-10.md`](soppi_box_pushing_2026-06-10.md)
