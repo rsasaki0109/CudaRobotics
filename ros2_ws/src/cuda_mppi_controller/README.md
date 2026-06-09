@@ -39,7 +39,27 @@ Full setup, honest caveats (the stock CPU critic set still reaches the goal
 
 ## Status
 
-Experimental. Differential-drive (`v`, `ω`) only for now. Costs implemented:
+Experimental, but verified end-to-end in the full Nav2 stack: bt_navigator →
+planner_server → controller_server (this plugin) → velocity_smoother, driving
+a TurtleBot3 through the sandbox world in the nav2 loopback simulation:
+
+<img src="../../../gif/cuda_mppi_nav2_loopback.gif" alt="nav2 loopback demo" width="420"/>
+
+```bash
+# terminal 1 — Nav2 + loopback sim with this plugin
+ROS_DOMAIN_ID=42 PYTHONNOUSERSITE=1 ros2 launch nav2_bringup \
+  tb3_loopback_simulation.launch.py use_rviz:=False \
+  params_file:=$(ros2 pkg prefix cuda_mppi_controller)/share/cuda_mppi_controller/config/nav2_loopback_demo.yaml
+
+# terminal 2 — waypoint mission + trajectory recording + GIF
+ROS_DOMAIN_ID=42 PYTHONNOUSERSITE=1 python3 scripts/run_nav2_loopback_demo.py /tmp/nav2_demo
+python3 scripts/render_nav2_loopback_demo.py /tmp/nav2_demo
+```
+
+(Gazebo physics simulation not exercised yet — the loopback sim covers the
+full Nav2 software stack but not sensor pipelines.)
+
+Differential-drive (`v`, `ω`) only for now. Costs implemented:
 
 - **Path align** — squared lateral distance to the global plan window
 - **Path follow** — distance to a point `follow_lookahead` ahead on the plan
