@@ -29,6 +29,52 @@ scenario/planner/K cell, and the nine planners listed in the report. The useful
 negative control is `dynamic_crossing`: vanilla `mppi` fails at both K values,
 while the paper-inspired zoo variants solve the same cells in this smoke run.
 
+## Checked-In Suite Result
+
+The expanded fixed-seed suite artifact is
+[`results/mppi_zoo_suite_2026-06-09.md`](results/mppi_zoo_suite_2026-06-09.md)
+with its source CSV at
+[`results/mppi_zoo_suite_2026-06-09.csv`](results/mppi_zoo_suite_2026-06-09.csv)
+and chart at
+[`results/mppi_zoo_suite_2026-06-09.svg`](results/mppi_zoo_suite_2026-06-09.svg).
+
+Scope: five navigation scenarios
+(`dynamic_crossing`, `narrow_passage`, `model_mismatch_crossing`,
+`dynamic_pincer`, `uncertain_crossing`), eight curated planners, `K=64,128`,
+and 3 seeds per scenario/planner/K cell.
+
+Reproduce:
+
+```bash
+docker compose build cudarobotics
+docker compose run --rm cudarobotics bash -lc 'python3 scripts/run_mppi_zoo_suite.py --bin ./bin/benchmark_diff_mppi && python3 scripts/render_mppi_zoo_suite_chart.py'
+```
+
+## Comparison GIF
+
+The checked-in side-by-side rollout is
+[`gpu_mppi_zoo_dynamic_crossing.gif`](https://rsasaki0109.github.io/CudaRobotics/gpu_mppi_zoo_dynamic_crossing.gif)
+(local copy: [`../gif/gpu_mppi_zoo_dynamic_crossing.gif`](../gif/gpu_mppi_zoo_dynamic_crossing.gif)).
+It contrasts vanilla `mppi` and `step_mppi_smooth` on `dynamic_crossing` at
+`K=128`, matching the suite's strongest negative control.
+
+Reproduce:
+
+```bash
+cmake --build build --target benchmark_diff_mppi -j$(nproc)
+python3 scripts/render_mppi_zoo_gif.py --bin bin/benchmark_diff_mppi
+```
+
+Useful signals from the checked-in run:
+
+- Vanilla `mppi` solves only 2/10 scenario-K cells in this suite.
+- `tsallis_mppi_smooth` is the only curated planner with 10/10 solved cells;
+  `step_mppi_smooth` and `sc_mppi_smooth` follow at 9/10.
+- `model_mismatch_crossing` replaces `dynamic_slalom` in the suite because
+  the slalom geometry needs gradient/hybrid guidance at low K; mismatch crossing
+  still discriminates vanilla `mppi` from Step/Tsallis.
+- `dynamic_pincer` and `uncertain_crossing` add stress beyond the smoke pair.
+
 ## Index
 
 | Family | Paper / idea | Implementation | Best signal | Limit | Doc |
@@ -68,7 +114,6 @@ while the paper-inspired zoo variants solve the same cells in this smoke run.
 
 ## Public-Facing Gaps
 
-- Add one curated GIF for the most visible MPPI variants.
-- Add a larger fixed-seed zoo suite after the smoke benchmark stabilizes.
-- Promote the strongest stable planners into the main README after each variant
-  has a reproducible CSV artifact.
+- Add `soppi` / `soppi_fast` to the fixed-seed suite now that the navigation
+  kernel is faster; navigation gains are still modest, so treat it as coverage
+  rather than a headline win.

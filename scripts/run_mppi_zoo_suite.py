@@ -13,29 +13,36 @@ sys.path.insert(0, str(ROOT / "scripts"))
 from mppi_zoo_benchmark import rel, run_benchmark
 
 
-DEFAULT_SCENARIOS = "dynamic_crossing,narrow_passage"
+DEFAULT_SCENARIOS = (
+    "dynamic_crossing,"
+    "narrow_passage,"
+    "model_mismatch_crossing,"
+    "dynamic_pincer,"
+    "uncertain_crossing"
+)
 DEFAULT_PLANNERS = (
     "mppi,"
-    "lp_mppi_smooth,"
     "step_mppi_smooth,"
     "tsallis_mppi_smooth,"
-    "dra_mppi_soft,"
-    "c2u_mppi_smooth,"
     "ducct_mppi_smooth,"
-    "dbas_log_mppi_agile,"
-    "pa_mppi_smooth"
+    "dra_mppi_soft,"
+    "lp_mppi_smooth,"
+    "c2u_mppi_smooth,"
+    "sc_mppi_smooth"
 )
 DEFAULT_K_VALUES = "64,128"
+DEFAULT_RESULTS_STEM = "mppi_zoo_suite_2026-06-09"
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Run the MPPI reproduction zoo smoke benchmark and render a compact Markdown report."
+        description="Run the expanded MPPI reproduction zoo fixed-seed suite and render a Markdown report."
     )
     parser.add_argument("--bin", default="bin/benchmark_diff_mppi", help="Path to benchmark_diff_mppi binary.")
-    parser.add_argument("--out-dir", default="build/mppi_zoo", help="Directory for CSV and Markdown output.")
-    parser.add_argument("--csv", help="CSV path. Defaults to <out-dir>/mppi_zoo_smoke.csv.")
-    parser.add_argument("--markdown-out", help="Markdown report path. Defaults to <out-dir>/mppi_zoo_smoke.md.")
+    parser.add_argument("--out-dir", default="docs/results", help="Directory for CSV and Markdown output.")
+    parser.add_argument("--stem", default=DEFAULT_RESULTS_STEM, help="Output file stem under out-dir.")
+    parser.add_argument("--csv", help="CSV path. Defaults to <out-dir>/<stem>.csv.")
+    parser.add_argument("--markdown-out", help="Markdown report path. Defaults to <out-dir>/<stem>.md.")
     parser.add_argument("--scenarios", default=DEFAULT_SCENARIOS, help="Comma-separated scenario names.")
     parser.add_argument("--planners", default=DEFAULT_PLANNERS, help="Comma-separated planner names.")
     parser.add_argument("--k-values", default=DEFAULT_K_VALUES, help="Comma-separated K sample counts.")
@@ -47,19 +54,21 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = parse_args()
+    csv_default = f"{args.stem}.csv"
+    markdown_default = f"{args.stem}.md"
     csv_path, markdown_path, command = run_benchmark(
         bin_path=args.bin,
         out_dir=args.out_dir,
-        csv_path=args.csv,
-        markdown_path=args.markdown_out,
+        csv_path=args.csv or f"{args.out_dir}/{csv_default}",
+        markdown_path=args.markdown_out or f"{args.out_dir}/{markdown_default}",
         scenarios=args.scenarios,
         planners=args.planners,
         k_values=args.k_values,
         seed_count=args.seed_count,
-        title="MPPI Zoo Smoke Report",
-        generator="python3 scripts/run_mppi_zoo_smoke.py",
-        csv_basename="mppi_zoo_smoke.csv",
-        markdown_basename="mppi_zoo_smoke.md",
+        title="MPPI Zoo Suite Report",
+        generator="python3 scripts/run_mppi_zoo_suite.py",
+        csv_basename=csv_default,
+        markdown_basename=markdown_default,
         dry_run=args.dry_run,
         skip_run=args.skip_run,
     )
@@ -67,6 +76,7 @@ def main() -> None:
         print(shlex.join(command))
         print(f"Dry-run report saved to {rel(markdown_path)}")
         return
+    print(f"CSV saved to {rel(csv_path)}")
     print(f"Markdown report saved to {rel(markdown_path)}")
 
 
