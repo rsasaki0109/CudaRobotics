@@ -1487,6 +1487,8 @@ int main(int argc, char** argv) {
     { Variant v; v.name="diff_mppi_5"; v.grad_steps=5; v.alpha=0.008f; variants.push_back(v); }
     { Variant v; v.name="soppi"; v.use_soppi_sampling=true; v.soppi_step_size=0.06f; v.soppi_bandwidth=2.0f; variants.push_back(v); }
     { Variant v; v.name="soppi_fast"; v.use_soppi_sampling=true; v.soppi_step_size=0.06f; v.soppi_bandwidth=2.0f; v.soppi_neighbor_count=32; variants.push_back(v); }
+    { Variant v; v.name="soppi_g3"; v.use_soppi_sampling=true; v.soppi_step_size=0.06f; v.soppi_bandwidth=2.0f; v.grad_steps=3; v.alpha=0.010f; variants.push_back(v); }
+    { Variant v; v.name="soppi_fast_g3"; v.use_soppi_sampling=true; v.soppi_step_size=0.06f; v.soppi_bandwidth=2.0f; v.soppi_neighbor_count=32; v.grad_steps=3; v.alpha=0.010f; variants.push_back(v); }
     // Fidelity arm: vanilla MPPI that ROLLS OUT with the exact hard-contact model (no
     // gradient). Only meaningful with --true-plant hard, where it is the model-exact
     // sampler to beat.
