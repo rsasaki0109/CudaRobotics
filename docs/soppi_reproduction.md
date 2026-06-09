@@ -52,6 +52,8 @@ Implemented a planar pushing SOPPI variant in `src/benchmark_diff_mppi_pushing.c
 Implemented a box pushing SOPPI variant in `src/benchmark_diff_mppi_pushing_box.cu`:
 
 - Added `soppi` and `soppi_fast` planner registrations.
+- Added `soppi_g3` and `soppi_fast_g3` hybrid registrations that combine SVGD
+  sampling with three nominal Diff-MPPI grad steps (`grad_steps=3`, `alpha=0.010`).
 - Added the same SOPPI CLI overrides.
 - Added `sample_grad_kernel`, which evaluates the existing differentiable box-contact rollout gradient for every sampled control sequence.
 - Added `fixed_rollout_kernel` to re-evaluate moved samples before MPPI weighting.
@@ -361,6 +363,11 @@ Observed pattern:
 
 Latest checked-in fixed-seed run (six scenarios, includes `box_align_detour`):
 
+- Report: [`results/soppi_box_pushing_2026-06-13.md`](results/soppi_box_pushing_2026-06-13.md)
+- CSV: [`results/soppi_box_pushing_2026-06-13.csv`](results/soppi_box_pushing_2026-06-13.csv)
+
+Predecessor obstacle-only row (no hybrid planners):
+
 - Report: [`results/soppi_box_pushing_2026-06-12.md`](results/soppi_box_pushing_2026-06-12.md)
 - CSV: [`results/soppi_box_pushing_2026-06-12.csv`](results/soppi_box_pushing_2026-06-12.csv)
 
@@ -510,5 +517,5 @@ with a step-count advantage over MPPI.
 ## Next Steps
 
 1. Add a `--baseline-planners` option to `scripts/sweep_soppi.py` if repeated comparisons against Diff-MPPI are needed.
-2. Improve SOPPI obstacle avoidance on `box_align_detour` or add contact-loss cells.
+2. Add contact-loss cells or harder obstacle geometry where pure SVGD must improve without nominal grad steps.
 3. Consider caching partial rollout states for the box autodiff score kernel if another speed pass is needed.

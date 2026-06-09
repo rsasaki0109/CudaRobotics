@@ -77,6 +77,33 @@ Key signals:
   9/10 solved cells; `soppi` and `soppi_fast` 2/10 (navigation coverage only);
   vanilla `mppi` 2/10.
 
+## SOPPI Box Pushing, 2026-06-13
+
+- Report: [`soppi_box_pushing_2026-06-13.md`](soppi_box_pushing_2026-06-13.md)
+- CSV: [`soppi_box_pushing_2026-06-13.csv`](soppi_box_pushing_2026-06-13.csv)
+- Scope: `box_turn,box_align,box_pivot,box_swivel,box_align_strict,box_align_detour`
+- Planners: `mppi`, `diff_mppi_1`, `diff_mppi_3`, `soppi`, `soppi_fast`, `soppi_fast_g3`
+- Sample count: `K=256`
+- Seeds: 4 per scenario/planner cell
+
+Reproduce from the repository root:
+
+```bash
+cmake --build build --target benchmark_diff_mppi_pushing_box -j$(nproc)
+./bin/benchmark_diff_mppi_pushing_box \
+  --quick \
+  --planners mppi,diff_mppi_1,diff_mppi_3,soppi,soppi_fast,soppi_fast_g3 \
+  --k-values 256 \
+  --seed-count 4 \
+  --csv docs/results/soppi_box_pushing_2026-06-13.csv
+```
+
+Key signals:
+
+- `soppi_fast_g3` (SVGD + 3 nominal grad steps) matches `diff_mppi_3` on
+  `box_align_detour` (`0.25` success); pure `soppi` / `soppi_fast` stay at `0.00`.
+- `box_swivel` all-pairs `soppi` remains `1.00` vs MPPI `0.75`.
+
 ## SOPPI Box Pushing, 2026-06-12
 
 - Report: [`soppi_box_pushing_2026-06-12.md`](soppi_box_pushing_2026-06-12.md)
