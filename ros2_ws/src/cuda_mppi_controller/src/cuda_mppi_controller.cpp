@@ -56,6 +56,7 @@ void CudaMppiController::configure(
   double costmap_weight = params_.costmap_weight;
   double smoothness_weight = params_.smoothness_weight;
   double backward_weight = params_.backward_weight;
+  double speed_weight = params_.speed_weight;
   double yaw_activation = params_.yaw_goal_activation_dist;
 
   declare_get("batch_size", batch_size, batch_size);
@@ -81,6 +82,7 @@ void CudaMppiController::configure(
   declare_get("costmap_weight", costmap_weight, costmap_weight);
   declare_get("smoothness_weight", smoothness_weight, smoothness_weight);
   declare_get("backward_weight", backward_weight, backward_weight);
+  declare_get("speed_weight", speed_weight, speed_weight);
   declare_get("yaw_goal_activation_dist", yaw_activation, yaw_activation);
   declare_get("lookahead_dist", lookahead_dist_, lookahead_dist_);
   declare_get("transform_tolerance", transform_tolerance_, transform_tolerance_);
@@ -118,6 +120,7 @@ void CudaMppiController::configure(
   params_.costmap_weight = static_cast<float>(costmap_weight);
   params_.smoothness_weight = static_cast<float>(smoothness_weight);
   params_.backward_weight = static_cast<float>(backward_weight);
+  params_.speed_weight = static_cast<float>(speed_weight);
   params_.yaw_goal_activation_dist = static_cast<float>(yaw_activation);
 
   optimizer_ = std::make_unique<MppiGpu>(params_);

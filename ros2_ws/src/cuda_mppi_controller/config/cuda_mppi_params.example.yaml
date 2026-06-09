@@ -21,15 +21,17 @@ controller_server:
       vy_std: 0.2               # (Omni)
       w_std: 0.4
       consider_footprint: false # polygon footprint check (needs inflation layer)
-      temperature: 0.35         # MPPI softmin lambda
+      temperature: 0.12         # MPPI softmin lambda
       goal_weight: 20.0         # terminal local-goal distance (linear)
       goal_yaw_weight: 3.0
-      path_weight: 2.0          # lateral deviation^2 from the plan
+      path_weight: 10.0         # lateral deviation^2 from the plan
       path_follow_weight: 5.0   # pull toward a point ahead on the plan
-      follow_lookahead: 0.6     # [m]
+      follow_lookahead: 1.0     # [m]
       costmap_weight: 3.0
       smoothness_weight: 0.2
       backward_weight: 0.5
+      speed_weight: 3.0         # penalty on (v_max - v): cruise at the limit
+      angular_weight: 0.5       # penalty on wz^2: damps heading random walk
       yaw_goal_activation_dist: 0.5
       lookahead_dist: 3.0       # [m] global plan window fed to the GPU
       transform_tolerance: 0.1

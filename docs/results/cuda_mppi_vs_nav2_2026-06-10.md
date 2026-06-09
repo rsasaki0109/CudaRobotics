@@ -25,18 +25,14 @@ and `cuda_mppi_controller` (GPU), both loaded through pluginlib exactly as
 
 | controller | K | result | sim time to goal | mean solve | p95 | max |
 |---|---:|---|---:|---:|---:|---:|
-| nav2 MPPI (CPU) | 1,000 | success | 16.0 s | 2.17 ms | 2.80 ms | 3.11 ms |
-| nav2 MPPI (CPU) | 2,000 | success | 16.2 s | 4.52 ms | 5.71 ms | 6.21 ms |
-| nav2 MPPI (CPU) | 5,000 | success | 16.5 s | 11.40 ms | 15.72 ms | 17.00 ms |
-| nav2 MPPI (CPU) | 10,000 | success | 16.3 s | 22.94 ms | 27.68 ms | 33.17 ms |
-| CUDA MPPI (GPU) | 2,048 | success | 19.4 s | 1.80 ms | 4.93 ms | 10.44 ms |
-| CUDA MPPI (GPU) | 8,192 | success | 19.1 s | 2.40 ms | 5.24 ms | 7.01 ms |
-| CUDA MPPI (GPU) | 16,384 | success | 18.9 s | 3.26 ms | 6.11 ms | 10.45 ms |
-| CUDA MPPI (GPU) | 65,536 | success | 18.8 s | 9.65 ms | 12.21 ms | 19.29 ms |
-
-(Numbers from the 3-DOF-control kernel that also supports Ackermann/Omni
-and footprint checking; the GPU rollout pays ~0.5 ms over the earlier
-diff-drive-only kernel.)
+| nav2 MPPI (CPU) | 1,000 | success | 16.0 s | 3.63 ms | 5.28 ms | 17.68 ms |
+| nav2 MPPI (CPU) | 2,000 | success | 16.2 s | 5.22 ms | 6.60 ms | 10.70 ms |
+| nav2 MPPI (CPU) | 5,000 | success | 16.5 s | 13.20 ms | 16.62 ms | 23.13 ms |
+| nav2 MPPI (CPU) | 10,000 | success | 16.2 s | 27.43 ms | 34.28 ms | 38.99 ms |
+| CUDA MPPI (GPU) | 2,048 | success | 16.8 s | 2.62 ms | 5.93 ms | 8.70 ms |
+| CUDA MPPI (GPU) | 8,192 | success | 16.5 s | 3.25 ms | 6.59 ms | 13.49 ms |
+| CUDA MPPI (GPU) | 16,384 | success | 16.1 s | 3.92 ms | 7.45 ms | 14.31 ms |
+| CUDA MPPI (GPU) | 65,536 | success | 16.0 s | 10.63 ms | 15.00 ms | 22.24 ms |
 
 Side-by-side rollout (CPU K=2,000 vs GPU K=16,384):
 [`gif/cuda_mppi_vs_nav2_cpu.gif`](../../gif/cuda_mppi_vs_nav2_cpu.gif)
@@ -44,13 +40,16 @@ Side-by-side rollout (CPU K=2,000 vs GPU K=16,384):
 ## Reading the numbers honestly
 
 - **Throughput**: at comparable sample counts (K≈2,000) the GPU solve is
-  ~4× faster. Scaling K 32× (65,536) still costs less wall-clock than the
-  CPU at 10,000. Sample counts that are impractical on CPU are routine on
-  GPU.
-- **Quality**: the CPU baseline reaches the goal ~15% sooner in simulated
-  time (16.0–16.5 s vs 18.8–19.4 s). Its critic set is mature and more
-  aggressively tuned than our 6-term cost; this gap is tuning, not
-  architecture, and is the obvious next thing to close.
+  ~2× faster; K=65,536 on the GPU still costs less than K=10,000 on the
+  CPU. Sample counts that are impractical on CPU are routine on GPU.
+- **Quality**: time-to-goal now matches the CPU baseline (16.0–16.8 s vs
+  16.0–16.5 s), and on the GPU it improves monotonically with K
+  (16.8 s @ 2k → 16.0 s @ 65k) — more samples buy better trajectories,
+  which is exactly the trade the GPU makes cheap. Closing the earlier
+  ~15% gap took three things: an anti-windup nominal that may exceed
+  v_max by one noise std (a clamped zero-mean average otherwise cruises
+  ~0.4σ below the limit), a PreferForward-style speed cost, and a wz²
+  damping cost against heading random walk.
 - Both controllers solved well inside the 50 ms @ 20 Hz budget in this
   scenario; the GPU headroom matters for larger K, longer horizons, denser
   costmaps, or slower embedded CPUs.

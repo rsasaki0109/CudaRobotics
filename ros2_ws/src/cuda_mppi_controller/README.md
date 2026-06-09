@@ -10,10 +10,10 @@ impractical on CPU stay comfortably inside a 20 Hz control budget:
 
 | batch_size (K) | mean solve time | max | control budget @ 20 Hz |
 |---:|---:|---:|---:|
-| 2,048  | 1.4 ms | 8.5 ms | 50 ms |
-| 8,192  | 2.6 ms | 11.2 ms | 50 ms |
-| 16,384 | 3.3 ms | 11.6 ms | 50 ms |
-| 65,536 | 9.6 ms | 18.4 ms | 50 ms |
+| 2,048  | 2.1 ms | 10.4 ms | 50 ms |
+| 8,192  | 2.6 ms | 13.7 ms | 50 ms |
+| 16,384 | 3.7 ms | 9.8 ms | 50 ms |
+| 65,536 | 10.4 ms | 23.0 ms | 50 ms |
 
 Measured with `mppi_gpu_standalone` (T=56, dt=0.05, 200×200 costmap upload
 included) on an RTX 4070 Ti SUPER, ROS 2 Jazzy, CUDA 12.0. For reference,
@@ -28,11 +28,12 @@ the same plant through the same costmap and plan at 20 Hz
 
 | | K=1–2k | K=5k | K=10k | K=16k | K=65k |
 |---|---:|---:|---:|---:|---:|
-| nav2 MPPI (CPU) mean | 2.2–4.5 ms | 11.4 ms | 22.9 ms | — | — |
-| CUDA MPPI (GPU) mean | 1.8 ms | — | — | 3.3 ms | 9.6 ms |
+| nav2 MPPI (CPU) mean | 3.6–5.2 ms | 13.2 ms | 27.4 ms | — | — |
+| CUDA MPPI (GPU) mean | 2.6 ms | — | — | 3.9 ms | 10.6 ms |
 
-Full setup, honest caveats (the stock CPU critic set still reaches the goal
-~15% sooner in sim time — tuning, not architecture), and reproduction steps:
+Time-to-goal matches the CPU baseline, and improves monotonically with K on
+the GPU (16.8 s @ 2k → 16.0 s @ 65k) — more samples buy better trajectories.
+Full setup, tuning notes, and reproduction steps:
 [`docs/results/cuda_mppi_vs_nav2_2026-06-10.md`](../../../docs/results/cuda_mppi_vs_nav2_2026-06-10.md).
 
 ![side-by-side rollout](../../../gif/cuda_mppi_vs_nav2_cpu.gif)
@@ -132,15 +133,17 @@ controller_server:
 | `v_std` / `w_std` | 0.2 / 0.4 | sampling noise std |
 | `vy_std` | 0.2 | lateral noise std (Omni) |
 | `consider_footprint` | false | polygon footprint collision check (needs inflation layer) |
-| `temperature` | 0.35 | MPPI softmin λ |
+| `temperature` | 0.12 | MPPI softmin λ |
 | `goal_weight` | 20.0 | terminal local-goal distance (linear) |
 | `goal_yaw_weight` | 3.0 | terminal yaw error near the final goal |
-| `path_weight` | 2.0 | lateral deviation² from the plan |
+| `path_weight` | 10.0 | lateral deviation² from the plan |
 | `path_follow_weight` | 5.0 | pull toward a point ahead on the plan |
-| `follow_lookahead` | 0.6 | [m] how far ahead that point is |
+| `follow_lookahead` | 1.0 | [m] how far ahead that point is |
 | `costmap_weight` | 3.0 | graded cost for inflated cells |
 | `smoothness_weight` | 0.2 | (Δu)² between consecutive steps |
 | `backward_weight` | 0.5 | penalty on v < 0 |
+| `speed_weight` | 3.0 | penalty on (v_max − v): cruise at the limit |
+| `angular_weight` | 0.5 | penalty on wz²: damps heading random walk |
 | `yaw_goal_activation_dist` | 0.5 | [m] range to enable the yaw goal cost |
 | `lookahead_dist` | 3.0 | [m] global plan window fed to the GPU |
 | `transform_tolerance` | 0.1 | [s] TF lookup tolerance |

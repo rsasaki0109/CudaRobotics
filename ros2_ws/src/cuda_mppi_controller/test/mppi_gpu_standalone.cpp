@@ -114,6 +114,8 @@ int main(int argc, char ** argv)
 
   float x = 1.0f, y = 5.0f, yaw = 0.0f;
   double total_ms = 0.0, max_ms = 0.0;
+  double dist = 0.0;
+  int wall_cross_step = -1, near_goal_step = -1;
   int steps = 0;
   const int max_steps = 1200;
 
@@ -162,9 +164,21 @@ int main(int argc, char ** argv)
       return 1;
     }
 
+    if (std::getenv("MPPI_TRACE") && steps % 20 == 0) {
+      std::fprintf(stderr, "t=%5.2f x=%.2f y=%.2f yaw=%6.2f v=%5.2f w=%6.2f\n",
+        steps * params.model_dt, x, y, yaw, res.v, res.w);
+    }
     // apply first control to the plant (same model as the rollouts)
+    const float px = x, py = y;
     x += params.model_dt * (res.v * std::cos(yaw) - res.vy * std::sin(yaw));
     y += params.model_dt * (res.v * std::sin(yaw) + res.vy * std::cos(yaw));
+    dist += std::hypot(x - px, y - py);
+    if (wall_cross_step < 0 && x > 5.1f) {
+      wall_cross_step = steps;
+    }
+    if (near_goal_step < 0 && std::hypot(x - goal_x, y - goal_y) < 1.0f) {
+      near_goal_step = steps;
+    }
     yaw = std::atan2(
       std::sin(yaw + params.model_dt * res.w),
       std::cos(yaw + params.model_dt * res.w));
@@ -188,6 +202,10 @@ int main(int argc, char ** argv)
   std::printf(
     "PASS [%s]: goal reached in %d steps (%.1f sim-seconds)\n",
     mode.c_str(), steps, steps * params.model_dt);
+  std::printf(
+    "profile: mean speed %.3f m/s | wall crossed at %.1fs | last 1 m took %.1fs\n",
+    dist / (steps * params.model_dt), wall_cross_step * params.model_dt,
+    (steps - near_goal_step) * params.model_dt);
   std::printf(
     "solve time: mean %.2f ms, max %.2f ms (K=%d, T=%d, incl. costmap upload)\n",
     total_ms / (steps + 1), max_ms, params.batch_size, params.time_steps);

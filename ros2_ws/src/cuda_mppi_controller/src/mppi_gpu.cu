@@ -42,6 +42,7 @@ struct DeviceParams
   float min_turning_r;
   float v_std, vy_std, w_std;
   float goal_w, goal_yaw_w, path_w, follow_w, costmap_w, smooth_w, backward_w;
+  float speed_w, angular_w;
   int follow_offset;   // path index offset for the path-follow cost
   float collision_cost;
   float yaw_activation_dist;
@@ -142,23 +143,33 @@ __global__ void rollout_kernel(
   for (int t = 0; t < p.T; ++t) {
     // Sample k==0 carries the unperturbed nominal so the previous solution
     // always stays in the candidate set.
+    //
+    // The stored (averaged) controls are UNCLAMPED; only the executed ones
+    // are clamped. Zero-mean noise clamped at v_max averages ~v_max - 0.4σ,
+    // so a clamped average can never cruise at the limit — letting the
+    // nominal sit above v_max (bounded by the anti-windup clamp after the
+    // update) keeps the executed control saturated.
     const bool perturb = (k != 0);
     float nv = perturb ? curand_normal(&rng) * p.v_std : 0.0f;
     float nw = perturb ? curand_normal(&rng) * p.w_std : 0.0f;
-    float v = fminf(fmaxf(nominal[t * kCtrlDim + 0] + nv, p.v_min), p.v_max);
+    const float v_raw = nominal[t * kCtrlDim + 0] + nv;
+    float v = fminf(fmaxf(v_raw, p.v_min), p.v_max);
+    float vy_raw = 0.0f;
     float vy = 0.0f;
     if (p.motion_model == 2) {  // Omni
       float nvy = perturb ? curand_normal(&rng) * p.vy_std : 0.0f;
-      vy = fminf(fmaxf(nominal[t * kCtrlDim + 1] + nvy, -p.vy_max), p.vy_max);
+      vy_raw = nominal[t * kCtrlDim + 1] + nvy;
+      vy = fminf(fmaxf(vy_raw, -p.vy_max), p.vy_max);
     }
-    float w = fminf(fmaxf(nominal[t * kCtrlDim + 2] + nw, -p.w_max), p.w_max);
+    const float w_raw = nominal[t * kCtrlDim + 2] + nw;
+    float w = fminf(fmaxf(w_raw, -p.w_max), p.w_max);
     if (p.motion_model == 1) {  // Ackermann: curvature limit
       const float w_dyn = fabsf(v) / p.min_turning_r;
       w = fminf(fmaxf(w, -w_dyn), w_dyn);
     }
-    perturbed[(k * p.T + t) * kCtrlDim + 0] = v;
-    perturbed[(k * p.T + t) * kCtrlDim + 1] = vy;
-    perturbed[(k * p.T + t) * kCtrlDim + 2] = w;
+    perturbed[(k * p.T + t) * kCtrlDim + 0] = v_raw;
+    perturbed[(k * p.T + t) * kCtrlDim + 1] = vy_raw;
+    perturbed[(k * p.T + t) * kCtrlDim + 2] = w_raw;
 
     const float cy = cosf(yaw);
     const float sy = sinf(yaw);
@@ -220,6 +231,8 @@ __global__ void rollout_kernel(
     float dw = w - prev_w;
     cost += p.smooth_w * (dv * dv + dvy * dvy + dw * dw);
     cost += p.backward_w * fmaxf(-v, 0.0f) * p.dt;
+    cost += p.speed_w * (p.v_max - v) * p.dt;
+    cost += p.angular_w * w * w * p.dt;
     prev_v = v;
     prev_vy = vy;
     prev_w = w;
@@ -410,6 +423,8 @@ MppiResult MppiGpu::compute(
   dp.costmap_w = mp.costmap_weight;
   dp.smooth_w = mp.smoothness_weight;
   dp.backward_w = mp.backward_weight;
+  dp.speed_w = mp.speed_weight;
+  dp.angular_w = mp.angular_weight;
   dp.collision_cost = mp.collision_cost;
   dp.yaw_activation_dist = mp.yaw_goal_activation_dist;
   dp.lethal_threshold = mp.lethal_threshold;
@@ -470,10 +485,28 @@ MppiResult MppiGpu::compute(
       im.h_nominal.data(), im.d_nominal,
       ctrl_count * sizeof(float), cudaMemcpyDeviceToHost));
 
+  // anti-windup: only the translational speeds may exceed their limit, and
+  // only by one noise std — that is what lets the executed control saturate
+  // at v_max (a clamped zero-mean average sits ~0.4σ below the limit).
+  // The angular rate is clamped hard: letting it wind up makes the robot
+  // pirouette through disturbances instead of counter-steering.
+  for (int t = 0; t < T; ++t) {
+    float & nv = im.h_nominal[t * kCtrlDim + 0];
+    float & nvy = im.h_nominal[t * kCtrlDim + 1];
+    float & nw = im.h_nominal[t * kCtrlDim + 2];
+    nv = std::min(std::max(nv, dp.v_min), dp.v_max + mp.v_std);
+    nvy = std::min(std::max(nvy, -mp.vy_max - mp.vy_std), mp.vy_max + mp.vy_std);
+    nw = std::min(std::max(nw, -mp.w_max), mp.w_max);
+  }
+
   MppiResult res;
-  res.v = im.h_nominal[0];
-  res.vy = im.h_nominal[1];
-  res.w = im.h_nominal[2];
+  res.v = std::min(std::max(im.h_nominal[0], dp.v_min), dp.v_max);
+  res.vy = std::min(std::max(im.h_nominal[1], -mp.vy_max), mp.vy_max);
+  res.w = std::min(std::max(im.h_nominal[2], -mp.w_max), mp.w_max);
+  if (mp.motion_model == MotionModel::Ackermann) {
+    const float w_dyn = std::fabs(res.v) / std::max(mp.min_turning_r, 1.0e-3f);
+    res.w = std::min(std::max(res.w, -w_dyn), w_dyn);
+  }
   res.best_cost = min_cost;
   res.all_colliding = min_cost >= mp.collision_cost;
 

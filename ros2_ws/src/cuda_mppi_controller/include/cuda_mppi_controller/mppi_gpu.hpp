@@ -36,17 +36,24 @@ struct MppiParams
   float vy_std = 0.2f;          // (Omni only)
   float w_std = 0.4f;
 
-  float lambda = 0.35f;         // softmin temperature
+  float lambda = 0.12f;         // softmin temperature
 
   // cost weights
   float goal_weight = 20.0f;         // terminal distance to local goal (linear)
   float goal_yaw_weight = 3.0f;      // terminal yaw error (active near final goal)
-  float path_weight = 2.0f;          // stage lateral distance² to reference path
+  float path_weight = 10.0f;         // stage lateral distance² to reference path
   float path_follow_weight = 5.0f;   // stage distance to a point ahead on the path
-  float follow_lookahead = 0.6f;     // [m] how far ahead that point is
+  float follow_lookahead = 1.0f;     // [m] how far ahead that point is
   float costmap_weight = 3.0f;       // stage costmap cost (normalized 0..1, squared)
   float smoothness_weight = 0.2f;    // stage (du)^2 between consecutive steps
   float backward_weight = 0.5f;      // stage penalty on v < 0
+  // stage penalty on (v_max - v): counters the softmin saturation bias
+  // (clamped samples average below v_max) so the robot actually cruises
+  // at v_max on open path segments, like nav2's PreferForwardCritic
+  float speed_weight = 3.0f;
+  // stage penalty on wz²: damps the heading random walk that the noisy
+  // weighted average otherwise accumulates
+  float angular_weight = 0.5f;
   float collision_cost = 1.0e6f;     // added per step inside lethal/inscribed cells
 
   float yaw_goal_activation_dist = 0.5f;  // [m] enable yaw cost within this range of final goal
