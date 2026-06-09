@@ -359,7 +359,12 @@ Observed pattern:
 
 ## Box Pushing Results
 
-Latest checked-in fixed-seed run (five scenarios, includes `box_align_strict`):
+Latest checked-in fixed-seed run (six scenarios, includes `box_align_detour`):
+
+- Report: [`results/soppi_box_pushing_2026-06-12.md`](results/soppi_box_pushing_2026-06-12.md)
+- CSV: [`results/soppi_box_pushing_2026-06-12.csv`](results/soppi_box_pushing_2026-06-12.csv)
+
+Predecessor five-scenario run:
 
 - Report: [`results/soppi_box_pushing_2026-06-11.md`](results/soppi_box_pushing_2026-06-11.md)
 - CSV: [`results/soppi_box_pushing_2026-06-11.csv`](results/soppi_box_pushing_2026-06-11.csv)
@@ -403,6 +408,17 @@ Default planner comparison, seed-count 4, `K=256`:
 `box_align_strict` reuses the `box_align` geometry with `pos_tol=0.28 m` and
 `ang_tol=0.08 rad`. The combined gate turns the parent near-misses into partial
 success for sampling planners and full success for Diff-MPPI.
+
+| Scenario | Planner | Success | Steps | Final Dist | Cost | Avg ms |
+|---|---|---:|---:|---:|---:|---:|
+| box_align_detour | mppi | 0.00 | 280.0 | 0.29 | 2.9 | 0.42 |
+| box_align_detour | diff_mppi_3 | 0.25 | 219.5 | 0.26 | 2.1 | 3.06 |
+| box_align_detour | soppi | 0.00 | 280.0 | 0.29 | 2.9 | 0.85 |
+| box_align_detour | soppi_fast | 0.00 | 280.0 | 0.30 | 2.9 | 0.74 |
+
+`box_align_detour` adds a narrow axis-aligned wall on the direct push lane and
+requires collision-free success. Only `diff_mppi_3` clears a seed in the checked-in
+run; treat this as a gradient-positive / sampling-negative obstacle cell.
 
 Best SOPPI from the box-pushing sweep:
 
@@ -494,5 +510,5 @@ with a step-count advantage over MPPI.
 ## Next Steps
 
 1. Add a `--baseline-planners` option to `scripts/sweep_soppi.py` if repeated comparisons against Diff-MPPI are needed.
-2. Add obstacle-detour or contact-loss cells beyond `box_align_strict`.
+2. Improve SOPPI obstacle avoidance on `box_align_detour` or add contact-loss cells.
 3. Consider caching partial rollout states for the box autodiff score kernel if another speed pass is needed.

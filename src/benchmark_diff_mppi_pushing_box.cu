@@ -60,6 +60,9 @@ struct BoxParams {
     float w_near = 0.04f;           // pusher-near-box shaping
     float w_term_pos = 90.0f;       // terminal position
     float w_term_ang = 40.0f;       // terminal orientation
+    int obstacle_count = 0;         // axis-aligned obstacle count (0 or 1)
+    float obs_min_x = 0.0f, obs_min_y = 0.0f, obs_max_x = 0.0f, obs_max_y = 0.0f;
+    float w_obs = 70.0f;            // squared-penetration barrier weight
 };
 
 struct BoxScenario {
@@ -115,6 +118,87 @@ struct SummaryStats {
 __host__ __device__ inline float clampf_local(float x, float lo, float hi) { return fminf(fmaxf(x, lo), hi); }
 __host__ __device__ inline float wrapf(float a) { return atan2f(sinf(a), cosf(a)); }
 
+__host__ __device__ inline void box_corners_f(
+    float ox, float oy, float oth, float hx, float hy, float out[8])
+{
+    float c = cosf(oth), s = sinf(oth);
+    const float lx[4] = { hx, -hx, -hx, hx };
+    const float ly[4] = { hy, hy, -hy, -hy };
+    for (int i = 0; i < 4; i++) {
+        out[i*2+0] = ox + c*lx[i] - s*ly[i];
+        out[i*2+1] = oy + s*lx[i] + c*ly[i];
+    }
+}
+
+__host__ __device__ inline float point_aabb_penetration_f(
+    float px, float py, float min_x, float min_y, float max_x, float max_y)
+{
+    if (px < min_x || px > max_x || py < min_y || py > max_y) return 0.0f;
+    float pen_x = fminf(px - min_x, max_x - px);
+    float pen_y = fminf(py - min_y, max_y - py);
+    return fminf(pen_x, pen_y);
+}
+
+__host__ __device__ inline float box_obstacle_penetration_f(
+    float ox, float oy, float oth, const BoxParams& p)
+{
+    if (p.obstacle_count <= 0) return 0.0f;
+    float corners[8];
+    box_corners_f(ox, oy, oth, p.hx, p.hy, corners);
+    float max_pen = 0.0f;
+    for (int i = 0; i < 4; i++) {
+        float pen = point_aabb_penetration_f(
+            corners[i*2+0], corners[i*2+1],
+            p.obs_min_x, p.obs_min_y, p.obs_max_x, p.obs_max_y);
+        max_pen = fmaxf(max_pen, pen);
+    }
+    return max_pen;
+}
+
+__host__ __device__ inline float obstacle_stage_cost_box_f(
+    float ox, float oy, float oth, const BoxParams& p)
+{
+    float pen = box_obstacle_penetration_f(ox, oy, oth, p);
+    if (pen <= 0.0f) return 0.0f;
+    return p.w_obs * pen * pen * p.dt;
+}
+
+__host__ __device__ inline float obstacle_terminal_cost_box_f(
+    float ox, float oy, float oth, const BoxParams& p)
+{
+    float pen = box_obstacle_penetration_f(ox, oy, oth, p);
+    if (pen <= 0.0f) return 0.0f;
+    return p.w_obs * 2.0f * pen * pen;
+}
+
+__host__ __device__ inline void resolve_box_obstacles_f(
+    float& ox, float& oy, float oth, const BoxParams& p)
+{
+    if (p.obstacle_count <= 0) return;
+    float corners[8];
+    const float cx = 0.5f * (p.obs_min_x + p.obs_max_x);
+    const float cy = 0.5f * (p.obs_min_y + p.obs_max_y);
+    for (int iter = 0; iter < 4; iter++) {
+        box_corners_f(ox, oy, oth, p.hx, p.hy, corners);
+        float shift_x = 0.0f, shift_y = 0.0f;
+        bool moved = false;
+        for (int i = 0; i < 4; i++) {
+            float px = corners[i*2+0], py = corners[i*2+1];
+            float pen = point_aabb_penetration_f(
+                px, py, p.obs_min_x, p.obs_min_y, p.obs_max_x, p.obs_max_y);
+            if (pen <= 0.0f) continue;
+            float dx = px - cx, dy = py - cy;
+            float dl = sqrtf(dx*dx + dy*dy + 1e-9f);
+            shift_x += (dx / dl) * pen;
+            shift_y += (dy / dl) * pen;
+            moved = true;
+        }
+        if (!moved) break;
+        ox += shift_x * 0.5f;
+        oy += shift_y * 0.5f;
+    }
+}
+
 // ===================== float dynamics (rollout / plant) =====================
 __host__ __device__ inline void push_step_box_f(
     float& px, float& py, float& ox, float& oy, float& oth,
@@ -145,6 +229,7 @@ __host__ __device__ inline void push_step_box_f(
     float torque = rx*Fy - ry*Fx;
     ox += p.dt * Fx; oy += p.dt * Fy;
     oth = wrapf(oth + p.dt * p.rot_gain * torque);
+    resolve_box_obstacles_f(ox, oy, oth, p);
 }
 
 // ===================== HARD-CONTACT plant (independent, higher-fidelity) =====================
@@ -252,6 +337,7 @@ __host__ __device__ inline float stage_cost_box_f(
     c += p.w_ctrl * (ux*ux + uy*uy) * p.dt;
     float ex = px - ox, ey = py - oy;
     c += p.w_near * (ex*ex + ey*ey) * p.dt;
+    c += obstacle_stage_cost_box_f(ox, oy, oth, p);
     return c;
 }
 
@@ -259,7 +345,8 @@ __host__ __device__ inline float terminal_cost_box_f(
     float ox, float oy, float oth, float gx, float gy, float gth, const BoxParams& p)
 {
     float dpx = ox - gx, dpy = oy - gy, dth = wrapf(oth - gth);
-    return p.w_term_pos * (dpx*dpx + dpy*dpy) + p.w_term_ang * (dth*dth);
+    return p.w_term_pos * (dpx*dpx + dpy*dpy) + p.w_term_ang * (dth*dth)
+         + obstacle_terminal_cost_box_f(ox, oy, oth, p);
 }
 
 __host__ __device__ inline void object_ref_box_f(
@@ -281,7 +368,27 @@ __host__ __device__ inline void object_ref_box_f(
 __device__ inline Dualf d_abs(const Dualf& x) { return x.val >= 0.0f ? x : (Dualf::constant(0.0f) - x); }
 __device__ inline Dualf d_relu(const Dualf& x) { return x.val > 0.0f ? x : Dualf::constant(0.0f); }
 __device__ inline Dualf d_max(const Dualf& a, const Dualf& b) { return a.val >= b.val ? a : b; }
+__device__ inline Dualf d_min(const Dualf& a, const Dualf& b) { return a.val <= b.val ? a : b; }
 __device__ inline Dualf d_min0(const Dualf& x) { return x.val < 0.0f ? x : Dualf::constant(0.0f); }
+
+__device__ inline Dualf obstacle_stage_cost_dual(
+    Dualf ox, Dualf oy, Dualf oth, const BoxParams& p)
+{
+    if (p.obstacle_count <= 0) return Dualf::constant(0.0f);
+    Dualf cost = Dualf::constant(0.0f);
+    Dualf c = cudabot::cos(oth), s = cudabot::sin(oth);
+    const float lx[4] = { p.hx, -p.hx, -p.hx, p.hx };
+    const float ly[4] = { p.hy, p.hy, -p.hy, -p.hy };
+    for (int i = 0; i < 4; i++) {
+        Dualf px = ox + c*Dualf::constant(lx[i]) - s*Dualf::constant(ly[i]);
+        Dualf py = oy + s*Dualf::constant(lx[i]) + c*Dualf::constant(ly[i]);
+        Dualf pen_x = d_min(Dualf::constant(p.obs_max_x) - px, px - Dualf::constant(p.obs_min_x));
+        Dualf pen_y = d_min(Dualf::constant(p.obs_max_y) - py, py - Dualf::constant(p.obs_min_y));
+        Dualf pen = d_relu(d_min(pen_x, pen_y));
+        cost = cost + Dualf::constant(p.w_obs) * pen * pen * Dualf::constant(p.dt);
+    }
+    return cost;
+}
 
 // Forward-mode derivative of total rollout cost w.r.t. nominal control `active`.
 __device__ inline float dcost_dparam_box(
@@ -335,12 +442,14 @@ __device__ inline float dcost_dparam_box(
         cost = cost + Dualf::constant(p.w_ctrl) * (ux*ux + uy*uy) * Dualf::constant(p.dt);
         Dualf ex = px - ox, ey = py - oy;
         cost = cost + Dualf::constant(p.w_near) * (ex*ex + ey*ey) * Dualf::constant(p.dt);
+        cost = cost + obstacle_stage_cost_dual(ox, oy, oth, p);
     }
     Dualf dpx = ox - Dualf::constant(gx), dpy = oy - Dualf::constant(gy);
     Dualf dthr = oth - Dualf::constant(gth);
     Dualf dth = cudabot::atan2(cudabot::sin(dthr), cudabot::cos(dthr));
     cost = cost + Dualf::constant(p.w_term_pos) * (dpx*dpx + dpy*dpy);
     cost = cost + Dualf::constant(p.w_term_ang) * (dth*dth);
+    cost = cost + obstacle_stage_cost_dual(ox, oy, oth, p) * Dualf::constant(2.0f);
     return cost.deriv;
 }
 
@@ -799,6 +908,8 @@ public:
         float control_delta_sum = 0.0f;
         float control_roughness_sum = 0.0f;
         int control_delta_count = 0;
+        int collision_count = 0;
+        bool collision_free = true;
         if (record_traj) { traj_flat.clear();
             traj_flat.insert(traj_flat.end(), {px_,py_,ox_,oy_,oth_}); }
         for (int step = 0; step < sc_.max_steps; step++) {
@@ -836,6 +947,10 @@ public:
             else
                 push_step_box_f(px_, py_, ox_, oy_, oth_, h_nominal_[0], h_nominal_[1], plant_p);
             cum_cost_ += stage_cost_box_f(px_, py_, ox_, oy_, oth_, h_nominal_[0], h_nominal_[1], sc_.gx, sc_.gy, sc_.gth, sc_.params);
+            if (box_obstacle_penetration_f(ox_, oy_, oth_, plant_p) > 0.01f) {
+                collision_count++;
+                collision_free = false;
+            }
             for (int t = 0; t < T_-1; t++) { h_nominal_[t*2+0]=h_nominal_[(t+1)*2+0]; h_nominal_[t*2+1]=h_nominal_[(t+1)*2+1]; }
             h_nominal_[(T_-1)*2+0]=0.0f; h_nominal_[(T_-1)*2+1]=0.0f;
             steps_ = step + 1;
@@ -848,7 +963,10 @@ public:
         m.k_samples=K_; m.t_horizon=T_; m.grad_steps=v_.grad_steps; m.alpha=v_.alpha;
         float pd = pos_dist(), ad = ang_err();
         if (pd < sc_.pos_tol && ad < sc_.ang_tol) reached_ = true;
-        m.reached_goal = reached_?1:0; m.success = reached_?1:0;
+        m.reached_goal = reached_?1:0;
+        m.collision_free = collision_free ? 1 : 0;
+        m.collisions = collision_count;
+        m.success = (reached_ && collision_free) ? 1 : 0;
         m.steps=steps_; m.final_distance=pd; m.min_goal_distance=ad;  // store final ang err in min col
         m.cumulative_cost=cum_cost_;
         m.mean_control_delta = control_delta_count > 0 ? control_delta_sum / control_delta_count : 0.0f;
@@ -1098,6 +1216,23 @@ static BoxScenario make_box_align_strict() {
     s.ang_tol = 0.08f;
     return s;
 }
+// Obstacle-detour variant of box_align: a wall blocks the direct upward push lane,
+// forcing a lateral approach before the final orientation alignment.
+static BoxScenario make_box_align_detour() {
+    BoxScenario s = make_box_align();
+    s.name = "box_align_detour";
+    s.px0 = 1.10f;
+    s.py0 = 1.20f;
+    s.max_steps = 280;
+    s.params.obstacle_count = 1;
+    // Narrow wall on the direct push lane between start and goal pose.
+    s.params.obs_min_x = 1.48f;
+    s.params.obs_max_x = 1.72f;
+    s.params.obs_min_y = 1.98f;
+    s.params.obs_max_y = 2.14f;
+    s.params.w_obs = 85.0f;
+    return s;
+}
 
 // ======================== Utilities ========================
 static void ensure_build_dir() { mkdir("build", 0755); }
@@ -1239,7 +1374,7 @@ int main(int argc, char** argv) {
     // rotation-dominant tasks where the gradient wins, and not on box_turn.
     if (!diag_prefix.empty()) {
         int Kdiag = k_values.empty() ? 4096 : k_values.back();
-        vector<BoxScenario> diag_sc = { make_box_turn(), make_box_align(), make_box_pivot(), make_box_swivel(), make_box_align_strict() };
+        vector<BoxScenario> diag_sc = { make_box_turn(), make_box_align(), make_box_pivot(), make_box_swivel(), make_box_align_strict(), make_box_align_detour() };
         if (!scenario_names.empty()) {
             vector<BoxScenario> f;
             for (auto& w : scenario_names) { auto it=find_if(diag_sc.begin(),diag_sc.end(),[&](const BoxScenario&s){return s.name==w;});
@@ -1334,7 +1469,7 @@ int main(int argc, char** argv) {
     // box_swivel and box_align_strict are appended LAST so the existing scenarios keep
     // their indices si=0..2 (the per-run seed in the sweep loop is si-dependent);
     // published numbers stay byte-identical.
-    vector<BoxScenario> all_sc = { make_box_turn(), make_box_align(), make_box_pivot(), make_box_swivel(), make_box_align_strict() };
+    vector<BoxScenario> all_sc = { make_box_turn(), make_box_align(), make_box_pivot(), make_box_swivel(), make_box_align_strict(), make_box_align_detour() };
     vector<BoxScenario> scenarios;
     if (!scenario_names.empty()) {
         for (auto& w : scenario_names) { auto it=find_if(all_sc.begin(),all_sc.end(),[&](const BoxScenario&s){return s.name==w;});
