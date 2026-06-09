@@ -105,12 +105,14 @@ controller_server:
       w_max: 1.9
       v_std: 0.2
       w_std: 0.4
-      temperature: 0.35
+      temperature: 0.12
       goal_weight: 20.0
       goal_yaw_weight: 3.0
-      path_weight: 2.0
+      path_weight: 10.0
       path_follow_weight: 5.0
-      follow_lookahead: 0.6
+      follow_lookahead: 1.0
+      speed_weight: 3.0
+      angular_weight: 0.5
       costmap_weight: 3.0
       smoothness_weight: 0.2
       backward_weight: 0.5
