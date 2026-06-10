@@ -40,25 +40,25 @@ Full setup, tuning notes, and reproduction steps:
 
 ## Status
 
-Experimental, but verified end-to-end in the full Nav2 stack: bt_navigator →
-planner_server → controller_server (this plugin) → velocity_smoother, driving
-a TurtleBot3 through the sandbox world in the nav2 loopback simulation:
+Experimental, but verified end-to-end in the full Nav2 stack — bt_navigator →
+planner_server → controller_server (this plugin) → velocity_smoother — both in
+the nav2 loopback simulation and in the **Gazebo physics simulation**
+(TurtleBot3 dynamics + lidar + AMCL localization), two-waypoint mission each:
 
-<img src="../../../gif/cuda_mppi_nav2_loopback.gif" alt="nav2 loopback demo" width="420"/>
+<img src="../../../gif/cuda_mppi_nav2_gazebo.gif" alt="nav2 gazebo demo" width="420"/>
 
 ```bash
-# terminal 1 — Nav2 + loopback sim with this plugin
-ROS_DOMAIN_ID=42 PYTHONNOUSERSITE=1 ros2 launch nav2_bringup \
-  tb3_loopback_simulation.launch.py use_rviz:=False \
+# terminal 1 — Nav2 + Gazebo (or tb3_loopback_simulation.launch.py for the lightweight sim)
+ROS_DOMAIN_ID=101 PYTHONNOUSERSITE=1 ros2 launch nav2_bringup \
+  tb3_simulation_launch.py headless:=True use_rviz:=False \
   params_file:=$(ros2 pkg prefix cuda_mppi_controller)/share/cuda_mppi_controller/config/nav2_loopback_demo.yaml
 
 # terminal 2 — waypoint mission + trajectory recording + GIF
-ROS_DOMAIN_ID=42 PYTHONNOUSERSITE=1 python3 scripts/run_nav2_loopback_demo.py /tmp/nav2_demo
-python3 scripts/render_nav2_loopback_demo.py /tmp/nav2_demo
-```
+ROS_DOMAIN_ID=101 PYTHONNOUSERSITE=1 python3 scripts/run_nav2_loopback_demo.py /tmp/nav2_gz_demo amcl
+python3 scripts/render_nav2_loopback_demo.py /tmp/nav2_gz_demo cuda_mppi_nav2_gazebo.gif
 
-(Gazebo physics simulation not exercised yet — the loopback sim covers the
-full Nav2 software stack but not sensor pipelines.)
+# (pick any quiet ROS_DOMAIN_ID; PYTHONNOUSERSITE avoids user-site numpy clashes)
+```
 
 Motion models: **DiffDrive** (`vx`, `ωz`), **Ackermann** (curvature limit
 `|ωz| ≤ |vx| / min_turning_r`), **Omni** (adds `vy`). Costs implemented:

@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Render the nav2 loopback demo recording into a GIF.
 
-Usage: render_nav2_loopback_demo.py [/tmp/nav2_demo]
-Reads robot_path.csv plus the tb3_sandbox map, writes
-gif/cuda_mppi_nav2_loopback.gif.
+Usage: render_nav2_loopback_demo.py [/tmp/nav2_demo] [out_name] [subtitle]
+Reads robot_path.csv plus the tb3_sandbox map, writes gif/<out_name>
+(default cuda_mppi_nav2_loopback.gif).
 """
 import csv
 import math
@@ -28,6 +28,8 @@ WAYPOINTS = [(1.8, 1.4), (-0.3, -1.8)]
 
 def main():
     demo_dir = Path(sys.argv[1]) if len(sys.argv) > 1 else Path("/tmp/nav2_demo")
+    out_name = sys.argv[2] if len(sys.argv) > 2 else "cuda_mppi_nav2_loopback.gif"
+    subtitle = sys.argv[3] if len(sys.argv) > 3 else "loopback sim, GPU MPPI K=8,192 @ 20 Hz"
     trail = []
     with open(demo_dir / "robot_path.csv", newline="") as f:
         for row in csv.DictReader(f):
@@ -46,8 +48,7 @@ def main():
     ax.set_xticks([])
     ax.set_yticks([])
     ax.set_title(
-        "cuda_mppi_controller driving Nav2\n"
-        "loopback sim, GPU MPPI K=8,192 @ 20 Hz", fontsize=11)
+        f"cuda_mppi_controller driving Nav2\n{subtitle}", fontsize=11)
     ax.plot(*START, "s", color="#3366cc", markersize=8)
     for i, wp in enumerate(WAYPOINTS):
         ax.plot(*wp, marker="*", color="#e6b800", markersize=16)
@@ -73,7 +74,7 @@ def main():
         return trail_line, body, heading
 
     anim = FuncAnimation(fig, update, frames=frames, blit=False)
-    out = REPO / "gif" / "cuda_mppi_nav2_loopback.gif"
+    out = REPO / "gif" / out_name
     fig.tight_layout()
     anim.save(str(out), writer=PillowWriter(fps=10))
     print(f"wrote {out} ({frames} frames, {len(trail)} poses)")

@@ -10,7 +10,10 @@ Prereq (separate terminal, isolated domain):
 Run:
   ROS_DOMAIN_ID=42 PYTHONNOUSERSITE=1 python3 scripts/run_nav2_loopback_demo.py /tmp/nav2_demo
 
-Writes <out>/robot_path.csv, <out>/plan_<i>.csv, exits 0 on success.
+For the Gazebo physics sim (tb3_simulation_launch.py, AMCL localization):
+  ... run_nav2_loopback_demo.py /tmp/nav2_gz_demo amcl
+
+Writes <out>/robot_path.csv, exits 0 on success.
 """
 import csv
 import math
@@ -76,22 +79,29 @@ class Recorder(Node):
 
 def main():
     out_dir = Path(sys.argv[1]) if len(sys.argv) > 1 else Path("/tmp/nav2_demo")
+    localizer = sys.argv[2] if len(sys.argv) > 2 else "smoother_server"
     out_dir.mkdir(parents=True, exist_ok=True)
 
     rclpy.init()
     navigator = BasicNavigator()
-    # no AMCL in the loopback launch -> only wait for nav2 servers
-    navigator.waitUntilNav2Active(localizer="smoother_server")
+    if localizer == "amcl":
+        # Gazebo sim: AMCL gives BasicNavigator its own initial-pose loop
+        navigator.setInitialPose(make_pose(navigator, *START))
+        navigator.waitUntilNav2Active()
+    else:
+        # loopback sim has no AMCL -> only wait for nav2 servers
+        navigator.waitUntilNav2Active(localizer="smoother_server")
 
     recorder = Recorder()
 
-    # republish the initial pose until the loopback sim teleports the robot
+    # republish the initial pose until the sim/localizer places the robot
     # there (a single publish can be lost to discovery timing, and without
     # AMCL BasicNavigator has no feedback loop for this)
     placed = False
     for _ in range(30):
         navigator.setInitialPose(make_pose(navigator, *START))
-        for _ in range(10):
+        deadline = time.monotonic() + 1.0
+        while time.monotonic() < deadline:
             rclpy.spin_once(recorder, timeout_sec=0.1)
         try:
             t = recorder.tf_buffer.lookup_transform(
