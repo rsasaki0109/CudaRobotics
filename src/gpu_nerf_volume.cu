@@ -34,15 +34,6 @@
 #include <vector>
 #include "cuda_check.cuh"
 
-    do {                                                                  \
-        cudaError_t err = (call);                                         \
-        if (err != cudaSuccess) {                                         \
-            std::fprintf(stderr, "CUDA error %s at %s:%d\n",              \
-                         cudaGetErrorString(err), __FILE__, __LINE__);    \
-            std::exit(1);                                                 \
-        }                                                                 \
-    } while (0)
-
 namespace cudabot {
 
 constexpr int IMG_W = 720;

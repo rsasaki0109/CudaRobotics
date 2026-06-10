@@ -41,18 +41,6 @@
 #define Q_BEARING (SIGMA_BEARING * SIGMA_BEARING)
 
 // ---------------------------------------------------------------------------
-// CUDA error check macro
-// ---------------------------------------------------------------------------
-    do {                                                                       \
-        cudaError_t err = (call);                                              \
-        if (err != cudaSuccess) {                                              \
-            fprintf(stderr, "CUDA error at %s:%d: %s\n", __FILE__, __LINE__,  \
-                    cudaGetErrorString(err));                                   \
-            exit(EXIT_FAILURE);                                                \
-        }                                                                      \
-    } while (0)
-
-// ---------------------------------------------------------------------------
 // Observation: range and bearing to a landmark with known ID
 // ---------------------------------------------------------------------------
 struct Observation {
