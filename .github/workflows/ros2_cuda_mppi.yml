@@ -23,11 +23,21 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install CUDA toolkit
-        uses: Jimver/cuda-toolkit@v0.2.35
-        with:
-          cuda: "12.6.0"
-          method: network
+      - name: Install CUDA compiler (no driver)
+        run: |
+          set -eo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends wget ca-certificates gnupg
+          wget -q https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2404/x86_64/cuda-keyring_1.1-1_all.deb
+          sudo dpkg -i cuda-keyring_1.1-1_all.deb
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            cuda-nvcc-12-6 \
+            cuda-cudart-dev-12-6 \
+            cuda-curand-dev-12-6
+          echo "CUDA_PATH=/usr/local/cuda-12.6" >> "$GITHUB_ENV"
+          echo "/usr/local/cuda-12.6/bin" >> "$GITHUB_PATH"
+          nvcc --version
 
       - name: Install ROS 2 Jazzy and Nav2 build deps
         run: |
