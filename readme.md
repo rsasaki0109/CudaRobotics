@@ -91,8 +91,9 @@ pytest python/tests
 ```
 
 CI attaches `linux_x86_64` wheels for Python 3.10/3.12 as workflow artifacts.
-They require a compatible NVIDIA driver at runtime. Manylinux `cibuildwheel` images
-are configured in `python/pyproject.toml` for maintainers who want broader wheels.
+On pushes to `master`, a separate `cibuildwheel` job also builds manylinux
+wheels (see `.github/workflows/python-package.yml`). They require a compatible
+NVIDIA driver at runtime.
 
 Minimal use:
 

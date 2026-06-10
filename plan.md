@@ -169,9 +169,9 @@ Python; a GPU MPPI / registration library they can `pip install` enters the
      `sinkhorn_gpu.cu`, `fgr_gpu.cu`, `bcpd_gpu.cu` + `examples/python/registration_quickstart.py`.
    - ~~Robust Student's-t / point-to-plane~~ **DONE:**
      `robust_treg_gpu.cu`, `robust_p2plane_gpu.cu` exposed as `RobustTreg` / `RobustP2Plane`.
-   - ~~Packaging / wheels~~ **PARTIAL DONE:** self-contained sdist +
+   - ~~Packaging / wheels~~ **DONE (2026-06-10):** self-contained sdist +
      `linux_x86_64` CI wheels; `scripts/sync_python_core.sh` + `python/tests/`;
-     manylinux `cibuildwheel` config present for maintainers.
+     `cibuildwheel` job on `master` pushes (`cudarobotics-manylinux-wheels` artifact).
 2. **Binding tech**: nanobind (faster builds, smaller wheels than
    pybind11) + `scikit-build-core` for the CMake bridge. Accept numpy
    first; torch/cupy zero-copy later via `__dlpack__` — do NOT block the
@@ -383,9 +383,12 @@ Priority order for the next coding agent:
 3. ~~**`--baseline-planners` for `scripts/sweep_soppi.py`**~~ **DONE** — comma-separated
    baseline planners run once before the SOPPI grid (default `mppi`).
 
-4. **Navigation SOPPI score upgrade** — replace local stage-cost score with
-   trajectory-level gradient (like CartPole port) if navigation 2/10 must improve.
-   High effort; box pushing remains the better reproduction story today.
+4. ~~**Navigation SOPPI score upgrade**~~ **DONE (2026-06-10)** — nav SOPPI uses
+   trajectory-level adjoint score (`soppi_trajectory_score_kernel`, CartPole-style)
+   instead of per-timestep stage-cost only. On the 4-scenario default nav suite
+   (`K=128`, 3 seeds): `narrow_passage` stays 1.00 for `soppi`/`soppi_fast`;
+   `slalom` final distance improves (7.1 vs 19.4 m for `mppi`) but success stays 0;
+   full 10-scenario zoo headline remains ~2/10 — honest partial win, not a new solved cell.
 
 5. **Mechanical / unrelated** — Open Threads A (readme headline table refresh,
    `cuda_check.cuh` back-migration) if user wants a low-risk maintenance PR instead.
@@ -1311,9 +1314,9 @@ any new scan-matching / SLAM / optimisation work.
 - **Stronger pure-SOPPI cell**: `box_align_contact_arc` at 1.00 success (K=256, 4 seeds);
   strict `box_align_contact_loss` remains the hard subset-SVGD cell (`soppi_fast` 0.25).
 - **`scripts/sweep_soppi.py --baseline-planners`**: implemented (default `mppi`).
-- **Partial rollout cache for box autodiff score**: `soppi_timestep_score_kernel`
-  recomputes full rollout per `(k,t)`; caching intermediate states is the main
-  remaining speed lever if another kernel pass is needed.
+- **Partial rollout cache for box autodiff score**: **DONE (2026-06-10)** —
+  `cache_soppi_rollout_states_kernel` + `dcost_dparam_box_from` reuse cached
+  per-sample states; `box_align_contact_loss` quick row unchanged (`soppi_fast` 0.75).
 - **Navigation SOPPI**: 2/10 solved; score kernel is simplified vs paper; low
   priority unless user explicitly wants nav headline numbers.
 
@@ -1322,9 +1325,10 @@ any new scan-matching / SLAM / optimisation work.
   Highlights table now covers nav2 GPU MPPI, NeRF, multi-res NDT 3D, GICP 3D,
   Hungarian assignment, PCG, SfM mini, diffusion planner, and assignment tracking.
 - ~~**Back-migrate older `.cu` files to use `include/cuda_check.cuh`**~~ **PARTIAL
-  DONE (2026-06-10)** — migrated `benchmark_{dwa,pf,rrt}`, `a_star.cu`, and
-  `cma_es.cu`; header-backed files like `cuda_pointcloud.cuh` still carry a
-  local macro and remain for a follow-up.
+  DONE (2026-06-10)** — migrated `benchmark_{dwa,pf,rrt}`, `a_star.cu`, `cma_es.cu`,
+  `mppi.cu`, `diff_mppi.cu`, `esdf_mppi.cu`, `sdf_mppi.cu`, `visibility_mppi.cu`,
+  `dynamic_window_approach.cu`, `benchmark_diff_mppi_pushing_box.cu`; many legacy
+  demos still carry local macros.
 - **Lift shared SE(3) math into a header** — DONE for the rotation-matrix
   pose-graph family in `chore/shared-se3-helpers` (2026-05-26): the new
   `include/se3_helpers.cuh` now holds `clampf`, the `mat3_*` family,

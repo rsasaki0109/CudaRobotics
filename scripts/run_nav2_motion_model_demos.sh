@@ -30,6 +30,7 @@ run_one() {
   mkdir -p "${out}"
   pkill -f "[t]b3_loopback" 2>/dev/null || true
   pkill -f "[n]av2_bringup" 2>/dev/null || true
+  pkill -f "[l]oopback_simulator" 2>/dev/null || true
   sleep 2
 
   ros2 launch nav2_bringup tb3_loopback_simulation.launch.py \
@@ -37,16 +38,30 @@ run_one() {
     params_file:="${yaml}" &
   local launch_pid=$!
 
-  for _ in $(seq 1 90); do
-    if ros2 lifecycle get /controller_server 2>/dev/null | grep -q "active \[3\]"; then
+  for _ in $(seq 1 120); do
+    if ros2 lifecycle get /controller_server 2>/dev/null | grep -q "active \[3\]" \
+       && ros2 lifecycle get /planner_server 2>/dev/null | grep -q "active \[3\]"; then
       break
     fi
     sleep 1
   done
-  if ! ros2 lifecycle get /controller_server 2>/dev/null | grep -q "active \[3\]"; then
+  if ! ros2 lifecycle get /controller_server 2>/dev/null | grep -q "active \[3\]" \
+     || ! ros2 lifecycle get /planner_server 2>/dev/null | grep -q "active \[3\]"; then
     kill "${launch_pid}" 2>/dev/null || true
     wait "${launch_pid}" 2>/dev/null || true
-    echo "FAIL: nav2 never reached active for ${model}"
+    echo "FAIL: nav2 lifecycle never reached active for ${model}"
+    return 1
+  fi
+  for _ in $(seq 1 30); do
+    if timeout 2 ros2 run tf2_ros tf2_echo map base_link 2>/dev/null | grep -q "Translation"; then
+      break
+    fi
+    sleep 1
+  done
+  if ! timeout 2 ros2 run tf2_ros tf2_echo map base_link 2>/dev/null | grep -q "Translation"; then
+    kill "${launch_pid}" 2>/dev/null || true
+    wait "${launch_pid}" 2>/dev/null || true
+    echo "FAIL: map->base_link TF never became available for ${model}"
     return 1
   fi
   sleep 2

@@ -4006,6 +4006,7 @@ __global__ void gradient_step_kernel(float* d_nominal, const float* d_grad, int 
     d_nominal[t * 2 + 1] = clampf(d_nominal[t * 2 + 1] - alpha * d_grad[t * 2 + 1], -max_steer, max_steer);
 }
 
+// Local stage-cost score (legacy; kept for A/B comparisons).
 __global__ void soppi_stage_score_kernel(
     const float* d_controls,
     const float* d_rollout_states,
@@ -4035,6 +4036,62 @@ __global__ void soppi_stage_score_kernel(
     float inv_lambda = 1.0f / fmaxf(lambda, 1.0e-3f);
     d_scores[base + 0] = -clampf(grad[4] * inv_lambda, -25.0f, 25.0f);
     d_scores[base + 1] = -clampf(grad[5] * inv_lambda, -25.0f, 25.0f);
+}
+
+// Trajectory-level adjoint score (CartPole-style): one thread per sample,
+// backward pass through the full rollout cost-to-go.
+__global__ void soppi_trajectory_score_kernel(
+    const float* d_controls,
+    const float* d_rollout_states,
+    BicycleParams params,
+    CostParams cost_params,
+    int n_obs,
+    int n_dyn_obs,
+    int start_step,
+    int K,
+    int T,
+    float lambda,
+    float* d_scores)
+{
+    int k = blockIdx.x * blockDim.x + threadIdx.x;
+    if (k >= K) return;
+
+    const float* states = &d_rollout_states[k * (T + 1) * 4];
+    float adj[4];
+    terminal_grad(states[T * 4 + 0], states[T * 4 + 1], cost_params, adj);
+    float inv_lambda = 1.0f / fmaxf(lambda, 1.0e-3f);
+
+    for (int t = T - 1; t >= 0; t--) {
+        float x = states[t * 4 + 0];
+        float y = states[t * 4 + 1];
+        float theta = states[t * 4 + 2];
+        float v = states[t * 4 + 3];
+        float accel = d_controls[k * T * 2 + t * 2 + 0];
+        float steer = d_controls[k * T * 2 + t * 2 + 1];
+
+        float J[4][6];
+        float stage_grad_vec[6];
+        float next_adj[4];
+        float tau = (start_step + t) * params.dt;
+
+        bicycle_jacobian(x, y, theta, v, accel, steer, params, J);
+        stage_cost_grad(x, y, theta, v, accel, steer, cost_params, n_obs, n_dyn_obs, tau, stage_grad_vec);
+
+        float accel_grad = stage_grad_vec[4];
+        float steer_grad = stage_grad_vec[5];
+        for (int row = 0; row < 4; row++) {
+            accel_grad += J[row][4] * adj[row];
+            steer_grad += J[row][5] * adj[row];
+        }
+        d_scores[k * T * 2 + t * 2 + 0] = -clampf(accel_grad * inv_lambda, -25.0f, 25.0f);
+        d_scores[k * T * 2 + t * 2 + 1] = -clampf(steer_grad * inv_lambda, -25.0f, 25.0f);
+
+        for (int col = 0; col < 4; col++) {
+            next_adj[col] = stage_grad_vec[col];
+            for (int row = 0; row < 4; row++) next_adj[col] += J[row][col] * adj[row];
+        }
+        for (int i = 0; i < 4; i++) adj[i] = next_adj[i];
+    }
 }
 
 __global__ void soppi_svgd_step_kernel(
@@ -5220,7 +5277,7 @@ private:
                     float* d_controls_src = d_perturbed_;
                     float* d_controls_dst = d_soppi_scratch_;
                     for (int iter = 0; iter < max(1, variant_.soppi_svgd_iters); iter++) {
-                        soppi_stage_score_kernel<<<(total_particles + block - 1) / block, block>>>(
+                        soppi_trajectory_score_kernel<<<(k_samples_ + block - 1) / block, block>>>(
                             d_controls_src, d_rollout_states_,
                             planning_scenario_.params, planning_scenario_.cost_params,
                             planning_scenario_.n_obs, planning_scenario_.n_dyn_obs,
