@@ -438,14 +438,15 @@ run; treat this as a gradient-positive / sampling-negative obstacle cell.
 
 | Scenario | Planner | Success | Steps | Final Dist | Cost | Avg ms |
 |---|---|---:|---:|---:|---:|---:|
-| box_align_contact_loss | mppi | 0.00 | 240.0 | 0.29 | 4.9 | 0.29 |
-| box_align_contact_loss | diff_mppi_3 | 1.00 | 44.0 | 0.28 | 2.8 | 2.77 |
-| box_align_contact_loss | soppi | 0.25 | 216.2 | 0.29 | 4.7 | 0.87 |
-| box_align_contact_loss | soppi_fast | 0.00 | 240.0 | 0.29 | 4.9 | 0.55 |
+| box_align_contact_loss | mppi | 0.00 | 240.0 | 0.286 | 4.8 | 0.654 |
+| box_align_contact_loss | diff_mppi_3 | 1.00 | 44.0 | 0.275 | 2.8 | 3.542 |
+| box_align_contact_loss | soppi | 0.50 | 189.5 | 0.284 | 4.5 | 1.520 |
+| box_align_contact_loss | soppi_fast | **1.00** | 52.2 | 0.279 | 3.1 | 3.361 |
 
-`box_align_contact_loss` penalizes pusher-box gap during rollout. Pure all-pairs
-`soppi` reaches `0.25` success while vanilla `mppi` stays at `0.00` — a
-contact-loss cell where SVGD helps without nominal Diff-MPPI grad steps.
+`box_align_contact_loss` penalizes pusher-box gap during rollout. Updated row from
+[`results/soppi_box_pushing_2026-06-14.csv`](results/soppi_box_pushing_2026-06-14.csv):
+`soppi_fast` reaches **1.00** with subset SVGD plus one nominal trajectory grad step;
+all-pairs `soppi` is **0.50** without nominal grad; `mppi` stays **0.00**.
 
 Best SOPPI from the box-pushing sweep:
 
@@ -537,7 +538,7 @@ with a step-count advantage over MPPI.
 ## Next Steps
 
 1. Add a `--baseline-planners` option to `scripts/sweep_soppi.py` if repeated comparisons against Diff-MPPI are needed.
-2. ~~Lift `soppi_fast` on `box_align_contact_loss`~~ **DONE (2026-06-10)** — tuned subset
-   SVGD reaches `0.75` on strict cell; `box_align_contact_arc` documents pure-SOPPI at
-   `1.00` (see `docs/results/soppi_box_pushing_2026-06-10.md`).
+2. ~~Lift `soppi_fast` on `box_align_contact_loss`~~ **DONE (2026-06-10)** — subset SVGD
+   + one nominal grad step reaches **1.00** on strict cell; `box_align_contact_arc`
+   documents pure-SOPPI at `1.00` (see `docs/results/soppi_box_pushing_2026-06-10.md`).
 3. Consider caching partial rollout states for the box autodiff score kernel if another speed pass is needed.

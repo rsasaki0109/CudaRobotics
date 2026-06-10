@@ -1,6 +1,9 @@
 # SOPPI Box Pushing Report
 
-_Adds `box_align_contact_loss` contact-loss cell and stage gap penalty (`w_contact_loss`)._
+_Seven-scenario suite (no `box_align_contact_arc`); `soppi_fast` contact-loss row
+updated after subset-SVGD + one nominal-grad tuning — see also
+[`soppi_box_pushing_2026-06-10.md`](soppi_box_pushing_2026-06-10.md) for the
+eight-scenario canonical row._
 
 ## Command
 
@@ -23,26 +26,33 @@ _Adds `box_align_contact_loss` contact-loss cell and stage gap penalty (`w_conta
 | k_values | 256 |
 | seed_count | 4 |
 
-## `box_align_contact_loss`
+## Signal cells (`K=256`, 4 seeds)
 
-`box_align_strict` geometry with `w_near=0`, `w_contact_loss=47`, and a small
-contact deadzone (`pen_thresh=0.009`). Stage cost penalizes squared pusher-box gap
-when the pusher leaves smooth contact during the rotation arc.
+| scenario | mppi | soppi | soppi_fast | diff_mppi_3 |
+| --- | ---:| ---:| ---:| ---:|
+| box_swivel | 0.75 | **1.00** | **1.00** | 0.75 |
+| box_align_strict | 0.75 | 0.50 | 0.75 | **1.00** |
+| box_align_detour | 0.00 | 0.00 | 0.00 | 0.25 |
+| box_align_contact_loss | 0.00 | 0.50 | **1.00** | **1.00** |
+
+## `box_align_contact_loss`
 
 | planner | success | steps | final_d | cost | avg_ms |
 | --- | --- | --- | --- | --- | --- |
-| mppi | 0.00 | 240.0 | 0.287 | 4.9 | 0.289 |
-| diff_mppi_1 | 1.00 | 48.0 | 0.279 | 3.0 | 1.525 |
-| diff_mppi_3 | 1.00 | 44.0 | 0.277 | 2.8 | 2.770 |
-| soppi | 0.25 | 216.2 | 0.286 | 4.7 | 0.866 |
-| soppi_fast | 0.00 | 240.0 | 0.289 | 4.9 | 0.553 |
+| mppi | 0.00 | 240.0 | 0.286 | 4.8 | 0.654 |
+| diff_mppi_1 | 1.00 | 45.2 | 0.277 | 2.9 | 2.771 |
+| diff_mppi_3 | 1.00 | 44.0 | 0.275 | 2.8 | 3.542 |
+| soppi | 0.50 | 189.5 | 0.284 | 4.5 | 1.520 |
+| soppi_fast | **1.00** | 52.2 | 0.279 | 3.1 | 3.361 |
 
-## Key Signals
+`soppi_fast` uses subset SVGD (`neighbor_count=112`, `svgd_iters=2`) plus one nominal
+trajectory grad step (`grad_steps=1`, `alpha=0.010`). Pure subset SVGD plateaued at
+`0.75` on canonical seeds; the single nominal update closes the strict gate.
 
-- Pure all-pairs `soppi` reaches `0.25` success on `box_align_contact_loss` while
-  vanilla `mppi` stays at `0.00` — a contact-loss cell where SVGD helps without
-  nominal Diff-MPPI grad steps (`seed 3`, `145` steps).
-- `diff_mppi_3` remains strongest at `1.00`; the gap penalty is in both rollout
-  cost and the SOPPI autodiff score kernel.
-- Prior scenarios are unchanged (contact-loss appended last; seeds `si=0..5` match
-  the 2026-06-13 run). `box_swivel` all-pairs `soppi` stays `1.00` vs MPPI `0.75`.
+## Key signals
+
+- **`box_align_contact_loss`**: `soppi_fast` **1.00** vs `mppi` **0.00**; all-pairs
+  `soppi` **0.50** without nominal grad.
+- **`box_align_detour`**: still gradient-positive / sampling-negative — only
+  `diff_mppi_3` at **0.25**; one nominal grad step is not enough on that cell.
+- **`box_swivel`**: all-pairs `soppi` **1.00** vs MPPI **0.75**.
