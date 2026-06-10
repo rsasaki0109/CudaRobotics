@@ -40,9 +40,6 @@
 #include <curand_kernel.h>
 #include "cuda_check.cuh"
 
-    fprintf(stderr, "CUDA error at %s:%d: %s\n", __FILE__, __LINE__, cudaGetErrorString(err)); \
-    std::exit(EXIT_FAILURE); } } while (0)
-
 constexpr float PI = 3.14159265358979323846f;
 constexpr float DEG = PI / 180.0f;
 constexpr float MAX_RANGE = 80.0f;
