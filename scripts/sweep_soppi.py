@@ -28,6 +28,15 @@ class SoppiConfig:
         return f"soppi_s{self.step_size:g}_b{self.bandwidth:g}_i{self.iters}_n{self.neighbors}"
 
 
+def parse_string_list(text: str) -> list[str]:
+    values = []
+    for token in text.split(","):
+        token = token.strip()
+        if token:
+            values.append(token)
+    return sorted(set(values))
+
+
 def parse_float_list(text: str) -> list[float]:
     values = []
     for token in text.split(","):
@@ -72,6 +81,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--quick", action="store_true", default=True, help="pass --quick to the benchmark")
     parser.add_argument("--no-quick", action="store_false", dest="quick", help="do not pass --quick")
     parser.add_argument("--continue-on-error", action="store_true", help="continue after a failed run")
+    parser.add_argument(
+        "--baseline-planners",
+        default="mppi",
+        help="comma-separated planners to run once before the SOPPI grid (default: mppi)",
+    )
     return parser.parse_args()
 
 
@@ -174,6 +188,9 @@ def write_summary(summary: list[dict[str, object]], path: Path) -> None:
     ]
     for (scenario, k_samples), group in sorted(by_cell.items()):
         mppi = next((r for r in group if r["planner"] == "mppi"), None)
+        if mppi is None:
+            baselines = [r for r in group if r["run_label"].endswith("_baseline")]
+            mppi = baselines[0] if baselines else None
         soppi_rows = [r for r in group if r["planner"] == "soppi"]
         if not mppi or not soppi_rows:
             continue
@@ -249,10 +266,14 @@ def main() -> int:
         base_args += ["--t-horizon", str(args.t_horizon)]
 
     runs: list[tuple[str, list[str], Path, SoppiConfig | None]] = []
-    baseline_csv = csv_dir / "mppi_baseline.csv"
+    baseline_planners = parse_string_list(args.baseline_planners)
+    if not baseline_planners:
+        baseline_planners = ["mppi"]
+    baseline_label = "_".join(baseline_planners)
+    baseline_csv = csv_dir / f"{baseline_label}_baseline.csv"
     runs.append((
-        "mppi_baseline",
-        [bin_path, *base_args, "--planners", "mppi", "--csv", str(baseline_csv)],
+        f"{baseline_label}_baseline",
+        [bin_path, *base_args, "--planners", ",".join(baseline_planners), "--csv", str(baseline_csv)],
         baseline_csv,
         None,
     ))

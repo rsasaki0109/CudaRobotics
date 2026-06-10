@@ -1,5 +1,23 @@
 """Probabilistic point-cloud registration bindings."""
 
-from .. import FilterReg, FilterRegParams
+from .. import (
+    Bcpd,
+    BcpdParams,
+    FilterReg,
+    FilterRegParams,
+    Fgr,
+    FgrParams,
+    SinkhornReg,
+    SinkhornRegParams,
+)
 
-__all__ = ["FilterReg", "FilterRegParams"]
+__all__ = [
+    "Bcpd",
+    "BcpdParams",
+    "FilterReg",
+    "FilterRegParams",
+    "Fgr",
+    "FgrParams",
+    "SinkhornReg",
+    "SinkhornRegParams",
+]

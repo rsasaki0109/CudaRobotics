@@ -20,6 +20,9 @@ nanobind_add_module(_cudarobotics
   src/cudarobotics/bindings.cpp
   ${CUDAROBOTICS_ROOT}/src/mppi_gpu.cu
   ${CUDAROBOTICS_ROOT}/src/filterreg_gpu.cu
+  ${CUDAROBOTICS_ROOT}/src/sinkhorn_gpu.cu
+  ${CUDAROBOTICS_ROOT}/src/fgr_gpu.cu
+  ${CUDAROBOTICS_ROOT}/src/bcpd_gpu.cu
 )
 
 target_include_directories(_cudarobotics PRIVATE

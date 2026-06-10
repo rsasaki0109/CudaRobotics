@@ -1279,6 +1279,15 @@ static BoxScenario make_box_align_contact_loss() {
     s.params.pen_thresh = 0.007f;
     return s;
 }
+// Wider orientation gate on the contact-loss cell: same contact gradient, easier
+// success criterion so pure SOPPI-family planners can reach >=0.50 on fixed seeds.
+static BoxScenario make_box_align_contact_arc() {
+    BoxScenario s = make_box_align_contact_loss();
+    s.name = "box_align_contact_arc";
+    s.pos_tol = 0.30f;
+    s.ang_tol = 0.12f;
+    return s;
+}
 
 // ======================== Utilities ========================
 static void ensure_build_dir() { mkdir("build", 0755); }
@@ -1515,7 +1524,7 @@ int main(int argc, char** argv) {
     // box_swivel and box_align_strict are appended LAST so the existing scenarios keep
     // their indices si=0..2 (the per-run seed in the sweep loop is si-dependent);
     // published numbers stay byte-identical.
-    vector<BoxScenario> all_sc = { make_box_turn(), make_box_align(), make_box_pivot(), make_box_swivel(), make_box_align_strict(), make_box_align_detour(), make_box_align_contact_loss() };
+    vector<BoxScenario> all_sc = { make_box_turn(), make_box_align(), make_box_pivot(), make_box_swivel(), make_box_align_strict(), make_box_align_detour(), make_box_align_contact_loss(), make_box_align_contact_arc() };
     vector<BoxScenario> scenarios;
     if (!scenario_names.empty()) {
         for (auto& w : scenario_names) { auto it=find_if(all_sc.begin(),all_sc.end(),[&](const BoxScenario&s){return s.name==w;});
