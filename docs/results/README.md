@@ -84,7 +84,8 @@ Key signals:
 - Scope: eight scenarios including `box_align_contact_arc`
 - Planners: `mppi`, `diff_mppi_3`, `soppi`, `soppi_fast`
 - Key signals: `box_align_contact_arc` all planners `1.00`; strict
-  `box_align_contact_loss` `soppi_fast` `0.75` vs `mppi` `0.00`.
+  `box_align_contact_loss` `soppi_fast` `1.00` vs `mppi` `0.00` (subset SVGD +
+  one nominal grad step).
 
 ## SOPPI Box Pushing, 2026-06-14
 
@@ -109,8 +110,8 @@ cmake --build build --target benchmark_diff_mppi_pushing_box -j$(nproc)
 
 Key signals:
 
-- `box_align_contact_loss`: pure `soppi` `0.25` vs `mppi` `0.00` (contact-loss cell,
-  no nominal grad steps).
+- `box_align_contact_loss`: `soppi_fast` **1.00** (subset SVGD + 1 nominal grad step)
+  vs `mppi` `0.00`; all-pairs `soppi` `0.50` without nominal grad.
 - `box_swivel` all-pairs `soppi` remains `1.00` vs MPPI `0.75`.
 
 ## SOPPI Box Pushing, 2026-06-13

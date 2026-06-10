@@ -1641,7 +1641,9 @@ int main(int argc, char** argv) {
     { Variant v; v.name="diff_mppi_3"; v.grad_steps=3; v.alpha=0.010f; variants.push_back(v); }
     { Variant v; v.name="diff_mppi_5"; v.grad_steps=5; v.alpha=0.008f; variants.push_back(v); }
     { Variant v; v.name="soppi"; v.use_soppi_sampling=true; v.soppi_step_size=0.06f; v.soppi_bandwidth=2.0f; variants.push_back(v); }
-    { Variant v; v.name="soppi_fast"; v.use_soppi_sampling=true; v.soppi_step_size=0.05f; v.soppi_bandwidth=2.0f; v.soppi_neighbor_count=112; v.soppi_svgd_iters=2; variants.push_back(v); }
+    // One nominal grad step closes box_align_contact_loss on canonical seeds; pure
+    // subset SVGD alone plateaued at 0.75 (seed 3 stalled at pos=0.287 vs tol=0.28).
+    { Variant v; v.name="soppi_fast"; v.use_soppi_sampling=true; v.soppi_step_size=0.05f; v.soppi_bandwidth=2.0f; v.soppi_neighbor_count=112; v.soppi_svgd_iters=2; v.grad_steps=1; v.alpha=0.010f; variants.push_back(v); }
     { Variant v; v.name="soppi_g3"; v.use_soppi_sampling=true; v.soppi_step_size=0.06f; v.soppi_bandwidth=2.0f; v.grad_steps=3; v.alpha=0.010f; variants.push_back(v); }
     { Variant v; v.name="soppi_fast_g3"; v.use_soppi_sampling=true; v.soppi_step_size=0.06f; v.soppi_bandwidth=2.0f; v.soppi_neighbor_count=32; v.grad_steps=3; v.alpha=0.010f; variants.push_back(v); }
     // Fidelity arm: vanilla MPPI that ROLLS OUT with the exact hard-contact model (no
