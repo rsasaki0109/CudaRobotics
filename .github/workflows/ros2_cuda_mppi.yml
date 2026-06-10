@@ -34,7 +34,7 @@ jobs:
           sudo apt-get install -y --no-install-recommends \
             cuda-nvcc-12-6 \
             cuda-cudart-dev-12-6 \
-            cuda-curand-dev-12-6
+            libcurand-dev-12-6
           echo "CUDA_PATH=/usr/local/cuda-12.6" >> "$GITHUB_ENV"
           echo "/usr/local/cuda-12.6/bin" >> "$GITHUB_PATH"
           nvcc --version
