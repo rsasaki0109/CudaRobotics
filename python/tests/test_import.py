@@ -13,7 +13,12 @@ def test_version():
 
 
 def test_mppi_planner_smoke():
-    planner = cr.MppiPlanner(batch_size=64, time_steps=8, model_dt=0.05)
+    try:
+        planner = cr.MppiPlanner(batch_size=64, time_steps=8, model_dt=0.05)
+    except RuntimeError as exc:
+        if "no CUDA-capable device" in str(exc):
+            pytest.skip("CUDA GPU not available in this environment")
+        raise
     costmap = np.zeros((40, 40), dtype=np.uint8)
     path = np.array([[1.0, 5.0], [5.0, 5.0]], dtype=np.float32)
     v, vy, w, info = planner.compute(
