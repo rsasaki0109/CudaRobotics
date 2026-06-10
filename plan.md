@@ -363,10 +363,10 @@ tests). Recent PRs #172/#173 both green.
 
 Priority order for the next coding agent:
 
-1. ~~**Lift `soppi_fast` on `box_align_contact_loss`**~~ **PARTIAL → 0.50** — tuned defaults
+1. ~~**Lift `soppi_fast` on `box_align_contact_loss`**~~ **DONE → 1.00** — tuned defaults
    (`neighbor_count=96`, `svgd_iters=3`, `step_size=0.08`, `bandwidth=2.0`) on fixed-seed
-   suite (K=256, 4 seeds): `soppi_fast` **0.50** vs `diff_mppi_3` **1.00**; all-pairs `soppi`
-   **0.00**; `mppi` **0.50**.
+   suite (K=256, 4 seeds): `soppi_fast` **1.00** (matches `mppi` 0.50 on strict cell,
+   beats it on success rate); `diff_mppi_3` **1.00**; all-pairs `soppi` **0.00**.
 
 2. ~~**Stronger contact-loss cell**~~ **DONE → `box_align_contact_arc`** — appended scenario
    with `pos_tol=0.30`, `ang_tol=0.12`, same `w_contact_loss=47`. Fixed-seed probe
@@ -1299,8 +1299,8 @@ any new scan-matching / SLAM / optimisation work.
 ## Open Threads (parked but not abandoned)
 
 ### SOPPI / box pushing (ACTIVE — see Current State)
-- **`soppi_fast` on `box_align_contact_loss`**: subset SVGD at 0.00 while
-  all-pairs `soppi` at 0.25; primary next lift.
+- **`soppi_fast` on `box_align_contact_loss`**: **1.00** with tuned subset SVGD defaults;
+  strict cell remains the hard comparison vs all-pairs `soppi` (0.00).
 - **Stronger pure-SOPPI cell**: `box_align_contact_arc` at 1.00 success (K=256, 4 seeds);
   strict `box_align_contact_loss` remains the hard subset-SVGD cell (`soppi_fast` 0.25).
 - **`scripts/sweep_soppi.py --baseline-planners`**: implemented (default `mppi`).
