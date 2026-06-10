@@ -92,6 +92,22 @@ v, vy, w, info = planner.compute(
 )
 ```
 
+## Python FilterReg Quickstart
+
+Probabilistic point-cloud registration is exposed as `cudarobotics.registration`:
+
+```bash
+pip install -e python/
+python examples/python/filterreg_quickstart.py
+```
+
+```python
+import cudarobotics as cr
+
+registrar = cr.registration.FilterReg()
+rotation, translation, info = registrar.register(target_xyz, source_xyz)
+```
+
 ## Latest Fixed-Seed Result
 
 The checked-in MPPI zoo suite was generated on 2026-06-10 with five navigation

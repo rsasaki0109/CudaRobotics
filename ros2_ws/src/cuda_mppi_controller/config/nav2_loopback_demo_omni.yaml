@@ -1,0 +1,35 @@
+# Loopback demo with Omni motion model (holonomic base with lateral vy).
+# Launch:
+#   ros2 launch nav2_bringup tb3_loopback_simulation.launch.py use_rviz:=False \
+#     params_file:=$(ros2 pkg prefix cuda_mppi_controller)/share/cuda_mppi_controller/config/nav2_loopback_demo_omni.yaml
+controller_server:
+  ros__parameters:
+    FollowPath:
+      plugin: "cuda_mppi_controller::CudaMppiController"
+      motion_model: "Omni"
+      vy_max: 0.5
+      vy_std: 0.2
+      batch_size: 8192
+      time_steps: 56
+      model_dt: 0.05
+      v_max: 0.5
+      v_min: -0.35
+      w_max: 1.9
+      v_std: 0.2
+      w_std: 0.4
+      enable_retreat: true
+      retreat_scale: 0.5
+      temperature: 0.12
+      goal_weight: 20.0
+      goal_yaw_weight: 3.0
+      path_weight: 10.0
+      path_follow_weight: 5.0
+      follow_lookahead: 1.0
+      speed_weight: 3.0
+      angular_weight: 0.5
+      costmap_weight: 3.0
+      smoothness_weight: 0.2
+      backward_weight: 0.5
+      yaw_goal_activation_dist: 0.5
+      lookahead_dist: 3.0
+      transform_tolerance: 0.1

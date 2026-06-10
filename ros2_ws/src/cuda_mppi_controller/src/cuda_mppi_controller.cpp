@@ -1,4 +1,5 @@
 #include "cuda_mppi_controller/cuda_mppi_controller.hpp"
+#include "cuda_mppi_controller/nav2_compat.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -6,14 +7,135 @@
 #include <mutex>
 #include <stdexcept>
 
-#include "nav2_core/controller_exceptions.hpp"
 #include "nav2_util/node_utils.hpp"
 #include "pluginlib/class_list_macros.hpp"
+#include "rcl_interfaces/msg/set_parameters_result.hpp"
 #include "tf2/utils.h"
 #include "tf2_geometry_msgs/tf2_geometry_msgs.hpp"
 
 namespace cuda_mppi_controller
 {
+
+namespace
+{
+
+MotionModel parseMotionModel(const std::string & motion_model)
+{
+  if (motion_model == "DiffDrive") {
+    return MotionModel::DiffDrive;
+  }
+  if (motion_model == "Ackermann") {
+    return MotionModel::Ackermann;
+  }
+  if (motion_model == "Omni") {
+    return MotionModel::Omni;
+  }
+  throw std::runtime_error(
+          "CudaMppiController: unknown motion_model '" + motion_model +
+          "' (DiffDrive / Ackermann / Omni)");
+}
+
+}  // namespace
+
+void CudaMppiController::applyParamsToOptimizer()
+{
+  if (optimizer_) {
+    optimizer_ = std::make_unique<MppiGpu>(params_);
+  }
+}
+
+bool CudaMppiController::updateParamsFromNode(
+  const rclcpp_lifecycle::LifecycleNode::SharedPtr & node)
+{
+  if (!node) {
+    return false;
+  }
+
+  int batch_size = params_.batch_size;
+  int time_steps = params_.time_steps;
+  int iteration_count = params_.iteration_count;
+  double model_dt = params_.model_dt;
+  std::string motion_model = "DiffDrive";
+  double v_max = params_.v_max, v_min = params_.v_min, w_max = params_.w_max;
+  double vy_max = params_.vy_max, min_turning_r = params_.min_turning_r;
+  double v_std = params_.v_std, vy_std = params_.vy_std, w_std = params_.w_std;
+  bool consider_footprint = params_.consider_footprint;
+  double lambda = params_.lambda;
+  double goal_weight = params_.goal_weight;
+  double goal_yaw_weight = params_.goal_yaw_weight;
+  double path_weight = params_.path_weight;
+  double path_follow_weight = params_.path_follow_weight;
+  double follow_lookahead = params_.follow_lookahead;
+  double costmap_weight = params_.costmap_weight;
+  double smoothness_weight = params_.smoothness_weight;
+  double backward_weight = params_.backward_weight;
+  double speed_weight = params_.speed_weight;
+  double angular_weight = params_.angular_weight;
+  double yaw_activation = params_.yaw_goal_activation_dist;
+  bool enable_retreat = params_.enable_retreat;
+  double retreat_scale = params_.retreat_scale;
+
+  node->get_parameter(name_ + ".batch_size", batch_size);
+  node->get_parameter(name_ + ".time_steps", time_steps);
+  node->get_parameter(name_ + ".iteration_count", iteration_count);
+  node->get_parameter(name_ + ".model_dt", model_dt);
+  node->get_parameter(name_ + ".motion_model", motion_model);
+  node->get_parameter(name_ + ".v_max", v_max);
+  node->get_parameter(name_ + ".v_min", v_min);
+  node->get_parameter(name_ + ".vy_max", vy_max);
+  node->get_parameter(name_ + ".w_max", w_max);
+  node->get_parameter(name_ + ".min_turning_r", min_turning_r);
+  node->get_parameter(name_ + ".v_std", v_std);
+  node->get_parameter(name_ + ".vy_std", vy_std);
+  node->get_parameter(name_ + ".w_std", w_std);
+  node->get_parameter(name_ + ".consider_footprint", consider_footprint);
+  node->get_parameter(name_ + ".temperature", lambda);
+  node->get_parameter(name_ + ".goal_weight", goal_weight);
+  node->get_parameter(name_ + ".goal_yaw_weight", goal_yaw_weight);
+  node->get_parameter(name_ + ".path_weight", path_weight);
+  node->get_parameter(name_ + ".path_follow_weight", path_follow_weight);
+  node->get_parameter(name_ + ".follow_lookahead", follow_lookahead);
+  node->get_parameter(name_ + ".costmap_weight", costmap_weight);
+  node->get_parameter(name_ + ".smoothness_weight", smoothness_weight);
+  node->get_parameter(name_ + ".backward_weight", backward_weight);
+  node->get_parameter(name_ + ".speed_weight", speed_weight);
+  node->get_parameter(name_ + ".angular_weight", angular_weight);
+  node->get_parameter(name_ + ".yaw_goal_activation_dist", yaw_activation);
+  node->get_parameter(name_ + ".enable_retreat", enable_retreat);
+  node->get_parameter(name_ + ".retreat_scale", retreat_scale);
+  node->get_parameter(name_ + ".lookahead_dist", lookahead_dist_);
+  node->get_parameter(name_ + ".transform_tolerance", transform_tolerance_);
+
+  params_.batch_size = batch_size;
+  params_.time_steps = time_steps;
+  params_.iteration_count = iteration_count;
+  params_.model_dt = static_cast<float>(model_dt);
+  params_.motion_model = parseMotionModel(motion_model);
+  params_.v_max = static_cast<float>(v_max);
+  params_.v_min = static_cast<float>(v_min);
+  params_.vy_max = static_cast<float>(vy_max);
+  params_.w_max = static_cast<float>(w_max);
+  params_.min_turning_r = static_cast<float>(min_turning_r);
+  params_.v_std = static_cast<float>(v_std);
+  params_.vy_std = static_cast<float>(vy_std);
+  params_.w_std = static_cast<float>(w_std);
+  params_.consider_footprint = consider_footprint;
+  params_.lambda = static_cast<float>(lambda);
+  params_.goal_weight = static_cast<float>(goal_weight);
+  params_.goal_yaw_weight = static_cast<float>(goal_yaw_weight);
+  params_.path_weight = static_cast<float>(path_weight);
+  params_.path_follow_weight = static_cast<float>(path_follow_weight);
+  params_.follow_lookahead = static_cast<float>(follow_lookahead);
+  params_.costmap_weight = static_cast<float>(costmap_weight);
+  params_.smoothness_weight = static_cast<float>(smoothness_weight);
+  params_.backward_weight = static_cast<float>(backward_weight);
+  params_.speed_weight = static_cast<float>(speed_weight);
+  params_.angular_weight = static_cast<float>(angular_weight);
+  params_.yaw_goal_activation_dist = static_cast<float>(yaw_activation);
+  params_.enable_retreat = enable_retreat;
+  params_.retreat_scale = static_cast<float>(retreat_scale);
+  return true;
+}
 
 void CudaMppiController::configure(
   const rclcpp_lifecycle::LifecycleNode::WeakPtr & parent,
@@ -97,17 +219,7 @@ void CudaMppiController::configure(
   params_.time_steps = time_steps;
   params_.iteration_count = iteration_count;
   params_.model_dt = static_cast<float>(model_dt);
-  if (motion_model == "DiffDrive") {
-    params_.motion_model = MotionModel::DiffDrive;
-  } else if (motion_model == "Ackermann") {
-    params_.motion_model = MotionModel::Ackermann;
-  } else if (motion_model == "Omni") {
-    params_.motion_model = MotionModel::Omni;
-  } else {
-    throw std::runtime_error(
-            "CudaMppiController: unknown motion_model '" + motion_model +
-            "' (DiffDrive / Ackermann / Omni)");
-  }
+  params_.motion_model = parseMotionModel(motion_model);
   params_.v_max = static_cast<float>(v_max);
   params_.v_min = static_cast<float>(v_min);
   params_.vy_max = static_cast<float>(vy_max);
@@ -134,6 +246,31 @@ void CudaMppiController::configure(
 
   optimizer_ = std::make_unique<MppiGpu>(params_);
 
+  param_callback_ = node->add_on_set_parameters_callback(
+    [this](const std::vector<rclcpp::Parameter> & parameters) {
+      rcl_interfaces::msg::SetParametersResult result;
+      result.successful = true;
+      for (const auto & parameter : parameters) {
+        if (parameter.get_name().find(name_ + ".") != 0) {
+          continue;
+        }
+      }
+      auto locked = node_.lock();
+      if (!locked) {
+        result.successful = false;
+        result.reason = "parent node expired";
+        return result;
+      }
+      try {
+        updateParamsFromNode(locked);
+        applyParamsToOptimizer();
+      } catch (const std::exception & ex) {
+        result.successful = false;
+        result.reason = ex.what();
+      }
+      return result;
+    });
+
   RCLCPP_INFO(
     logger_,
     "Configured CudaMppiController '%s': K=%d, T=%d, dt=%.3f (GPU rollouts)",
@@ -142,6 +279,7 @@ void CudaMppiController::configure(
 
 void CudaMppiController::cleanup()
 {
+  param_callback_.reset();
   optimizer_.reset();
 }
 
@@ -173,7 +311,7 @@ std::vector<float> CudaMppiController::extractLocalPath(
   float & goal_x, float & goal_y, float & goal_yaw, bool & goal_is_final)
 {
   if (global_plan_.poses.empty()) {
-    throw nav2_core::InvalidPath("CudaMppiController: received an empty plan");
+    throw ControllerInvalidPath("CudaMppiController: received an empty plan");
   }
 
   const std::string target_frame = costmap_ros_->getGlobalFrameID();

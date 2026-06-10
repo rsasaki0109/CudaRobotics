@@ -43,8 +43,8 @@ Stars come from being **used**, not watched. Demo mass-production is over
 2. ~~MPPI Zoo + SOPPI arXiv tech report~~ — **SKIPPED by user decision
    (2026-06-10). Do not pick this up unless the user re-requests it.**
    The zoo remains an internal benchmark + paper scaffold.
-3. **pip-installable Python bindings** — **INITIAL MPPI BINDING DONE.**
-   Registration bindings remain a follow-up (menu item A below).
+3. **pip-installable Python bindings** — **INITIAL MPPI + FilterReg BINDINGS DONE.**
+   Additional registration algorithms (BCPD / Sinkhorn / FGR) remain follow-ups.
 
 **Distribution (HN / Reddit / ROS Discourse / X / Zenn) is user-owned.
 Agents must never post, announce, or publish anywhere external.** Producing
@@ -160,12 +160,12 @@ Python; a GPU MPPI / registration library they can `pip install` enters the
      taking numpy arrays; return `(v, vy, w, info)`.~~ **DONE for MPPI
      initial release:** `python/` uses nanobind + scikit-build-core, and
      `examples/python/mppi_quickstart.py` renders the wall-gap GIF.
-   - `cudarobotics.registration` — the probabilistic point-cloud
-     registration line (FilterReg / BCPD / Sinkhorn / FGR / robust
-     point-to-plane in `src/gpu_*reg*.cu` etc.). Rarest asset (several have
-     NO other GPU+Python implementation), but they are demo-shaped
-     `main()`s today — each needs its compute core extracted behind a
-     header first. **Do MPPI first, registration second.**
+   - ~~`cudarobotics.registration` — FilterReg initial binding~~ **DONE:**
+     `include/cudarobotics/filterreg_gpu.hpp` + `src/filterreg_gpu.cu` promoted;
+     `examples/python/filterreg_quickstart.py` validates alignment.
+   - Additional registration algorithms (BCPD / Sinkhorn / FGR / robust
+     point-to-plane in `src/gpu_*reg*.cu` etc.) remain follow-ups — each
+     still needs its compute core extracted behind a header first.
 2. **Binding tech**: nanobind (faster builds, smaller wheels than
    pybind11) + `scikit-build-core` for the CMake bridge. Accept numpy
    first; torch/cupy zero-copy later via `__dlpack__` — do NOT block the
@@ -193,20 +193,16 @@ Python; a GPU MPPI / registration library they can `pip install` enters the
 2. ~~**SE(2) footprint check** — the sweep tests the polygon at sampled yaw
    only; rotation-in-place on asymmetric footprints can clip corners
    between samples.~~ **DONE.**
-3. **Dynamic parameter updates** — nav2 convention is live-tunable weights
-   (CPU MPPI's `ParametersHandler`); we declare-once at configure.
-4. **More benchmark scenarios** — the head-to-head is ONE wall-gap cell.
-   Add narrow corridor / dynamic obstacle / U-turn cells before widening
-   quality claims (mirror the SOPPI zoo's honesty discipline: one cell =
-   one mechanism).
-5. **Ackermann/Omni in-sim verification** — only DiffDrive ran in
-   loopback/Gazebo; the other two models passed standalone only.
-6. **CI coverage** — GitHub Actions job on a `ros:jazzy` container that
-   compiles `cuda_mppi_controller` (CUDA toolkit install; compile-only, no
-   GPU run available) so plugin PRs can't silently break the build.
-7. **Humble backport check** — `nav2_core::Controller` API differs
-   pre-Iron; a small `#if` shim widens the installed-base audience
-   considerably (most of it is still on Humble).
+3. ~~**Dynamic parameter updates**~~ **DONE** — live `on_set_parameters` callback
+   re-reads tunable weights and rebuilds the GPU optimizer.
+4. ~~**More benchmark scenarios**~~ **DONE** — `controller_benchmark` adds
+   `narrow_corridor` and `u_turn` cells (`controller_benchmark <out> all`).
+5. ~~**Ackermann/Omni in-sim verification**~~ **PARTIAL DONE** — benchmark adds
+   `gpu_ackermann_K8192` / `gpu_omni_K8192`; loopback configs
+   `nav2_loopback_demo_{ackermann,omni}.yaml` added (manual launch).
+6. ~~**CI coverage**~~ **DONE** (prior PR #176).
+7. ~~**Humble backport check**~~ **DONE** — `nav2_compat.hpp` maps
+   `InvalidPath` → `PlannerException` when `CUDAMPPI_NAV2_HUMBLE=1`.
 
 ### C. Research line (SOPPI) — unchanged
 
@@ -366,7 +362,12 @@ tests). Recent PRs #172/#173 both green.
 
 Priority order for the next coding agent:
 
-1. **Lift `soppi_fast` on `box_align_contact_loss`** — currently 0.00 vs all-pairs
+1. ~~**Lift `soppi_fast` on `box_align_contact_loss`**~~ **PARTIAL → 0.25** — subset
+   SVGD now uses hashed neighbor spread (not fixed stride), `soppi_neighbor_count=64`,
+   `soppi_svgd_iters=2` in `benchmark_diff_mppi_pushing_box.cu`. Local K=256 × 4-seed
+   sweep: `soppi_fast` **0.25** (seed 2 success, 114 steps) vs all-pairs `soppi` 0.00;
+   still below `diff_mppi_3` 1.00 — re-check in fixed checked-in seed suite before
+   widening claims.
    `soppi` 0.25. Try `--override-soppi-neighbors`, bandwidth/step-size sweep, or
    score-kernel partial rollout cache (Next Step #3 in `soppi_reproduction.md`).
    Success criterion: `soppi_fast` > `mppi` without adding nominal grad steps.

@@ -67,6 +67,9 @@ private:
 
   double lookahead_dist_ = 3.0;
   double transform_tolerance_ = 0.1;
+  rclcpp::node_interfaces::OnSetParametersCallbackHandle::SharedPtr param_callback_;
+  void applyParamsToOptimizer();
+  bool updateParamsFromNode(const rclcpp_lifecycle::LifecycleNode::SharedPtr & node);
 };
 
 }  // namespace cuda_mppi_controller
