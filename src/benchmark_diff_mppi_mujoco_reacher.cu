@@ -23,12 +23,12 @@
 #include <mujoco/mujoco.h>
 
 #include "autodiff_engine.cuh"
+#include "cuda_check.cuh"
 
 #ifndef CUDAROBOTICS_SOURCE_DIR
 #define CUDAROBOTICS_SOURCE_DIR "."
 #endif
 
-#define CUDA_CHECK(call) do { cudaError_t err = (call); if (err != cudaSuccess) { fprintf(stderr, "CUDA error at %s:%d: %s\n", __FILE__, __LINE__, cudaGetErrorString(err)); exit(EXIT_FAILURE); } } while (0)
 
 using namespace std;
 using namespace cudabot;

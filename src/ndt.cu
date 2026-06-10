@@ -23,13 +23,13 @@
 #include <opencv2/core/core.hpp>
 #include <opencv2/highgui/highgui.hpp>
 #include <cuda_runtime.h>
+#include "cuda_check.cuh"
 
 using namespace std;
 
 // ---------------------------------------------------------------------------
 // CUDA error check macro
 // ---------------------------------------------------------------------------
-#define CUDA_CHECK(call)                                                       \
     do {                                                                       \
         cudaError_t err = (call);                                              \
         if (err != cudaSuccess) {                                              \

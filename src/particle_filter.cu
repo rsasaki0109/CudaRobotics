@@ -17,6 +17,7 @@
 
 #include <cuda_runtime.h>
 #include <curand_kernel.h>
+#include "cuda_check.cuh"
 
 #define SIM_TIME 50.0f
 #define DT 0.1f
@@ -29,7 +30,6 @@
 // ---------------------------------------------------------------------------
 // CUDA error check macro
 // ---------------------------------------------------------------------------
-#define CUDA_CHECK(call)                                                       \
     do {                                                                       \
         cudaError_t err = (call);                                              \
         if (err != cudaSuccess) {                                              \
