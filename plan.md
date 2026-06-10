@@ -362,10 +362,12 @@ tests). Recent PRs #172/#173 both green.
 
 Priority order for the next coding agent:
 
-1. ~~**Lift `soppi_fast` on `box_align_contact_loss`**~~ **PARTIAL** — subset
+1. ~~**Lift `soppi_fast` on `box_align_contact_loss`**~~ **PARTIAL → 0.25** — subset
    SVGD now uses hashed neighbor spread (not fixed stride), `soppi_neighbor_count=64`,
-   `soppi_svgd_iters=2` in `benchmark_diff_mppi_pushing_box.cu`. Re-run full
-   fixed-seed sweep before claiming lift; quick K=256 smoke still shows 0.00.
+   `soppi_svgd_iters=2` in `benchmark_diff_mppi_pushing_box.cu`. Local K=256 × 4-seed
+   sweep: `soppi_fast` **0.25** (seed 2 success, 114 steps) vs all-pairs `soppi` 0.00;
+   still below `diff_mppi_3` 1.00 — re-check in fixed checked-in seed suite before
+   widening claims.
    `soppi` 0.25. Try `--override-soppi-neighbors`, bandwidth/step-size sweep, or
    score-kernel partial rollout cache (Next Step #3 in `soppi_reproduction.md`).
    Success criterion: `soppi_fast` > `mppi` without adding nominal grad steps.
