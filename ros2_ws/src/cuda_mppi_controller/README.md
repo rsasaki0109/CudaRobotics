@@ -154,6 +154,24 @@ controller_server:
 | `lookahead_dist` | 3.0 | [m] global plan window fed to the GPU |
 | `transform_tolerance` | 0.1 | [s] TF lookup tolerance |
 
+All tunable weights above support **live updates** via ROS parameters
+(`on_set_parameters` rebuilds the GPU optimizer).
+
+## Benchmark scenarios
+
+`controller_benchmark` runs closed-loop CPU vs GPU comparisons on synthetic maps:
+
+```bash
+ros2 run cuda_mppi_controller controller_benchmark /tmp/bench wall_gap
+ros2 run cuda_mppi_controller controller_benchmark /tmp/bench narrow_corridor
+ros2 run cuda_mppi_controller controller_benchmark /tmp/bench u_turn
+ros2 run cuda_mppi_controller controller_benchmark /tmp/bench all
+```
+
+`all` also runs Ackermann/Omni GPU configs (`gpu_ackermann_K8192`, `gpu_omni_K8192`).
+
+Loopback motion-model configs: `config/nav2_loopback_demo_{ackermann,omni}.yaml`.
+
 ## Architecture
 
 ```

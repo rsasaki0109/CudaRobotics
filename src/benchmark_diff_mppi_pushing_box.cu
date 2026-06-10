@@ -800,13 +800,19 @@ __global__ void soppi_svgd_step_kernel(
     float uy_i = d_controls[base + 1];
     int neighbor_samples = K;
     if (neighbor_count > 0 && neighbor_count < K) neighbor_samples = neighbor_count;
-    int stride = K / neighbor_samples;
-    if (stride < 1) stride = 1;
 
     float phi_x = 0.0f;
     float phi_y = 0.0f;
     for (int m = 0; m < neighbor_samples; m++) {
-        int j = neighbor_count > 0 ? (k + m * stride) % K : m;
+        int j = m;
+        if (neighbor_count > 0 && neighbor_count < K) {
+            // Low-discrepancy hashed subset: better gradient coverage than a
+            // fixed stride ring, which can miss contact-loss structure.
+            unsigned int h = 1597334677u * static_cast<unsigned int>(k + 1)
+                           + 3812015801u * static_cast<unsigned int>(m + 1)
+                           + 2654435761u * static_cast<unsigned int>(t + 1);
+            j = static_cast<int>(h % static_cast<unsigned int>(K));
+        }
         int jbase = j*T*CTRL_DIM + t*CTRL_DIM;
         float ux_j = d_controls[jbase + 0];
         float uy_j = d_controls[jbase + 1];
@@ -1526,7 +1532,7 @@ int main(int argc, char** argv) {
     { Variant v; v.name="diff_mppi_3"; v.grad_steps=3; v.alpha=0.010f; variants.push_back(v); }
     { Variant v; v.name="diff_mppi_5"; v.grad_steps=5; v.alpha=0.008f; variants.push_back(v); }
     { Variant v; v.name="soppi"; v.use_soppi_sampling=true; v.soppi_step_size=0.06f; v.soppi_bandwidth=2.0f; variants.push_back(v); }
-    { Variant v; v.name="soppi_fast"; v.use_soppi_sampling=true; v.soppi_step_size=0.06f; v.soppi_bandwidth=2.0f; v.soppi_neighbor_count=32; variants.push_back(v); }
+    { Variant v; v.name="soppi_fast"; v.use_soppi_sampling=true; v.soppi_step_size=0.06f; v.soppi_bandwidth=2.0f; v.soppi_neighbor_count=64; v.soppi_svgd_iters=2; variants.push_back(v); }
     { Variant v; v.name="soppi_g3"; v.use_soppi_sampling=true; v.soppi_step_size=0.06f; v.soppi_bandwidth=2.0f; v.grad_steps=3; v.alpha=0.010f; variants.push_back(v); }
     { Variant v; v.name="soppi_fast_g3"; v.use_soppi_sampling=true; v.soppi_step_size=0.06f; v.soppi_bandwidth=2.0f; v.soppi_neighbor_count=32; v.grad_steps=3; v.alpha=0.010f; variants.push_back(v); }
     // Fidelity arm: vanilla MPPI that ROLLS OUT with the exact hard-contact model (no

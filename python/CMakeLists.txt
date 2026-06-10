@@ -19,6 +19,7 @@ set(CUDAROBOTICS_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/..")
 nanobind_add_module(_cudarobotics
   src/cudarobotics/bindings.cpp
   ${CUDAROBOTICS_ROOT}/src/mppi_gpu.cu
+  ${CUDAROBOTICS_ROOT}/src/filterreg_gpu.cu
 )
 
 target_include_directories(_cudarobotics PRIVATE

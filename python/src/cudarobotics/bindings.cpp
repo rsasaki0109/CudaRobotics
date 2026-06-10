@@ -9,8 +9,10 @@
 #include <memory>
 #include <stdexcept>
 #include <string>
+#include <vector>
 
 #include "cuda_mppi_controller/mppi_gpu.hpp"
+#include "cudarobotics/filterreg_gpu.hpp"
 
 namespace nb = nanobind;
 using namespace nb::literals;
@@ -19,6 +21,7 @@ namespace
 {
 
 namespace cr = cuda_mppi_controller;
+namespace reg = cudarobotics;
 
 class BufferView
 {
@@ -196,6 +199,61 @@ private:
   cr::MppiGpu planner_;
 };
 
+class PyFilterReg
+{
+public:
+  explicit PyFilterReg(const reg::FilterRegParams & params)
+  : registrar_(params)
+  {
+  }
+
+  nb::tuple register_clouds(
+    nb::object target,
+    nb::object source,
+    nb::object init_rotation,
+    nb::object init_translation)
+  {
+    BufferView target_view(target, 2, 3, 4, "target");
+    BufferView source_view(source, 2, 3, 4, "source");
+    const int num_target = target_view.dim(0);
+    const int num_source = source_view.dim(0);
+
+    const float * init_r = nullptr;
+    const float * init_t = nullptr;
+    std::array<float, 9> init_r_arr{};
+    std::array<float, 3> init_t_arr{};
+    if (init_rotation.ptr() != Py_None) {
+      init_r_arr = readFloatSequence<9>(init_rotation, "init_rotation");
+      init_r = init_r_arr.data();
+    }
+    if (init_translation.ptr() != Py_None) {
+      init_t_arr = readFloatSequence<3>(init_translation, "init_translation");
+      init_t = init_t_arr.data();
+    }
+
+    reg::FilterRegResult result = registrar_.registerClouds(
+      target_view.data<float>(), num_target,
+      source_view.data<float>(), num_source,
+      init_r, init_t);
+
+    nb::list rot_out;
+    for (int i = 0; i < 9; ++i) {
+      rot_out.append(result.rotation[i]);
+    }
+    nb::list trans_out;
+    for (int k = 0; k < 3; ++k) {
+      trans_out.append(result.translation[k]);
+    }
+    nb::dict info;
+    info["iterations"] = result.iterations;
+    info["final_rmse"] = result.final_rmse;
+    return nb::make_tuple(rot_out, trans_out, info);
+  }
+
+private:
+  reg::FilterRegGpu registrar_;
+};
+
 }  // namespace
 
 NB_MODULE(_cudarobotics, m)
@@ -262,4 +320,20 @@ NB_MODULE(_cudarobotics, m)
       "resolution"_a = 0.05f,
       "goal_is_final"_a = false,
       "footprint"_a = nb::none());
+
+  nb::class_<reg::FilterRegParams>(m, "FilterRegParams")
+    .def(nb::init<>())
+    .def_rw("voxel_size", &reg::FilterRegParams::voxel_size)
+    .def_rw("bbox_margin", &reg::FilterRegParams::bbox_margin)
+    .def_rw("outlier_fraction", &reg::FilterRegParams::outlier_fraction)
+    .def_rw("iters_per_sigma", &reg::FilterRegParams::iters_per_sigma)
+    .def_rw("step_tol", &reg::FilterRegParams::step_tol);
+
+  nb::class_<PyFilterReg>(m, "_FilterReg")
+    .def(nb::init<const reg::FilterRegParams &>())
+    .def(
+      "register_clouds", &PyFilterReg::register_clouds,
+      "target"_a, "source"_a,
+      "init_rotation"_a = nb::none(),
+      "init_translation"_a = nb::none());
 }

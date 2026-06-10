@@ -1,4 +1,12 @@
-from ._cudarobotics import MotionModel, MppiParams, MppiResult, _MppiPlanner, __version__
+from ._cudarobotics import (
+    FilterRegParams,
+    MotionModel,
+    MppiParams,
+    MppiResult,
+    _FilterReg,
+    _MppiPlanner,
+    __version__,
+)
 
 _MOTION_MODELS = {
     "diff": MotionModel.DiffDrive,
@@ -56,10 +64,33 @@ class MppiPlanner:
         )
 
 
+class FilterReg:
+    """GPU FilterReg probabilistic point-cloud registration."""
+
+    def __init__(self, params=None, **kwargs):
+        self.params = FilterRegParams() if params is None else params
+        for key, value in kwargs.items():
+            if not hasattr(self.params, key):
+                raise TypeError(f"unknown FilterRegParams field: {key}")
+            setattr(self.params, key, value)
+        self._registrar = _FilterReg(self.params)
+
+    def register(self, target, source, init_rotation=None, init_translation=None):
+        rotation, translation, info = self._registrar.register_clouds(
+            target, source, init_rotation, init_translation
+        )
+        return rotation, translation, info
+
+
+from . import registration
+
 __all__ = [
+    "FilterReg",
+    "FilterRegParams",
     "MotionModel",
     "MppiParams",
     "MppiPlanner",
     "MppiResult",
     "__version__",
+    "registration",
 ]
