@@ -104,18 +104,15 @@ python examples/python/registration_quickstart.py
 ```python
 import cudarobotics as cr
 
+robust = cr.registration.RobustP2Plane()  # Student's-t + point-to-plane
+rotation, translation, info = robust.register(target_xyz, source_xyz)
+
 sinkhorn = cr.registration.SinkhornReg()
 rotation, translation, info = sinkhorn.register(target_xyz, source_xyz)
-
-fgr = cr.registration.Fgr()
-rotation, translation, info = fgr.register(target_xyz, source_xyz)
-
-bcpd = cr.registration.Bcpd(max_iters=40)
-deformed, info = bcpd.register(target_xyz, model_xyz)
 ```
 
-FilterReg remains available as `cr.registration.FilterReg()` (see
-`examples/python/filterreg_quickstart.py`).
+FilterReg, FGR, BCPD, and `RobustTreg` are also available (see
+`examples/python/registration_quickstart.py`).
 
 ## Latest Fixed-Seed Result
 

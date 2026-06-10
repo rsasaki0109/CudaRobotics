@@ -7,6 +7,10 @@ from .. import (
     FilterRegParams,
     Fgr,
     FgrParams,
+    RobustP2Plane,
+    RobustP2PlaneParams,
+    RobustTreg,
+    RobustTregParams,
     SinkhornReg,
     SinkhornRegParams,
 )
@@ -18,6 +22,10 @@ __all__ = [
     "FilterRegParams",
     "Fgr",
     "FgrParams",
+    "RobustP2Plane",
+    "RobustP2PlaneParams",
+    "RobustTreg",
+    "RobustTregParams",
     "SinkhornReg",
     "SinkhornRegParams",
 ]

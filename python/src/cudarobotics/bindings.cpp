@@ -15,6 +15,8 @@
 #include "cudarobotics/bcpd_gpu.hpp"
 #include "cudarobotics/fgr_gpu.hpp"
 #include "cudarobotics/filterreg_gpu.hpp"
+#include "cudarobotics/robust_p2plane_gpu.hpp"
+#include "cudarobotics/robust_treg_gpu.hpp"
 #include "cudarobotics/sinkhorn_reg_gpu.hpp"
 
 #include <nanobind/ndarray.h>
@@ -330,6 +332,94 @@ private:
   reg::FgrGpu registrar_;
 };
 
+class PyRobustTreg
+{
+public:
+  explicit PyRobustTreg(const reg::RobustTregParams & params)
+  : registrar_(params)
+  {
+  }
+
+  nb::tuple register_clouds(
+    nb::object target,
+    nb::object source,
+    nb::object init_rotation,
+    nb::object init_translation)
+  {
+    BufferView target_view(target, 2, 3, 4, "target");
+    BufferView source_view(source, 2, 3, 4, "source");
+    const int num_target = target_view.dim(0);
+    const int num_source = source_view.dim(0);
+
+    const float * init_r = nullptr;
+    const float * init_t = nullptr;
+    std::array<float, 9> init_r_arr{};
+    std::array<float, 3> init_t_arr{};
+    if (init_rotation.ptr() != Py_None) {
+      init_r_arr = readFloatSequence<9>(init_rotation, "init_rotation");
+      init_r = init_r_arr.data();
+    }
+    if (init_translation.ptr() != Py_None) {
+      init_t_arr = readFloatSequence<3>(init_translation, "init_translation");
+      init_t = init_t_arr.data();
+    }
+
+    reg::RobustTregResult result = registrar_.registerClouds(
+      target_view.data<float>(), num_target,
+      source_view.data<float>(), num_source,
+      init_r, init_t);
+
+    return transformResultToTuple(result);
+  }
+
+private:
+  reg::RobustTregGpu registrar_;
+};
+
+class PyRobustP2Plane
+{
+public:
+  explicit PyRobustP2Plane(const reg::RobustP2PlaneParams & params)
+  : registrar_(params)
+  {
+  }
+
+  nb::tuple register_clouds(
+    nb::object target,
+    nb::object source,
+    nb::object init_rotation,
+    nb::object init_translation)
+  {
+    BufferView target_view(target, 2, 3, 4, "target");
+    BufferView source_view(source, 2, 3, 4, "source");
+    const int num_target = target_view.dim(0);
+    const int num_source = source_view.dim(0);
+
+    const float * init_r = nullptr;
+    const float * init_t = nullptr;
+    std::array<float, 9> init_r_arr{};
+    std::array<float, 3> init_t_arr{};
+    if (init_rotation.ptr() != Py_None) {
+      init_r_arr = readFloatSequence<9>(init_rotation, "init_rotation");
+      init_r = init_r_arr.data();
+    }
+    if (init_translation.ptr() != Py_None) {
+      init_t_arr = readFloatSequence<3>(init_translation, "init_translation");
+      init_t = init_t_arr.data();
+    }
+
+    reg::RobustP2PlaneResult result = registrar_.registerClouds(
+      target_view.data<float>(), num_target,
+      source_view.data<float>(), num_source,
+      init_r, init_t);
+
+    return transformResultToTuple(result);
+  }
+
+private:
+  reg::RobustP2PlaneGpu registrar_;
+};
+
 class PyBcpd
 {
 public:
@@ -483,4 +573,35 @@ NB_MODULE(_cudarobotics, m)
   nb::class_<PyBcpd>(m, "_Bcpd")
     .def(nb::init<const reg::BcpdParams &>())
     .def("register_clouds", &PyBcpd::register_clouds, "target"_a, "source"_a);
+
+  nb::class_<reg::RobustTregParams>(m, "RobustTregParams")
+    .def(nb::init<>())
+    .def_rw("nu", &reg::RobustTregParams::nu)
+    .def_rw("outlier_fraction", &reg::RobustTregParams::outlier_fraction)
+    .def_rw("outer_iters_per_sigma", &reg::RobustTregParams::outer_iters_per_sigma)
+    .def_rw("gn_iters", &reg::RobustTregParams::gn_iters);
+
+  nb::class_<PyRobustTreg>(m, "_RobustTreg")
+    .def(nb::init<const reg::RobustTregParams &>())
+    .def(
+      "register_clouds", &PyRobustTreg::register_clouds,
+      "target"_a, "source"_a,
+      "init_rotation"_a = nb::none(),
+      "init_translation"_a = nb::none());
+
+  nb::class_<reg::RobustP2PlaneParams>(m, "RobustP2PlaneParams")
+    .def(nb::init<>())
+    .def_rw("nu", &reg::RobustP2PlaneParams::nu)
+    .def_rw("knn_k", &reg::RobustP2PlaneParams::knn_k)
+    .def_rw("outlier_fraction", &reg::RobustP2PlaneParams::outlier_fraction)
+    .def_rw("outer_iters_per_sigma", &reg::RobustP2PlaneParams::outer_iters_per_sigma)
+    .def_rw("gn_iters", &reg::RobustP2PlaneParams::gn_iters);
+
+  nb::class_<PyRobustP2Plane>(m, "_RobustP2Plane")
+    .def(nb::init<const reg::RobustP2PlaneParams &>())
+    .def(
+      "register_clouds", &PyRobustP2Plane::register_clouds,
+      "target"_a, "source"_a,
+      "init_rotation"_a = nb::none(),
+      "init_translation"_a = nb::none());
 }
