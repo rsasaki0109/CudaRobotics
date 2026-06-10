@@ -54,8 +54,8 @@ jobs:
       - name: Install from sdist and run tests
         run: |
           python -m venv /tmp/cudarobotics-test-venv
-          /tmp/cudarobotics-test-venv/bin/pip install \
-            "python/dist/cudarobotics-"*.tar.gz"[test]"
+          SDIST=(python/dist/cudarobotics-*.tar.gz)
+          /tmp/cudarobotics-test-venv/bin/pip install "${SDIST[0]}[test]"
           PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 \
             /tmp/cudarobotics-test-venv/bin/pytest python/tests -q
 
