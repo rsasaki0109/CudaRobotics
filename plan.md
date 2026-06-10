@@ -43,8 +43,8 @@ Stars come from being **used**, not watched. Demo mass-production is over
 2. ~~MPPI Zoo + SOPPI arXiv tech report~~ — **SKIPPED by user decision
    (2026-06-10). Do not pick this up unless the user re-requests it.**
    The zoo remains an internal benchmark + paper scaffold.
-3. **pip-installable Python bindings** — **INITIAL MPPI + FilterReg BINDINGS DONE.**
-   Additional registration algorithms (BCPD / Sinkhorn / FGR) remain follow-ups.
+3. **pip-installable Python bindings** — **MPPI + FilterReg + Sinkhorn/FGR/BCPD BINDINGS DONE.**
+   Robust point-to-plane / Student-t registration remain follow-ups.
 
 **Distribution (HN / Reddit / ROS Discourse / X / Zenn) is user-owned.
 Agents must never post, announce, or publish anywhere external.** Producing
@@ -163,9 +163,10 @@ Python; a GPU MPPI / registration library they can `pip install` enters the
    - ~~`cudarobotics.registration` — FilterReg initial binding~~ **DONE:**
      `include/cudarobotics/filterreg_gpu.hpp` + `src/filterreg_gpu.cu` promoted;
      `examples/python/filterreg_quickstart.py` validates alignment.
-   - Additional registration algorithms (BCPD / Sinkhorn / FGR / robust
-     point-to-plane in `src/gpu_*reg*.cu` etc.) remain follow-ups — each
-     still needs its compute core extracted behind a header first.
+   - ~~Sinkhorn-OT / FGR / BCPD Python bindings~~ **DONE:**
+     `sinkhorn_gpu.cu`, `fgr_gpu.cu`, `bcpd_gpu.cu` + `examples/python/registration_quickstart.py`.
+   - Robust point-to-plane / Student-t (`src/gpu_robust_*reg*.cu`) remain follow-ups —
+     each still needs its compute core extracted behind a header first.
 2. **Binding tech**: nanobind (faster builds, smaller wheels than
    pybind11) + `scikit-build-core` for the CMake bridge. Accept numpy
    first; torch/cupy zero-copy later via `__dlpack__` — do NOT block the
@@ -362,24 +363,17 @@ tests). Recent PRs #172/#173 both green.
 
 Priority order for the next coding agent:
 
-1. ~~**Lift `soppi_fast` on `box_align_contact_loss`**~~ **PARTIAL → 0.25** — subset
-   SVGD now uses hashed neighbor spread (not fixed stride), `soppi_neighbor_count=64`,
-   `soppi_svgd_iters=2` in `benchmark_diff_mppi_pushing_box.cu`. Local K=256 × 4-seed
-   sweep: `soppi_fast` **0.25** (seed 2 success, 114 steps) vs all-pairs `soppi` 0.00;
-   still below `diff_mppi_3` 1.00 — re-check in fixed checked-in seed suite before
-   widening claims.
-   `soppi` 0.25. Try `--override-soppi-neighbors`, bandwidth/step-size sweep, or
-   score-kernel partial rollout cache (Next Step #3 in `soppi_reproduction.md`).
-   Success criterion: `soppi_fast` > `mppi` without adding nominal grad steps.
+1. ~~**Lift `soppi_fast` on `box_align_contact_loss`**~~ **PARTIAL → 0.25** — fixed-seed
+   suite (K=256, 4 seeds): `soppi_fast` **0.25** (seed 2, 114 steps); all-pairs `soppi`
+   **0.00** on current code; `mppi` **0.50**; `diff_mppi_3` **1.00**.
 
-2. **Stronger contact-loss cell** — design a scenario where pure `soppi` reaches
-   ≥0.50 success (not just 0.25). Candidate knobs: `ang_tol`, `w_contact_loss`,
-   pusher start offset, or a two-phase contact gate (must maintain contact while
-   rotating past θ threshold). Avoid re-tuning `box_align_detour` (already solved
-   by hybrid planners).
+2. ~~**Stronger contact-loss cell**~~ **DONE → `box_align_contact_arc`** — appended scenario
+   with `pos_tol=0.30`, `ang_tol=0.12`, same `w_contact_loss=47`. Fixed-seed probe
+   (K=256, 4 seeds): **`soppi` 1.00**, **`soppi_fast` 1.00**, `mppi` 1.00 — wider gate
+   lifts pure SVGD without nominal grad; strict `box_align_contact_loss` stays the hard cell.
 
-3. **`--baseline-planners` for `scripts/sweep_soppi.py`** — reduce repeated manual
-   MPPI baseline runs when grid-sweeping SOPPI hyperparameters on box cells.
+3. ~~**`--baseline-planners` for `scripts/sweep_soppi.py`**~~ **DONE** — comma-separated
+   baseline planners run once before the SOPPI grid (default `mppi`).
 
 4. **Navigation SOPPI score upgrade** — replace local stage-cost score with
    trajectory-level gradient (like CartPole port) if navigation 2/10 must improve.
@@ -1306,10 +1300,9 @@ any new scan-matching / SLAM / optimisation work.
 ### SOPPI / box pushing (ACTIVE — see Current State)
 - **`soppi_fast` on `box_align_contact_loss`**: subset SVGD at 0.00 while
   all-pairs `soppi` at 0.25; primary next lift.
-- **Stronger pure-SOPPI cell**: current contact-loss win is 1/4 seeds; aim for
-  ≥0.50 without nominal grad or hybrid planners.
-- **`scripts/sweep_soppi.py --baseline-planners`**: not implemented; would speed
-  repeated Diff-MPPI comparisons during sweeps.
+- **Stronger pure-SOPPI cell**: `box_align_contact_arc` at 1.00 success (K=256, 4 seeds);
+  strict `box_align_contact_loss` remains the hard subset-SVGD cell (`soppi_fast` 0.25).
+- **`scripts/sweep_soppi.py --baseline-planners`**: implemented (default `mppi`).
 - **Partial rollout cache for box autodiff score**: `soppi_timestep_score_kernel`
   recomputes full rollout per `(k,t)`; caching intermediate states is the main
   remaining speed lever if another kernel pass is needed.
