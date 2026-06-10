@@ -24,9 +24,9 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install CUDA toolkit
-        uses: Jimver/cuda-toolkit@v0.2.16
+        uses: Jimver/cuda-toolkit@v0.2.35
         with:
-          cuda: "12.0.0"
+          cuda: "12.6.0"
           method: network
 
       - name: Install ROS 2 Jazzy and Nav2 build deps
