@@ -67,6 +67,31 @@ Full animated gallery: https://rsasaki0109.github.io/CudaRobotics/
 | Contributing a demo or reproduction | [`CONTRIBUTING.md`](CONTRIBUTING.md) |
 | Current roadmap snapshot | [`docs/next_actions.md`](docs/next_actions.md) |
 
+## Python MPPI Quickstart
+
+The reusable GPU MPPI core is available as an experimental Python package.
+It builds from source against a local CUDA Toolkit:
+
+```bash
+pip install -e python/
+pip install -e 'python/[examples]'  # optional: GIF rendering dependencies
+python examples/python/mppi_quickstart.py
+```
+
+Minimal use:
+
+```python
+import numpy as np
+import cudarobotics as cr
+
+planner = cr.MppiPlanner(batch_size=2048, time_steps=56, model_dt=0.05)
+costmap = np.zeros((200, 200), dtype=np.uint8)
+path = np.array([[x, 5.0] for x in np.arange(1.0, 9.1, 0.1)], dtype=np.float32)
+v, vy, w, info = planner.compute(
+    (1.0, 5.0, 0.0), costmap, path, (9.0, 5.0, 0.0), resolution=0.05
+)
+```
+
 ## Latest Fixed-Seed Result
 
 The checked-in MPPI zoo suite was generated on 2026-06-10 with five navigation

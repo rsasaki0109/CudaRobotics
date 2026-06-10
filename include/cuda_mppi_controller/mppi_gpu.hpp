@@ -63,6 +63,11 @@ struct MppiParams
   // Requires an inflation layer: the polygon edge check only runs on cells
   // with non-zero inflated cost.
   bool consider_footprint = false;
+
+  // Recovery command when every sampled trajectory collides: back out by
+  // reversing the most recent valid sequence instead of immediately failing.
+  bool enable_retreat = true;
+  float retreat_scale = 0.5f;
 };
 
 struct MppiResult
@@ -72,6 +77,7 @@ struct MppiResult
   float w = 0.0f;
   float best_cost = 0.0f;   // min sampled trajectory cost (collision diagnosis)
   bool all_colliding = false;
+  bool retreating = false;   // true when command is a recovery back-out action
 };
 
 class MppiGpu

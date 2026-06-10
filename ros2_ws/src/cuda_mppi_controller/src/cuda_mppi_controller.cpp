@@ -57,7 +57,10 @@ void CudaMppiController::configure(
   double smoothness_weight = params_.smoothness_weight;
   double backward_weight = params_.backward_weight;
   double speed_weight = params_.speed_weight;
+  double angular_weight = params_.angular_weight;
   double yaw_activation = params_.yaw_goal_activation_dist;
+  bool enable_retreat = params_.enable_retreat;
+  double retreat_scale = params_.retreat_scale;
 
   declare_get("batch_size", batch_size, batch_size);
   declare_get("time_steps", time_steps, time_steps);
@@ -83,7 +86,10 @@ void CudaMppiController::configure(
   declare_get("smoothness_weight", smoothness_weight, smoothness_weight);
   declare_get("backward_weight", backward_weight, backward_weight);
   declare_get("speed_weight", speed_weight, speed_weight);
+  declare_get("angular_weight", angular_weight, angular_weight);
   declare_get("yaw_goal_activation_dist", yaw_activation, yaw_activation);
+  declare_get("enable_retreat", enable_retreat, enable_retreat);
+  declare_get("retreat_scale", retreat_scale, retreat_scale);
   declare_get("lookahead_dist", lookahead_dist_, lookahead_dist_);
   declare_get("transform_tolerance", transform_tolerance_, transform_tolerance_);
 
@@ -121,7 +127,10 @@ void CudaMppiController::configure(
   params_.smoothness_weight = static_cast<float>(smoothness_weight);
   params_.backward_weight = static_cast<float>(backward_weight);
   params_.speed_weight = static_cast<float>(speed_weight);
+  params_.angular_weight = static_cast<float>(angular_weight);
   params_.yaw_goal_activation_dist = static_cast<float>(yaw_activation);
+  params_.enable_retreat = enable_retreat;
+  params_.retreat_scale = static_cast<float>(retreat_scale);
 
   optimizer_ = std::make_unique<MppiGpu>(params_);
 
@@ -265,7 +274,7 @@ geometry_msgs::msg::TwistStamped CudaMppiController::computeVelocityCommands(
       footprint_xy.data(), static_cast<int>(footprint_xy.size() / 2));
   }
 
-  if (result.all_colliding) {
+  if (result.all_colliding && !result.retreating) {
     throw nav2_core::NoValidControl(
             "CudaMppiController: all sampled trajectories are in collision");
   }
