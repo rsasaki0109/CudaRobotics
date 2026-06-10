@@ -23,6 +23,8 @@ nanobind_add_module(_cudarobotics
   ${CUDAROBOTICS_ROOT}/src/sinkhorn_gpu.cu
   ${CUDAROBOTICS_ROOT}/src/fgr_gpu.cu
   ${CUDAROBOTICS_ROOT}/src/bcpd_gpu.cu
+  ${CUDAROBOTICS_ROOT}/src/robust_treg_gpu.cu
+  ${CUDAROBOTICS_ROOT}/src/robust_p2plane_gpu.cu
 )
 
 target_include_directories(_cudarobotics PRIVATE

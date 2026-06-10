@@ -5,11 +5,15 @@ from ._cudarobotics import (
     MotionModel,
     MppiParams,
     MppiResult,
+    RobustP2PlaneParams,
+    RobustTregParams,
     SinkhornRegParams,
     _Bcpd,
     _FilterReg,
     _Fgr,
     _MppiPlanner,
+    _RobustP2Plane,
+    _RobustTreg,
     _SinkhornReg,
     __version__,
 )
@@ -120,6 +124,40 @@ class Fgr:
         return self._registrar.register_clouds(target, source)
 
 
+class RobustTreg:
+    """GPU robust Student's-t point-to-point registration."""
+
+    def __init__(self, params=None, **kwargs):
+        self.params = RobustTregParams() if params is None else params
+        for key, value in kwargs.items():
+            if not hasattr(self.params, key):
+                raise TypeError(f"unknown RobustTregParams field: {key}")
+            setattr(self.params, key, value)
+        self._registrar = _RobustTreg(self.params)
+
+    def register(self, target, source, init_rotation=None, init_translation=None):
+        return self._registrar.register_clouds(
+            target, source, init_rotation, init_translation
+        )
+
+
+class RobustP2Plane:
+    """GPU robust Student's-t point-to-plane registration."""
+
+    def __init__(self, params=None, **kwargs):
+        self.params = RobustP2PlaneParams() if params is None else params
+        for key, value in kwargs.items():
+            if not hasattr(self.params, key):
+                raise TypeError(f"unknown RobustP2PlaneParams field: {key}")
+            setattr(self.params, key, value)
+        self._registrar = _RobustP2Plane(self.params)
+
+    def register(self, target, source, init_rotation=None, init_translation=None):
+        return self._registrar.register_clouds(
+            target, source, init_rotation, init_translation
+        )
+
+
 class Bcpd:
     """GPU BCPD non-rigid point-set registration."""
 
@@ -150,6 +188,10 @@ __all__ = [
     "MppiParams",
     "MppiPlanner",
     "MppiResult",
+    "RobustP2Plane",
+    "RobustP2PlaneParams",
+    "RobustTreg",
+    "RobustTregParams",
     "SinkhornReg",
     "SinkhornRegParams",
     "__version__",
