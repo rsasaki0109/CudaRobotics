@@ -33,8 +33,7 @@
 #include <curand_kernel.h>
 
 #include "autodiff_engine.cuh"
-
-#define CUDA_CHECK(call) do { cudaError_t err = (call); if (err != cudaSuccess) { fprintf(stderr, "CUDA error at %s:%d: %s\n", __FILE__, __LINE__, cudaGetErrorString(err)); exit(EXIT_FAILURE); } } while (0)
+#include "cuda_check.cuh"
 
 using namespace std;
 using namespace cudabot;
@@ -482,6 +481,98 @@ __device__ inline float dcost_dparam_box(
     return cost.deriv;
 }
 
+// Same as dcost_dparam_box but starts from a cached state at timestep t_start.
+__device__ inline float dcost_dparam_box_from(
+    const float start[STATE_DIM], const float* nominal, int T, int t_start, int active,
+    float gx, float gy, float gth, const BoxParams& p)
+{
+    Dualf px = Dualf::constant(start[0]), py = Dualf::constant(start[1]);
+    Dualf ox = Dualf::constant(start[2]), oy = Dualf::constant(start[3]);
+    Dualf oth = Dualf::constant(start[4]);
+    Dualf cost = Dualf::constant(0.0f);
+    for (int t = t_start; t < T; t++) {
+        Dualf ux = (active == t*2+0) ? Dualf::variable(nominal[t*2+0]) : Dualf::constant(nominal[t*2+0]);
+        Dualf uy = (active == t*2+1) ? Dualf::variable(nominal[t*2+1]) : Dualf::constant(nominal[t*2+1]);
+        ux = clamp(ux, -p.u_max, p.u_max);
+        uy = clamp(uy, -p.u_max, p.u_max);
+        px = px + Dualf::constant(p.dt) * ux;
+        py = py + Dualf::constant(p.dt) * uy;
+        Dualf c = cudabot::cos(oth), s = cudabot::sin(oth);
+        Dualf dx = px - ox, dy = py - oy;
+        Dualf lx = c*dx + s*dy;
+        Dualf ly = (Dualf::constant(0.0f) - s)*dx + c*dy;
+        Dualf qx = d_abs(lx) - Dualf::constant(p.hx);
+        Dualf qy = d_abs(ly) - Dualf::constant(p.hy);
+        Dualf rqx = d_relu(qx), rqy = d_relu(qy);
+        Dualf outside = cudabot::sqrt(rqx*rqx + rqy*rqy + Dualf::constant(1e-9f));
+        Dualf inside = d_min0(d_max(qx, qy));
+        Dualf sd = outside + inside;
+        Dualf pen = d_relu(Dualf::constant(p.push_r) - sd);
+        Dualf peff = d_relu(pen - Dualf::constant(p.pen_thresh));
+        Dualf nlx = rqx * Dualf::constant(lx.val >= 0.0f ? 1.0f : -1.0f);
+        Dualf nly = rqy * Dualf::constant(ly.val >= 0.0f ? 1.0f : -1.0f);
+        Dualf nlen = cudabot::sqrt(nlx*nlx + nly*nly + Dualf::constant(1e-9f));
+        nlx = nlx / nlen; nly = nly / nlen;
+        Dualf nwx = c*nlx - s*nly;
+        Dualf nwy = s*nlx + c*nly;
+        Dualf Fx = (Dualf::constant(0.0f) - nwx) * Dualf::constant(p.push_gain) * peff;
+        Dualf Fy = (Dualf::constant(0.0f) - nwy) * Dualf::constant(p.push_gain) * peff;
+        Dualf cxw = px - nwx*sd, cyw = py - nwy*sd;
+        Dualf rx = cxw - ox, ry = cyw - oy;
+        Dualf torque = rx*Fy - ry*Fx;
+        ox = ox + Dualf::constant(p.dt) * Fx;
+        oy = oy + Dualf::constant(p.dt) * Fy;
+        oth = oth + Dualf::constant(p.dt * p.rot_gain) * torque;
+        Dualf dpx = ox - Dualf::constant(gx), dpy = oy - Dualf::constant(gy);
+        Dualf dthr = oth - Dualf::constant(gth);
+        Dualf dth = cudabot::atan2(cudabot::sin(dthr), cudabot::cos(dthr));
+        cost = cost + Dualf::constant(p.w_pos) * (dpx*dpx + dpy*dpy) * Dualf::constant(p.dt);
+        cost = cost + Dualf::constant(p.w_ang) * (dth*dth) * Dualf::constant(p.dt);
+        cost = cost + Dualf::constant(p.w_ctrl) * (ux*ux + uy*uy) * Dualf::constant(p.dt);
+        Dualf ex = px - ox, ey = py - oy;
+        cost = cost + Dualf::constant(p.w_near) * (ex*ex + ey*ey) * Dualf::constant(p.dt);
+        if (p.w_contact_loss > 0.0f) {
+            Dualf gap = d_relu(sd - Dualf::constant(p.push_r));
+            cost = cost + Dualf::constant(p.w_contact_loss) * gap * gap * Dualf::constant(p.dt);
+        }
+        cost = cost + obstacle_stage_cost_dual(ox, oy, oth, p);
+    }
+    Dualf dpx = ox - Dualf::constant(gx), dpy = oy - Dualf::constant(gy);
+    Dualf dthr = oth - Dualf::constant(gth);
+    Dualf dth = cudabot::atan2(cudabot::sin(dthr), cudabot::cos(dthr));
+    cost = cost + Dualf::constant(p.w_term_pos) * (dpx*dpx + dpy*dpy);
+    cost = cost + Dualf::constant(p.w_term_ang) * (dth*dth);
+    cost = cost + obstacle_stage_cost_dual(ox, oy, oth, p) * Dualf::constant(2.0f);
+    return cost.deriv;
+}
+
+// Cache float rollout states per sample before SOPPI score kernels (partial-rollout cache).
+__global__ void cache_soppi_rollout_states_kernel(
+    const float* d_start, const float* d_controls, float* d_states,
+    BoxParams p, int K, int T)
+{
+    int k = blockIdx.x * blockDim.x + threadIdx.x;
+    if (k >= K) return;
+    float px = d_start[0], py = d_start[1], ox = d_start[2], oy = d_start[3], oth = d_start[4];
+    int base = k * (T + 1) * STATE_DIM;
+    d_states[base + 0] = px;
+    d_states[base + 1] = py;
+    d_states[base + 2] = ox;
+    d_states[base + 3] = oy;
+    d_states[base + 4] = oth;
+    for (int t = 0; t < T; t++) {
+        float ux = d_controls[k * T * CTRL_DIM + t * CTRL_DIM + 0];
+        float uy = d_controls[k * T * CTRL_DIM + t * CTRL_DIM + 1];
+        push_step_box_f(px, py, ox, oy, oth, ux, uy, p);
+        int off = base + (t + 1) * STATE_DIM;
+        d_states[off + 0] = px;
+        d_states[off + 1] = py;
+        d_states[off + 2] = ox;
+        d_states[off + 3] = oy;
+        d_states[off + 4] = oth;
+    }
+}
+
 // ======================== Kernels ========================
 __global__ void init_curand_kernel(curandState* st, int n, unsigned long long seed) {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
@@ -761,7 +852,7 @@ __global__ void grad_vec_kernel(
 }
 
 __global__ void soppi_timestep_score_kernel(
-    const float* d_start, const float* d_controls, float* d_scores,
+    const float* d_cached_states, const float* d_controls, float* d_scores,
     BoxParams p, float gx, float gy, float gth, int K, int T, float lambda)
 {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
@@ -771,14 +862,14 @@ __global__ void soppi_timestep_score_kernel(
     int k = idx / T;
     int t = idx - k * T;
     int base = k * T * CTRL_DIM + t * CTRL_DIM;
-    float start[STATE_DIM] = { d_start[0], d_start[1], d_start[2], d_start[3], d_start[4] };
     const float* controls = &d_controls[k * T * CTRL_DIM];
+    const float* state = &d_cached_states[k * (T + 1) * STATE_DIM + t * STATE_DIM];
     float inv_lambda = 1.0f / fmaxf(lambda, 1.0e-3f);
     d_scores[base + 0] = -clampf_local(
-        dcost_dparam_box(start, controls, T, t * CTRL_DIM + 0, gx, gy, gth, p) * inv_lambda,
+        dcost_dparam_box_from(state, controls, T, t, t * CTRL_DIM + 0, gx, gy, gth, p) * inv_lambda,
         -25.0f, 25.0f);
     d_scores[base + 1] = -clampf_local(
-        dcost_dparam_box(start, controls, T, t * CTRL_DIM + 1, gx, gy, gth, p) * inv_lambda,
+        dcost_dparam_box_from(state, controls, T, t, t * CTRL_DIM + 1, gx, gy, gth, p) * inv_lambda,
         -25.0f, 25.0f);
 }
 
@@ -899,6 +990,7 @@ public:
         if (v_.use_soppi_sampling) {
             CUDA_CHECK(cudaMalloc(&d_soppi_scratch_, K_*T_*CTRL_DIM*sizeof(float)));
             CUDA_CHECK(cudaMalloc(&d_soppi_grad_, K_*T_*CTRL_DIM*sizeof(float)));
+            CUDA_CHECK(cudaMalloc(&d_soppi_state_cache_, K_*(T_+1)*STATE_DIM*sizeof(float)));
         }
         reset_rng();
     }
@@ -908,6 +1000,7 @@ public:
         cudaFree(d_rot_); cudaFree(d_netrot_); cudaFree(d_grad_);
         if (d_soppi_scratch_) cudaFree(d_soppi_scratch_);
         if (d_soppi_grad_) cudaFree(d_soppi_grad_);
+        if (d_soppi_state_cache_) cudaFree(d_soppi_state_cache_);
     }
 
     EpisodeMetrics run() {
@@ -1042,8 +1135,10 @@ private:
             float* d_controls_src = d_perturbed_;
             float* d_controls_dst = d_soppi_scratch_;
             for (int iter = 0; iter < max(1, v_.soppi_svgd_iters); iter++) {
+                cache_soppi_rollout_states_kernel<<<(K_+b-1)/b,b>>>(
+                    d_start_, d_controls_src, d_soppi_state_cache_, sc_.params, K_, T_);
                 soppi_timestep_score_kernel<<<(total_particles+b-1)/b,b>>>(
-                    d_start_, d_controls_src, d_soppi_grad_,
+                    d_soppi_state_cache_, d_controls_src, d_soppi_grad_,
                     sc_.params, sc_.gx, sc_.gy, sc_.gth, K_, T_, v_.lambda);
                 soppi_svgd_step_kernel<<<(total_particles+b-1)/b,b>>>(
                     d_controls_src, d_controls_dst, d_soppi_grad_,
@@ -1195,7 +1290,7 @@ private:
     float *d_start_=nullptr,*d_nominal_=nullptr,*d_costs_=nullptr,*d_weights_=nullptr,*d_perturbed_=nullptr;
     float *d_rot_=nullptr,*d_netrot_=nullptr;
     float *d_grad_=nullptr;                 // 2T smooth-model gradient (grad-agreement diag)
-    float *d_soppi_scratch_=nullptr,*d_soppi_grad_=nullptr;
+    float *d_soppi_scratch_=nullptr,*d_soppi_grad_=nullptr,*d_soppi_state_cache_=nullptr;
     curandState* d_rng_=nullptr;
 };
 

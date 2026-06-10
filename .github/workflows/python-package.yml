@@ -65,3 +65,36 @@ jobs:
         with:
           name: cudarobotics-wheels
           path: python/dist/*
+
+  cibuildwheel:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Sync bundled CUDA core
+        run: ./scripts/sync_python_core.sh
+
+      - name: Build manylinux wheels
+        uses: pypa/cibuildwheel@v2.22.0
+        env:
+          CIBW_BUILD: cp310-* cp312-*
+          CIBW_SKIP: pp* *musllinux* *win32 *macosx*
+          CIBW_BUILD_FRONTEND: build
+          CIBW_BEFORE_ALL_LINUX: |
+            set -eux
+            yum install -y wget
+            wget -q https://developer.download.nvidia.com/compute/cuda/repos/rhel8/x86_64/cuda-keyring-1.1-1.noarch.rpm
+            rpm -i cuda-keyring-1.1-1.noarch.rpm
+            yum install -y cuda-nvcc-12-0 cuda-cudart-devel-12-0
+          CIBW_ENVIRONMENT: >-
+            CUDACXX=/usr/local/cuda/bin/nvcc
+            CMAKE_CUDA_COMPILER=/usr/local/cuda/bin/nvcc
+        with:
+          package-dir: python
+
+      - name: Upload manylinux wheels
+        uses: actions/upload-artifact@v4
+        with:
+          name: cudarobotics-manylinux-wheels
+          path: wheelhouse/*
