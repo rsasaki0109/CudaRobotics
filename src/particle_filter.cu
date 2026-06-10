@@ -28,18 +28,6 @@
 #define MAX_LANDMARKS 16
 
 // ---------------------------------------------------------------------------
-// CUDA error check macro
-// ---------------------------------------------------------------------------
-    do {                                                                       \
-        cudaError_t err = (call);                                              \
-        if (err != cudaSuccess) {                                              \
-            fprintf(stderr, "CUDA error at %s:%d: %s\n", __FILE__, __LINE__,  \
-                    cudaGetErrorString(err));                                   \
-            exit(EXIT_FAILURE);                                                \
-        }                                                                      \
-    } while (0)
-
-// ---------------------------------------------------------------------------
 // Device: observation stored as (distance, lx, ly)
 // ---------------------------------------------------------------------------
 struct Observation {

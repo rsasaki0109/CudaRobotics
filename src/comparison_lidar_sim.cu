@@ -20,14 +20,6 @@
 #include <cuda_runtime.h>
 #include "cuda_check.cuh"
 
-    cudaError_t err = (call); \
-    if (err != cudaSuccess) { \
-        fprintf(stderr, "CUDA error at %s:%d: %s\n", __FILE__, __LINE__, \
-                cudaGetErrorString(err)); \
-        std::exit(EXIT_FAILURE); \
-    } \
-} while (0)
-
 constexpr int GRID_W = 400;
 constexpr int GRID_H = 400;
 constexpr float GRID_RES = 0.20f;  // 0.20 m/cell -> 80m x 80m world
