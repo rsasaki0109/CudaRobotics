@@ -1,0 +1,67 @@
+name: Python package
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - "python/**"
+      - "scripts/sync_python_core.sh"
+      - "src/*_gpu.cu"
+      - "include/cudarobotics/**"
+      - "include/cuda_mppi_controller/**"
+      - "include/cuda_check.cuh"
+      - ".github/workflows/python-package.yml"
+  pull_request:
+    branches: [master]
+    paths:
+      - "python/**"
+      - "scripts/sync_python_core.sh"
+      - "src/*_gpu.cu"
+      - "include/cudarobotics/**"
+      - "include/cuda_mppi_controller/**"
+      - "include/cuda_check.cuh"
+      - ".github/workflows/python-package.yml"
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-22.04
+    strategy:
+      matrix:
+        python-version: ["3.10", "3.12"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install CUDA toolkit
+        uses: Jimver/cuda-toolkit@v0.2.16
+        with:
+          cuda: "12.0.0"
+          method: network
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Sync bundled CUDA core
+        run: ./scripts/sync_python_core.sh
+
+      - name: Build sdist and wheel
+        run: |
+          python -m pip install --upgrade pip build
+          python -m build python/ --outdir python/dist
+
+      - name: Install from sdist and run tests
+        run: |
+          python -m venv /tmp/cudarobotics-test-venv
+          /tmp/cudarobotics-test-venv/bin/pip install \
+            "python/dist/cudarobotics-"*.tar.gz"[test]"
+          PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 \
+            /tmp/cudarobotics-test-venv/bin/pytest python/tests -q
+
+      - name: Upload wheels
+        if: matrix.python-version == '3.12'
+        uses: actions/upload-artifact@v4
+        with:
+          name: cudarobotics-wheels
+          path: python/dist/*

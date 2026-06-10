@@ -14,7 +14,12 @@ find_package(Python COMPONENTS Interpreter Development.Module REQUIRED)
 find_package(CUDAToolkit REQUIRED)
 find_package(nanobind CONFIG REQUIRED)
 
-set(CUDAROBOTICS_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/..")
+# Monorepo dev reads repo-root sources; sdist/wheels use bundled python/core/.
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../src/mppi_gpu.cu")
+  set(CUDAROBOTICS_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/..")
+else()
+  set(CUDAROBOTICS_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/core")
+endif()
 
 nanobind_add_module(_cudarobotics
   src/cudarobotics/bindings.cpp
