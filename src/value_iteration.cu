@@ -19,11 +19,11 @@
 #include <opencv2/highgui/highgui.hpp>
 
 #include <cuda_runtime.h>
+#include "cuda_check.cuh"
 
 // ---------------------------------------------------------------------------
 // CUDA error check macro
 // ---------------------------------------------------------------------------
-#define CUDA_CHECK(call)                                                       \
     do {                                                                       \
         cudaError_t err = (call);                                              \
         if (err != cudaSuccess) {                                              \

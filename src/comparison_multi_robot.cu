@@ -9,6 +9,7 @@
 #include <chrono>
 #include <opencv2/opencv.hpp>
 #include <cuda_runtime.h>
+#include "cuda_check.cuh"
 
 #define PI 3.14159265f
 #define N_ROBOTS 500
@@ -24,7 +25,6 @@
 #define SIM_TIME 30.0f
 #define IMG_SIZE 400
 
-#define CUDA_CHECK(call) do { cudaError_t err = (call); if (err != cudaSuccess) { fprintf(stderr, "CUDA error at %s:%d: %s\n", __FILE__, __LINE__, cudaGetErrorString(err)); exit(EXIT_FAILURE); } } while (0)
 
 struct Obstacle { float x, y, r; };
 

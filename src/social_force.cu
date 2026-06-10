@@ -9,8 +9,8 @@
 #include <random>
 #include <cuda_runtime.h>
 #include <opencv2/opencv.hpp>
+#include "cuda_check.cuh"
 
-#define CUDA_CHECK(call) do { cudaError_t err = (call); if (err != cudaSuccess) { fprintf(stderr, "CUDA error at %s:%d: %s\n", __FILE__, __LINE__, cudaGetErrorString(err)); exit(EXIT_FAILURE); } } while (0)
 
 #define N_PED 300
 #define DT 0.02f

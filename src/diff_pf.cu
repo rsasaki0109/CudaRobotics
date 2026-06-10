@@ -48,10 +48,10 @@
 #include <curand_kernel.h>
 
 #include "autodiff_engine.cuh"
+#include "cuda_check.cuh"
 
 using Dual = cudabot::DualNumber<float>;
 
-#define CUDA_CHECK(call) do { \
     cudaError_t err = (call); \
     if (err != cudaSuccess) { \
         fprintf(stderr, "CUDA error at %s:%d: %s\n", __FILE__, __LINE__, \

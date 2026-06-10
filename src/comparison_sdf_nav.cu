@@ -19,8 +19,8 @@
 #include <curand_kernel.h>
 
 #include "neural_sdf_nav.cuh"
+#include "cuda_check.cuh"
 
-#define CUDA_CHECK(call) do { cudaError_t err = (call); if (err != cudaSuccess) { fprintf(stderr, "CUDA error at %s:%d: %s\n", __FILE__, __LINE__, cudaGetErrorString(err)); exit(EXIT_FAILURE); } } while (0)
 
 using namespace std;
 using namespace cudabot;

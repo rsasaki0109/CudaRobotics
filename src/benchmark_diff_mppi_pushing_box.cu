@@ -1620,6 +1620,11 @@ int main(int argc, char** argv) {
     // their indices si=0..2 (the per-run seed in the sweep loop is si-dependent);
     // published numbers stay byte-identical.
     vector<BoxScenario> all_sc = { make_box_turn(), make_box_align(), make_box_pivot(), make_box_swivel(), make_box_align_strict(), make_box_align_detour(), make_box_align_contact_loss(), make_box_align_contact_arc() };
+    auto scenario_seed_index = [&](const string& name) {
+        for (size_t i = 0; i < all_sc.size(); i++)
+            if (all_sc[i].name == name) return static_cast<int>(i);
+        return -1;
+    };
     vector<BoxScenario> scenarios;
     if (!scenario_names.empty()) {
         for (auto& w : scenario_names) { auto it=find_if(all_sc.begin(),all_sc.end(),[&](const BoxScenario&s){return s.name==w;});
@@ -1636,7 +1641,7 @@ int main(int argc, char** argv) {
     { Variant v; v.name="diff_mppi_3"; v.grad_steps=3; v.alpha=0.010f; variants.push_back(v); }
     { Variant v; v.name="diff_mppi_5"; v.grad_steps=5; v.alpha=0.008f; variants.push_back(v); }
     { Variant v; v.name="soppi"; v.use_soppi_sampling=true; v.soppi_step_size=0.06f; v.soppi_bandwidth=2.0f; variants.push_back(v); }
-    { Variant v; v.name="soppi_fast"; v.use_soppi_sampling=true; v.soppi_step_size=0.08f; v.soppi_bandwidth=2.0f; v.soppi_neighbor_count=96; v.soppi_svgd_iters=3; variants.push_back(v); }
+    { Variant v; v.name="soppi_fast"; v.use_soppi_sampling=true; v.soppi_step_size=0.05f; v.soppi_bandwidth=2.0f; v.soppi_neighbor_count=112; v.soppi_svgd_iters=2; variants.push_back(v); }
     { Variant v; v.name="soppi_g3"; v.use_soppi_sampling=true; v.soppi_step_size=0.06f; v.soppi_bandwidth=2.0f; v.grad_steps=3; v.alpha=0.010f; variants.push_back(v); }
     { Variant v; v.name="soppi_fast_g3"; v.use_soppi_sampling=true; v.soppi_step_size=0.06f; v.soppi_bandwidth=2.0f; v.soppi_neighbor_count=32; v.grad_steps=3; v.alpha=0.010f; variants.push_back(v); }
     // Fidelity arm: vanilla MPPI that ROLLS OUT with the exact hard-contact model (no
@@ -1660,8 +1665,10 @@ int main(int argc, char** argv) {
     vector<EpisodeMetrics> rows;
     for (size_t si=0; si<scenarios.size(); si++) {
         const BoxScenario& sc = scenarios[si];
+        const int si_seed = scenario_seed_index(sc.name);
+        if (si_seed < 0) { fprintf(stderr, "Internal error: scenario %s missing from all_sc\n", sc.name.c_str()); return 1; }
         for (int ks : k_values) for (size_t vi=0; vi<variants.size(); vi++) for (int seed=0; seed<seed_count; seed++) {
-            int run_seed = (int)(6000 + si*100 + seed*7 + ks);
+            int run_seed = (int)(6000 + si_seed*100 + seed*7 + ks);
             EpisodeRunner runner(variants[vi], sc, ks, horizon, run_seed);
             runner.plant_gain_scale = plant_gain_scale;
             runner.plant_size_scale = plant_size_scale;

@@ -17,6 +17,7 @@
 
 #include <cuda_runtime.h>
 #include <curand_kernel.h>
+#include "cuda_check.cuh"
 
 // ---------------------------------------------------------------------------
 // Parameters
@@ -42,7 +43,6 @@
 // ---------------------------------------------------------------------------
 // CUDA error check macro
 // ---------------------------------------------------------------------------
-#define CUDA_CHECK(call)                                                       \
     do {                                                                       \
         cudaError_t err = (call);                                              \
         if (err != cudaSuccess) {                                              \

@@ -22,8 +22,8 @@
 #include <opencv2/highgui/highgui.hpp>
 
 #include <cuda_runtime.h>
+#include "cuda_check.cuh"
 
-#define CUDA_CHECK(call)                                                       \
     do {                                                                       \
         cudaError_t err = (call);                                              \
         if (err != cudaSuccess) {                                              \

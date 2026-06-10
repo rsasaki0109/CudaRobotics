@@ -537,5 +537,7 @@ with a step-count advantage over MPPI.
 ## Next Steps
 
 1. Add a `--baseline-planners` option to `scripts/sweep_soppi.py` if repeated comparisons against Diff-MPPI are needed.
-2. Lift `soppi_fast` on `box_align_contact_loss` (currently `0.00` vs all-pairs `soppi` `0.25`) or add harder geometry where subset SVGD must match all-pairs.
+2. ~~Lift `soppi_fast` on `box_align_contact_loss`~~ **DONE (2026-06-10)** — tuned subset
+   SVGD reaches `0.75` on strict cell; `box_align_contact_arc` documents pure-SOPPI at
+   `1.00` (see `docs/results/soppi_box_pushing_2026-06-10.md`).
 3. Consider caching partial rollout states for the box autodiff score kernel if another speed pass is needed.
