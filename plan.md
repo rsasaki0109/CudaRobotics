@@ -281,10 +281,10 @@ From `docs/results/soppi_box_pushing_2026-06-14.csv`:
 
 | Scenario | mppi | soppi | soppi_fast | diff_mppi_3 | soppi_fast_g3 |
 |---|---:|---:|---:|---:|---:|
-| box_swivel | 0.75 | **1.00** | 0.75 | 0.75 | — |
+| box_swivel | 0.75 | **1.00** | **1.00** | 0.75 | — |
 | box_align_strict | 0.75 | 0.50 | 0.75 | **1.00** | — |
 | box_align_detour | 0.00 | 0.00 | 0.00 | 0.25 | 0.25 |
-| box_align_contact_loss | 0.00 | **0.25** | 0.00 | **1.00** | — |
+| box_align_contact_loss | 0.00 | 0.50 | **1.00** | **1.00** | — |
 
 Navigation suite (separate benchmark): SOPPI still **2/10** solved cells
 (`narrow_passage` only). Treat navigation as honest negative coverage; box
@@ -370,10 +370,12 @@ tests). Recent PRs #172/#173 both green.
 
 Priority order for the next coding agent:
 
-1. ~~**Lift `soppi_fast` on `box_align_contact_loss`**~~ **DONE → 0.75** — tuned defaults
-   (`neighbor_count=112`, `svgd_iters=2`, `step_size=0.05`, `bandwidth=2.0`) on canonical
-   seeds (K=256, 4 seeds): `soppi_fast` **0.75** vs `mppi` **0.00**, all-pairs `soppi`
-   **0.50**; hybrid `soppi_fast_g3` **1.00** when nominal grad is enabled.
+1. ~~**Lift `soppi_fast` on `box_align_contact_loss`**~~ **DONE → 1.00** — subset SVGD
+   (`neighbor_count=112`, `svgd_iters=2`, `step_size=0.05`, `bandwidth=2.0`) plus **one**
+   nominal trajectory grad step (`grad_steps=1`, `alpha=0.010`) on canonical seeds
+   (K=256, 4 seeds): `soppi_fast` **1.00** vs `mppi` **0.00**, all-pairs `soppi`
+   **0.50**; pure subset SVGD alone plateaued at **0.75** (seed 3 at `pos=0.287` vs
+   `pos_tol=0.28`).
 
 2. ~~**Stronger contact-loss cell**~~ **DONE → `box_align_contact_arc`** — appended scenario
    with `pos_tol=0.30`, `ang_tol=0.12`, same `w_contact_loss=47`. Fixed-seed probe
@@ -1309,10 +1311,9 @@ any new scan-matching / SLAM / optimisation work.
 ## Open Threads (parked but not abandoned)
 
 ### SOPPI / box pushing (ACTIVE — see Current State)
-- **`soppi_fast` on `box_align_contact_loss`**: **DONE (2026-06-10)** — tuned subset SVGD
-  (`neighbor_count=112`, `svgd_iters=2`, `step_size=0.05`) reaches **0.75** on canonical
-  seeds (vs `mppi` 0.00, all-pairs `soppi` 0.50); see
-  `docs/results/soppi_box_pushing_2026-06-10.md`.
+- **`soppi_fast` on `box_align_contact_loss`**: **DONE (2026-06-10)** — subset SVGD +
+  one nominal grad step reaches **1.00** on canonical seeds (vs `mppi` 0.00, all-pairs
+  `soppi` 0.50); see `docs/results/soppi_box_pushing_2026-06-10.md`.
 - **Stronger pure-SOPPI cell**: `box_align_contact_arc` at **1.00** for `soppi` /
   `soppi_fast` (K=256, 4 seeds); documented in same report.
 - **Canonical scenario seeds for filtered runs**: **DONE** — `--scenarios` probes now
@@ -1320,7 +1321,8 @@ any new scan-matching / SLAM / optimisation work.
 - **`scripts/sweep_soppi.py --baseline-planners`**: implemented (default `mppi`).
 - **Partial rollout cache for box autodiff score**: **DONE (2026-06-10)** —
   `cache_soppi_rollout_states_kernel` + `dcost_dparam_box_from` reuse cached
-  per-sample states; `box_align_contact_loss` quick row unchanged (`soppi_fast` 0.75).
+  per-sample states; `box_align_contact_loss` quick row updated (`soppi_fast` 1.00 with
+  one nominal grad step).
 - **Navigation SOPPI**: 2/10 solved; score kernel is simplified vs paper; low
   priority unless user explicitly wants nav headline numbers.
 
