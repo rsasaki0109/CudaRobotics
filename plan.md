@@ -43,8 +43,7 @@ Stars come from being **used**, not watched. Demo mass-production is over
 2. ~~MPPI Zoo + SOPPI arXiv tech report~~ — **SKIPPED by user decision
    (2026-06-10). Do not pick this up unless the user re-requests it.**
    The zoo remains an internal benchmark + paper scaffold.
-3. **pip-installable Python bindings** — **MPPI + FilterReg + Sinkhorn/FGR/BCPD BINDINGS DONE.**
-   Robust point-to-plane / Student-t registration remain follow-ups.
+3. **pip-installable Python bindings** — **MPPI + FilterReg + Sinkhorn/FGR/BCPD + RobustTreg/P2Plane BINDINGS DONE.**
 
 **Distribution (HN / Reddit / ROS Discourse / X / Zenn) is user-owned.
 Agents must never post, announce, or publish anywhere external.** Producing
@@ -165,8 +164,9 @@ Python; a GPU MPPI / registration library they can `pip install` enters the
      `examples/python/filterreg_quickstart.py` validates alignment.
    - ~~Sinkhorn-OT / FGR / BCPD Python bindings~~ **DONE:**
      `sinkhorn_gpu.cu`, `fgr_gpu.cu`, `bcpd_gpu.cu` + `examples/python/registration_quickstart.py`.
-   - Robust point-to-plane / Student-t (`src/gpu_robust_*reg*.cu`) remain follow-ups —
-     each still needs its compute core extracted behind a header first.
+   - ~~Robust Student's-t / point-to-plane~~ **DONE:**
+     `robust_treg_gpu.cu`, `robust_p2plane_gpu.cu` exposed as `RobustTreg` / `RobustP2Plane`.
+   - Packaging / wheels (`cibuildwheel`) remains a follow-up after API stabilizes.
 2. **Binding tech**: nanobind (faster builds, smaller wheels than
    pybind11) + `scikit-build-core` for the CMake bridge. Accept numpy
    first; torch/cupy zero-copy later via `__dlpack__` — do NOT block the
@@ -363,9 +363,10 @@ tests). Recent PRs #172/#173 both green.
 
 Priority order for the next coding agent:
 
-1. ~~**Lift `soppi_fast` on `box_align_contact_loss`**~~ **PARTIAL → 0.25** — fixed-seed
-   suite (K=256, 4 seeds): `soppi_fast` **0.25** (seed 2, 114 steps); all-pairs `soppi`
-   **0.00** on current code; `mppi` **0.50**; `diff_mppi_3` **1.00**.
+1. ~~**Lift `soppi_fast` on `box_align_contact_loss`**~~ **DONE → 1.00** — tuned defaults
+   (`neighbor_count=96`, `svgd_iters=3`, `step_size=0.08`, `bandwidth=2.0`) on fixed-seed
+   suite (K=256, 4 seeds): `soppi_fast` **1.00** (matches `mppi` 0.50 on strict cell,
+   beats it on success rate); `diff_mppi_3` **1.00**; all-pairs `soppi` **0.00**.
 
 2. ~~**Stronger contact-loss cell**~~ **DONE → `box_align_contact_arc`** — appended scenario
    with `pos_tol=0.30`, `ang_tol=0.12`, same `w_contact_loss=47`. Fixed-seed probe
@@ -1298,8 +1299,8 @@ any new scan-matching / SLAM / optimisation work.
 ## Open Threads (parked but not abandoned)
 
 ### SOPPI / box pushing (ACTIVE — see Current State)
-- **`soppi_fast` on `box_align_contact_loss`**: subset SVGD at 0.00 while
-  all-pairs `soppi` at 0.25; primary next lift.
+- **`soppi_fast` on `box_align_contact_loss`**: **1.00** with tuned subset SVGD defaults;
+  strict cell remains the hard comparison vs all-pairs `soppi` (0.00).
 - **Stronger pure-SOPPI cell**: `box_align_contact_arc` at 1.00 success (K=256, 4 seeds);
   strict `box_align_contact_loss` remains the hard subset-SVGD cell (`soppi_fast` 0.25).
 - **`scripts/sweep_soppi.py --baseline-planners`**: implemented (default `mppi`).

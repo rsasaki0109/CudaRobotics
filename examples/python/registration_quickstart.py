@@ -70,6 +70,14 @@ def main():
     source = (target @ R.T) + gt_trans + rng.normal(0.0, 0.02, size=target.shape)
     source = source[keep].astype(np.float32)
 
+    robust_treg = cr.registration.RobustTreg()
+    _, _, info = robust_treg.register(target, source)
+    print(f"RobustTreg: iterations={info['iterations']} rmse={info['final_rmse']:.4f}")
+
+    robust_p2plane = cr.registration.RobustP2Plane()
+    _, _, info = robust_p2plane.register(target, source)
+    print(f"RobustP2Plane: iterations={info['iterations']} rmse={info['final_rmse']:.4f}")
+
     sinkhorn = cr.registration.SinkhornReg()
     _, _, info = sinkhorn.register(target, source)
     print(f"Sinkhorn-OT: iterations={info['iterations']} rmse={info['final_rmse']:.4f}")
