@@ -26,8 +26,10 @@ pip install cudarobotics  # once published
 pip install dist/cudarobotics-*.tar.gz
 ```
 
-Pre-built manylinux wheels may be attached to GitHub Releases for select
-Python versions. They still require a compatible NVIDIA driver at runtime.
+Pre-built manylinux wheels are built on every `master` push via GitHub Actions
+(`cibuildwheel` job in `.github/workflows/python-package.yml`) and uploaded as
+the `cudarobotics-manylinux-wheels` artifact. They still require a compatible
+NVIDIA driver at runtime.
 
 ## Quick test
 
