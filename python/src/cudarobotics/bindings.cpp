@@ -12,7 +12,12 @@
 #include <vector>
 
 #include "cuda_mppi_controller/mppi_gpu.hpp"
+#include "cudarobotics/bcpd_gpu.hpp"
+#include "cudarobotics/fgr_gpu.hpp"
 #include "cudarobotics/filterreg_gpu.hpp"
+#include "cudarobotics/sinkhorn_reg_gpu.hpp"
+
+#include <nanobind/ndarray.h>
 
 namespace nb = nanobind;
 using namespace nb::literals;
@@ -199,6 +204,22 @@ private:
   cr::MppiGpu planner_;
 };
 
+nb::tuple transformResultToTuple(const reg::FilterRegResult & result)
+{
+  nb::list rot_out;
+  for (int i = 0; i < 9; ++i) {
+    rot_out.append(result.rotation[i]);
+  }
+  nb::list trans_out;
+  for (int k = 0; k < 3; ++k) {
+    trans_out.append(result.translation[k]);
+  }
+  nb::dict info;
+  info["iterations"] = result.iterations;
+  info["final_rmse"] = result.final_rmse;
+  return nb::make_tuple(rot_out, trans_out, info);
+}
+
 class PyFilterReg
 {
 public:
@@ -236,22 +257,112 @@ public:
       source_view.data<float>(), num_source,
       init_r, init_t);
 
-    nb::list rot_out;
-    for (int i = 0; i < 9; ++i) {
-      rot_out.append(result.rotation[i]);
-    }
-    nb::list trans_out;
-    for (int k = 0; k < 3; ++k) {
-      trans_out.append(result.translation[k]);
-    }
-    nb::dict info;
-    info["iterations"] = result.iterations;
-    info["final_rmse"] = result.final_rmse;
-    return nb::make_tuple(rot_out, trans_out, info);
+    return transformResultToTuple(result);
   }
 
 private:
   reg::FilterRegGpu registrar_;
+};
+
+class PySinkhornReg
+{
+public:
+  explicit PySinkhornReg(const reg::SinkhornRegParams & params)
+  : registrar_(params)
+  {
+  }
+
+  nb::tuple register_clouds(
+    nb::object target,
+    nb::object source,
+    nb::object init_rotation,
+    nb::object init_translation)
+  {
+    BufferView target_view(target, 2, 3, 4, "target");
+    BufferView source_view(source, 2, 3, 4, "source");
+    const int num_target = target_view.dim(0);
+    const int num_source = source_view.dim(0);
+
+    const float * init_r = nullptr;
+    const float * init_t = nullptr;
+    std::array<float, 9> init_r_arr{};
+    std::array<float, 3> init_t_arr{};
+    if (init_rotation.ptr() != Py_None) {
+      init_r_arr = readFloatSequence<9>(init_rotation, "init_rotation");
+      init_r = init_r_arr.data();
+    }
+    if (init_translation.ptr() != Py_None) {
+      init_t_arr = readFloatSequence<3>(init_translation, "init_translation");
+      init_t = init_t_arr.data();
+    }
+
+    reg::RegTransformResult result = registrar_.registerClouds(
+      target_view.data<float>(), num_target,
+      source_view.data<float>(), num_source,
+      init_r, init_t);
+
+    return transformResultToTuple(result);
+  }
+
+private:
+  reg::SinkhornRegGpu registrar_;
+};
+
+class PyFgr
+{
+public:
+  explicit PyFgr(const reg::FgrParams & params)
+  : registrar_(params)
+  {
+  }
+
+  nb::tuple register_clouds(nb::object target, nb::object source)
+  {
+    BufferView target_view(target, 2, 3, 4, "target");
+    BufferView source_view(source, 2, 3, 4, "source");
+    reg::FgrResult result = registrar_.registerClouds(
+      target_view.data<float>(), target_view.dim(0),
+      source_view.data<float>(), source_view.dim(0));
+    return transformResultToTuple(result);
+  }
+
+private:
+  reg::FgrGpu registrar_;
+};
+
+class PyBcpd
+{
+public:
+  explicit PyBcpd(const reg::BcpdParams & params)
+  : registrar_(params)
+  {
+  }
+
+  nb::tuple register_clouds(nb::object target, nb::object source)
+  {
+    BufferView target_view(target, 2, 3, 4, "target");
+    BufferView source_view(source, 2, 3, 4, "source");
+    reg::BcpdResult result = registrar_.registerClouds(
+      target_view.data<float>(), target_view.dim(0),
+      source_view.data<float>(), source_view.dim(0));
+
+    const int num_points = static_cast<int>(result.deformed_xyz.size() / 3);
+    auto * storage = new std::vector<float>(std::move(result.deformed_xyz));
+    nb::ndarray<nb::numpy, float, nb::shape<-1, 3>, nb::c_contig> deformed(
+      storage->data(), {num_points, 3},
+      nb::capsule(storage, [](void * ptr) noexcept {
+        delete static_cast<std::vector<float> *>(ptr);
+      }));
+
+    nb::dict info;
+    info["iterations"] = result.iterations;
+    info["final_sigma"] = result.final_sigma;
+    info["mean_surface_distance"] = result.mean_surface_distance;
+    return nb::make_tuple(deformed, info);
+  }
+
+private:
+  reg::BcpdGpu registrar_;
 };
 
 }  // namespace
@@ -336,4 +447,40 @@ NB_MODULE(_cudarobotics, m)
       "target"_a, "source"_a,
       "init_rotation"_a = nb::none(),
       "init_translation"_a = nb::none());
+
+  nb::class_<reg::SinkhornRegParams>(m, "SinkhornRegParams")
+    .def(nb::init<>())
+    .def_rw("rho", &reg::SinkhornRegParams::rho)
+    .def_rw("sinkhorn_iters", &reg::SinkhornRegParams::sinkhorn_iters)
+    .def_rw("outer_iters", &reg::SinkhornRegParams::outer_iters)
+    .def_rw("gn_iters", &reg::SinkhornRegParams::gn_iters);
+
+  nb::class_<PySinkhornReg>(m, "_SinkhornReg")
+    .def(nb::init<const reg::SinkhornRegParams &>())
+    .def(
+      "register_clouds", &PySinkhornReg::register_clouds,
+      "target"_a, "source"_a,
+      "init_rotation"_a = nb::none(),
+      "init_translation"_a = nb::none());
+
+  nb::class_<reg::FgrParams>(m, "FgrParams")
+    .def(nb::init<>())
+    .def_rw("gn_levels", &reg::FgrParams::gn_levels)
+    .def_rw("gn_steps_per_level", &reg::FgrParams::gn_steps_per_level)
+    .def_rw("mu_decay", &reg::FgrParams::mu_decay)
+    .def_rw("min_mu", &reg::FgrParams::min_mu);
+
+  nb::class_<PyFgr>(m, "_Fgr")
+    .def(nb::init<const reg::FgrParams &>())
+    .def("register_clouds", &PyFgr::register_clouds, "target"_a, "source"_a);
+
+  nb::class_<reg::BcpdParams>(m, "BcpdParams")
+    .def(nb::init<>())
+    .def_rw("beta", &reg::BcpdParams::beta)
+    .def_rw("lambda_", &reg::BcpdParams::lambda)
+    .def_rw("max_iters", &reg::BcpdParams::max_iters);
+
+  nb::class_<PyBcpd>(m, "_Bcpd")
+    .def(nb::init<const reg::BcpdParams &>())
+    .def("register_clouds", &PyBcpd::register_clouds, "target"_a, "source"_a);
 }

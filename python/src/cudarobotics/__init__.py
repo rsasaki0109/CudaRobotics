@@ -1,10 +1,16 @@
 from ._cudarobotics import (
+    BcpdParams,
     FilterRegParams,
+    FgrParams,
     MotionModel,
     MppiParams,
     MppiResult,
+    SinkhornRegParams,
+    _Bcpd,
     _FilterReg,
+    _Fgr,
     _MppiPlanner,
+    _SinkhornReg,
     __version__,
 )
 
@@ -82,15 +88,70 @@ class FilterReg:
         return rotation, translation, info
 
 
+class SinkhornReg:
+    """GPU unbalanced Sinkhorn optimal-transport registration."""
+
+    def __init__(self, params=None, **kwargs):
+        self.params = SinkhornRegParams() if params is None else params
+        for key, value in kwargs.items():
+            if not hasattr(self.params, key):
+                raise TypeError(f"unknown SinkhornRegParams field: {key}")
+            setattr(self.params, key, value)
+        self._registrar = _SinkhornReg(self.params)
+
+    def register(self, target, source, init_rotation=None, init_translation=None):
+        return self._registrar.register_clouds(
+            target, source, init_rotation, init_translation
+        )
+
+
+class Fgr:
+    """GPU Fast Global Registration (FPFH + graduated non-convexity)."""
+
+    def __init__(self, params=None, **kwargs):
+        self.params = FgrParams() if params is None else params
+        for key, value in kwargs.items():
+            if not hasattr(self.params, key):
+                raise TypeError(f"unknown FgrParams field: {key}")
+            setattr(self.params, key, value)
+        self._registrar = _Fgr(self.params)
+
+    def register(self, target, source):
+        return self._registrar.register_clouds(target, source)
+
+
+class Bcpd:
+    """GPU BCPD non-rigid point-set registration."""
+
+    def __init__(self, params=None, **kwargs):
+        self.params = BcpdParams() if params is None else params
+        for key, value in kwargs.items():
+            attr = "lambda_" if key == "lambda" else key
+            if not hasattr(self.params, attr):
+                raise TypeError(f"unknown BcpdParams field: {key}")
+            setattr(self.params, attr, value)
+        self._registrar = _Bcpd(self.params)
+
+    def register(self, target, source):
+        deformed, info = self._registrar.register_clouds(target, source)
+        return deformed, info
+
+
 from . import registration
 
 __all__ = [
+    "Bcpd",
+    "BcpdParams",
     "FilterReg",
     "FilterRegParams",
+    "Fgr",
+    "FgrParams",
     "MotionModel",
     "MppiParams",
     "MppiPlanner",
     "MppiResult",
+    "SinkhornReg",
+    "SinkhornRegParams",
     "__version__",
     "registration",
 ]
