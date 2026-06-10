@@ -36,9 +36,6 @@
 #include <cuda_runtime.h>
 #include "cuda_check.cuh"
 
-    fprintf(stderr, "CUDA error at %s:%d: %s\n", __FILE__, __LINE__, cudaGetErrorString(err)); \
-    std::exit(EXIT_FAILURE); } } while (0)
-
 constexpr float WORLD = 40.0f;
 constexpr int   N_CPU = 2000;
 constexpr int   N_GPU = 200000;
