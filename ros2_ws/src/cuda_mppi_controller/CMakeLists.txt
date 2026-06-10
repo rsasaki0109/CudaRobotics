@@ -59,6 +59,9 @@ set_target_properties(${PROJECT_NAME} PROPERTIES
 target_compile_options(${PROJECT_NAME} PRIVATE
   $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>
 )
+if(DEFINED ENV{ROS_DISTRO} AND "$ENV{ROS_DISTRO}" STREQUAL "humble")
+  target_compile_definitions(${PROJECT_NAME} PRIVATE CUDAMPPI_NAV2_HUMBLE=1)
+endif()
 
 # Standalone GPU optimizer demo/test (no nav2 needed at runtime):
 # synthetic costmap corridor, prints solve time per control cycle.
