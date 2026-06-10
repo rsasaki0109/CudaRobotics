@@ -108,6 +108,38 @@ __device__ bool footprint_collides(
   return false;
 }
 
+// Check the swept SE(2) footprint between two rollout samples. This catches
+// corner clips during in-place rotation of asymmetric footprints that an
+// endpoint-only polygon test can miss.
+__device__ bool footprint_sweep_collides(
+  const unsigned char * __restrict__ costmap, const DeviceParams & p,
+  float x0, float y0, float yaw0,
+  float x1, float y1, float yaw1)
+{
+  float max_radius = 0.0f;
+  for (int i = 0; i < p.footprint_len; ++i) {
+    const float fx = p.fp[2 * i + 0];
+    const float fy = p.fp[2 * i + 1];
+    max_radius = fmaxf(max_radius, hypotf(fx, fy));
+  }
+
+  const float dtrans = hypotf(x1 - x0, y1 - y0);
+  const float dyaw = wrap_angle(yaw1 - yaw0);
+  const float sweep_len = dtrans + fabsf(dyaw) * max_radius;
+  const int n = max(1, __float2int_ru(sweep_len / p.resolution));
+
+  for (int t = 0; t <= n; ++t) {
+    const float u = static_cast<float>(t) / n;
+    const float x = x0 + u * (x1 - x0);
+    const float y = y0 + u * (y1 - y0);
+    const float yaw = wrap_angle(yaw0 + u * dyaw);
+    if (footprint_collides(costmap, p, x, y, yaw)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 __global__ void init_rng_kernel(curandState * states, unsigned long long seed, int n)
 {
   int i = blockIdx.x * blockDim.x + threadIdx.x;
@@ -171,6 +203,9 @@ __global__ void rollout_kernel(
     perturbed[(k * p.T + t) * kCtrlDim + 1] = vy_raw;
     perturbed[(k * p.T + t) * kCtrlDim + 2] = w_raw;
 
+    const float prev_x = x;
+    const float prev_y = y;
+    const float prev_yaw = yaw;
     const float cy = cosf(yaw);
     const float sy = sinf(yaw);
     x += p.dt * (v * cy - vy * sy);
@@ -184,8 +219,10 @@ __global__ void rollout_kernel(
         if (p.footprint_len > 0) {
           // footprint mode: lethal center always collides; otherwise run the
           // polygon edge check, gated on inflated cost so free space is cheap
+          const unsigned char prev_c = cell_cost(costmap, p, prev_x, prev_y);
           if (c == 254 ||
-            (c > 0 && footprint_collides(costmap, p, x, y, yaw)))
+            ((c > 0 || prev_c > 0) &&
+            footprint_sweep_collides(costmap, p, prev_x, prev_y, prev_yaw, x, y, yaw)))
           {
             cost += p.collision_cost;
           } else {
@@ -291,6 +328,9 @@ struct MppiGpu::Impl
   std::vector<float> h_costs;
   std::vector<float> h_weights;
   std::vector<float> h_nominal;
+  std::vector<float> h_last_valid_nominal;
+  bool has_last_valid_nominal = false;
+  int consecutive_all_colliding = 0;
 
   explicit Impl(const MppiParams & p)
   : params(p), v_max_limit(p.v_max)
@@ -307,6 +347,7 @@ struct MppiGpu::Impl
     h_costs.resize(K);
     h_weights.resize(K);
     h_nominal.assign(T * kCtrlDim, 0.0f);
+    h_last_valid_nominal.assign(T * kCtrlDim, 0.0f);
 
     const int threads = 256;
     init_rng_kernel<<<(K + threads - 1) / threads, threads>>>(d_rng, 42ULL, K);
@@ -328,6 +369,9 @@ struct MppiGpu::Impl
   void reset()
   {
     std::fill(h_nominal.begin(), h_nominal.end(), 0.0f);
+    std::fill(h_last_valid_nominal.begin(), h_last_valid_nominal.end(), 0.0f);
+    has_last_valid_nominal = false;
+    consecutive_all_colliding = 0;
     CUDA_CHECK(cudaMemcpy(
         d_nominal, h_nominal.data(),
         h_nominal.size() * sizeof(float), cudaMemcpyHostToDevice));
@@ -500,6 +544,46 @@ MppiResult MppiGpu::compute(
   }
 
   MppiResult res;
+  res.best_cost = min_cost;
+  res.all_colliding = min_cost >= mp.collision_cost;
+
+  if (res.all_colliding) {
+    ++im.consecutive_all_colliding;
+    if (mp.enable_retreat && im.has_last_valid_nominal) {
+      const int retreat_step = std::min(im.consecutive_all_colliding - 1, T - 1);
+      const int offset = retreat_step * kCtrlDim;
+      const float retreat_scale = std::max(0.0f, mp.retreat_scale);
+      res.v = std::min(
+        std::max(-retreat_scale * im.h_last_valid_nominal[offset + 0], dp.v_min),
+        dp.v_max);
+      res.vy = std::min(
+        std::max(-retreat_scale * im.h_last_valid_nominal[offset + 1], -mp.vy_max),
+        mp.vy_max);
+      res.w = std::min(
+        std::max(-retreat_scale * im.h_last_valid_nominal[offset + 2], -mp.w_max),
+        mp.w_max);
+      if (mp.motion_model == MotionModel::Ackermann) {
+        const float w_dyn = std::fabs(res.v) / std::max(mp.min_turning_r, 1.0e-3f);
+        res.w = std::min(std::max(res.w, -w_dyn), w_dyn);
+      }
+      res.retreating = true;
+
+      CUDA_CHECK(cudaMemcpy(
+          im.d_nominal, im.h_last_valid_nominal.data(),
+          ctrl_count * sizeof(float), cudaMemcpyHostToDevice));
+    } else {
+      std::fill(im.h_nominal.begin(), im.h_nominal.end(), 0.0f);
+      CUDA_CHECK(cudaMemcpy(
+          im.d_nominal, im.h_nominal.data(),
+          ctrl_count * sizeof(float), cudaMemcpyHostToDevice));
+    }
+    return res;
+  }
+
+  im.consecutive_all_colliding = 0;
+  im.h_last_valid_nominal = im.h_nominal;
+  im.has_last_valid_nominal = true;
+
   res.v = std::min(std::max(im.h_nominal[0], dp.v_min), dp.v_max);
   res.vy = std::min(std::max(im.h_nominal[1], -mp.vy_max), mp.vy_max);
   res.w = std::min(std::max(im.h_nominal[2], -mp.w_max), mp.w_max);
@@ -507,8 +591,6 @@ MppiResult MppiGpu::compute(
     const float w_dyn = std::fabs(res.v) / std::max(mp.min_turning_r, 1.0e-3f);
     res.w = std::min(std::max(res.w, -w_dyn), w_dyn);
   }
-  res.best_cost = min_cost;
-  res.all_colliding = min_cost >= mp.collision_cost;
 
   // warm start: shift the horizon one step, repeat the last control
   for (int t = 0; t < T - 1; ++t) {

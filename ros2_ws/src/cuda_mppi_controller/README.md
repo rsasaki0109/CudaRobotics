@@ -72,12 +72,16 @@ Motion models: **DiffDrive** (`vx`, `ωz`), **Ackermann** (curvature limit
   add a collision penalty, inflated cells add a graded cost
 - **Footprint** (optional, `consider_footprint`) — the robot's polygon
   footprint is swept along each rollout; edge cells are sampled at costmap
-  resolution and lethal hits count as collisions. Gated on non-zero inflated
-  cost, so it requires an inflation layer and stays cheap in free space
+  resolution at intermediate SE(2) poses, so rotation-in-place can catch
+  corner clips between rollout samples. Gated on non-zero inflated cost, so
+  it requires an inflation layer and stays cheap in free space
+- **Retreat** — when every sampled rollout collides but a previous valid
+  sequence exists, the controller returns a scaled reverse command from that
+  sequence instead of throwing `NoValidControl` every cycle
 - **Smoothness / backward motion / control limits**
 
-Not yet implemented: retreat/recovery behaviors, SE(2) footprint check for
-rotation-in-place on point-symmetric footprints.
+Still future work: dynamic parameter updates, broader scenario coverage,
+Ackermann/Omni in-sim verification, and CI coverage for the ROS package.
 
 ## Build
 
@@ -133,6 +137,8 @@ controller_server:
 | `v_std` / `w_std` | 0.2 / 0.4 | sampling noise std |
 | `vy_std` | 0.2 | lateral noise std (Omni) |
 | `consider_footprint` | false | polygon footprint collision check (needs inflation layer) |
+| `enable_retreat` | true | back out from the last valid sequence on all-colliding rollouts |
+| `retreat_scale` | 0.5 | scale applied when reversing the last valid controls |
 | `temperature` | 0.12 | MPPI softmin λ |
 | `goal_weight` | 20.0 | terminal local-goal distance (linear) |
 | `goal_yaw_weight` | 3.0 | terminal yaw error near the final goal |

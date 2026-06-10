@@ -1,0 +1,265 @@
+#include <Python.h>
+
+#include <nanobind/nanobind.h>
+
+#include <algorithm>
+#include <array>
+#include <cstdint>
+#include <limits>
+#include <memory>
+#include <stdexcept>
+#include <string>
+
+#include "cuda_mppi_controller/mppi_gpu.hpp"
+
+namespace nb = nanobind;
+using namespace nb::literals;
+
+namespace
+{
+
+namespace cr = cuda_mppi_controller;
+
+class BufferView
+{
+public:
+  BufferView(nb::handle object, int ndim, int second_dim, Py_ssize_t itemsize, const char * name)
+  : name_(name)
+  {
+    if (!PyObject_CheckBuffer(object.ptr())) {
+      throw std::invalid_argument(std::string(name_) + " must support the Python buffer protocol");
+    }
+    if (PyObject_GetBuffer(object.ptr(), &view_, PyBUF_FORMAT | PyBUF_STRIDES | PyBUF_ND) != 0) {
+      throw nb::python_error();
+    }
+    acquired_ = true;
+
+    if (view_.ndim != ndim) {
+      fail("must have " + std::to_string(ndim) + " dimensions");
+    }
+    if (view_.itemsize != itemsize) {
+      fail("must have itemsize " + std::to_string(itemsize));
+    }
+    if (second_dim >= 0 && view_.shape[1] != second_dim) {
+      fail("must have shape (N, " + std::to_string(second_dim) + ")");
+    }
+    if (!PyBuffer_IsContiguous(&view_, 'C')) {
+      fail("must be C-contiguous");
+    }
+  }
+
+  ~BufferView()
+  {
+    if (acquired_) {
+      PyBuffer_Release(&view_);
+    }
+  }
+
+  BufferView(const BufferView &) = delete;
+  BufferView & operator=(const BufferView &) = delete;
+
+  template<typename T>
+  const T * data() const
+  {
+    return static_cast<const T *>(view_.buf);
+  }
+
+  int dim(int axis) const
+  {
+    if (view_.shape[axis] > std::numeric_limits<int>::max()) {
+      throw std::invalid_argument(std::string(name_) + " dimension is too large");
+    }
+    return static_cast<int>(view_.shape[axis]);
+  }
+
+private:
+  [[noreturn]] void fail(const std::string & reason)
+  {
+    if (acquired_) {
+      PyBuffer_Release(&view_);
+      acquired_ = false;
+    }
+    throw std::invalid_argument(std::string(name_) + " " + reason);
+  }
+
+  const char * name_;
+  Py_buffer view_{};
+  bool acquired_ = false;
+};
+
+template<size_t N>
+std::array<float, N> readFloatSequence(nb::handle object, const char * name)
+{
+  PyObject * seq = PySequence_Fast(object.ptr(), name);
+  if (seq == nullptr) {
+    throw nb::python_error();
+  }
+
+  const Py_ssize_t len = PySequence_Fast_GET_SIZE(seq);
+  if (len != static_cast<Py_ssize_t>(N)) {
+    Py_DECREF(seq);
+    throw std::invalid_argument(std::string(name) + " must have length " + std::to_string(N));
+  }
+
+  std::array<float, N> out{};
+  for (Py_ssize_t i = 0; i < len; ++i) {
+    PyObject * item = PySequence_Fast_GET_ITEM(seq, i);
+    const double value = PyFloat_AsDouble(item);
+    if (PyErr_Occurred()) {
+      Py_DECREF(seq);
+      throw nb::python_error();
+    }
+    out[static_cast<size_t>(i)] = static_cast<float>(value);
+  }
+
+  Py_DECREF(seq);
+  return out;
+}
+
+class PyMppiPlanner
+{
+public:
+  explicit PyMppiPlanner(const cr::MppiParams & params)
+  : planner_(params)
+  {
+  }
+
+  void reset()
+  {
+    planner_.reset();
+  }
+
+  void setSpeedLimit(float v_max)
+  {
+    planner_.setSpeedLimit(v_max);
+  }
+
+  nb::tuple compute(
+    nb::object state,
+    nb::object costmap,
+    nb::object path,
+    nb::object goal,
+    nb::object origin,
+    float resolution,
+    bool goal_is_final,
+    nb::object footprint)
+  {
+    const auto s = readFloatSequence<3>(state, "state");
+    const auto g = readFloatSequence<3>(goal, "goal");
+    const auto o = readFloatSequence<2>(origin, "origin");
+
+    const unsigned char * costmap_ptr = nullptr;
+    int size_x = 0;
+    int size_y = 0;
+    std::unique_ptr<BufferView> costmap_view;
+    if (costmap.ptr() != Py_None) {
+      costmap_view = std::make_unique<BufferView>(costmap, 2, -1, 1, "costmap");
+      costmap_ptr = costmap_view->data<unsigned char>();
+      size_y = costmap_view->dim(0);
+      size_x = costmap_view->dim(1);
+    }
+
+    const float * path_ptr = nullptr;
+    int path_len = 0;
+    std::unique_ptr<BufferView> path_view;
+    if (path.ptr() != Py_None) {
+      path_view = std::make_unique<BufferView>(path, 2, 2, 4, "path");
+      path_ptr = path_view->data<float>();
+      path_len = path_view->dim(0);
+    }
+
+    const float * footprint_ptr = nullptr;
+    int footprint_len = 0;
+    std::unique_ptr<BufferView> footprint_view;
+    if (footprint.ptr() != Py_None) {
+      footprint_view = std::make_unique<BufferView>(footprint, 2, 2, 4, "footprint");
+      footprint_ptr = footprint_view->data<float>();
+      footprint_len = footprint_view->dim(0);
+    }
+
+    cr::MppiResult result = planner_.compute(
+      s[0], s[1], s[2],
+      costmap_ptr, size_x, size_y,
+      o[0], o[1], resolution,
+      path_ptr, path_len,
+      g[0], g[1], g[2], goal_is_final,
+      footprint_ptr, footprint_len);
+
+    nb::dict info;
+    info["best_cost"] = result.best_cost;
+    info["all_colliding"] = result.all_colliding;
+    info["retreating"] = result.retreating;
+    return nb::make_tuple(result.v, result.vy, result.w, info);
+  }
+
+private:
+  cr::MppiGpu planner_;
+};
+
+}  // namespace
+
+NB_MODULE(_cudarobotics, m)
+{
+  m.doc() = "CUDA Robotics Python bindings";
+  m.attr("__version__") = "0.1.0";
+
+  nb::enum_<cr::MotionModel>(m, "MotionModel")
+    .value("DiffDrive", cr::MotionModel::DiffDrive)
+    .value("Ackermann", cr::MotionModel::Ackermann)
+    .value("Omni", cr::MotionModel::Omni)
+    .export_values();
+
+  nb::class_<cr::MppiParams>(m, "MppiParams")
+    .def(nb::init<>())
+    .def_rw("batch_size", &cr::MppiParams::batch_size)
+    .def_rw("time_steps", &cr::MppiParams::time_steps)
+    .def_rw("model_dt", &cr::MppiParams::model_dt)
+    .def_rw("iteration_count", &cr::MppiParams::iteration_count)
+    .def_rw("motion_model", &cr::MppiParams::motion_model)
+    .def_rw("v_max", &cr::MppiParams::v_max)
+    .def_rw("v_min", &cr::MppiParams::v_min)
+    .def_rw("vy_max", &cr::MppiParams::vy_max)
+    .def_rw("w_max", &cr::MppiParams::w_max)
+    .def_rw("min_turning_r", &cr::MppiParams::min_turning_r)
+    .def_rw("v_std", &cr::MppiParams::v_std)
+    .def_rw("vy_std", &cr::MppiParams::vy_std)
+    .def_rw("w_std", &cr::MppiParams::w_std)
+    .def_rw("lambda_", &cr::MppiParams::lambda)
+    .def_rw("goal_weight", &cr::MppiParams::goal_weight)
+    .def_rw("goal_yaw_weight", &cr::MppiParams::goal_yaw_weight)
+    .def_rw("path_weight", &cr::MppiParams::path_weight)
+    .def_rw("path_follow_weight", &cr::MppiParams::path_follow_weight)
+    .def_rw("follow_lookahead", &cr::MppiParams::follow_lookahead)
+    .def_rw("costmap_weight", &cr::MppiParams::costmap_weight)
+    .def_rw("smoothness_weight", &cr::MppiParams::smoothness_weight)
+    .def_rw("backward_weight", &cr::MppiParams::backward_weight)
+    .def_rw("speed_weight", &cr::MppiParams::speed_weight)
+    .def_rw("angular_weight", &cr::MppiParams::angular_weight)
+    .def_rw("collision_cost", &cr::MppiParams::collision_cost)
+    .def_rw("yaw_goal_activation_dist", &cr::MppiParams::yaw_goal_activation_dist)
+    .def_rw("lethal_threshold", &cr::MppiParams::lethal_threshold)
+    .def_rw("consider_footprint", &cr::MppiParams::consider_footprint)
+    .def_rw("enable_retreat", &cr::MppiParams::enable_retreat)
+    .def_rw("retreat_scale", &cr::MppiParams::retreat_scale);
+
+  nb::class_<cr::MppiResult>(m, "MppiResult")
+    .def(nb::init<>())
+    .def_rw("v", &cr::MppiResult::v)
+    .def_rw("vy", &cr::MppiResult::vy)
+    .def_rw("w", &cr::MppiResult::w)
+    .def_rw("best_cost", &cr::MppiResult::best_cost)
+    .def_rw("all_colliding", &cr::MppiResult::all_colliding)
+    .def_rw("retreating", &cr::MppiResult::retreating);
+
+  nb::class_<PyMppiPlanner>(m, "_MppiPlanner")
+    .def(nb::init<const cr::MppiParams &>())
+    .def("reset", &PyMppiPlanner::reset)
+    .def("set_speed_limit", &PyMppiPlanner::setSpeedLimit, "v_max"_a)
+    .def(
+      "compute", &PyMppiPlanner::compute,
+      "state"_a, "costmap"_a, "path"_a, "goal"_a,
+      "origin"_a = nb::make_tuple(0.0f, 0.0f),
+      "resolution"_a = 0.05f,
+      "goal_is_final"_a = false,
+      "footprint"_a = nb::none());
+}
