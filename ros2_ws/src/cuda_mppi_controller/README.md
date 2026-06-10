@@ -1,0 +1,162 @@
+# cuda_mppi_controller
+
+GPU-accelerated MPPI controller plugin for [Nav2](https://docs.nav2.org/).
+A drop-in alternative to `nav2_mppi_controller` that runs every sampled
+trajectory rollout on the GPU — **1 CUDA thread = 1 trajectory**, the same
+parallel pattern used across [CudaRobotics](https://github.com/rsasaki0109/CudaRobotics).
+
+Because rollouts are embarrassingly parallel, sample counts that are
+impractical on CPU stay comfortably inside a 20 Hz control budget:
+
+| batch_size (K) | mean solve time | max | control budget @ 20 Hz |
+|---:|---:|---:|---:|
+| 2,048  | 2.1 ms | 10.4 ms | 50 ms |
+| 8,192  | 2.6 ms | 13.7 ms | 50 ms |
+| 16,384 | 3.7 ms | 9.8 ms | 50 ms |
+| 65,536 | 10.4 ms | 23.0 ms | 50 ms |
+
+Measured with `mppi_gpu_standalone` (T=56, dt=0.05, 200×200 costmap upload
+included) on a benchmark GPU, ROS 2 Jazzy, CUDA 12.0. For reference,
+the stock CPU MPPI controller typically runs K≈2,000; here K=65,536 still
+fits the cycle with room to spare.
+
+## Head-to-head vs nav2_mppi_controller (CPU)
+
+`controller_benchmark` loads both controllers through pluginlib and drives
+the same plant through the same costmap and plan at 20 Hz
+(benchmark CPU vs benchmark GPU):
+
+| | K=1–2k | K=5k | K=10k | K=16k | K=65k |
+|---|---:|---:|---:|---:|---:|
+| nav2 MPPI (CPU) mean | 3.6–5.2 ms | 13.2 ms | 27.4 ms | — | — |
+| CUDA MPPI (GPU) mean | 2.6 ms | — | — | 3.9 ms | 10.6 ms |
+
+Time-to-goal matches the CPU baseline, and improves monotonically with K on
+the GPU (16.8 s @ 2k → 16.0 s @ 65k) — more samples buy better trajectories.
+Full setup, tuning notes, and reproduction steps:
+[`docs/results/cuda_mppi_vs_nav2_2026-06-10.md`](../../../docs/results/cuda_mppi_vs_nav2_2026-06-10.md).
+
+![side-by-side rollout](../../../gif/cuda_mppi_vs_nav2_cpu.gif)
+
+## Status
+
+Experimental, but verified end-to-end in the full Nav2 stack — bt_navigator →
+planner_server → controller_server (this plugin) → velocity_smoother — both in
+the nav2 loopback simulation and in the **Gazebo physics simulation**
+(TurtleBot3 dynamics + lidar + AMCL localization), two-waypoint mission each:
+
+<img src="../../../gif/cuda_mppi_nav2_gazebo.gif" alt="nav2 gazebo demo" width="420"/>
+
+```bash
+# terminal 1 — Nav2 + Gazebo (or tb3_loopback_simulation.launch.py for the lightweight sim)
+ROS_DOMAIN_ID=101 PYTHONNOUSERSITE=1 ros2 launch nav2_bringup \
+  tb3_simulation_launch.py headless:=True use_rviz:=False \
+  params_file:=$(ros2 pkg prefix cuda_mppi_controller)/share/cuda_mppi_controller/config/nav2_loopback_demo.yaml
+
+# terminal 2 — waypoint mission + trajectory recording + GIF
+ROS_DOMAIN_ID=101 PYTHONNOUSERSITE=1 python3 scripts/run_nav2_loopback_demo.py /tmp/nav2_gz_demo amcl
+python3 scripts/render_nav2_loopback_demo.py /tmp/nav2_gz_demo cuda_mppi_nav2_gazebo.gif
+
+# (pick any quiet ROS_DOMAIN_ID; PYTHONNOUSERSITE avoids user-site numpy clashes)
+```
+
+Motion models: **DiffDrive** (`vx`, `ωz`), **Ackermann** (curvature limit
+`|ωz| ≤ |vx| / min_turning_r`), **Omni** (adds `vy`). Costs implemented:
+
+- **Path align** — squared lateral distance to the global plan window
+- **Path follow** — distance to a point `follow_lookahead` ahead on the plan
+  (pulls rollouts forward, like nav2's PathFollowCritic)
+- **Goal** — linear terminal distance to the window end, yaw activates near
+  the final goal
+- **Costmap** — per-step lookup in the local costmap; lethal/inscribed cells
+  add a collision penalty, inflated cells add a graded cost
+- **Footprint** (optional, `consider_footprint`) — the robot's polygon
+  footprint is swept along each rollout; edge cells are sampled at costmap
+  resolution and lethal hits count as collisions. Gated on non-zero inflated
+  cost, so it requires an inflation layer and stays cheap in free space
+- **Smoothness / backward motion / control limits**
+
+Not yet implemented: retreat/recovery behaviors, SE(2) footprint check for
+rotation-in-place on point-symmetric footprints.
+
+## Build
+
+```bash
+cd ros2_ws
+colcon build --packages-select cuda_mppi_controller --cmake-args -DCMAKE_BUILD_TYPE=Release
+source install/setup.bash
+```
+
+Requires ROS 2 Jazzy (or any distro shipping `nav2_core`), CUDA Toolkit >= 12,
+and an NVIDIA GPU.
+
+## Verify without a robot
+
+```bash
+# pluginlib discovery, exactly how controller_server loads it
+ros2 run cuda_mppi_controller plugin_load_test
+
+# closed-loop synthetic scenario (wall with a gap) + solve-time report
+ros2 run cuda_mppi_controller mppi_gpu_standalone           # default K=2048
+ros2 run cuda_mppi_controller mppi_gpu_standalone 16384     # K sweep
+ros2 run cuda_mppi_controller mppi_gpu_standalone 2048 ackermann   # or omni / footprint
+```
+
+## Use with Nav2
+
+Point `controller_server` at the plugin (see
+[`config/cuda_mppi_params.example.yaml`](config/cuda_mppi_params.example.yaml)):
+
+```yaml
+controller_server:
+  ros__parameters:
+    controller_plugins: ["FollowPath"]
+    FollowPath:
+      plugin: "cuda_mppi_controller::CudaMppiController"
+      batch_size: 8192
+      time_steps: 56
+      model_dt: 0.05
+```
+
+### Parameters
+
+| name | default | description |
+|---|---:|---|
+| `batch_size` | 2048 | sampled trajectories per cycle (1 CUDA thread each) |
+| `time_steps` | 56 | horizon length |
+| `model_dt` | 0.05 | [s] integration step |
+| `iteration_count` | 1 | optimizer iterations per control cycle |
+| `motion_model` | DiffDrive | DiffDrive / Ackermann / Omni |
+| `v_max` / `v_min` / `w_max` | 0.5 / -0.35 / 1.9 | control limits |
+| `vy_max` | 0.5 | lateral velocity limit (Omni) |
+| `min_turning_r` | 0.2 | [m] minimum turning radius (Ackermann) |
+| `v_std` / `w_std` | 0.2 / 0.4 | sampling noise std |
+| `vy_std` | 0.2 | lateral noise std (Omni) |
+| `consider_footprint` | false | polygon footprint collision check (needs inflation layer) |
+| `temperature` | 0.12 | MPPI softmin λ |
+| `goal_weight` | 20.0 | terminal local-goal distance (linear) |
+| `goal_yaw_weight` | 3.0 | terminal yaw error near the final goal |
+| `path_weight` | 10.0 | lateral deviation² from the plan |
+| `path_follow_weight` | 5.0 | pull toward a point ahead on the plan |
+| `follow_lookahead` | 1.0 | [m] how far ahead that point is |
+| `costmap_weight` | 3.0 | graded cost for inflated cells |
+| `smoothness_weight` | 0.2 | (Δu)² between consecutive steps |
+| `backward_weight` | 0.5 | penalty on v < 0 |
+| `speed_weight` | 3.0 | penalty on (v_max − v): cruise at the limit |
+| `angular_weight` | 0.5 | penalty on wz²: damps heading random walk |
+| `yaw_goal_activation_dist` | 0.5 | [m] range to enable the yaw goal cost |
+| `lookahead_dist` | 3.0 | [m] global plan window fed to the GPU |
+| `transform_tolerance` | 0.1 | [s] TF lookup tolerance |
+
+## Architecture
+
+```
+cuda_mppi_controller.cpp   nav2_core::Controller (ROS layer, no CUDA)
+        │  PIMPL boundary
+mppi_gpu.cu                rollout_kernel        1 thread = 1 trajectory
+                           update_controls_kernel softmin-weighted average
+```
+
+The local costmap (raw `unsigned char` grid) is uploaded to the GPU each
+cycle — at typical local costmap sizes this is tens of microseconds. The
+nominal control sequence stays on the GPU between cycles (warm start).

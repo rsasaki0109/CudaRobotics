@@ -15,3 +15,6 @@ __pycache__/
 tmp/
 videos/
 docker-compose.override.yml
+ros2_ws/install/
+ros2_ws/log/
+ros2_ws/build/
