@@ -28,8 +28,8 @@
 #include "diff_cost.cuh"
 #include "diff_dynamics.cuh"
 #include "hybrid_astar_pp.h"
+#include "cuda_check.cuh"
 
-#define CUDA_CHECK(call) do { cudaError_t err = (call); if (err != cudaSuccess) { fprintf(stderr, "CUDA error at %s:%d: %s\n", __FILE__, __LINE__, cudaGetErrorString(err)); exit(EXIT_FAILURE); } } while (0)
 
 using namespace std;
 using namespace cudabot;

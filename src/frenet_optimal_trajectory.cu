@@ -17,6 +17,7 @@
 
 #include <Eigen/Eigen>
 #include <cuda_runtime.h>
+#include "cuda_check.cuh"
 
 // ---------------------------------------------------------------------------
 // Constants (same as original)
@@ -50,7 +51,6 @@
 #define M_PIf 3.14159265358979323846f
 #endif
 
-#define CUDA_CHECK(call)                                                       \
     do {                                                                       \
         cudaError_t err = (call);                                              \
         if (err != cudaSuccess) {                                              \

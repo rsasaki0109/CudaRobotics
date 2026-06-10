@@ -225,7 +225,7 @@ does not, and what would be required for a paper-faithful reproduction.
 | LP-MPPI | 8/10 solved | [`docs/lp_mppi_reproduction.md`](docs/lp_mppi_reproduction.md) |
 | DBaS-Log-MPPI | not in suite; smoke benchmark only | [`docs/dbas_log_mppi_reproduction.md`](docs/dbas_log_mppi_reproduction.md) |
 | PA-MPPI | not in suite; narrow-passage smoke | [`docs/pa_mppi_reproduction.md`](docs/pa_mppi_reproduction.md) |
-| SOPPI | 2/10 nav; `box_swivel` 1.00; `box_align_contact_loss` pure `soppi` 0.25 vs MPPI 0.00 | [`docs/soppi_reproduction.md`](docs/soppi_reproduction.md) |
+| SOPPI | 2/10 nav; `box_swivel` 1.00; `box_align_contact_arc` 1.00; strict `box_align_contact_loss` `soppi_fast` 0.75 vs MPPI 0.00 | [`docs/soppi_reproduction.md`](docs/soppi_reproduction.md) |
 | Full index + CSV | [`docs/results/mppi_zoo_suite_2026-06-10.csv`](docs/results/mppi_zoo_suite_2026-06-10.csv) | [`docs/mppi_reproduction_zoo.md`](docs/mppi_reproduction_zoo.md) |
 
 ## Highlights
@@ -248,11 +248,16 @@ does not, and what would be required for a paper-faithful reproduction.
 | `gpu_sfm_mini` | Structure-from-motion mini pipeline with GPU triangulation. |
 | `gpu_diffusion_planner` | Diffusion-based motion planner with GPU rollout scoring. |
 | `gpu_assignment_tracking` | GPU assignment + multi-object tracking pipeline. |
+| `gpu_frontier_exploration` | GPU frontier exploration with parallel ray casting over an occupancy grid. |
+| `gpu_diff_contact_push` | Differentiable contact pushing with GPU rollout scoring. |
+| `gpu_constrained_mpc` | Constrained nonlinear MPC (AL-iLQR) for multi-robot obstacle avoidance. |
+| `gpu_kiss_icp` | KISS-ICP-style LiDAR odometry with GPU nearest-neighbour correspondences. |
 
 | | |
 |---|---|
 | <img src="gif/gpu_multi_robot_place_graph_slam.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_gaussian_splatting_slam.gif" width="400"/> |
 | <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_mppi_racing.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_sgm_stereo.gif" width="400"/> |
+| <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_frontier_exploration.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_diff_contact_push.gif" width="400"/> |
 
 ## Gallery
 

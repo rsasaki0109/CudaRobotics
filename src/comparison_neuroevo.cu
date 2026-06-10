@@ -26,8 +26,8 @@
 #include "gpu_neural_net.cuh"
 #include "gpu_environments.cuh"
 #include "gpu_genetic.cuh"
+#include "cuda_check.cuh"
 
-#define CUDA_CHECK(call) do { cudaError_t err = (call); if (err != cudaSuccess) { fprintf(stderr, "CUDA error at %s:%d: %s\n", __FILE__, __LINE__, cudaGetErrorString(err)); exit(EXIT_FAILURE); } } while (0)
 
 using namespace std;
 using namespace std::chrono;

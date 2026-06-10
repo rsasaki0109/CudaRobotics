@@ -14,6 +14,7 @@
 
 #include <cuda_runtime.h>
 #include <curand_kernel.h>
+#include "cuda_check.cuh"
 
 #define SIM_TIME 20.0f
 #define DT 0.1f
@@ -23,7 +24,6 @@
 #define NTh (NP / 2)
 #define MAX_LANDMARKS 16
 
-#define CUDA_CHECK(call) do { \
     cudaError_t err = (call); \
     if (err != cudaSuccess) { \
         fprintf(stderr, "CUDA error at %s:%d: %s\n", __FILE__, __LINE__, cudaGetErrorString(err)); \

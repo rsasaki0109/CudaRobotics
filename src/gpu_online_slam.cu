@@ -25,8 +25,8 @@
 #include <cstdlib>
 #include <random>
 #include <vector>
+#include "cuda_check.cuh"
 
-#define CUDA_CHECK(call)                                                  \
     do {                                                                  \
         cudaError_t err = (call);                                         \
         if (err != cudaSuccess) {                                         \

@@ -77,6 +77,15 @@ Key signals:
   9/10 solved cells; `soppi` and `soppi_fast` 2/10 (navigation coverage only);
   vanilla `mppi` 2/10.
 
+## SOPPI Box Pushing, 2026-06-10
+
+- Report: [`soppi_box_pushing_2026-06-10.md`](soppi_box_pushing_2026-06-10.md)
+- CSV: [`soppi_box_pushing_2026-06-10.csv`](soppi_box_pushing_2026-06-10.csv)
+- Scope: eight scenarios including `box_align_contact_arc`
+- Planners: `mppi`, `diff_mppi_3`, `soppi`, `soppi_fast`
+- Key signals: `box_align_contact_arc` all planners `1.00`; strict
+  `box_align_contact_loss` `soppi_fast` `0.75` vs `mppi` `0.00`.
+
 ## SOPPI Box Pushing, 2026-06-14
 
 - Report: [`soppi_box_pushing_2026-06-14.md`](soppi_box_pushing_2026-06-14.md)

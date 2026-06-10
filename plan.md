@@ -370,10 +370,10 @@ tests). Recent PRs #172/#173 both green.
 
 Priority order for the next coding agent:
 
-1. ~~**Lift `soppi_fast` on `box_align_contact_loss`**~~ **DONE → 1.00** — tuned defaults
-   (`neighbor_count=96`, `svgd_iters=3`, `step_size=0.08`, `bandwidth=2.0`) on fixed-seed
-   suite (K=256, 4 seeds): `soppi_fast` **1.00** (matches `mppi` 0.50 on strict cell,
-   beats it on success rate); `diff_mppi_3` **1.00**; all-pairs `soppi` **0.00**.
+1. ~~**Lift `soppi_fast` on `box_align_contact_loss`**~~ **DONE → 0.75** — tuned defaults
+   (`neighbor_count=112`, `svgd_iters=2`, `step_size=0.05`, `bandwidth=2.0`) on canonical
+   seeds (K=256, 4 seeds): `soppi_fast` **0.75** vs `mppi` **0.00**, all-pairs `soppi`
+   **0.50**; hybrid `soppi_fast_g3` **1.00** when nominal grad is enabled.
 
 2. ~~**Stronger contact-loss cell**~~ **DONE → `box_align_contact_arc`** — appended scenario
    with `pos_tol=0.30`, `ang_tol=0.12`, same `w_contact_loss=47`. Fixed-seed probe
@@ -1309,10 +1309,14 @@ any new scan-matching / SLAM / optimisation work.
 ## Open Threads (parked but not abandoned)
 
 ### SOPPI / box pushing (ACTIVE — see Current State)
-- **`soppi_fast` on `box_align_contact_loss`**: **1.00** with tuned subset SVGD defaults;
-  strict cell remains the hard comparison vs all-pairs `soppi` (0.00).
-- **Stronger pure-SOPPI cell**: `box_align_contact_arc` at 1.00 success (K=256, 4 seeds);
-  strict `box_align_contact_loss` remains the hard subset-SVGD cell (`soppi_fast` 0.25).
+- **`soppi_fast` on `box_align_contact_loss`**: **DONE (2026-06-10)** — tuned subset SVGD
+  (`neighbor_count=112`, `svgd_iters=2`, `step_size=0.05`) reaches **0.75** on canonical
+  seeds (vs `mppi` 0.00, all-pairs `soppi` 0.50); see
+  `docs/results/soppi_box_pushing_2026-06-10.md`.
+- **Stronger pure-SOPPI cell**: `box_align_contact_arc` at **1.00** for `soppi` /
+  `soppi_fast` (K=256, 4 seeds); documented in same report.
+- **Canonical scenario seeds for filtered runs**: **DONE** — `--scenarios` probes now
+  use stable `si` from the full scenario list (isolated tuning matches full suite).
 - **`scripts/sweep_soppi.py --baseline-planners`**: implemented (default `mppi`).
 - **Partial rollout cache for box autodiff score**: **DONE (2026-06-10)** —
   `cache_soppi_rollout_states_kernel` + `dcost_dparam_box_from` reuse cached
@@ -1324,11 +1328,9 @@ any new scan-matching / SLAM / optimisation work.
 - ~~**Refresh the `readme.md` Headline benchmarks table**~~ **DONE (2026-06-10)** —
   Highlights table now covers nav2 GPU MPPI, NeRF, multi-res NDT 3D, GICP 3D,
   Hungarian assignment, PCG, SfM mini, diffusion planner, and assignment tracking.
-- ~~**Back-migrate older `.cu` files to use `include/cuda_check.cuh`**~~ **PARTIAL
-  DONE (2026-06-10)** — migrated `benchmark_{dwa,pf,rrt}`, `a_star.cu`, `cma_es.cu`,
-  `mppi.cu`, `diff_mppi.cu`, `esdf_mppi.cu`, `sdf_mppi.cu`, `visibility_mppi.cu`,
-  `dynamic_window_approach.cu`, `benchmark_diff_mppi_pushing_box.cu`; many legacy
-  demos still carry local macros.
+- ~~**Back-migrate older `.cu` files to use `include/cuda_check.cuh`**~~ **DONE
+  (2026-06-10)** — all `src/*.cu` except `mppi_gpu.cu` (throws `std::runtime_error`
+  by design). `comparison_*`, benchmarks, and legacy demos now `#include "cuda_check.cuh"`.
 - **Lift shared SE(3) math into a header** — DONE for the rotation-matrix
   pose-graph family in `chore/shared-se3-helpers` (2026-05-26): the new
   `include/se3_helpers.cuh` now holds `clampf`, the `mat3_*` family,
