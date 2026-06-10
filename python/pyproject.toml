@@ -62,7 +62,7 @@ sdist.exclude = [
 
 [tool.cibuildwheel]
 build = "cp39-* cp310-* cp311-* cp312-*"
-skip = "pp* *musllinux* *win32 *macosx*"
+skip = "pp* *musllinux* *win32 *macosx* *i686*"
 build-frontend = "build"
 
 [tool.cibuildwheel.linux]
