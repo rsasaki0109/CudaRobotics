@@ -92,21 +92,30 @@ v, vy, w, info = planner.compute(
 )
 ```
 
-## Python FilterReg Quickstart
+## Python Registration Quickstart
 
-Probabilistic point-cloud registration is exposed as `cudarobotics.registration`:
+Rigid and non-rigid registration live under `cudarobotics.registration`:
 
 ```bash
 pip install -e python/
-python examples/python/filterreg_quickstart.py
+python examples/python/registration_quickstart.py
 ```
 
 ```python
 import cudarobotics as cr
 
-registrar = cr.registration.FilterReg()
-rotation, translation, info = registrar.register(target_xyz, source_xyz)
+sinkhorn = cr.registration.SinkhornReg()
+rotation, translation, info = sinkhorn.register(target_xyz, source_xyz)
+
+fgr = cr.registration.Fgr()
+rotation, translation, info = fgr.register(target_xyz, source_xyz)
+
+bcpd = cr.registration.Bcpd(max_iters=40)
+deformed, info = bcpd.register(target_xyz, model_xyz)
 ```
+
+FilterReg remains available as `cr.registration.FilterReg()` (see
+`examples/python/filterreg_quickstart.py`).
 
 ## Latest Fixed-Seed Result
 
