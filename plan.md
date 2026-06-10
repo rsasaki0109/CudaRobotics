@@ -203,9 +203,11 @@ Python; a GPU MPPI / registration library they can `pip install` enters the
    re-reads tunable weights and rebuilds the GPU optimizer.
 4. ~~**More benchmark scenarios**~~ **DONE** — `controller_benchmark` adds
    `narrow_corridor` and `u_turn` cells (`controller_benchmark <out> all`).
-5. ~~**Ackermann/Omni in-sim verification**~~ **PARTIAL DONE** — benchmark adds
-   `gpu_ackermann_K8192` / `gpu_omni_K8192`; loopback configs
-   `nav2_loopback_demo_{ackermann,omni}.yaml` added (manual launch).
+5. ~~**Ackermann/Omni in-sim verification**~~ **DONE** — `controller_benchmark`
+   adds `gpu_ackermann_K8192` / `gpu_omni_K8192`; full loopback configs
+   `nav2_loopback_demo_{ackermann,omni}.yaml`; results in
+   `docs/results/cuda_mppi_motion_models_2026-06-10.md` +
+   `scripts/run_nav2_motion_model_demos.sh`.
 6. ~~**CI coverage**~~ **DONE** (prior PR #176).
 7. ~~**Humble backport check**~~ **DONE** — `nav2_compat.hpp` maps
    `InvalidPath` → `PlannerException` when `CUDAMPPI_NAV2_HUMBLE=1`.
@@ -1316,14 +1318,13 @@ any new scan-matching / SLAM / optimisation work.
   priority unless user explicitly wants nav headline numbers.
 
 ### A. Mechanical cleanup
-- **Refresh the `readme.md` Headline benchmarks table** for the newer
-  demos: NeRF, online SLAM, diffusion planner, multi-resolution NDT 3D,
-  GICP 2D/3D, and Hungarian assignment. CMA-ES, MCTS, assignment
-  tracking, crowd swarm, SfM mini, and PCG are now present, but the
-  lower headline table still lags several perception / SLAM demos.
-- **Back-migrate older `.cu` files to use `include/cuda_check.cuh`** and
-  friends from #66, instead of their private wrappers. Mechanical, low
-  risk, good first task.
+- ~~**Refresh the `readme.md` Headline benchmarks table**~~ **DONE (2026-06-10)** —
+  Highlights table now covers nav2 GPU MPPI, NeRF, multi-res NDT 3D, GICP 3D,
+  Hungarian assignment, PCG, SfM mini, diffusion planner, and assignment tracking.
+- ~~**Back-migrate older `.cu` files to use `include/cuda_check.cuh`**~~ **PARTIAL
+  DONE (2026-06-10)** — migrated `benchmark_{dwa,pf,rrt}`, `a_star.cu`, and
+  `cma_es.cu`; header-backed files like `cuda_pointcloud.cuh` still carry a
+  local macro and remain for a follow-up.
 - **Lift shared SE(3) math into a header** — DONE for the rotation-matrix
   pose-graph family in `chore/shared-se3-helpers` (2026-05-26): the new
   `include/se3_helpers.cuh` now holds `clampf`, the `mat3_*` family,

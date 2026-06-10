@@ -231,13 +231,22 @@ does not, and what would be required for a paper-faithful reproduction.
 
 | Demo | What it shows |
 |---|---|
+| `cuda_mppi_controller` | Drop-in GPU MPPI for Nav2 — 65k rollouts in ~10 ms; DiffDrive / Ackermann / Omni motion models verified. |
 | `gpu_multi_robot_place_graph_slam` | Multi-robot place recognition scores 60,516 descriptor pairs on the GPU, adds inter-robot loop edges, and cuts pose-graph RMSE from 7.59 m to 3.33 m. |
 | `gpu_bnb_loop_closure_slam` | Branch-and-bound loop search scores about 957x fewer candidates than brute force while returning the same relpose on 51/51 attempts. |
 | `gpu_gaussian_splatting_slam` | RGB-D Gaussian-Splatting SLAM with GPU ray-cast sensor, point-to-plane ICP tracking, and incremental Gaussian map fusion. |
+| `gpu_nerf_volume` | NeRF volume rendering with GPU ray marching. |
+| `gpu_ndt_3d_multires` | Multi-resolution NDT 3D scan matching on the GPU. |
+| `gpu_gicp_3d` | GICP 3D point-cloud registration with GPU parallel correspondence search. |
+| `gpu_hungarian_assignment` | GPU Hungarian assignment for multi-target data association. |
 | `gpu_mppi_racing` | MPPI autonomous racing with 2048 x 40 rollouts per control step on the GPU. |
 | `gpu_kdtree_nn` | Exact KD-tree nearest-neighbour search for 40k queries, matching brute force while running much faster. |
 | `gpu_sgm_stereo` | Semi-Global Matching stereo with CUDA census and path aggregation. |
 | `gpu_wavefront_planner` | Bellman-Ford-style cost-to-go relaxation over a 384x384 planning grid. |
+| `gpu_pcg_solver` | GPU preconditioned conjugate-gradient linear solver benchmark. |
+| `gpu_sfm_mini` | Structure-from-motion mini pipeline with GPU triangulation. |
+| `gpu_diffusion_planner` | Diffusion-based motion planner with GPU rollout scoring. |
+| `gpu_assignment_tracking` | GPU assignment + multi-object tracking pipeline. |
 
 | | |
 |---|---|
