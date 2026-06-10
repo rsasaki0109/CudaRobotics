@@ -80,8 +80,13 @@ Motion models: **DiffDrive** (`vx`, `ωz`), **Ackermann** (curvature limit
   sequence instead of throwing `NoValidControl` every cycle
 - **Smoothness / backward motion / control limits**
 
-Still future work: dynamic parameter updates, broader scenario coverage,
-Ackermann/Omni in-sim verification, and CI coverage for the ROS package.
+Motion-model verification (2026-06-10): DiffDrive, Ackermann, and Omni all
+succeed on the wall-gap benchmark and in the nav2 loopback stack.
+See [`docs/results/cuda_mppi_motion_models_2026-06-10.md`](../../../docs/results/cuda_mppi_motion_models_2026-06-10.md)
+and run `./scripts/run_nav2_motion_model_demos.sh` for loopback GIFs.
+
+Still future work: broader scenario coverage beyond the wall-gap / tb3 sandbox
+cells.
 
 ## Build
 
