@@ -3,6 +3,7 @@
 [![GitHub stars](https://img.shields.io/github/stars/rsasaki0109/CudaRobotics?style=social)](https://github.com/rsasaki0109/CudaRobotics/stargazers)
 [![CUDA](https://img.shields.io/badge/CUDA-12.x-76B900)](https://developer.nvidia.com/cuda-toolkit)
 [![Gallery](https://img.shields.io/badge/gallery-animated_demos-blue)](https://rsasaki0109.github.io/CudaRobotics/)
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/rsasaki0109/CudaRobotics/blob/master/examples/colab/cudarobotics_quickstart.ipynb)
 
 <p align="center">
   <a href="https://rsasaki0109.github.io/CudaRobotics/gpu_mppi_racing.gif">
@@ -56,6 +57,7 @@ Full animated gallery: https://rsasaki0109.github.io/CudaRobotics/
 
 | Want to see | Open |
 |---|---|
+| **Try it in your browser (free Colab GPU)** | [Colab quickstart notebook](https://colab.research.google.com/github/rsasaki0109/CudaRobotics/blob/master/examples/colab/cudarobotics_quickstart.ipynb) |
 | Visual demos | [Full animated gallery](https://rsasaki0109.github.io/CudaRobotics/) |
 | **GPU MPPI controller plugin for Nav2** | [`ros2_ws/src/cuda_mppi_controller/`](ros2_ws/src/cuda_mppi_controller/) |
 | Nav2 CPU vs CUDA MPPI head-to-head | [`docs/results/cuda_mppi_vs_nav2_2026-06-10.md`](docs/results/cuda_mppi_vs_nav2_2026-06-10.md) |
@@ -71,6 +73,11 @@ Full animated gallery: https://rsasaki0109.github.io/CudaRobotics/
 
 The reusable GPU MPPI core is available as an experimental Python package.
 Build requirements: Linux x86_64, CUDA Toolkit >= 12.0, CMake >= 3.18.
+
+**No local GPU?** Run the
+[Colab quickstart notebook](https://colab.research.google.com/github/rsasaki0109/CudaRobotics/blob/master/examples/colab/cudarobotics_quickstart.ipynb)
+— it builds the package on a free Colab GPU and runs the MPPI + registration demos
+in your browser.
 
 **Development install** (uses repo-root CUDA sources directly):
 
