@@ -1,0 +1,65 @@
+name: ROS2 CUDA MPPI
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - .github/workflows/ros2_cuda_mppi.yml
+      - ros2_ws/src/cuda_mppi_controller/**
+      - src/mppi_gpu.cu
+      - include/cuda_mppi_controller/**
+  pull_request:
+    branches: [master]
+    paths:
+      - .github/workflows/ros2_cuda_mppi.yml
+      - ros2_ws/src/cuda_mppi_controller/**
+      - src/mppi_gpu.cu
+      - include/cuda_mppi_controller/**
+
+jobs:
+  compile:
+    runs-on: ubuntu-24.04
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install CUDA toolkit
+        uses: Jimver/cuda-toolkit@v0.2.16
+        with:
+          cuda: "12.0.0"
+          method: network
+
+      - name: Install ROS 2 Jazzy and Nav2 build deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            ca-certificates \
+            curl \
+            gnupg \
+            lsb-release
+          sudo curl -sSL https://raw.githubusercontent.com/ros/rosdistro/master/ros.key \
+            -o /usr/share/keyrings/ros-archive-keyring.gpg
+          echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/ros-archive-keyring.gpg] http://packages.ros.org/ros2/ubuntu $(. /etc/os-release && echo "$UBUNTU_CODENAME") main" \
+            | sudo tee /etc/apt/sources.list.d/ros2.list > /dev/null
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential \
+            cmake \
+            python3-colcon-common-extensions \
+            ros-jazzy-ros-base \
+            ros-jazzy-nav2-core \
+            ros-jazzy-nav2-costmap-2d \
+            ros-jazzy-nav2-util \
+            ros-jazzy-nav2-mppi-controller
+
+      - name: Compile cuda_mppi_controller
+        shell: bash
+        run: |
+          set -eo pipefail
+          source /opt/ros/jazzy/setup.bash
+          cd ros2_ws
+          colcon build \
+            --packages-select cuda_mppi_controller \
+            --cmake-args \
+              -DCMAKE_BUILD_TYPE=Release \
+              -DCMAKE_CUDA_ARCHITECTURES=75

@@ -21,6 +21,8 @@ controller_server:
       vy_std: 0.2               # (Omni)
       w_std: 0.4
       consider_footprint: false # polygon footprint check (needs inflation layer)
+      enable_retreat: true       # recover by backing out from last valid sequence
+      retreat_scale: 0.5         # fraction of last valid controls to reverse
       temperature: 0.12         # MPPI softmin lambda
       goal_weight: 20.0         # terminal local-goal distance (linear)
       goal_yaw_weight: 3.0

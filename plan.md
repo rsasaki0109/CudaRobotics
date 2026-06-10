@@ -1,9 +1,10 @@
 # CudaRobotics Plan / Handoff (for Codex / Claude)
 
 Last updated: 2026-06-10 JST (nav2 GPU MPPI controller plugin #175 merged;
-star-growth roadmap recorded. Note: some older sections below carry their own
-internal dates — treat section headers as the ordering authority within each
-line, not this single timestamp.)
+initial MPPI Python bindings added; retreat + SE(2) footprint follow-ups
+implemented. Note: some older sections below carry their own internal dates —
+treat section headers as the ordering authority within each line, not this
+single timestamp.)
 
 This document is the long-form handoff for the next coding agent (Codex).
 It captures: (1) where the repo is right now, (2) what was just done over
@@ -42,8 +43,8 @@ Stars come from being **used**, not watched. Demo mass-production is over
 2. ~~MPPI Zoo + SOPPI arXiv tech report~~ — **SKIPPED by user decision
    (2026-06-10). Do not pick this up unless the user re-requests it.**
    The zoo remains an internal benchmark + paper scaffold.
-3. **pip-installable Python bindings** — the next product task
-   (menu item A below).
+3. **pip-installable Python bindings** — **INITIAL MPPI BINDING DONE.**
+   Registration bindings remain a follow-up (menu item A below).
 
 **Distribution (HN / Reddit / ROS Discourse / X / Zenn) is user-owned.
 Agents must never post, announce, or publish anywhere external.** Producing
@@ -145,18 +146,20 @@ python3 scripts/render_cuda_mppi_benchmark.py /tmp/mppi_bench 2026-06-10
 
 ## Next-Task Menu (star-growth line) — pick ONE, in priority order
 
-### A. `pip install cudarobotics` — Python bindings (strategy item 3, NEXT)
+### A. `pip install cudarobotics` — Python bindings (strategy item 3)
 
 The single biggest remaining usability multiplier: most roboticists live in
 Python; a GPU MPPI / registration library they can `pip install` enters the
 "use → cite → star" loop. Plan in enough detail to start cold:
 
 1. **Scope (first release, keep it small)**:
-   - `cudarobotics.MppiPlanner` — wrap the existing `MppiGpu` core. It is
+   - ~~`cudarobotics.MppiPlanner` — wrap the existing `MppiGpu` core. It is
      ALREADY ROS-free behind a PIMPL (`mppi_gpu.hpp` has zero ROS/CUDA
      includes — this was deliberate). Expose `MppiParams` fields as
      constructor kwargs and `compute(state, costmap, path, goal, ...)`
-     taking numpy arrays; return `(v, vy, w, info)`.
+     taking numpy arrays; return `(v, vy, w, info)`.~~ **DONE for MPPI
+     initial release:** `python/` uses nanobind + scikit-build-core, and
+     `examples/python/mppi_quickstart.py` renders the wall-gap GIF.
    - `cudarobotics.registration` — the probabilistic point-cloud
      registration line (FilterReg / BCPD / Sinkhorn / FGR / robust
      point-to-plane in `src/gpu_*reg*.cu` etc.). Rarest asset (several have
@@ -171,6 +174,7 @@ Python; a GPU MPPI / registration library they can `pip install` enters the
    `ros2_ws/src/cuda_mppi_controller/` to top-level `include/` + `src/`,
    then make the ROS package consume the promoted copy (relative path or
    CMake interface target). One copy, two consumers (ROS plugin, Python).
+   **DONE.**
 4. **Packaging reality check**: CUDA wheels are painful. First release may
    simply require a local CUDA toolkit (sdist build, pycuda-style), or ship
    linux-x86_64 wheels via `cibuildwheel` + manylinux. Decide AFTER the API
@@ -183,12 +187,12 @@ Python; a GPU MPPI / registration library they can `pip install` enters the
 
 ### B. nav2 plugin follow-ups (smaller, independent; good filler PRs)
 
-1. **Retreat/recovery behavior** — on `all_colliding`, decelerate/back out
+1. ~~**Retreat/recovery behavior** — on `all_colliding`, decelerate/back out
    along the last valid sequence instead of throwing `NoValidControl`
-   every cycle.
-2. **SE(2) footprint check** — the sweep tests the polygon at sampled yaw
+   every cycle.~~ **DONE.**
+2. ~~**SE(2) footprint check** — the sweep tests the polygon at sampled yaw
    only; rotation-in-place on asymmetric footprints can clip corners
-   between samples.
+   between samples.~~ **DONE.**
 3. **Dynamic parameter updates** — nav2 convention is live-tunable weights
    (CPU MPPI's `ParametersHandler`); we declare-once at configure.
 4. **More benchmark scenarios** — the head-to-head is ONE wall-gap cell.

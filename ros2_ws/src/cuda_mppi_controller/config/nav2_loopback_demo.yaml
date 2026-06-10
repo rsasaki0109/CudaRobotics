@@ -105,6 +105,8 @@ controller_server:
       w_max: 1.9
       v_std: 0.2
       w_std: 0.4
+      enable_retreat: true
+      retreat_scale: 0.5
       temperature: 0.12
       goal_weight: 20.0
       goal_yaw_weight: 3.0
