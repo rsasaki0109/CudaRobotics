@@ -643,7 +643,8 @@ add_executable(gpu_parallel_ilqr src/gpu_parallel_ilqr.cu)
 target_link_libraries(gpu_parallel_ilqr ${OpenCV_LIBS})
 target_compile_options(gpu_parallel_ilqr PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr --fmad=false>)
 
-add_executable(gpu_filterreg src/gpu_filterreg.cu)
+add_executable(gpu_filterreg src/gpu_filterreg.cu src/filterreg_gpu.cu)
+target_include_directories(gpu_filterreg PRIVATE ${CMAKE_SOURCE_DIR}/include)
 target_link_libraries(gpu_filterreg ${OpenCV_LIBS})
 target_compile_options(gpu_filterreg PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
 
