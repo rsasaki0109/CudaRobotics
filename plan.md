@@ -1,6 +1,10 @@
 # CudaRobotics Plan / Handoff (for Codex / Claude)
 
-Last updated: 2026-06-14 JST (SOPPI box-pushing contact-loss cell merged)
+Last updated: 2026-06-10 JST (nav2 GPU MPPI controller plugin #175 merged;
+initial MPPI Python bindings added; retreat + SE(2) footprint follow-ups
+implemented. Note: some older sections below carry their own internal dates —
+treat section headers as the ordering authority within each line, not this
+single timestamp.)
 
 This document is the long-form handoff for the next coding agent (Codex).
 It captures: (1) where the repo is right now, (2) what was just done over
@@ -14,13 +18,210 @@ and start.
 do not treat the old "IN FLIGHT" / "Recommended Next Session" paragraphs as
 authoritative without cross-checking the current-state block.
 
+There are now **two active lines** in this repo:
+
+1. **Star-growth / product line** (NEW, top section) — make CudaRobotics a
+   *used* library, not a watched gallery. First artifact: the nav2 GPU MPPI
+   controller plugin, merged as #175. Next: pip Python bindings.
+2. **Research line** — SOPPI / Diff-MPPI box-pushing reproduction zoo
+   (see "Research Line State" below; unchanged by this sprint).
+
 ---
 
-## Current State (2026-06-14)
+## Current State (2026-06-10, star-growth sprint: nav2 GPU MPPI plugin)
 
-Mainline: **`master` at `5545dfd`**, in sync with `origin/master`. **No in-flight
-PR.** The active research line is the **SOPPI / Diff-MPPI box-pushing
-reproduction zoo** — not SLAM, not MegaParticles, not shared-header cleanup.
+Mainline: **`master` at `32995ff`** (`Add cuda_mppi_controller: GPU-accelerated
+MPPI controller plugin for Nav2 (#175)`), in sync with `origin/master`.
+**No in-flight PR.**
+
+### Strategy context (agreed with user, 2026-06-10)
+
+Stars come from being **used**, not watched. Demo mass-production is over
+(depth over breadth). Agreed priority order and status:
+
+1. ~~nav2 GPU MPPI controller plugin~~ — **DONE, merged as #175.**
+2. ~~MPPI Zoo + SOPPI arXiv tech report~~ — **SKIPPED by user decision
+   (2026-06-10). Do not pick this up unless the user re-requests it.**
+   The zoo remains an internal benchmark + paper scaffold.
+3. **pip-installable Python bindings** — **INITIAL MPPI BINDING DONE.**
+   Registration bindings remain a follow-up (menu item A below).
+
+**Distribution (HN / Reddit / ROS Discourse / X / Zenn) is user-owned.
+Agents must never post, announce, or publish anywhere external.** Producing
+material the user can post (GIFs, benchmark tables, headline numbers) is in
+scope and encouraged. The strongest current headline:
+*"Drop-in GPU MPPI controller for Nav2 — 65k rollouts in ~10 ms, same
+trajectory quality as the stock CPU controller, monotonically better with K."*
+
+### What landed in #175 (squashed from 7 commits)
+
+New package `ros2_ws/src/cuda_mppi_controller/` — a `nav2_core::Controller`
+plugin running every MPPI rollout on the GPU (1 CUDA thread = 1 sampled
+trajectory), drop-in alternative to `nav2_mppi_controller`:
+
+| Piece | Where | Notes |
+|---|---|---|
+| GPU optimizer core | `src/mppi_gpu.cu` + `include/cuda_mppi_controller/mppi_gpu.hpp` | Pure CUDA behind a PIMPL; the header has **no ROS and no CUDA includes** — deliberately reusable for Python bindings |
+| nav2 plugin layer | `src/cuda_mppi_controller.cpp` | configure / activate / setPlan / computeVelocityCommands / setSpeedLimit / reset |
+| pluginlib registration | `cuda_mppi_plugin.xml` + `package.xml` export | `plugin_load_test` loads it exactly as controller_server does |
+| Motion models | DiffDrive / Ackermann (`abs(wz) <= abs(vx)/min_turning_r`) / Omni (adds `vy`) | control arrays are always 3-DOF; `vy` stays 0 outside Omni |
+| Footprint sweep | `footprint_collides()` in the rollout kernel | polygon edges sampled at costmap resolution; gated on inflated cost > 0 (**requires an inflation layer**); max 16 vertices |
+| Cost terms | path align (d²) · path follow (pursuit point `follow_lookahead` ahead) · linear terminal goal + yaw gate · graded costmap · smoothness · backward · **speed** · **angular damping** | tuned defaults in `mppi_gpu.hpp` |
+| Head-to-head benchmark | `test/controller_benchmark.cpp` | loads BOTH plugins via pluginlib; same costmap / plan / limits; 20 Hz closed loop; writes CSV + per-run trajectories |
+| Standalone scenario | `test/mppi_gpu_standalone.cpp` | wall-gap world; modes `diff / ackermann / omni / footprint`; `MPPI_TRACE=1` prints per-step v/w |
+| Sim demos | `scripts/run_nav2_loopback_demo.py` (+`record_nav2_path.py`, `render_nav2_loopback_demo.py`) | loopback AND Gazebo (gz Harmonic + AMCL) two-waypoint missions both SUCCEEDED |
+| Results / assets | `docs/results/cuda_mppi_vs_nav2_2026-06-10.{md,svg,png}` · `gif/cuda_mppi_vs_nav2_cpu.gif` · `gif/cuda_mppi_nav2_{loopback,gazebo}.gif` | |
+
+### Headline numbers (benchmark GPU vs benchmark CPU, T=56, dt=0.05)
+
+| | CPU K=2,000 | CPU K=10,000 | GPU K=16,384 | GPU K=65,536 |
+|---|---:|---:|---:|---:|
+| mean solve | 5.2 ms | 27.4 ms | 3.9 ms | 10.6 ms |
+| time to goal | 16.2 s | 16.2 s | 16.1 s | **16.0 s** |
+
+Time-to-goal **matches the stock CPU critics** and improves monotonically
+with K on the GPU. Honest scope note: ONE wall-gap scenario, single seed
+pair, no sensor pipeline — see menu item B4 before widening claims.
+
+### Hard-won tuning lessons (cost ~3 debug cycles; do NOT re-learn)
+
+1. **Clamped-average saturation bias**: zero-mean noise clamped at `v_max`
+   averages ~`v_max − 0.4σ`, so a softmin-weighted average of clamped
+   samples can never cruise at the limit (measured: 0.42 m/s with
+   v_max=0.5). Fix = anti-windup nominal: store UNCLAMPED perturbed
+   controls, average those, let the nominal exceed `v_max` by one `v_std`,
+   clamp only the executed/output controls.
+2. **Never let the angular rate wind up**: applying the same margin to `wz`
+   made the robot pirouette through disturbances instead of counter-steering
+   (sustained `w=±w_max` 360° spins at the wall gap, seen via `MPPI_TRACE`).
+   `wz` nominal is clamped hard at `±w_max`; only translational speeds get
+   the +1σ margin.
+3. **Heading random walk**: the noisy weighted average accumulates yaw
+   drift → stall/reverse episodes. Fixed by `angular_weight·wz²` damping +
+   `path_weight` 10 + `follow_lookahead` 1.0 m + `temperature` 0.12.
+4. **Squared terminal goal distance stalls** (gradient vanishes as the local
+   goal nears) — terminal goal cost is LINEAR in distance.
+5. **A pursuit term is what pulls rollouts forward** — lateral path distance
+   alone has no forward incentive; the observed failure was a literal
+   zero-velocity local optimum (robot parks itself forever).
+
+### Environment gotchas on THIS machine (will bite again)
+
+- **ROS graph pollution**: stray processes from old sessions + live sims
+  (AWSIM/Autoware on Humble, AirSim) leak TF across domains 0/42/77/88 —
+  an Autoware NDT `map→base_link` at UTM-scale coordinates literally
+  hijacked the TB3's `base_link` mid-demo. Before any ROS demo, probe a
+  domain for silence and use it (101 was clean on 2026-06-10). Never assume
+  0 or 42 is free.
+- **`PYTHONNOUSERSITE=1`** for anything ROS-Python: `~/.local` pip numpy
+  2.x breaks `transforms3d` (`np.maximum_sctype` removed) →
+  `loopback_simulator` dies at import.
+- **`pkill -f <pattern>` suicide**: the shell's own command line matches
+  the pattern if it appears anywhere else in the same compound command
+  (e.g. a later `git add scripts/record_nav2_path.py`). Keep kills in
+  their own command and bracket a letter (`"[t]b3_loopback"`).
+- **Gazebo + AMCL activation race**: `planner_server`'s global costmap
+  activation waits for `map→base_link`, which needs AMCL, which needs an
+  initial pose. Launch the stack and the mission script CONCURRENTLY
+  (the script republishes the initial pose early) or the lifecycle manager
+  aborts bringup. Also: gz lidar is slow for the first ~30 s headless
+  (EGL fallback warnings are normal); wait it out.
+- **CI does NOT build `ros2_ws/`** (no ROS on the GitHub runner). The
+  plugin is only built/tested locally — see menu item B6.
+
+### Reproduce the plugin results
+
+```bash
+cd ros2_ws
+colcon build --packages-select cuda_mppi_controller --cmake-args -DCMAKE_BUILD_TYPE=Release
+source install/setup.bash
+ros2 run cuda_mppi_controller plugin_load_test
+ros2 run cuda_mppi_controller mppi_gpu_standalone 2048 ackermann   # diff/omni/footprint
+ros2 run cuda_mppi_controller controller_benchmark /tmp/mppi_bench
+python3 scripts/render_cuda_mppi_benchmark.py /tmp/mppi_bench 2026-06-10
+# Gazebo / loopback missions: see package README "Status" section (two terminals)
+```
+
+---
+
+## Next-Task Menu (star-growth line) — pick ONE, in priority order
+
+### A. `pip install cudarobotics` — Python bindings (strategy item 3)
+
+The single biggest remaining usability multiplier: most roboticists live in
+Python; a GPU MPPI / registration library they can `pip install` enters the
+"use → cite → star" loop. Plan in enough detail to start cold:
+
+1. **Scope (first release, keep it small)**:
+   - ~~`cudarobotics.MppiPlanner` — wrap the existing `MppiGpu` core. It is
+     ALREADY ROS-free behind a PIMPL (`mppi_gpu.hpp` has zero ROS/CUDA
+     includes — this was deliberate). Expose `MppiParams` fields as
+     constructor kwargs and `compute(state, costmap, path, goal, ...)`
+     taking numpy arrays; return `(v, vy, w, info)`.~~ **DONE for MPPI
+     initial release:** `python/` uses nanobind + scikit-build-core, and
+     `examples/python/mppi_quickstart.py` renders the wall-gap GIF.
+   - `cudarobotics.registration` — the probabilistic point-cloud
+     registration line (FilterReg / BCPD / Sinkhorn / FGR / robust
+     point-to-plane in `src/gpu_*reg*.cu` etc.). Rarest asset (several have
+     NO other GPU+Python implementation), but they are demo-shaped
+     `main()`s today — each needs its compute core extracted behind a
+     header first. **Do MPPI first, registration second.**
+2. **Binding tech**: nanobind (faster builds, smaller wheels than
+   pybind11) + `scikit-build-core` for the CMake bridge. Accept numpy
+   first; torch/cupy zero-copy later via `__dlpack__` — do NOT block the
+   first release on dlpack.
+3. **Source-of-truth move**: promote `mppi_gpu.{hpp,cu}` from
+   `ros2_ws/src/cuda_mppi_controller/` to top-level `include/` + `src/`,
+   then make the ROS package consume the promoted copy (relative path or
+   CMake interface target). One copy, two consumers (ROS plugin, Python).
+   **DONE.**
+4. **Packaging reality check**: CUDA wheels are painful. First release may
+   simply require a local CUDA toolkit (sdist build, pycuda-style), or ship
+   linux-x86_64 wheels via `cibuildwheel` + manylinux. Decide AFTER the API
+   works — do not start with packaging.
+5. **Layout**: `python/` at repo root → `python/src/cudarobotics/`,
+   `python/CMakeLists.txt`, `examples/python/mppi_quickstart.py`.
+6. **Success criteria**: `pip install -e python/` works on this machine;
+   the quickstart plans through the wall-gap scenario in <20 lines and
+   renders a GIF; README gains a "Python" section with the snippet.
+
+### B. nav2 plugin follow-ups (smaller, independent; good filler PRs)
+
+1. ~~**Retreat/recovery behavior** — on `all_colliding`, decelerate/back out
+   along the last valid sequence instead of throwing `NoValidControl`
+   every cycle.~~ **DONE.**
+2. ~~**SE(2) footprint check** — the sweep tests the polygon at sampled yaw
+   only; rotation-in-place on asymmetric footprints can clip corners
+   between samples.~~ **DONE.**
+3. **Dynamic parameter updates** — nav2 convention is live-tunable weights
+   (CPU MPPI's `ParametersHandler`); we declare-once at configure.
+4. **More benchmark scenarios** — the head-to-head is ONE wall-gap cell.
+   Add narrow corridor / dynamic obstacle / U-turn cells before widening
+   quality claims (mirror the SOPPI zoo's honesty discipline: one cell =
+   one mechanism).
+5. **Ackermann/Omni in-sim verification** — only DiffDrive ran in
+   loopback/Gazebo; the other two models passed standalone only.
+6. **CI coverage** — GitHub Actions job on a `ros:jazzy` container that
+   compiles `cuda_mppi_controller` (CUDA toolkit install; compile-only, no
+   GPU run available) so plugin PRs can't silently break the build.
+7. **Humble backport check** — `nav2_core::Controller` API differs
+   pre-Iron; a small `#if` shim widens the installed-base audience
+   considerably (most of it is still on Humble).
+
+### C. Research line (SOPPI) — unchanged
+
+See "Research Line State" below. Priority within that line is still
+`soppi_fast` on `box_align_contact_loss`, then a stronger contact-loss
+cell. The arXiv packaging of the MPPI zoo is **skipped** (user decision).
+
+---
+
+## Research Line State: SOPPI box pushing (2026-06-14 snapshot, preserved)
+
+(Snapshot taken at `master` = `5545dfd`; mainline has since moved — see the
+star-growth Current State above. Within the RESEARCH line, the active thread
+is the **SOPPI / Diff-MPPI box-pushing reproduction zoo** — not SLAM, not
+MegaParticles, not shared-header cleanup.)
 
 ### What just landed (2026-06-04 → 2026-06-14)
 
@@ -1391,11 +1592,12 @@ rtk git switch -c chore/shared-cuda-cleanup    # A: cleanup
 - `src/benchmark_diff_mppi.cu` — see "Planning / control / MPPI reproduction zoo".
 
 ### ROS2 (`ros2_ws/`)
-- `src/esdf_node.cpp` (PR #46) — GPU JFA ESDF node.
-- `src/voxel_node.cpp` (PR #48) — GPU 3D log-odds voxel map node.
-- Both build via `colcon build --packages-select cuda_robotics` from
-  `ros2_ws/`. Not run in normal sessions; only touch if user asks for
-  ROS2 work specifically.
+- `src/cuda_mppi_controller/` (PR #175) — **nav2 GPU MPPI controller
+  plugin**, the star-growth line's flagship. See the top "Current State"
+  section; build with `colcon build --packages-select cuda_mppi_controller`.
+- `src/cuda_robotics/src/esdf_node.cu` (PR #46) — GPU JFA ESDF node.
+- `src/cuda_robotics/src/voxel_node.cu` (PR #48) — GPU 3D log-odds voxel
+  map node. Build via `colcon build --packages-select cuda_robotics`.
 
 ---
 
@@ -1450,5 +1652,6 @@ rtk bash -lc 'gh pr merge <N> --squash --delete-branch'
 
 ---
 
-End of handoff. **Start from "Current State (2026-06-14)"** for SOPPI work.
-Good hunting.
+End of handoff. **Start from "Current State (2026-06-10, star-growth
+sprint)"** for product work (pip bindings next), or from "Research Line
+State: SOPPI box pushing" for research work. Good hunting.

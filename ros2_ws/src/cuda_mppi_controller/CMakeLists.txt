@@ -24,6 +24,9 @@ find_package(tf2_ros REQUIRED)
 find_package(tf2_geometry_msgs REQUIRED)
 find_package(CUDAToolkit REQUIRED)
 
+set(CUDAROBOTICS_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../../..")
+set(CUDA_MPPI_CORE_SOURCE "${CUDAROBOTICS_ROOT}/src/mppi_gpu.cu")
+
 set(ROS_DEPS
   rclcpp
   rclcpp_lifecycle
@@ -40,10 +43,11 @@ set(ROS_DEPS
 
 add_library(${PROJECT_NAME} SHARED
   src/cuda_mppi_controller.cpp
-  src/mppi_gpu.cu
+  ${CUDA_MPPI_CORE_SOURCE}
 )
 target_include_directories(${PROJECT_NAME} PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<BUILD_INTERFACE:${CUDAROBOTICS_ROOT}/include>
   $<INSTALL_INTERFACE:include>
 )
 ament_target_dependencies(${PROJECT_NAME} ${ROS_DEPS})
@@ -78,6 +82,7 @@ install(TARGETS mppi_gpu_standalone plugin_load_test controller_benchmark
   RUNTIME DESTINATION lib/${PROJECT_NAME}
 )
 install(DIRECTORY include/ DESTINATION include)
+install(DIRECTORY ${CUDAROBOTICS_ROOT}/include/cuda_mppi_controller DESTINATION include)
 install(FILES cuda_mppi_plugin.xml DESTINATION share/${PROJECT_NAME})
 install(DIRECTORY config DESTINATION share/${PROJECT_NAME})
 

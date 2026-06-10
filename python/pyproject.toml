@@ -1,0 +1,30 @@
+[build-system]
+requires = [
+  "scikit-build-core>=0.10",
+  "nanobind>=2.0",
+  "numpy>=1.23",
+]
+build-backend = "scikit_build_core.build"
+
+[project]
+name = "cudarobotics"
+version = "0.1.0"
+description = "CUDA-accelerated robotics algorithms and MPPI planning bindings"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+authors = [
+  { name = "CudaRobotics contributors" },
+]
+dependencies = [
+  "numpy>=1.23",
+]
+
+[project.optional-dependencies]
+examples = [
+  "matplotlib>=3.7",
+  "pillow>=9.0",
+]
+
+[tool.scikit-build]
+cmake.source-dir = "."
+wheel.packages = ["src/cudarobotics"]
