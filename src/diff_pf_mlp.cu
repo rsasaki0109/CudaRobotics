@@ -51,13 +51,6 @@
 #include "gpu_mlp.cuh"
 #include "cuda_check.cuh"
 
-    cudaError_t err = (call); \
-    if (err != cudaSuccess) { \
-        fprintf(stderr, "CUDA error at %s:%d: %s\n", __FILE__, __LINE__, \
-                cudaGetErrorString(err)); std::exit(EXIT_FAILURE); \
-    } \
-} while (0)
-
 using cudabot::GpuMLP;
 using cudabot::mlp_forward;
 
