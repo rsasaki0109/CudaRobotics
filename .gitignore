@@ -8,6 +8,9 @@ CMakeCache.txt
 code-server
 .claude
 .venv-mujoco/
+python/dist/
+python/build/
+python/.venv-test/
 deploy.sh
 __pycache__/
 *.pyc
