@@ -43,7 +43,10 @@ Stars come from being **used**, not watched. Demo mass-production is over
 2. ~~MPPI Zoo + SOPPI arXiv tech report~~ — **SKIPPED by user decision
    (2026-06-10). Do not pick this up unless the user re-requests it.**
    The zoo remains an internal benchmark + paper scaffold.
-3. **pip-installable Python bindings** — **MPPI + FilterReg + Sinkhorn/FGR/BCPD + RobustTreg/P2Plane BINDINGS DONE.**
+3. **pip-installable Python bindings** — **MPPI + registration BINDINGS DONE.**
+   **Packaging:** sdist + `linux_x86_64` wheels via CI (`python-package.yml`);
+   `scripts/sync_python_core.sh` bundles CUDA sources for PyPI-style installs.
+   `cibuildwheel` config is in `python/pyproject.toml` for broader manylinux wheels.
 
 **Distribution (HN / Reddit / ROS Discourse / X / Zenn) is user-owned.
 Agents must never post, announce, or publish anywhere external.** Producing
@@ -166,7 +169,9 @@ Python; a GPU MPPI / registration library they can `pip install` enters the
      `sinkhorn_gpu.cu`, `fgr_gpu.cu`, `bcpd_gpu.cu` + `examples/python/registration_quickstart.py`.
    - ~~Robust Student's-t / point-to-plane~~ **DONE:**
      `robust_treg_gpu.cu`, `robust_p2plane_gpu.cu` exposed as `RobustTreg` / `RobustP2Plane`.
-   - Packaging / wheels (`cibuildwheel`) remains a follow-up after API stabilizes.
+   - ~~Packaging / wheels~~ **PARTIAL DONE:** self-contained sdist +
+     `linux_x86_64` CI wheels; `scripts/sync_python_core.sh` + `python/tests/`;
+     manylinux `cibuildwheel` config present for maintainers.
 2. **Binding tech**: nanobind (faster builds, smaller wheels than
    pybind11) + `scikit-build-core` for the CMake bridge. Accept numpy
    first; torch/cupy zero-copy later via `__dlpack__` — do NOT block the

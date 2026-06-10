@@ -9,11 +9,25 @@ build-backend = "scikit_build_core.build"
 [project]
 name = "cudarobotics"
 version = "0.1.0"
-description = "CUDA-accelerated robotics algorithms and MPPI planning bindings"
+description = "CUDA-accelerated robotics algorithms: GPU MPPI and point-cloud registration"
+readme = "README.md"
 requires-python = ">=3.9"
 license = { text = "MIT" }
 authors = [
   { name = "CudaRobotics contributors" },
+]
+keywords = ["cuda", "robotics", "mppi", "registration", "gpu"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Science/Research",
+  "License :: OSI Approved :: MIT License",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.9",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: C++",
+  "Topic :: Scientific/Engineering :: Artificial Intelligence",
 ]
 dependencies = [
   "numpy>=1.23",
@@ -24,7 +38,43 @@ examples = [
   "matplotlib>=3.7",
   "pillow>=9.0",
 ]
+test = [
+  "pytest>=7.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/rsasaki0109/CudaRobotics"
+Repository = "https://github.com/rsasaki0109/CudaRobotics"
+Documentation = "https://github.com/rsasaki0109/CudaRobotics/tree/master/python"
 
 [tool.scikit-build]
 cmake.source-dir = "."
 wheel.packages = ["src/cudarobotics"]
+sdist.include = [
+  "core/**",
+  "README.md",
+]
+sdist.exclude = [
+  "dist/**",
+  "build/**",
+  ".pytest_cache/**",
+]
+
+[tool.cibuildwheel]
+build = "cp39-* cp310-* cp311-* cp312-*"
+skip = "pp* *musllinux* *win32 *macosx*"
+build-frontend = "build"
+
+[tool.cibuildwheel.linux]
+before-all = """
+set -eux
+yum install -y wget
+wget -q https://developer.download.nvidia.com/compute/cuda/repos/rhel8/x86_64/cuda-keyring-1.1-1.noarch.rpm
+rpm -i cuda-keyring-1.1-1.noarch.rpm
+yum install -y cuda-nvcc-12-0 cuda-cudart-devel-12-0
+"""
+environment = { CUDACXX = "/usr/local/cuda/bin/nvcc", CMAKE_CUDA_COMPILER = "/usr/local/cuda/bin/nvcc" }
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+filterwarnings = ["ignore::DeprecationWarning"]

@@ -70,13 +70,29 @@ Full animated gallery: https://rsasaki0109.github.io/CudaRobotics/
 ## Python MPPI Quickstart
 
 The reusable GPU MPPI core is available as an experimental Python package.
-It builds from source against a local CUDA Toolkit:
+Build requirements: Linux x86_64, CUDA Toolkit >= 12.0, CMake >= 3.18.
+
+**Development install** (uses repo-root CUDA sources directly):
 
 ```bash
 pip install -e python/
 pip install -e 'python/[examples]'  # optional: GIF rendering dependencies
 python examples/python/mppi_quickstart.py
 ```
+
+**Install from source distribution** (self-contained sdist; compiles against local CUDA):
+
+```bash
+./scripts/sync_python_core.sh   # maintainers: refresh bundled core before release
+cd python && python -m pip install build && python -m build
+pip install python/dist/cudarobotics-*.tar.gz
+pip install 'python/dist/cudarobotics-*.tar.gz[test]'
+pytest python/tests
+```
+
+CI attaches `linux_x86_64` wheels for Python 3.10/3.12 as workflow artifacts.
+They require a compatible NVIDIA driver at runtime. Manylinux `cibuildwheel` images
+are configured in `python/pyproject.toml` for maintainers who want broader wheels.
 
 Minimal use:
 
@@ -98,6 +114,7 @@ Rigid and non-rigid registration live under `cudarobotics.registration`:
 
 ```bash
 pip install -e python/
+# or from sdist: pip install python/dist/cudarobotics-*.tar.gz
 python examples/python/registration_quickstart.py
 ```
 
