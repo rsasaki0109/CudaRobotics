@@ -2,6 +2,7 @@
 
 [![GitHub stars](https://img.shields.io/github/stars/rsasaki0109/CudaRobotics?style=social)](https://github.com/rsasaki0109/CudaRobotics/stargazers)
 [![CUDA](https://img.shields.io/badge/CUDA-12.x-76B900)](https://developer.nvidia.com/cuda-toolkit)
+[![Docs](https://img.shields.io/badge/docs-v0.1.0-1f6f64)](https://rsasaki0109.github.io/CudaRobotics/docs/)
 [![Gallery](https://img.shields.io/badge/gallery-animated_demos-blue)](https://rsasaki0109.github.io/CudaRobotics/)
 [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/rsasaki0109/CudaRobotics/blob/master/examples/colab/cudarobotics_quickstart.ipynb)
 
@@ -57,6 +58,7 @@ Full animated gallery: https://rsasaki0109.github.io/CudaRobotics/
 
 | Want to see | Open |
 |---|---|
+| **Install / API / Nav2 docs** | [CudaRobotics docs site](https://rsasaki0109.github.io/CudaRobotics/docs/) |
 | **Try it in your browser (free Colab GPU)** | [Colab quickstart notebook](https://colab.research.google.com/github/rsasaki0109/CudaRobotics/blob/master/examples/colab/cudarobotics_quickstart.ipynb) |
 | Visual demos | [Full animated gallery](https://rsasaki0109.github.io/CudaRobotics/) |
 | **GPU MPPI controller plugin for Nav2** | [`ros2_ws/src/cuda_mppi_controller/`](ros2_ws/src/cuda_mppi_controller/) |

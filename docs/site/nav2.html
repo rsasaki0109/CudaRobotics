@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Nav2 CUDA MPPI Controller</title>
+  <meta name="description" content="Nav2 setup guide for the CudaRobotics CUDA MPPI controller plugin.">
+  <link rel="stylesheet" href="assets/site.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <a class="brand" href="index.html">CudaRobotics Docs</a>
+      <nav class="nav" aria-label="Primary">
+        <a href="install.html">Install</a>
+        <a href="python.html">Python API</a>
+        <a href="nav2.html" aria-current="page">Nav2</a>
+        <a href="results.html">Results</a>
+        <a href="https://rsasaki0109.github.io/CudaRobotics/">Gallery</a>
+      </nav>
+    </div>
+  </header>
+
+  <main>
+    <div class="page-head">
+      <p class="eyebrow">ROS 2 plugin</p>
+      <h1>Nav2 CUDA MPPI Controller</h1>
+      <p>
+        `cuda_mppi_controller::CudaMppiController` is a Nav2 controller plugin
+        that maps each sampled trajectory rollout to one CUDA thread. v0.1.0
+        includes DiffDrive, Ackermann, and Omni motion-model support.
+      </p>
+    </div>
+
+    <div class="content">
+      <section class="section split">
+        <div>
+          <h2>Build and Smoke Test</h2>
+          <div class="code">
+<pre><code>cd ros2_ws
+colcon build --packages-select cuda_mppi_controller \
+  --cmake-args -DCMAKE_BUILD_TYPE=Release
+source install/setup.bash
+
+ros2 run cuda_mppi_controller plugin_load_test
+ros2 run cuda_mppi_controller parameter_validation_test
+ros2 run cuda_mppi_controller mppi_gpu_standalone 2048</code></pre>
+          </div>
+        </div>
+        <figure class="media">
+          <img src="https://rsasaki0109.github.io/CudaRobotics/cuda_mppi_vs_nav2_cpu.gif" alt="CUDA MPPI and Nav2 CPU MPPI rollout comparison">
+          <figcaption>Closed-loop controller benchmark comparing the stock CPU controller and CUDA controller.</figcaption>
+        </figure>
+      </section>
+
+      <section class="section">
+        <div class="section-head">
+          <h2>Controller Server Config</h2>
+          <p>Point `controller_server` at the plugin and set the MPPI horizon, sample count, model, and limits.</p>
+        </div>
+        <div class="card">
+          <div class="code">
+<pre><code>controller_server:
+  ros__parameters:
+    controller_plugins: ["FollowPath"]
+    FollowPath:
+      plugin: "cuda_mppi_controller::CudaMppiController"
+      batch_size: 8192
+      time_steps: 56
+      model_dt: 0.05
+      motion_model: "DiffDrive"</code></pre>
+          </div>
+          <p>
+            Full example:
+            <a href="https://github.com/rsasaki0109/CudaRobotics/blob/master/ros2_ws/src/cuda_mppi_controller/config/cuda_mppi_params.example.yaml">cuda_mppi_params.example.yaml</a>.
+          </p>
+        </div>
+      </section>
+
+      <section class="section">
+        <div class="section-head">
+          <h2>Validated Parameters</h2>
+          <p>Invalid configuration is rejected during configure and live parameter updates before the optimizer is rebuilt.</p>
+        </div>
+        <div class="grid">
+          <article class="card">
+            <span class="tag">Horizon</span>
+            <h3>Batch, steps, dt</h3>
+            <p>`batch_size`, `time_steps`, `iteration_count`, `model_dt`, and `temperature` must be positive.</p>
+          </article>
+          <article class="card">
+            <span class="tag amber">Limits</span>
+            <h3>Velocity and model limits</h3>
+            <p>Control bounds must be finite and internally consistent for the selected motion model.</p>
+          </article>
+          <article class="card">
+            <span class="tag blue">Costs</span>
+            <h3>Weights and lookahead</h3>
+            <p>Weights, lookahead distances, transform tolerance, and retreat scale reject invalid values.</p>
+          </article>
+        </div>
+      </section>
+
+      <section class="section">
+        <div class="section-head">
+          <h2>Motion Models</h2>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Model</th>
+                <th>Controls</th>
+                <th>Notes</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>DiffDrive</td>
+                <td>`vx`, `wz`</td>
+                <td>Default model for differential-drive bases.</td>
+              </tr>
+              <tr>
+                <td>Ackermann</td>
+                <td>`vx`, curvature-limited `wz`</td>
+                <td>Uses `min_turning_r` to limit angular rate by forward speed.</td>
+              </tr>
+              <tr>
+                <td>Omni</td>
+                <td>`vx`, `vy`, `wz`</td>
+                <td>Adds lateral velocity sampling and limits.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="section">
+        <div class="grid two">
+          <article class="card">
+            <h3>Plugin README</h3>
+            <p><a href="https://github.com/rsasaki0109/CudaRobotics/tree/master/ros2_ws/src/cuda_mppi_controller">ros2_ws/src/cuda_mppi_controller</a></p>
+          </article>
+          <article class="card">
+            <h3>Benchmark report</h3>
+            <p><a href="https://github.com/rsasaki0109/CudaRobotics/blob/master/docs/results/cuda_mppi_vs_nav2_2026-06-10.md">CUDA MPPI vs Nav2 CPU MPPI</a></p>
+          </article>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <footer class="footer">
+    <div class="footer-inner">
+      <span>CudaRobotics documentation</span>
+      <span><a href="index.html">Docs home</a></span>
+    </div>
+  </footer>
+</body>
+</html>

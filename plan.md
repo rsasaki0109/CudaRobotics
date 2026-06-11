@@ -1,12 +1,12 @@
 # CudaRobotics Plan / Handoff (for Codex / Claude)
 
-Last updated: 2026-06-11 JST (`9f3b951` — Nav2 plugin parameter validation
-landed after CUDA DLPack costmaps and the registration external benchmark.
-v0.1.0 release publishing is authorized and in progress; release notes and the
-smoke checklist now live under `docs/releases/`. Jetson/aarch64 support is
-intentionally skipped for now by user direction. Note: some older sections below
-carry their own internal dates — treat section headers as the ordering authority
-within each line, not this single timestamp.)
+Last updated: 2026-06-11 JST (`51b663f` — v0.1.0 release docs merged,
+tagged, released, and the GHCR tag workflow verified after Nav2 parameter
+validation, CUDA DLPack costmaps, and the registration external benchmark.
+Current active work is the docs site source on `codex/docs-site`. Jetson/aarch64
+support is intentionally skipped for now by user direction. Note: some older
+sections below carry their own internal dates — treat section headers as the
+ordering authority within each line, not this single timestamp.)
 
 This document is the long-form handoff for the next coding agent (Codex).
 It captures: (1) where the repo is right now, (2) what was just done over
@@ -27,8 +27,9 @@ There are now **two active lines** in this repo:
    plugin (#175), pip bindings + packaging (#176–#180), Colab quickstart
    (#181), Docker demo (#183), working manylinux wheels (#184–#186),
    registration-vs-probreg/Open3D benchmark results (#187), CUDA DLPack
-   costmaps (#188), and Nav2 parameter validation (#189). v0.1.0 release is
-   being published from the current `master` line.
+   costmaps (#188), Nav2 parameter validation (#189), and the v0.1.0 release
+   checklist / notes (#190). v0.1.0 is published from the current `master`
+   line.
 2. **Research line** — SOPPI / Diff-MPPI box-pushing reproduction zoo
    (see "Research Line State" below; `box_align_contact_loss` lifted to **1.00**;
    `box_align_detour` still the open hard cell at **0.25**).
@@ -37,10 +38,13 @@ There are now **two active lines** in this repo:
 
 ## Current State (2026-06-11) — star-growth funnel sprint
 
-Mainline: **`master` at `9f3b951`**, in sync with `origin/master`, after the
+Mainline: **`master` at `51b663f`**, in sync with `origin/master`, after the
 hardware-string history rewrite, registration external benchmark merge (#187),
-CUDA DLPack costmap merge (#188), and Nav2 parameter validation merge (#189).
-Current local work: v0.1.0 release checklist / notes, then tag + GitHub release.
+CUDA DLPack costmap merge (#188), Nav2 parameter validation merge (#189), and
+v0.1.0 release docs merge (#190). Tag `v0.1.0`, GitHub Release assets, and the
+GHCR tag workflow are complete. Current local work: docs site source on
+`codex/docs-site`, intended to publish under the existing Pages gallery at
+`/docs/` without replacing the `gh-pages` root.
 
 ### What landed this session (all squash-merged)
 
@@ -55,12 +59,13 @@ Current local work: v0.1.0 release checklist / notes, then tag + GitHub release.
 | #187 | registration external benchmark results (`scripts/benchmark_registration_external.py`, `docs/results/registration_external_baselines_2026-06-11.*`, README links) | distribution-ready comparison against probreg/Open3D CPU baselines, with generic hardware wording only |
 | #188 | CUDA DLPack costmap support for Python `MppiPlanner.compute()` | learning stacks can pass CUDA tensors as costmaps without staging through host memory; NumPy host path remains unchanged |
 | #189 | Nav2 MPPI parameter validation (`parameter_validation_test`, Humble/Jazzy exception shims) | invalid controller settings fail clearly during configure/live updates, before reaching CUDA allocation/rollout |
+| #190 | v0.1.0 release checklist / notes, tag, GitHub Release assets, and GHCR tag workflow verification | first public release path with wheels, sdist, Colab, Docker, and explicit PyPI skip |
 
 Wheel sanity check done: the cp312 manylinux wheel was installed into a fresh
 venv on this machine; `MppiPlanner.compute` and
 `registration.FilterReg.register` both run correctly on the GPU.
 
-### v0.1.0 release — AUTHORIZED / IN PROGRESS
+### v0.1.0 release — PUBLISHED
 
 The user explicitly authorized `1,2,3 de yattekou!` after the release plan:
 update `plan.md`, add a release smoke checklist, then publish v0.1.0.
@@ -70,24 +75,35 @@ Release docs:
 - `docs/releases/v0.1.0_smoke_checklist.md`
 - `docs/releases/v0.1.0_notes.md`
 
-Artifacts were re-downloaded from Python package run `27308990292` to
-`/tmp/v010_wheels/`:
+Artifacts were re-downloaded from Python package run `27308990292` and uploaded
+to the GitHub Release:
 
 - `cudarobotics-0.1.0.tar.gz`
 - CPython 3.10 / 3.12 manylinux x86_64 wheels
 
-```bash
-git fetch origin && git tag v0.1.0 origin/master && git push origin v0.1.0
-# tag push auto-builds + publishes the GHCR demo image (docker-image.yml)
-gh release create v0.1.0 \
-  --title "v0.1.0 - Nav2 GPU MPPI plugin, Python package, Colab & Docker" \
-  --notes-file docs/releases/v0.1.0_notes.md \
-  /tmp/v010_wheels/cudarobotics-manylinux-wheels/*.whl \
-  /tmp/v010_wheels/cudarobotics-wheels/cudarobotics-0.1.0.tar.gz
-```
+- Release URL: https://github.com/rsasaki0109/CudaRobotics/releases/tag/v0.1.0
+- Tag: `v0.1.0` at `51b663f714c937c0b2f880780c32de47995eaa3d`
+- Docker workflow run: `27322084444`, conclusion `success`
+- GHCR image tags expected from that workflow:
+  `ghcr.io/rsasaki0109/cuda-mppi-controller-demo:v0.1.0` and `latest`
 
 PyPI remains explicitly **skipped by user decision** — do not add PyPI
 publishing in this release.
+
+### Docs site — IN FLIGHT (`codex/docs-site`)
+
+Goal: make install, Python API, Nav2 plugin, Docker/release, and benchmark
+entry points browsable from a small static site under
+`https://rsasaki0109.github.io/CudaRobotics/docs/`.
+
+Implementation direction:
+
+- Keep existing GitHub Pages source as `gh-pages:/`; it serves the animated
+  gallery and must not be replaced by a whole-branch Pages deploy workflow.
+- Add source files under `docs/site/` on `master`.
+- Deploy by copying `docs/site/` into `gh-pages:/docs/` so the docs site can
+  coexist with the gallery root.
+- README should link to the live docs URL after `gh-pages` is updated.
 
 ### Registration external benchmark — LANDED (#187)
 
@@ -155,9 +171,8 @@ Implementation:
 
 Short term (this week):
 
-1. **Finish v0.1.0 publish** (agent authorized this turn): merge release docs,
-   tag `origin/master`, create the GitHub release with wheel/sdist assets, then
-   verify the GHCR tag workflow.
+1. **Finish docs site**: land `docs/site/`, publish it to `gh-pages:/docs/`,
+   and verify the live URL does not disturb the gallery root.
 2. **Distribution** (HN / Reddit / ROS Discourse / X / Zenn) remains
    user-owned. Agents can prepare copy, but should not post externally.
 
@@ -170,9 +185,8 @@ Mid term — pick ONE based on which funnel converts after the release
   footprint device inputs only if a real user workflow needs them.
 - **nav2 plugin field validation** — real robot / real bag data; produces
   ROS-Discourse-grade material. Humble compat is already in.
-- **Docs site** — API reference (nanobind stubs) on gh-pages next to the
-  gallery. Lower upside than the three above; pick only if incoming issues
-  show docs pain.
+- **Docs site** — selected now. Keep it focused on user entry points and avoid
+  replacing the existing `gh-pages` gallery.
 
 Research line: the Diff-MPPI contact paper is at the **submit** stage
 (evidence complete through the #166 capstone; 8-page clean build). Next
@@ -186,11 +200,12 @@ agents build material, the user distributes and publishes.
 
 ### Working tree inventory (untracked / WIP — handle with care)
 
-- `docs/releases/v0.1.0_smoke_checklist.md` — release smoke checklist.
-- `docs/releases/v0.1.0_notes.md` — GitHub release notes file.
-- `plan.md` — current handoff update for v0.1.0 publishing.
+- `docs/site/` — static docs site source for `/docs/` on GitHub Pages.
+- `readme.md` — docs site badge / Start Here row.
+- `plan.md` — current handoff update after v0.1.0 publishing and docs site
+  selection.
 - `src/benchmark_diff_mppi_pushing_box.cu` — user research WIP if present; do
-  not bundle into this star-growth benchmark commit.
+  not bundle into this star-growth docs commit.
 
 ### New environment gotchas (this session)
 
