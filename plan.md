@@ -1,10 +1,13 @@
 # CudaRobotics Plan / Handoff (for Codex / Claude)
 
-Last updated: 2026-06-10 JST (nav2 GPU MPPI controller plugin #175 merged;
-initial MPPI Python bindings added; retreat + SE(2) footprint follow-ups
-implemented. Note: some older sections below carry their own internal dates —
-treat section headers as the ordering authority within each line, not this
-single timestamp.)
+Last updated: 2026-06-11 JST (`b917597` — star-growth **funnel sprint**
+landed: Colab quickstart #181, Docker demo image #183, master-CI repair #182,
+and the manylinux wheel pipeline fixed end-to-end in #184/#185/#186 — the
+first successful manylinux wheels ever built for this repo. v0.1.0 release is
+fully prepared but NOT yet published (user-owned action; see below). Note:
+some older sections below carry their own internal dates — treat section
+headers as the ordering authority within each line, not this single
+timestamp.)
 
 This document is the long-form handoff for the next coding agent (Codex).
 It captures: (1) where the repo is right now, (2) what was just done over
@@ -20,19 +23,199 @@ authoritative without cross-checking the current-state block.
 
 There are now **two active lines** in this repo:
 
-1. **Star-growth / product line** (NEW, top section) — make CudaRobotics a
-   *used* library, not a watched gallery. First artifact: the nav2 GPU MPPI
-   controller plugin, merged as #175. Next: pip Python bindings.
+1. **Star-growth / product line** (top section) — make CudaRobotics a
+   *used* library, not a watched gallery. Shipped so far: nav2 GPU MPPI
+   plugin (#175), pip bindings + packaging (#176–#180), Colab quickstart
+   (#181), Docker demo (#183), working manylinux wheels (#184–#186).
+   v0.1.0 release prepared; registration-vs-probreg/Open3D benchmark in
+   flight (see Current State 2026-06-11).
 2. **Research line** — SOPPI / Diff-MPPI box-pushing reproduction zoo
-   (see "Research Line State" below; unchanged by this sprint).
+   (see "Research Line State" below; `box_align_contact_loss` lifted to **1.00**;
+   `box_align_detour` still the open hard cell at **0.25**).
 
 ---
 
-## Current State (2026-06-10, star-growth sprint: nav2 GPU MPPI plugin)
+## Current State (2026-06-11) — star-growth funnel sprint
 
-Mainline: **`master` at `32995ff`** (`Add cuda_mppi_controller: GPU-accelerated
-MPPI controller plugin for Nav2 (#175)`), in sync with `origin/master`.
+Mainline: **`master` at `b917597`**, in sync with `origin/master`, **all CI
+green** (build + python-package incl. cibuildwheel). No in-flight PR. Local
+working tree carries the user's research WIP (`plan.md`,
+`src/benchmark_diff_mppi_pushing_box.cu` — detour-tuning sweep flags, do NOT
+bundle into unrelated commits) plus two new untracked files (see "Working
+tree inventory" below).
+
+### What landed this session (all squash-merged)
+
+| PR | What | Why it matters |
+|---|---|---|
+| #181 | `examples/colab/cudarobotics_quickstart.ipynb` + README Colab badge / Start-Here row | "Try in browser on a free Colab GPU" funnel entry. Cells verified locally on GPU (MPPI goal in 333 steps @K=16,384; FilterReg 0.07 deg) |
+| #183 | `docker/` demo image + `.github/workflows/docker-image.yml` (GHCR push on `v*` tags / dispatch) | `docker run --rm --gpus all ghcr.io/rsasaki0109/cuda-mppi-controller-demo` runs plugin_load_test + the CPU-vs-GPU controller_benchmark. ros:jazzy 2-stage, 307 MB compressed, verified end-to-end on this machine |
+| #182 | **master CI repair**: removed orphaned `CUDA_CHECK` macro bodies from **39 src/*.cu files** (3 per-file variants), pure deletions −310 lines | A Cursor-agent commit (`71443a1`) removed the `#define CUDA_CHECK(call)` lines but left the backslash-continued macro bodies at file scope — master Build was red since 2026-06-10 16:46 UTC |
+| #184 | cibuildwheel: NVIDIA **deleted** `cuda-keyring-1.1-1.noarch.rpm` from the rhel8 repo (404) → switched to `yum-config-manager + cuda-rhel8.repo` + `--setopt=obsoletes=0` (repo now marks `cuda-cccl-12-0` obsoleted by `cccl-13-3`) | manylinux wheels had NEVER built successfully; the Ubuntu keyring debs (`ros2_cuda_mppi.yml`, `docker/Dockerfile`) still exist and are unaffected |
+| #185 | cibuildwheel: add `libcurand-devel-12-0` (CMake `CUDA::curand` target missing) | exposed only after #184 let the build reach CMake for the first time |
+| #186 | cibuildwheel: add `*i686*` to skip lists (NVIDIA ships no 32-bit CUDA; the i686 container died in before-all) | with this, **cibuildwheel is green**: cp310/cp312 manylinux2014 x86_64 wheels (113 MB artifact, run 27308990292) |
+
+Wheel sanity check done: the cp312 manylinux wheel was installed into a fresh
+venv on this machine; `MppiPlanner.compute` and
+`registration.FilterReg.register` both run correctly on the GPU.
+
+### v0.1.0 release — PREPARED, awaiting the user (publishing is user-owned)
+
+Everything is staged; the permission system (correctly) refuses agents
+pushing tags / creating public releases. To publish:
+
+```bash
+git fetch origin && git tag v0.1.0 origin/master && git push origin v0.1.0
+# tag push auto-builds + publishes the GHCR demo image (docker-image.yml)
+gh release create v0.1.0 \
+  --title "v0.1.0 — Nav2 GPU MPPI plugin, Python package, Colab & Docker" \
+  --notes-file .release_notes_v0.1.0.md \
+  /tmp/v010_wheels/cudarobotics-manylinux-wheels/*.whl \
+  /tmp/v010_wheels/cudarobotics-wheels/cudarobotics-0.1.0.tar.gz
+```
+
+Notes draft: `.release_notes_v0.1.0.md` (repo root, untracked). Wheels are
+already downloaded to `/tmp/v010_wheels/` (re-download with
+`gh run download 27308990292` if /tmp was cleared). PyPI was explicitly
+**skipped by user decision** — do not add PyPI publishing.
+
+### Registration external benchmark — IN PROGRESS (the one open thread)
+
+Goal: a distribution-ready table comparing our GPU registration against
+probreg 0.3.8 (CPU) and Open3D 0.19.0 (CPU) — same pairs (lumpy surface, 85%
+overlap, sigma 0.02 noise, identity init), median of 3 trials, per-cell
+subprocess isolation (probreg CPD OOM-killed a monolithic run once).
+Script: `scripts/benchmark_registration_external.py` (untracked, working;
+venv: `/tmp/regbench_venv`).
+
+Stable findings across runs (benchmark GPU vs benchmark CPU):
+
+- **cudarobotics FilterReg (GPU): ~140→190 ms flat across N=2k→32k**,
+  rot_err 0.05–0.15 deg; run-to-run variance <3%.
+- **probreg FilterReg (same algorithm, CPU): 5x–33x slower**, gap grows
+  with N. FAIRNESS NOTE (do not regress this): probreg needs
+  `update_sigma2=True` or it plateaus at >15 deg rotation error on these
+  partially overlapping pairs — defaults would be a strawman. Already set
+  in the script with a comment.
+- probreg CPD rigid: accurate but O(N^2) — 4 s @2k, 75 s @8k, timeout @32k.
+- Open3D GICP is the strongest CPU baseline (accurate, 130–574 ms); our
+  GPU FilterReg is comparable-to-3x vs it. Do NOT oversell this cell;
+  the headline is the same-algorithm probreg comparison.
+- **Measurement hygiene**: this machine runs other projects' batch jobs
+  (rko_lio, sr_fuse, gnss_ppp, pytest sweeps; AirSim was killed with user
+  permission) — load spiked to 34 mid-run once and inflated the 32k CPU
+  cells ~4x. The script now records `load_before`/`load_after` per cell;
+  a background retry loop is armed to capture a fully-clean run (every
+  cell load <12) into `/tmp/regbench_clean.csv` (up to 6 attempts).
+
+NEXT STEP for the next agent: take `/tmp/regbench_clean.csv` (or re-run
+`scripts/benchmark_registration_external.py --sizes 2000 8000 32000
+--trials 3 --csv ...` with `/tmp/regbench_venv/bin/python` when 1-min load
+is <8), write `docs/results/registration_external_baselines_<date>.md` +
+CSV (include library versions, hardware, protocol, the update_sigma2
+fairness note, and the per-cell load columns), commit the script alongside,
+PR it. Optionally add a row to the readme Start Here table.
+
+### Direction from here (2026-06-11) — supersedes the old Next-Task Menu below
+
+Short term (this week):
+
+1. **Publish v0.1.0** (user; commands above) → then distribution
+   (HN / Reddit / ROS Discourse / X / Zenn — user-owned, never agents).
+2. **Finish the registration external benchmark** (agent; NEXT STEP above)
+   → `docs/results/` MD+CSV PR. This is the last piece of distribution
+   material.
+
+Mid term — pick ONE based on which funnel converts after the release
+(watch stars/traffic/issues per entry point):
+
+- **Jetson / aarch64** — most robotics GPU users run Jetson, not desktop
+  GPUs. arm64 wheels and/or an L4T Docker image. Caveat: no Jetson on this
+  machine; needs user hardware for verification.
+- **torch/cupy zero-copy (`__dlpack__`)** — lets the GPU MPPI core sit
+  inside learning pipelines without host round-trips; deliberately deferred
+  from the first pip release.
+- **nav2 plugin field validation** — real robot / real bag data; produces
+  ROS-Discourse-grade material. Humble compat is already in.
+- **Docs site** — API reference (nanobind stubs) on gh-pages next to the
+  gallery. Lower upside than the three above; pick only if incoming issues
+  show docs pain.
+
+Research line: the Diff-MPPI contact paper is at the **submit** stage
+(evidence complete through the #166 capstone; 8-page clean build). Next
+external-validity step requires real data / hardware — i.e. write-up is
+done, stop adding same-model cells (`box_align_detour` deepening risks
+"asase de tyaputyapu"). SOPPI detour cell (0.25) stays open but is not the
+priority.
+
+Standing principles: stars come from being *used*; depth over breadth;
+agents build material, the user distributes and publishes.
+
+### Working tree inventory (untracked / WIP — handle with care)
+
+- `scripts/benchmark_registration_external.py` — NEW, to be committed with
+  the results-doc PR.
+- `.release_notes_v0.1.0.md` — release-notes draft consumed by
+  `gh release create`; keep untracked (it is release copy, not a repo doc).
+- `plan.md`, `src/benchmark_diff_mppi_pushing_box.cu` — the user's research
+  WIP (box_align_detour sweep). Do not commit as part of star-growth work.
+- venvs: `/tmp/regbench_venv` (probreg + open3d + cudarobotics),
+  `/tmp/wheeltest_venv` (wheel verification).
+
+### New environment gotchas (this session)
+
+- **NVIDIA repo churn**: the rhel8 keyring rpm was deleted upstream; any CI
+  step that downloads from developer.download.nvidia.com can break with no
+  repo change. First failure mode to check when CI goes red (it caused BOTH
+  master CI failures this session alongside the macro breakage).
+- **Permission boundary**: agents may create branches/PRs freely; merging
+  to master, pushing tags, and creating releases require explicit user
+  authorization in the current message ("merge!" worked; tag+release was
+  refused even after merges — that refusal is correct, leave publishing to
+  the user).
+- **CPU benchmarking on this box needs a load gate**: check `/proc/loadavg`
+  (<8 1-min) before starting and record per-cell load; other projects'
+  batch jobs start unpredictably.
+
+---
+
+## Previous State (2026-06-10)
+
+Mainline: **`master` at `486cca6`** (`Raise soppi_fast to 1.00 on
+box_align_contact_loss and sync results.`), in sync with `origin/master`.
 **No in-flight PR.**
+
+### Research sprint landed same day (`486cca6`)
+
+- **`soppi_fast` on `box_align_contact_loss` → 1.00** — subset SVGD defaults
+  (`neighbor_count=112`, `svgd_iters=2`, `step_size=0.05`, `bandwidth=2.0`) plus
+  **one** nominal trajectory grad step (`grad_steps=1`, `alpha=0.010`). Pure subset
+  SVGD alone plateaued at **0.75** (seed 3 at `pos=0.287` vs `pos_tol=0.28`).
+- **`box_align_contact_arc`** — wider gate documents pure SVGD at **1.00** without
+  nominal grad; strict `box_align_contact_loss` stays the hard contact cell.
+- Artifacts: `docs/results/soppi_box_pushing_2026-06-10.{md,csv}` (8-scenario row),
+  `docs/results/soppi_box_pushing_2026-06-14.{md,csv}` (7-scenario row, contact-loss
+  cell updated), `docs/soppi_reproduction.md`, `readme.md`.
+
+### Active research thread (not yet committed)
+
+**Lift `box_align_detour`** — canonical seeds (`K=256`, 4 seeds) still **0.25** for
+`diff_mppi_3` and `soppi_fast_g3` (only seed 2 clears; failures cluster at
+`pos≈0.24–0.27` vs `pos_tol=0.22`). Short probes on 2026-06-10:
+
+- `grad_steps` / `alpha` grid and SOPPI hyperparameter sweep did **not** beat **0.25**.
+- Raising `K` to 512/1024 **regressed** hybrid planners to **0.00** on this cell.
+- `oi_lp_mppi` reaches **1.00** (object-informed nominal seeding — different
+  mechanism than SVGD + nominal grad; not a SOPPI-family headline).
+- Likely next moves: light nominal-guidance hybrid, scenario geometry pass, or a
+  wider-gate `box_align_detour_arc` companion cell (mirror `box_align_contact_arc`).
+
+---
+
+### Star-growth line (nav2 GPU MPPI plugin, #175)
+
+Merged at `32995ff` (#175). Details, headline numbers, and tuning lessons are in the
+sections below under this Current State block.
 
 ### Strategy context (agreed with user, 2026-06-10)
 
@@ -146,7 +329,12 @@ python3 scripts/render_cuda_mppi_benchmark.py /tmp/mppi_bench 2026-06-10
 
 ---
 
-## Next-Task Menu (star-growth line) — pick ONE, in priority order
+## Next-Task Menu (star-growth line) — SUPERSEDED (2026-06-11)
+
+**This menu is historical**: items A (pip bindings/packaging) and B (plugin
+follow-ups) are fully DONE; the live menu is "Direction from here
+(2026-06-11)" inside the Current State section above. Kept for the detail it
+carries on the completed work.
 
 ### A. `pip install cudarobotics` — Python bindings (strategy item 3)
 
@@ -212,19 +400,19 @@ Python; a GPU MPPI / registration library they can `pip install` enters the
 7. ~~**Humble backport check**~~ **DONE** — `nav2_compat.hpp` maps
    `InvalidPath` → `PlannerException` when `CUDAMPPI_NAV2_HUMBLE=1`.
 
-### C. Research line (SOPPI) — unchanged
+### C. Research line (SOPPI)
 
-See "Research Line State" below. Priority within that line is still
-`soppi_fast` on `box_align_contact_loss`, then a stronger contact-loss
-cell. The arXiv packaging of the MPPI zoo is **skipped** (user decision).
+See "Research Line State" below. **`box_align_contact_loss` is DONE (1.00).**
+Active priority: **`box_align_detour`** (gradient-positive / sampling-negative,
+stuck at **0.25**). The arXiv packaging of the MPPI zoo is **skipped** (user
+decision).
 
 ---
 
-## Research Line State: SOPPI box pushing (2026-06-14 snapshot, preserved)
+## Research Line State: SOPPI box pushing (2026-06-10, `486cca6`)
 
-(Snapshot taken at `master` = `5545dfd`; mainline has since moved — see the
-star-growth Current State above. Within the RESEARCH line, the active thread
-is the **SOPPI / Diff-MPPI box-pushing reproduction zoo** — not SLAM, not
+(Mainline = `486cca6`; see Current State above for star-growth context. Active
+thread: **SOPPI / Diff-MPPI box-pushing reproduction zoo** — not SLAM, not
 MegaParticles, not shared-header cleanup.)
 
 ### What just landed (2026-06-04 → 2026-06-14)
@@ -243,9 +431,12 @@ where different planner families win for *different mechanistic reasons*:
 | #173 | `box_align_contact_loss` + `w_contact_loss` penalty | pure `soppi` 0.25 vs `mppi` 0.00 |
 
 Full reproduction notes: [`docs/soppi_reproduction.md`](docs/soppi_reproduction.md).
-Latest checked-in box row: [`docs/results/soppi_box_pushing_2026-06-14.md`](docs/results/soppi_box_pushing_2026-06-14.md).
+Latest checked-in rows:
 
-### Box pushing scenario taxonomy (7 scenarios, append-only seed discipline)
+- 8-scenario canonical: [`docs/results/soppi_box_pushing_2026-06-10.md`](docs/results/soppi_box_pushing_2026-06-10.md)
+- 7-scenario (no `box_align_contact_arc`): [`docs/results/soppi_box_pushing_2026-06-14.md`](docs/results/soppi_box_pushing_2026-06-14.md)
+
+### Box pushing scenario taxonomy (8 scenarios, append-only seed discipline)
 
 Scenarios are registered in `src/benchmark_diff_mppi_pushing_box.cu` in this
 order (seed formula `6000 + si*100 + seed*7 + K`; **append new scenarios LAST**
@@ -259,7 +450,8 @@ so published numbers for `si=0..N-1` stay byte-identical):
 | `box_swivel` | **negative control** — wide tol, corner push | MPPI 0.75; pure `soppi` **1.00** (sampling NOT contact-starved) |
 | `box_align_strict` | orientation-binding gate | `pos_tol=0.28`, `ang_tol=0.08`; Diff-MPPI 1.00, `soppi_fast` 0.75 |
 | `box_align_detour` | obstacle wall on direct push lane | **gradient-positive / sampling-negative**; only `diff_mppi_3` and `soppi_fast_g3` at 0.25 |
-| `box_align_contact_loss` | **contact-loss cell** (NEW) | `w_contact_loss=47`, `w_near=0`; pure `soppi` 0.25 vs `mppi` 0.00 |
+| `box_align_contact_loss` | **contact-loss cell** (strict) | `w_contact_loss=47`, `w_near=0`; `soppi_fast` **1.00** (one nominal grad step) vs `mppi` 0.00 |
+| `box_align_contact_arc` | contact-loss / pure-SOPPI (wide gate) | same penalty, `pos_tol=0.30`, `ang_tol=0.12`; `soppi` / `soppi_fast` **1.00** |
 
 ### Benchmark cell labels (use these when writing results)
 
@@ -270,14 +462,15 @@ so published numbers for `si=0..N-1` stay byte-identical):
 3. **Obstacle / nominal-grad-positive** — `box_align_detour`: pure SVGD fails;
    needs nominal trajectory grad steps (`diff_mppi_3`, `soppi_fast_g3`).
 4. **Contact-loss / SVGD-positive** — `box_align_contact_loss`: stage penalty on
-   pusher-box gap; differentiable contact gradient in SVGD score helps **without**
-   nominal grad steps (all-pairs `soppi` 0.25, `mppi` 0.00, `soppi_fast` 0.00).
+   pusher-box gap; subset SVGD + **one** nominal grad step lifts `soppi_fast` to
+   **1.00**; all-pairs `soppi` **0.50** without nominal grad; `mppi` **0.00**.
+   `box_align_contact_arc` is the wide-gate pure-SOPPI companion.
 
 Do NOT collapse these into one headline. Each cell tests a different failure mode.
 
 ### Latest numbers (`K=256`, seed-count 4, `--quick`)
 
-From `docs/results/soppi_box_pushing_2026-06-14.csv`:
+From `docs/results/soppi_box_pushing_2026-06-10.csv` (8-scenario canonical row):
 
 | Scenario | mppi | soppi | soppi_fast | diff_mppi_3 | soppi_fast_g3 |
 |---|---:|---:|---:|---:|---:|
@@ -285,6 +478,7 @@ From `docs/results/soppi_box_pushing_2026-06-14.csv`:
 | box_align_strict | 0.75 | 0.50 | 0.75 | **1.00** | — |
 | box_align_detour | 0.00 | 0.00 | 0.00 | 0.25 | 0.25 |
 | box_align_contact_loss | 0.00 | 0.50 | **1.00** | **1.00** | — |
+| box_align_contact_arc | 1.00 | **1.00** | **1.00** | 1.00 | — |
 
 Navigation suite (separate benchmark): SOPPI still **2/10** solved cells
 (`narrow_passage` only). Treat navigation as honest negative coverage; box
@@ -306,7 +500,8 @@ File: `src/benchmark_diff_mppi_pushing_box.cu`
   `soppi_svgd_step_kernel` (RBF SVGD in normalized action space),
   `fixed_rollout_kernel` (re-evaluate moved samples before MPPI weighting).
 - **CLI overrides**: `--override-soppi-iters`, `--override-soppi-step-size`,
-  `--override-soppi-bandwidth`, `--override-soppi-neighbors`.
+  `--override-soppi-bandwidth`, `--override-soppi-neighbors`. (Local WIP, not on
+  `master`: `--override-grad-steps`, `--override-alpha` for detour tuning sweeps.)
 - **Diagnostics** (optional modes): mechanism diag (`escape_frac`, `contact_frac`),
   gradient-agreement capstone (smooth autodiff vs hard-plant FD).
 
@@ -359,9 +554,12 @@ tests). Recent PRs #172/#173 both green.
 4. **Pure SVGD ≠ subset SVGD** — all-pairs `soppi` can beat MPPI where `soppi_fast`
    (32-neighbor subset) still fails (`box_align_contact_loss`). Do not assume
    `soppi_fast` tracks `soppi` on hard cells.
-5. **Obstacle detour needs nominal grad** — SVGD on sample distribution does not
-   substitute for Diff-MPPI nominal trajectory steps on `box_align_detour`; hybrid
-   `soppi_fast_g3` is the honest fix, not more SVGD tuning alone.
+5. **Obstacle detour needs nominal grad (and more)** — SVGD on sample distribution does
+   not substitute for Diff-MPPI nominal trajectory steps on `box_align_detour`; hybrid
+   `soppi_fast_g3` matches `diff_mppi_3` at **0.25** but one nominal grad step (as on
+   contact-loss) is **not** enough. `grad_steps`/`alpha` and SOPPI hyperparameter sweeps
+   did not beat **0.25**; `K>256` regressed. `oi_lp_mppi` at **1.00** shows the detour
+   is feasible with object-informed nominal seeding — a different mechanism.
 6. **`box_pivot_contact_loss` was tried and dropped** — pivot geometry + contact
    penalty did not yield a clean pure-SOPPI > MPPI cell under full-suite seeds;
    kept only `box_align_contact_loss`.
@@ -392,15 +590,18 @@ Priority order for the next coding agent:
    `slalom` final distance improves (7.1 vs 19.4 m for `mppi`) but success stays 0;
    full 10-scenario zoo headline remains ~2/10 — honest partial win, not a new solved cell.
 
-5. **Mechanical / unrelated** — Open Threads A (readme headline table refresh,
-   `cuda_check.cuh` back-migration) if user wants a low-risk maintenance PR instead.
+5. **Lift `box_align_detour`** — **ACTIVE** (canonical **0.25** for `diff_mppi_3` /
+   `soppi_fast_g3`; target **≥0.50** on fixed seeds without widening claims). Probe
+   notes in Current State above. Candidate moves: light OI nominal blend on hybrid
+   planner, geometry/`w_obs` pass, or `box_align_detour_arc` wide-gate companion.
+
+6. **Mechanical / unrelated** — Open Threads A mostly **DONE** (readme Highlights,
+   `cuda_check.cuh` back-migration). Low-risk filler if user wants maintenance only.
 
 Start on a fresh branch:
 
 ```bash
-git switch -c feat/soppi-fast-contact-loss master
-# or
-git switch -c feat/soppi-sweep-baseline-planners master
+git switch -c feat/soppi-detour-lift master
 ```
 
 ---
@@ -1311,11 +1512,13 @@ any new scan-matching / SLAM / optimisation work.
 ## Open Threads (parked but not abandoned)
 
 ### SOPPI / box pushing (ACTIVE — see Current State)
-- **`soppi_fast` on `box_align_contact_loss`**: **DONE (2026-06-10)** — subset SVGD +
+- **`soppi_fast` on `box_align_contact_loss`**: **DONE (`486cca6`)** — subset SVGD +
   one nominal grad step reaches **1.00** on canonical seeds (vs `mppi` 0.00, all-pairs
   `soppi` 0.50); see `docs/results/soppi_box_pushing_2026-06-10.md`.
 - **Stronger pure-SOPPI cell**: `box_align_contact_arc` at **1.00** for `soppi` /
   `soppi_fast` (K=256, 4 seeds); documented in same report.
+- **`box_align_detour` lift**: **ACTIVE** — `diff_mppi_3` / `soppi_fast_g3` at **0.25**;
+  `oi_lp_mppi` **1.00** (OI nominal, not SOPPI headline). See Current State probe notes.
 - **Canonical scenario seeds for filtered runs**: **DONE** — `--scenarios` probes now
   use stable `si` from the full scenario list (isolated tuning matches full suite).
 - **`scripts/sweep_soppi.py --baseline-planners`**: implemented (default `mppi`).
@@ -1665,6 +1868,6 @@ rtk bash -lc 'export PATH="$HOME/.local/bin:$PATH"; gh pr merge <N> --squash --d
 
 ---
 
-End of handoff. **Start from "Current State (2026-06-10, star-growth
-sprint)"** for product work (pip bindings next), or from "Research Line
-State: SOPPI box pushing" for research work. Good hunting.
+End of handoff. **Start from "Current State (2026-06-10)"** — star-growth:
+pip packaging polish; research: **`box_align_detour`** lift (contact-loss cell
+done at **1.00**). Good hunting.
