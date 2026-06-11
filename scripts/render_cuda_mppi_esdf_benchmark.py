@@ -43,7 +43,7 @@ def write_csv(rows, date_tag: str) -> Path:
         "distance_field_cutoff",
     ]
     with out.open("w", newline="") as f:
-        writer = csv.DictWriter(f, fieldnames=fields)
+        writer = csv.DictWriter(f, fieldnames=fields, lineterminator="\n")
         writer.writeheader()
         for row in rows:
             writer.writerow({field: row[field] for field in fields})
@@ -66,7 +66,7 @@ def write_markdown(rows, date_tag: str) -> Path:
         "the optional ESDF-style distance-field clearance critic added to",
         "`cuda_mppi_controller`.",
         "",
-        "Hardware: local CUDA-capable benchmark machine, ROS 2 Jazzy, Release build.",
+        "Hardware: local CUDA-capable benchmark machine, ROS 2 workspace, Release build.",
         "Scenario setup: 10 m x 10 m synthetic costmap, 20 Hz closed loop,",
         "K = 8192, T = 56, dt = 0.05. ESDF row uses",
         "`distance_field_weight=12.0` and `distance_field_cutoff=0.8`.",
@@ -107,14 +107,14 @@ def write_markdown(rows, date_tag: str) -> Path:
         "",
         "- The ESDF critic is disabled by default; this benchmark enables it only",
         "  for the `gpu_esdf_K8192` rows.",
-        "- On `wall_gap` and `narrow_corridor`, ESDF keeps the same success result",
-        "  with slightly more conservative time-to-goal and similar mean solve",
-        "  time.",
-        "- In this run ESDF lowers the p95/max solve-time spikes on the two",
-        "  successful corridor cells, but it is not a speed optimization.",
-        "- The `u_turn` cell remains unsolved at K=8192 for both critics; ESDF",
-        "  does not replace the need for better global-plan tracking or a richer",
-        "  scenario-specific critic there.",
+        "- All three corrected scenarios succeed with both the default costmap",
+        "  critic and the ESDF clearance critic at K=8192.",
+        "- ESDF keeps similar solve latency on `wall_gap` and `narrow_corridor`,",
+        "  while the corrected `u_turn` cell finishes sooner with ESDF enabled in",
+        "  this run.",
+        "- The corrected `u_turn` path goes around the obstacle endpoint; the",
+        "  previous benchmark path crossed a lethal wall cell and was therefore",
+        "  not a valid planner-tracking test.",
         "- The distance-field cost is a clearance smoother, not a replacement for",
         "  lethal-cell collision rejection or footprint checking.",
         "",

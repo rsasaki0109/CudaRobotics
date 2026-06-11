@@ -4,7 +4,7 @@ Closed-loop GPU-only comparison of the default costmap critic against
 the optional ESDF-style distance-field clearance critic added to
 `cuda_mppi_controller`.
 
-Hardware: local CUDA-capable benchmark machine, ROS 2 Jazzy, Release build.
+Hardware: local CUDA-capable benchmark machine, ROS 2 workspace, Release build.
 Scenario setup: 10 m x 10 m synthetic costmap, 20 Hz closed loop,
 K = 8192, T = 56, dt = 0.05. ESDF row uses
 `distance_field_weight=12.0` and `distance_field_cutoff=0.8`.
@@ -15,25 +15,25 @@ CSV: [`cuda_mppi_esdf_2026-06-11.csv`](cuda_mppi_esdf_2026-06-11.csv)
 
 | scenario | critic | result | sim time | mean solve | p95 | max | exceptions |
 |---|---|---:|---:|---:|---:|---:|---:|
-| wall_gap | costmap | success | 16.5s | 1.16 ms | 1.29 ms | 3.46 ms | 0 |
-| wall_gap | costmap + ESDF | success | 16.6s | 1.18 ms | 1.23 ms | 1.37 ms | 0 |
-| narrow_corridor | costmap | success | 17.4s | 1.16 ms | 1.32 ms | 1.38 ms | 0 |
-| narrow_corridor | costmap + ESDF | success | 17.8s | 1.17 ms | 1.22 ms | 1.25 ms | 0 |
-| u_turn | costmap | timeout | 60.0s | 1.07 ms | 1.12 ms | 1.17 ms | 0 |
-| u_turn | costmap + ESDF | timeout | 60.0s | 1.20 ms | 1.23 ms | 1.43 ms | 0 |
+| wall_gap | costmap | success | 16.5s | 1.12 ms | 1.31 ms | 1.41 ms | 0 |
+| wall_gap | costmap + ESDF | success | 16.6s | 1.16 ms | 1.22 ms | 1.45 ms | 0 |
+| narrow_corridor | costmap | success | 17.4s | 1.17 ms | 1.31 ms | 1.35 ms | 0 |
+| narrow_corridor | costmap + ESDF | success | 17.8s | 1.16 ms | 1.21 ms | 1.28 ms | 0 |
+| u_turn | costmap | success | 44.8s | 1.03 ms | 1.08 ms | 1.36 ms | 0 |
+| u_turn | costmap + ESDF | success | 40.0s | 1.18 ms | 1.23 ms | 1.31 ms | 0 |
 
 ## Readout
 
 - The ESDF critic is disabled by default; this benchmark enables it only
   for the `gpu_esdf_K8192` rows.
-- On `wall_gap` and `narrow_corridor`, ESDF keeps the same success result
-  with slightly more conservative time-to-goal and similar mean solve
-  time.
-- In this run ESDF lowers the p95/max solve-time spikes on the two
-  successful corridor cells, but it is not a speed optimization.
-- The `u_turn` cell remains unsolved at K=8192 for both critics; ESDF
-  does not replace the need for better global-plan tracking or a richer
-  scenario-specific critic there.
+- All three corrected scenarios succeed with both the default costmap
+  critic and the ESDF clearance critic at K=8192.
+- ESDF keeps similar solve latency on `wall_gap` and `narrow_corridor`,
+  while the corrected `u_turn` cell finishes sooner with ESDF enabled in
+  this run.
+- The corrected `u_turn` path goes around the obstacle endpoint; the
+  previous benchmark path crossed a lethal wall cell and was therefore
+  not a valid planner-tracking test.
 - The distance-field cost is a clearance smoother, not a replacement for
   lethal-cell collision rejection or footprint checking.
 
