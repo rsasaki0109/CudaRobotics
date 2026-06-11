@@ -30,6 +30,8 @@ controller_server:
       path_follow_weight: 5.0   # pull toward a point ahead on the plan
       follow_lookahead: 1.0     # [m]
       costmap_weight: 3.0
+      distance_field_weight: 0.0 # optional ESDF-style clearance critic
+      distance_field_cutoff: 0.75 # [m] no clearance penalty beyond this
       smoothness_weight: 0.2
       backward_weight: 0.5
       speed_weight: 3.0         # penalty on (v_max - v): cruise at the limit

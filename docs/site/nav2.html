@@ -44,7 +44,8 @@ source install/setup.bash
 
 ros2 run cuda_mppi_controller plugin_load_test
 ros2 run cuda_mppi_controller parameter_validation_test
-ros2 run cuda_mppi_controller mppi_gpu_standalone 2048</code></pre>
+ros2 run cuda_mppi_controller mppi_gpu_standalone 2048
+ros2 run cuda_mppi_controller mppi_gpu_standalone 2048 esdf</code></pre>
           </div>
         </div>
         <figure class="media">
@@ -68,7 +69,9 @@ ros2 run cuda_mppi_controller mppi_gpu_standalone 2048</code></pre>
       batch_size: 8192
       time_steps: 56
       model_dt: 0.05
-      motion_model: "DiffDrive"</code></pre>
+      motion_model: "DiffDrive"
+      distance_field_weight: 0.0
+      distance_field_cutoff: 0.75</code></pre>
           </div>
           <p>
             Full example:
@@ -96,7 +99,7 @@ ros2 run cuda_mppi_controller mppi_gpu_standalone 2048</code></pre>
           <article class="card">
             <span class="tag blue">Costs</span>
             <h3>Weights and lookahead</h3>
-            <p>Weights, lookahead distances, transform tolerance, and retreat scale reject invalid values.</p>
+            <p>Weights, distance-field cutoff, lookahead distances, transform tolerance, and retreat scale reject invalid values.</p>
           </article>
         </div>
       </section>
@@ -132,6 +135,21 @@ ros2 run cuda_mppi_controller mppi_gpu_standalone 2048</code></pre>
               </tr>
             </tbody>
           </table>
+        </div>
+      </section>
+
+      <section class="section">
+        <div class="section-head">
+          <h2>Distance Field Critic</h2>
+          <p>Enable `distance_field_weight` to add a smooth clearance cost near obstacles without changing the default costmap-only behavior.</p>
+        </div>
+        <div class="card">
+          <p>
+            The controller builds a truncated GPU distance-to-obstacle field
+            from the local costmap each cycle. Cells beyond
+            `distance_field_cutoff` receive no extra penalty, while rollouts
+            near lethal or inscribed cells receive a quadratic clearance cost.
+          </p>
         </div>
       </section>
 

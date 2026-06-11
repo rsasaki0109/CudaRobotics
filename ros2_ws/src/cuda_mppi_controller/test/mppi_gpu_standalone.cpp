@@ -78,7 +78,7 @@ bool isLethal(const std::vector<unsigned char> & map, float x, float y)
 
 int main(int argc, char ** argv)
 {
-  // usage: mppi_gpu_standalone [K] [diff|ackermann|omni|footprint]
+  // usage: mppi_gpu_standalone [K] [diff|ackermann|omni|footprint|esdf]
   cuda_mppi_controller::MppiParams params;
   if (argc > 1) {
     params.batch_size = std::atoi(argv[1]);  // K sweep for benchmarking
@@ -93,6 +93,9 @@ int main(int argc, char ** argv)
   } else if (mode == "footprint") {
     params.consider_footprint = true;
     footprint = {0.15f, 0.15f, -0.15f, 0.15f, -0.15f, -0.15f, 0.15f, -0.15f};
+  } else if (mode == "esdf") {
+    params.distance_field_weight = 12.0f;
+    params.distance_field_cutoff = 0.8f;
   } else if (mode != "diff") {
     std::printf("unknown mode '%s'\n", mode.c_str());
     return 2;

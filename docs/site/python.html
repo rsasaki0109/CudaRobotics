@@ -40,7 +40,8 @@
             `MppiPlanner.compute()` returns `(v, vy, w, info)`. NumPy costmaps
             use the host path. CUDA DLPack producers such as PyTorch or CuPy
             tensors can pass a `uint8` 2D costmap without staging it through
-            host memory.
+            host memory. `distance_field_weight` enables an optional GPU
+            clearance critic built from the same costmap.
           </p>
           <div class="code">
 <pre><code>import numpy as np
@@ -51,6 +52,8 @@ planner = cr.MppiPlanner(
     time_steps=56,
     model_dt=0.05,
     motion_model="diff_drive",
+    distance_field_weight=12.0,
+    distance_field_cutoff=0.8,
 )
 
 costmap = np.zeros((200, 200), dtype=np.uint8)
