@@ -47,12 +47,13 @@ python scripts/benchmark_registration_external.py \
 
 Key signals:
 
-- `wall_gap` and `narrow_corridor` remain successful with ESDF enabled, with
-  slightly more conservative time-to-goal and similar mean solve time.
-- ESDF lowers p95/max solve-time spikes on the two successful corridor cells in
-  this run, but it is a clearance smoother rather than a speed optimization.
-- `u_turn` stays unsolved at this budget for both critics; do not present ESDF
-  as a universal local-planner fix.
+- All three corrected scenarios succeed with both the default costmap critic and
+  the ESDF clearance critic at K=8192.
+- ESDF keeps similar solve latency on `wall_gap` and `narrow_corridor`, while
+  the corrected `u_turn` cell finishes sooner with ESDF enabled in this run.
+- The corrected `u_turn` path goes around the obstacle endpoint; the previous
+  benchmark path crossed a lethal wall cell and was not a valid
+  planner-tracking test.
 
 Reproduce from the repository root:
 

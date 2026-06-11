@@ -129,7 +129,7 @@ Scenario makeUTurn()
       path.header.frame_id = "odom";
       path.header.stamp = stamp;
       const std::array<std::array<double, 2>, 4> pts = {{
-        {1.5, 1.5}, {7.5, 1.5}, {7.5, 8.5}, {1.5, 8.5}}};
+        {1.5, 1.5}, {8.5, 1.5}, {8.5, 8.5}, {1.5, 8.5}}};
       for (size_t seg = 0; seg + 1 < pts.size(); ++seg) {
         const double x0 = pts[seg][0], y0 = pts[seg][1];
         const double x1 = pts[seg + 1][0], y1 = pts[seg + 1][1];
