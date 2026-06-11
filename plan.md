@@ -1,12 +1,13 @@
 # CudaRobotics Plan / Handoff (for Codex / Claude)
 
-Last updated: 2026-06-11 JST (`4082282` — registration external benchmark
-landed after the history rewrite; current feature branch is
-`codex/mppi-dlpack-costmap`, adding CUDA DLPack costmap input for Python MPPI.
+Last updated: 2026-06-11 JST (`7927fc9` — CUDA DLPack costmap input for Python
+MPPI landed after the registration external benchmark and hardware-string
+history rewrite. Current feature work is Nav2 plugin parameter validation.
 v0.1.0 release is fully prepared but NOT yet published (user-owned action; see
-below). Note: some older sections below carry their own internal dates — treat
-section headers as the ordering authority within each line, not this single
-timestamp.)
+below). Jetson/aarch64 support is intentionally skipped for now by user
+direction. Note: some older sections below carry their own internal dates —
+treat section headers as the ordering authority within each line, not this
+single timestamp.)
 
 This document is the long-form handoff for the next coding agent (Codex).
 It captures: (1) where the repo is right now, (2) what was just done over
@@ -36,10 +37,11 @@ There are now **two active lines** in this repo:
 
 ## Current State (2026-06-11) — star-growth funnel sprint
 
-Mainline: **`master` at `4082282`**, in sync with `origin/master`, after the
-hardware-string history rewrite and registration external benchmark merge
-(#187). Current local branch: **`codex/mppi-dlpack-costmap`**, WIP for zero-copy
-CUDA costmaps in Python MPPI.
+Mainline: **`master` at `7927fc9`**, in sync with `origin/master`, after the
+hardware-string history rewrite, registration external benchmark merge (#187),
+and CUDA DLPack costmap merge (#188). Current local work: Nav2 plugin parameter
+validation so invalid controller settings fail clearly at configure/live-update
+time.
 
 ### What landed this session (all squash-merged)
 
@@ -52,6 +54,7 @@ CUDA costmaps in Python MPPI.
 | #185 | cibuildwheel: add `libcurand-devel-12-0` (CMake `CUDA::curand` target missing) | exposed only after #184 let the build reach CMake for the first time |
 | #186 | cibuildwheel: add `*i686*` to skip lists (NVIDIA ships no 32-bit CUDA; the i686 container died in before-all) | with this, **cibuildwheel is green**: cp310/cp312 manylinux2014 x86_64 wheels (113 MB artifact, run 27308990292) |
 | #187 | registration external benchmark results (`scripts/benchmark_registration_external.py`, `docs/results/registration_external_baselines_2026-06-11.*`, README links) | distribution-ready comparison against probreg/Open3D CPU baselines, with generic hardware wording only |
+| #188 | CUDA DLPack costmap support for Python `MppiPlanner.compute()` | learning stacks can pass CUDA tensors as costmaps without staging through host memory; NumPy host path remains unchanged |
 
 Wheel sanity check done: the cp312 manylinux wheel was installed into a fresh
 venv on this machine; `MppiPlanner.compute` and
@@ -109,13 +112,13 @@ Observed signals in this run:
 
 Do not add exact machine or device model strings back into the docs or CSV.
 
-### CUDA DLPack costmaps — IN FLIGHT (`codex/mppi-dlpack-costmap`)
+### CUDA DLPack costmaps — LANDED (#188)
 
 Goal: let learning stacks hand `MppiPlanner.compute()` a CUDA DLPack producer
 for `costmap` (PyTorch/CuPy tensor) so the MPPI rollout reads the existing
 device pointer directly instead of staging the costmap through host memory.
 
-Current implementation direction:
+Implementation:
 
 - Add `MppiGpu::computeWithDeviceCostmap()` in the public C++ header and synced
   Python vendored core.
@@ -125,21 +128,35 @@ Current implementation direction:
 - Path and footprint remain CPU buffer-protocol arrays for now.
 - Smoke coverage: NumPy MPPI path plus optional torch CUDA DLPack costmap test.
 
+### Nav2 plugin validation — IN FLIGHT
+
+Goal: make the Nav2 controller safer for real deployments by rejecting invalid
+configuration and live ROS parameter updates before the GPU optimizer is built.
+
+Current implementation direction:
+
+- Validate positive sizes/step/temperature/control limits, finite non-negative
+  weights, and valid motion model strings during `configure()`.
+- Apply dynamic parameter updates from the proposed `on_set_parameters` values,
+  not from stale node state.
+- Add a small invalid-parameter executable that fails before CUDA allocation, so
+  the rejection path can be smoke-tested without a GPU driver.
+
 ### Direction from here (2026-06-11) — supersedes the old Next-Task Menu below
 
 Short term (this week):
 
 1. **Publish v0.1.0** (user; commands above) → then distribution
    (HN / Reddit / ROS Discourse / X / Zenn — user-owned, never agents).
-2. **Finish / PR CUDA DLPack costmap support** (agent; current branch). This
-   directly serves learning-pipeline users by removing a costmap host copy.
+2. **Finish / PR Nav2 plugin parameter validation** (agent; current branch).
+   This makes the installed controller fail fast on unsafe or nonsensical
+   settings instead of letting them reach CUDA memory allocation or rollout.
 
 Mid term — pick ONE based on which funnel converts after the release
 (watch stars/traffic/issues per entry point):
 
-- **Jetson / aarch64** — most robotics GPU users run Jetson, not desktop
-  GPUs. arm64 wheels and/or an L4T Docker image. Caveat: no Jetson on this
-  machine; needs user hardware for verification.
+- **Jetson / aarch64** — **skip for now by user direction**. Revisit only if
+  concrete user demand appears and hardware for verification is available.
 - **Broaden zero-copy inputs** — after costmap DLPack lands, consider path /
   footprint device inputs only if a real user workflow needs them.
 - **nav2 plugin field validation** — real robot / real bag data; produces
@@ -160,15 +177,16 @@ agents build material, the user distributes and publishes.
 
 ### Working tree inventory (untracked / WIP — handle with care)
 
-- `include/cuda_mppi_controller/mppi_gpu.hpp`, `src/mppi_gpu.cu` — DLPack
-  device-costmap entry point and core dispatch.
-- `python/core/include/cuda_mppi_controller/mppi_gpu.hpp`,
-  `python/core/src/mppi_gpu.cu` — synced Python vendored core.
-- `python/src/cudarobotics/bindings.cpp` — minimal DLPack capsule consumer for
-  CUDA `uint8` 2D costmaps.
-- `python/tests/test_import.py`, `python/README.md`, `readme.md` — smoke
-  coverage and user docs for CUDA DLPack costmaps.
-- `plan.md` — current handoff update for the DLPack branch.
+- `ros2_ws/src/cuda_mppi_controller/src/cuda_mppi_controller.cpp` and matching
+  header cleanup — parameter validation and live-update application from
+  proposed ROS parameters.
+- `ros2_ws/src/cuda_mppi_controller/include/cuda_mppi_controller/nav2_compat.hpp`
+  — Humble/Jazzy exception aliases for controller failure paths.
+- `ros2_ws/src/cuda_mppi_controller/test/parameter_validation_test.cpp` — invalid
+  configure-time smoke executable.
+- `ros2_ws/src/cuda_mppi_controller/CMakeLists.txt` and README — build/docs for
+  the validation executable.
+- `plan.md` — current handoff update for the validation branch.
 - `.release_notes_v0.1.0.md` — release-notes draft may exist outside this
   checkout; keep untracked if present.
 - `src/benchmark_diff_mppi_pushing_box.cu` — user research WIP if present; do

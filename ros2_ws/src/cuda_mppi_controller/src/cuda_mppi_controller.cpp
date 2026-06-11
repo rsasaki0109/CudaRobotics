@@ -30,19 +30,158 @@ MotionModel parseMotionModel(const std::string & motion_model)
   if (motion_model == "Omni") {
     return MotionModel::Omni;
   }
-  throw std::runtime_error(
-          "CudaMppiController: unknown motion_model '" + motion_model +
-          "' (DiffDrive / Ackermann / Omni)");
+  throw std::runtime_error("CudaMppiController: unknown motion_model '" + motion_model +
+                           "' (DiffDrive / Ackermann / Omni)");
+}
+
+std::string motionModelName(MotionModel motion_model)
+{
+  switch (motion_model) {
+    case MotionModel::DiffDrive:
+      return "DiffDrive";
+    case MotionModel::Ackermann:
+      return "Ackermann";
+    case MotionModel::Omni:
+      return "Omni";
+  }
+  return "DiffDrive";
+}
+
+void requireParam(bool condition, const std::string & name, const std::string & rule)
+{
+  if (!condition) {
+    throw std::runtime_error("CudaMppiController parameter validation failed: '" + name + "' " +
+                             rule);
+  }
+}
+
+void requireFinite(const std::string & name, double value)
+{
+  requireParam(std::isfinite(value), name, "must be finite");
+}
+
+void requirePositive(const std::string & name, double value)
+{
+  requireFinite(name, value);
+  requireParam(value > 0.0, name, "must be greater than 0");
+}
+
+void requireNonNegative(const std::string & name, double value)
+{
+  requireFinite(name, value);
+  requireParam(value >= 0.0, name, "must be non-negative");
+}
+
+void validateControllerParams(const MppiParams & params, double lookahead_dist,
+                              double transform_tolerance)
+{
+  requireParam(params.batch_size > 0, "batch_size", "must be greater than 0");
+  requireParam(params.time_steps > 0, "time_steps", "must be greater than 0");
+  requireParam(params.iteration_count > 0, "iteration_count", "must be greater than 0");
+
+  requirePositive("model_dt", params.model_dt);
+  requirePositive("temperature", params.lambda);
+
+  requireFinite("v_min", params.v_min);
+  requirePositive("v_max", params.v_max);
+  requireParam(params.v_min <= params.v_max, "v_min", "must be <= v_max");
+  requireNonNegative("vy_max", params.vy_max);
+  requirePositive("w_max", params.w_max);
+  requirePositive("min_turning_r", params.min_turning_r);
+
+  requireNonNegative("v_std", params.v_std);
+  requireNonNegative("vy_std", params.vy_std);
+  requireNonNegative("w_std", params.w_std);
+
+  requireNonNegative("goal_weight", params.goal_weight);
+  requireNonNegative("goal_yaw_weight", params.goal_yaw_weight);
+  requireNonNegative("path_weight", params.path_weight);
+  requireNonNegative("path_follow_weight", params.path_follow_weight);
+  requireNonNegative("follow_lookahead", params.follow_lookahead);
+  requireNonNegative("costmap_weight", params.costmap_weight);
+  requireNonNegative("smoothness_weight", params.smoothness_weight);
+  requireNonNegative("backward_weight", params.backward_weight);
+  requireNonNegative("speed_weight", params.speed_weight);
+  requireNonNegative("angular_weight", params.angular_weight);
+  requirePositive("collision_cost", params.collision_cost);
+  requireNonNegative("yaw_goal_activation_dist", params.yaw_goal_activation_dist);
+  requireNonNegative("retreat_scale", params.retreat_scale);
+
+  requirePositive("lookahead_dist", lookahead_dist);
+  requireNonNegative("transform_tolerance", transform_tolerance);
+}
+
+bool applyControllerParameter(const std::string & key, const rclcpp::Parameter & parameter,
+                              MppiParams & params, double & lookahead_dist,
+                              double & transform_tolerance)
+{
+  if (key == "batch_size") {
+    params.batch_size = static_cast<int>(parameter.as_int());
+  } else if (key == "time_steps") {
+    params.time_steps = static_cast<int>(parameter.as_int());
+  } else if (key == "iteration_count") {
+    params.iteration_count = static_cast<int>(parameter.as_int());
+  } else if (key == "model_dt") {
+    params.model_dt = static_cast<float>(parameter.as_double());
+  } else if (key == "motion_model") {
+    params.motion_model = parseMotionModel(parameter.as_string());
+  } else if (key == "v_max") {
+    params.v_max = static_cast<float>(parameter.as_double());
+  } else if (key == "v_min") {
+    params.v_min = static_cast<float>(parameter.as_double());
+  } else if (key == "vy_max") {
+    params.vy_max = static_cast<float>(parameter.as_double());
+  } else if (key == "w_max") {
+    params.w_max = static_cast<float>(parameter.as_double());
+  } else if (key == "min_turning_r") {
+    params.min_turning_r = static_cast<float>(parameter.as_double());
+  } else if (key == "v_std") {
+    params.v_std = static_cast<float>(parameter.as_double());
+  } else if (key == "vy_std") {
+    params.vy_std = static_cast<float>(parameter.as_double());
+  } else if (key == "w_std") {
+    params.w_std = static_cast<float>(parameter.as_double());
+  } else if (key == "consider_footprint") {
+    params.consider_footprint = parameter.as_bool();
+  } else if (key == "temperature") {
+    params.lambda = static_cast<float>(parameter.as_double());
+  } else if (key == "goal_weight") {
+    params.goal_weight = static_cast<float>(parameter.as_double());
+  } else if (key == "goal_yaw_weight") {
+    params.goal_yaw_weight = static_cast<float>(parameter.as_double());
+  } else if (key == "path_weight") {
+    params.path_weight = static_cast<float>(parameter.as_double());
+  } else if (key == "path_follow_weight") {
+    params.path_follow_weight = static_cast<float>(parameter.as_double());
+  } else if (key == "follow_lookahead") {
+    params.follow_lookahead = static_cast<float>(parameter.as_double());
+  } else if (key == "costmap_weight") {
+    params.costmap_weight = static_cast<float>(parameter.as_double());
+  } else if (key == "smoothness_weight") {
+    params.smoothness_weight = static_cast<float>(parameter.as_double());
+  } else if (key == "backward_weight") {
+    params.backward_weight = static_cast<float>(parameter.as_double());
+  } else if (key == "speed_weight") {
+    params.speed_weight = static_cast<float>(parameter.as_double());
+  } else if (key == "angular_weight") {
+    params.angular_weight = static_cast<float>(parameter.as_double());
+  } else if (key == "yaw_goal_activation_dist") {
+    params.yaw_goal_activation_dist = static_cast<float>(parameter.as_double());
+  } else if (key == "enable_retreat") {
+    params.enable_retreat = parameter.as_bool();
+  } else if (key == "retreat_scale") {
+    params.retreat_scale = static_cast<float>(parameter.as_double());
+  } else if (key == "lookahead_dist") {
+    lookahead_dist = parameter.as_double();
+  } else if (key == "transform_tolerance") {
+    transform_tolerance = parameter.as_double();
+  } else {
+    return false;
+  }
+  return true;
 }
 
 }  // namespace
-
-void CudaMppiController::applyParamsToOptimizer()
-{
-  if (optimizer_) {
-    optimizer_ = std::make_unique<MppiGpu>(params_);
-  }
-}
 
 bool CudaMppiController::updateParamsFromNode(
   const rclcpp_lifecycle::LifecycleNode::SharedPtr & node)
@@ -51,29 +190,33 @@ bool CudaMppiController::updateParamsFromNode(
     return false;
   }
 
-  int batch_size = params_.batch_size;
-  int time_steps = params_.time_steps;
-  int iteration_count = params_.iteration_count;
-  double model_dt = params_.model_dt;
-  std::string motion_model = "DiffDrive";
-  double v_max = params_.v_max, v_min = params_.v_min, w_max = params_.w_max;
-  double vy_max = params_.vy_max, min_turning_r = params_.min_turning_r;
-  double v_std = params_.v_std, vy_std = params_.vy_std, w_std = params_.w_std;
-  bool consider_footprint = params_.consider_footprint;
-  double lambda = params_.lambda;
-  double goal_weight = params_.goal_weight;
-  double goal_yaw_weight = params_.goal_yaw_weight;
-  double path_weight = params_.path_weight;
-  double path_follow_weight = params_.path_follow_weight;
-  double follow_lookahead = params_.follow_lookahead;
-  double costmap_weight = params_.costmap_weight;
-  double smoothness_weight = params_.smoothness_weight;
-  double backward_weight = params_.backward_weight;
-  double speed_weight = params_.speed_weight;
-  double angular_weight = params_.angular_weight;
-  double yaw_activation = params_.yaw_goal_activation_dist;
-  bool enable_retreat = params_.enable_retreat;
-  double retreat_scale = params_.retreat_scale;
+  MppiParams next = params_;
+  double next_lookahead_dist = lookahead_dist_;
+  double next_transform_tolerance = transform_tolerance_;
+
+  int batch_size = next.batch_size;
+  int time_steps = next.time_steps;
+  int iteration_count = next.iteration_count;
+  double model_dt = next.model_dt;
+  std::string motion_model = motionModelName(next.motion_model);
+  double v_max = next.v_max, v_min = next.v_min, w_max = next.w_max;
+  double vy_max = next.vy_max, min_turning_r = next.min_turning_r;
+  double v_std = next.v_std, vy_std = next.vy_std, w_std = next.w_std;
+  bool consider_footprint = next.consider_footprint;
+  double lambda = next.lambda;
+  double goal_weight = next.goal_weight;
+  double goal_yaw_weight = next.goal_yaw_weight;
+  double path_weight = next.path_weight;
+  double path_follow_weight = next.path_follow_weight;
+  double follow_lookahead = next.follow_lookahead;
+  double costmap_weight = next.costmap_weight;
+  double smoothness_weight = next.smoothness_weight;
+  double backward_weight = next.backward_weight;
+  double speed_weight = next.speed_weight;
+  double angular_weight = next.angular_weight;
+  double yaw_activation = next.yaw_goal_activation_dist;
+  bool enable_retreat = next.enable_retreat;
+  double retreat_scale = next.retreat_scale;
 
   node->get_parameter(name_ + ".batch_size", batch_size);
   node->get_parameter(name_ + ".time_steps", time_steps);
@@ -103,37 +246,43 @@ bool CudaMppiController::updateParamsFromNode(
   node->get_parameter(name_ + ".yaw_goal_activation_dist", yaw_activation);
   node->get_parameter(name_ + ".enable_retreat", enable_retreat);
   node->get_parameter(name_ + ".retreat_scale", retreat_scale);
-  node->get_parameter(name_ + ".lookahead_dist", lookahead_dist_);
-  node->get_parameter(name_ + ".transform_tolerance", transform_tolerance_);
+  node->get_parameter(name_ + ".lookahead_dist", next_lookahead_dist);
+  node->get_parameter(name_ + ".transform_tolerance", next_transform_tolerance);
 
-  params_.batch_size = batch_size;
-  params_.time_steps = time_steps;
-  params_.iteration_count = iteration_count;
-  params_.model_dt = static_cast<float>(model_dt);
-  params_.motion_model = parseMotionModel(motion_model);
-  params_.v_max = static_cast<float>(v_max);
-  params_.v_min = static_cast<float>(v_min);
-  params_.vy_max = static_cast<float>(vy_max);
-  params_.w_max = static_cast<float>(w_max);
-  params_.min_turning_r = static_cast<float>(min_turning_r);
-  params_.v_std = static_cast<float>(v_std);
-  params_.vy_std = static_cast<float>(vy_std);
-  params_.w_std = static_cast<float>(w_std);
-  params_.consider_footprint = consider_footprint;
-  params_.lambda = static_cast<float>(lambda);
-  params_.goal_weight = static_cast<float>(goal_weight);
-  params_.goal_yaw_weight = static_cast<float>(goal_yaw_weight);
-  params_.path_weight = static_cast<float>(path_weight);
-  params_.path_follow_weight = static_cast<float>(path_follow_weight);
-  params_.follow_lookahead = static_cast<float>(follow_lookahead);
-  params_.costmap_weight = static_cast<float>(costmap_weight);
-  params_.smoothness_weight = static_cast<float>(smoothness_weight);
-  params_.backward_weight = static_cast<float>(backward_weight);
-  params_.speed_weight = static_cast<float>(speed_weight);
-  params_.angular_weight = static_cast<float>(angular_weight);
-  params_.yaw_goal_activation_dist = static_cast<float>(yaw_activation);
-  params_.enable_retreat = enable_retreat;
-  params_.retreat_scale = static_cast<float>(retreat_scale);
+  next.batch_size = batch_size;
+  next.time_steps = time_steps;
+  next.iteration_count = iteration_count;
+  next.model_dt = static_cast<float>(model_dt);
+  next.motion_model = parseMotionModel(motion_model);
+  next.v_max = static_cast<float>(v_max);
+  next.v_min = static_cast<float>(v_min);
+  next.vy_max = static_cast<float>(vy_max);
+  next.w_max = static_cast<float>(w_max);
+  next.min_turning_r = static_cast<float>(min_turning_r);
+  next.v_std = static_cast<float>(v_std);
+  next.vy_std = static_cast<float>(vy_std);
+  next.w_std = static_cast<float>(w_std);
+  next.consider_footprint = consider_footprint;
+  next.lambda = static_cast<float>(lambda);
+  next.goal_weight = static_cast<float>(goal_weight);
+  next.goal_yaw_weight = static_cast<float>(goal_yaw_weight);
+  next.path_weight = static_cast<float>(path_weight);
+  next.path_follow_weight = static_cast<float>(path_follow_weight);
+  next.follow_lookahead = static_cast<float>(follow_lookahead);
+  next.costmap_weight = static_cast<float>(costmap_weight);
+  next.smoothness_weight = static_cast<float>(smoothness_weight);
+  next.backward_weight = static_cast<float>(backward_weight);
+  next.speed_weight = static_cast<float>(speed_weight);
+  next.angular_weight = static_cast<float>(angular_weight);
+  next.yaw_goal_activation_dist = static_cast<float>(yaw_activation);
+  next.enable_retreat = enable_retreat;
+  next.retreat_scale = static_cast<float>(retreat_scale);
+
+  validateControllerParams(next, next_lookahead_dist, next_transform_tolerance);
+
+  params_ = next;
+  lookahead_dist_ = next_lookahead_dist;
+  transform_tolerance_ = next_transform_tolerance;
   return true;
 }
 
@@ -154,116 +303,78 @@ void CudaMppiController::configure(
   logger_ = node->get_logger();
 
   using nav2_util::declare_parameter_if_not_declared;
-  auto declare_get = [&](const std::string & param, auto default_value, auto & out) {
-      declare_parameter_if_not_declared(
-        node, name_ + "." + param, rclcpp::ParameterValue(default_value));
-      node->get_parameter(name_ + "." + param, out);
-    };
+  auto declare_param = [&](const std::string & param, auto default_value) {
+    declare_parameter_if_not_declared(node, name_ + "." + param,
+                                      rclcpp::ParameterValue(default_value));
+  };
 
-  int batch_size = params_.batch_size;
-  int time_steps = params_.time_steps;
-  int iteration_count = params_.iteration_count;
-  double model_dt = params_.model_dt;
-  std::string motion_model = "DiffDrive";
-  double v_max = params_.v_max, v_min = params_.v_min, w_max = params_.w_max;
-  double vy_max = params_.vy_max, min_turning_r = params_.min_turning_r;
-  double v_std = params_.v_std, vy_std = params_.vy_std, w_std = params_.w_std;
-  bool consider_footprint = params_.consider_footprint;
-  double lambda = params_.lambda;
-  double goal_weight = params_.goal_weight;
-  double goal_yaw_weight = params_.goal_yaw_weight;
-  double path_weight = params_.path_weight;
-  double path_follow_weight = params_.path_follow_weight;
-  double follow_lookahead = params_.follow_lookahead;
-  double costmap_weight = params_.costmap_weight;
-  double smoothness_weight = params_.smoothness_weight;
-  double backward_weight = params_.backward_weight;
-  double speed_weight = params_.speed_weight;
-  double angular_weight = params_.angular_weight;
-  double yaw_activation = params_.yaw_goal_activation_dist;
-  bool enable_retreat = params_.enable_retreat;
-  double retreat_scale = params_.retreat_scale;
+  declare_param("batch_size", params_.batch_size);
+  declare_param("time_steps", params_.time_steps);
+  declare_param("iteration_count", params_.iteration_count);
+  declare_param("model_dt", static_cast<double>(params_.model_dt));
+  declare_param("motion_model", motionModelName(params_.motion_model));
+  declare_param("v_max", static_cast<double>(params_.v_max));
+  declare_param("v_min", static_cast<double>(params_.v_min));
+  declare_param("vy_max", static_cast<double>(params_.vy_max));
+  declare_param("w_max", static_cast<double>(params_.w_max));
+  declare_param("min_turning_r", static_cast<double>(params_.min_turning_r));
+  declare_param("v_std", static_cast<double>(params_.v_std));
+  declare_param("vy_std", static_cast<double>(params_.vy_std));
+  declare_param("w_std", static_cast<double>(params_.w_std));
+  declare_param("consider_footprint", params_.consider_footprint);
+  declare_param("temperature", static_cast<double>(params_.lambda));
+  declare_param("goal_weight", static_cast<double>(params_.goal_weight));
+  declare_param("goal_yaw_weight", static_cast<double>(params_.goal_yaw_weight));
+  declare_param("path_weight", static_cast<double>(params_.path_weight));
+  declare_param("path_follow_weight", static_cast<double>(params_.path_follow_weight));
+  declare_param("follow_lookahead", static_cast<double>(params_.follow_lookahead));
+  declare_param("costmap_weight", static_cast<double>(params_.costmap_weight));
+  declare_param("smoothness_weight", static_cast<double>(params_.smoothness_weight));
+  declare_param("backward_weight", static_cast<double>(params_.backward_weight));
+  declare_param("speed_weight", static_cast<double>(params_.speed_weight));
+  declare_param("angular_weight", static_cast<double>(params_.angular_weight));
+  declare_param("yaw_goal_activation_dist", static_cast<double>(params_.yaw_goal_activation_dist));
+  declare_param("enable_retreat", params_.enable_retreat);
+  declare_param("retreat_scale", static_cast<double>(params_.retreat_scale));
+  declare_param("lookahead_dist", lookahead_dist_);
+  declare_param("transform_tolerance", transform_tolerance_);
 
-  declare_get("batch_size", batch_size, batch_size);
-  declare_get("time_steps", time_steps, time_steps);
-  declare_get("iteration_count", iteration_count, iteration_count);
-  declare_get("model_dt", model_dt, model_dt);
-  declare_get("motion_model", motion_model, motion_model);
-  declare_get("v_max", v_max, v_max);
-  declare_get("v_min", v_min, v_min);
-  declare_get("vy_max", vy_max, vy_max);
-  declare_get("w_max", w_max, w_max);
-  declare_get("min_turning_r", min_turning_r, min_turning_r);
-  declare_get("v_std", v_std, v_std);
-  declare_get("vy_std", vy_std, vy_std);
-  declare_get("w_std", w_std, w_std);
-  declare_get("consider_footprint", consider_footprint, consider_footprint);
-  declare_get("temperature", lambda, lambda);
-  declare_get("goal_weight", goal_weight, goal_weight);
-  declare_get("goal_yaw_weight", goal_yaw_weight, goal_yaw_weight);
-  declare_get("path_weight", path_weight, path_weight);
-  declare_get("path_follow_weight", path_follow_weight, path_follow_weight);
-  declare_get("follow_lookahead", follow_lookahead, follow_lookahead);
-  declare_get("costmap_weight", costmap_weight, costmap_weight);
-  declare_get("smoothness_weight", smoothness_weight, smoothness_weight);
-  declare_get("backward_weight", backward_weight, backward_weight);
-  declare_get("speed_weight", speed_weight, speed_weight);
-  declare_get("angular_weight", angular_weight, angular_weight);
-  declare_get("yaw_goal_activation_dist", yaw_activation, yaw_activation);
-  declare_get("enable_retreat", enable_retreat, enable_retreat);
-  declare_get("retreat_scale", retreat_scale, retreat_scale);
-  declare_get("lookahead_dist", lookahead_dist_, lookahead_dist_);
-  declare_get("transform_tolerance", transform_tolerance_, transform_tolerance_);
-
-  params_.batch_size = batch_size;
-  params_.time_steps = time_steps;
-  params_.iteration_count = iteration_count;
-  params_.model_dt = static_cast<float>(model_dt);
-  params_.motion_model = parseMotionModel(motion_model);
-  params_.v_max = static_cast<float>(v_max);
-  params_.v_min = static_cast<float>(v_min);
-  params_.vy_max = static_cast<float>(vy_max);
-  params_.w_max = static_cast<float>(w_max);
-  params_.min_turning_r = static_cast<float>(min_turning_r);
-  params_.v_std = static_cast<float>(v_std);
-  params_.vy_std = static_cast<float>(vy_std);
-  params_.w_std = static_cast<float>(w_std);
-  params_.consider_footprint = consider_footprint;
-  params_.lambda = static_cast<float>(lambda);
-  params_.goal_weight = static_cast<float>(goal_weight);
-  params_.goal_yaw_weight = static_cast<float>(goal_yaw_weight);
-  params_.path_weight = static_cast<float>(path_weight);
-  params_.path_follow_weight = static_cast<float>(path_follow_weight);
-  params_.follow_lookahead = static_cast<float>(follow_lookahead);
-  params_.costmap_weight = static_cast<float>(costmap_weight);
-  params_.smoothness_weight = static_cast<float>(smoothness_weight);
-  params_.backward_weight = static_cast<float>(backward_weight);
-  params_.speed_weight = static_cast<float>(speed_weight);
-  params_.angular_weight = static_cast<float>(angular_weight);
-  params_.yaw_goal_activation_dist = static_cast<float>(yaw_activation);
-  params_.enable_retreat = enable_retreat;
-  params_.retreat_scale = static_cast<float>(retreat_scale);
+  updateParamsFromNode(node);
 
   optimizer_ = std::make_unique<MppiGpu>(params_);
 
-  param_callback_ = node->add_on_set_parameters_callback(
-    [this](const std::vector<rclcpp::Parameter> & parameters) {
+  param_callback_ =
+    node->add_on_set_parameters_callback([this](const std::vector<rclcpp::Parameter> & parameters) {
       rcl_interfaces::msg::SetParametersResult result;
       result.successful = true;
+      const std::string prefix = name_ + ".";
+      MppiParams next_params = params_;
+      double next_lookahead_dist = lookahead_dist_;
+      double next_transform_tolerance = transform_tolerance_;
+      bool changed = false;
       for (const auto & parameter : parameters) {
-        if (parameter.get_name().find(name_ + ".") != 0) {
+        const std::string & full_name = parameter.get_name();
+        if (full_name.rfind(prefix, 0) != 0) {
           continue;
         }
+        const std::string key = full_name.substr(prefix.size());
+        changed = applyControllerParameter(key, parameter, next_params, next_lookahead_dist,
+                                           next_transform_tolerance) ||
+                  changed;
       }
-      auto locked = node_.lock();
-      if (!locked) {
-        result.successful = false;
-        result.reason = "parent node expired";
+      if (!changed) {
         return result;
       }
       try {
-        updateParamsFromNode(locked);
-        applyParamsToOptimizer();
+        validateControllerParams(next_params, next_lookahead_dist, next_transform_tolerance);
+        std::unique_ptr<MppiGpu> next_optimizer;
+        if (optimizer_) {
+          next_optimizer = std::make_unique<MppiGpu>(next_params);
+        }
+        params_ = next_params;
+        lookahead_dist_ = next_lookahead_dist;
+        transform_tolerance_ = next_transform_tolerance;
+        optimizer_ = std::move(next_optimizer);
       } catch (const std::exception & ex) {
         result.successful = false;
         result.reason = ex.what();
@@ -321,7 +432,7 @@ std::vector<float> CudaMppiController::extractLocalPath(
       target_frame, global_plan_.header.frame_id, tf2::TimePointZero,
       tf2::durationFromSec(transform_tolerance_));
   } catch (const tf2::TransformException & ex) {
-    throw nav2_core::ControllerTFError(
+    throw ControllerTFError(
             std::string("CudaMppiController: failed to transform plan: ") + ex.what());
   }
 
@@ -377,7 +488,7 @@ geometry_msgs::msg::TwistStamped CudaMppiController::computeVelocityCommands(
   nav2_core::GoalChecker * /*goal_checker*/)
 {
   if (!optimizer_) {
-    throw nav2_core::ControllerException("CudaMppiController is not configured");
+    throw ControllerException("CudaMppiController is not configured");
   }
 
   float goal_x = 0.0f, goal_y = 0.0f, goal_yaw = 0.0f;
@@ -413,7 +524,7 @@ geometry_msgs::msg::TwistStamped CudaMppiController::computeVelocityCommands(
   }
 
   if (result.all_colliding && !result.retreating) {
-    throw nav2_core::NoValidControl(
+    throw NoValidControl(
             "CudaMppiController: all sampled trajectories are in collision");
   }
 
