@@ -105,6 +105,9 @@ and an NVIDIA GPU.
 # pluginlib discovery, exactly how controller_server loads it
 ros2 run cuda_mppi_controller plugin_load_test
 
+# invalid parameter rejection, no CUDA driver required
+ros2 run cuda_mppi_controller parameter_validation_test
+
 # closed-loop synthetic scenario (wall with a gap) + solve-time report
 ros2 run cuda_mppi_controller mppi_gpu_standalone           # default K=2048
 ros2 run cuda_mppi_controller mppi_gpu_standalone 16384     # K sweep
@@ -159,8 +162,10 @@ controller_server:
 | `lookahead_dist` | 3.0 | [m] global plan window fed to the GPU |
 | `transform_tolerance` | 0.1 | [s] TF lookup tolerance |
 
-All tunable weights above support **live updates** via ROS parameters
-(`on_set_parameters` rebuilds the GPU optimizer).
+Parameters above are validated at configure time and during live ROS parameter
+updates. Invalid values, such as zero horizon length, non-positive model step,
+unknown motion models, or negative cost weights, are rejected before the GPU
+optimizer is rebuilt.
 
 ## Benchmark scenarios
 

@@ -45,7 +45,7 @@ public:
 
   void setSpeedLimit(const double & speed_limit, const bool & percentage) override;
 
-  void reset() override;
+  void reset();
 
 private:
   // Extract the local window of the global plan around the robot, transformed
@@ -68,7 +68,6 @@ private:
   double lookahead_dist_ = 3.0;
   double transform_tolerance_ = 0.1;
   rclcpp::node_interfaces::OnSetParametersCallbackHandle::SharedPtr param_callback_;
-  void applyParamsToOptimizer();
   bool updateParamsFromNode(const rclcpp_lifecycle::LifecycleNode::SharedPtr & node);
 };
 
