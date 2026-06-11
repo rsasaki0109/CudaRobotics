@@ -71,6 +71,8 @@ ros2 run cuda_mppi_controller mppi_gpu_standalone 2048 esdf</code></pre>
       model_dt: 0.05
       motion_model: "DiffDrive"
       path_angle_weight: 0.25
+      curvature_speed_weight: 0.0
+      curvature_speed_min: 0.18
       distance_field_weight: 0.0
       distance_field_cutoff: 0.75</code></pre>
           </div>
@@ -136,6 +138,22 @@ ros2 run cuda_mppi_controller mppi_gpu_standalone 2048 esdf</code></pre>
               </tr>
             </tbody>
           </table>
+        </div>
+      </section>
+
+      <section class="section">
+        <div class="section-head">
+          <h2>Curvature Speed Critic</h2>
+          <p>Set `curvature_speed_weight` above zero to slow rollout speed near sharp path bends.</p>
+        </div>
+        <div class="card">
+          <p>
+            The critic estimates local path curvature around the follow point
+            and penalizes forward speed above a curvature-limited target with
+            `curvature_speed_min` as the floor. It stays disabled by default
+            because it is a bend-entry smoothness knob rather than a universal
+            time-to-goal improvement.
+          </p>
         </div>
       </section>
 

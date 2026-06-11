@@ -57,6 +57,8 @@ planner = cr.MppiPlanner(
     time_steps=56,
     model_dt=0.05,
     path_angle_weight=0.25,
+    curvature_speed_weight=0.0,
+    curvature_speed_min=0.18,
     distance_field_weight=12.0,
     distance_field_cutoff=0.8,
 )

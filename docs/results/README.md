@@ -35,6 +35,25 @@ python scripts/benchmark_registration_external.py \
   --csv docs/results/registration_external_baselines_2026-06-11.csv
 ```
 
+## CUDA MPPI Curvature Speed Critic, 2026-06-11
+
+- Report: [`cuda_mppi_curvature_speed_2026-06-11.md`](cuda_mppi_curvature_speed_2026-06-11.md)
+- CSV: [`cuda_mppi_curvature_speed_2026-06-11.csv`](cuda_mppi_curvature_speed_2026-06-11.csv)
+- Scope: GPU-only `cuda_mppi_controller` comparison of the default path/costmap
+  critics with and without the optional curvature speed critic
+- Scenarios: `wall_gap`, `narrow_corridor`, `u_turn`
+- Config: `K=8192`, `T=56`, `dt=0.05`, `path_angle_weight=0.25`;
+  enabled row uses `curvature_speed_weight=8.0` and
+  `curvature_speed_min=0.18`
+
+Key signals:
+
+- Straight-path cells are unchanged because local path curvature is zero.
+- The corrected `u_turn` row slows near the 90-degree bends; average speed
+  within 1 m of the bends changes from 0.497 m/s to 0.481 m/s.
+- The checked-in default keeps `curvature_speed_weight=0.0` because this is a
+  speed-vs-smoothness tuning knob, not a universal time-to-goal improvement.
+
 ## CUDA MPPI Path-Angle Critic, 2026-06-11
 
 - Report: [`cuda_mppi_path_angle_2026-06-11.md`](cuda_mppi_path_angle_2026-06-11.md)

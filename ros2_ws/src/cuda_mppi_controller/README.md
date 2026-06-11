@@ -68,6 +68,8 @@ Motion models: **DiffDrive** (`vx`, `ωz`), **Ackermann** (curvature limit
   (pulls rollouts forward, like nav2's PathFollowCritic)
 - **Path angle** — yaw error to the local path tangent near the follow point
   (like nav2's PathAngleCritic)
+- **Curvature speed** — optional overspeed penalty near sharp bends in the
+  followed path; disabled by default so straight-line cruise tuning is unchanged
 - **Goal** — linear terminal distance to the window end, yaw activates near
   the final goal
 - **Costmap** — per-step lookup in the local costmap; lethal/inscribed cells
@@ -159,6 +161,8 @@ controller_server:
 | `path_weight` | 10.0 | lateral deviation² from the plan |
 | `path_follow_weight` | 5.0 | pull toward a point ahead on the plan |
 | `path_angle_weight` | 0.25 | heading error to the local path tangent |
+| `curvature_speed_weight` | 0.0 | optional penalty when forward speed exceeds the curvature target |
+| `curvature_speed_min` | 0.18 | [m/s] floor for curvature-limited target speed |
 | `follow_lookahead` | 1.0 | [m] how far ahead that point is |
 | `costmap_weight` | 3.0 | graded cost for inflated cells |
 | `distance_field_weight` | 0.0 | optional ESDF-style clearance cost; disabled by default |
@@ -187,6 +191,7 @@ ros2 run cuda_mppi_controller controller_benchmark /tmp/bench u_turn
 ros2 run cuda_mppi_controller controller_benchmark /tmp/bench all
 ros2 run cuda_mppi_controller controller_benchmark /tmp/bench esdf
 ros2 run cuda_mppi_controller controller_benchmark /tmp/bench path_angle
+ros2 run cuda_mppi_controller controller_benchmark /tmp/bench curvature_speed
 ```
 
 `all` also runs Ackermann/Omni GPU configs (`gpu_ackermann_K8192`, `gpu_omni_K8192`).
@@ -196,6 +201,9 @@ optional distance-field clearance critic. Results:
 `path_angle` runs a GPU-only comparison with and without the path-angle critic.
 Results:
 [`docs/results/cuda_mppi_path_angle_2026-06-11.md`](../../../docs/results/cuda_mppi_path_angle_2026-06-11.md).
+`curvature_speed` runs a GPU-only comparison with and without the optional
+curvature speed critic. Results:
+[`docs/results/cuda_mppi_curvature_speed_2026-06-11.md`](../../../docs/results/cuda_mppi_curvature_speed_2026-06-11.md).
 
 Loopback motion-model configs: `config/nav2_loopback_demo_{ackermann,omni}.yaml`.
 
