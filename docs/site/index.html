@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CudaRobotics Docs</title>
+  <meta name="description" content="CudaRobotics documentation for Python GPU MPPI, point-cloud registration, the Nav2 CUDA MPPI controller, Docker demos, and release artifacts.">
+  <link rel="stylesheet" href="assets/site.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <a class="brand" href="index.html">CudaRobotics Docs</a>
+      <nav class="nav" aria-label="Primary">
+        <a href="install.html">Install</a>
+        <a href="python.html">Python API</a>
+        <a href="nav2.html">Nav2</a>
+        <a href="results.html">Results</a>
+        <a href="https://rsasaki0109.github.io/CudaRobotics/">Gallery</a>
+      </nav>
+    </div>
+  </header>
+
+  <main>
+    <section class="hero">
+      <div class="hero-inner">
+        <p class="eyebrow">GPU robotics toolkit</p>
+        <h1>CudaRobotics Docs</h1>
+        <p>
+          Install the v0.1.0 release, run GPU MPPI from Python, load the CUDA
+          MPPI controller in Nav2, and reproduce the checked-in benchmark
+          reports without hunting through the repository tree.
+        </p>
+        <div class="actions">
+          <a class="button primary" href="install.html">Start installing</a>
+          <a class="button" href="python.html">Open Python API</a>
+          <a class="button" href="nav2.html">Open Nav2 guide</a>
+        </div>
+      </div>
+    </section>
+
+    <div class="content">
+      <section class="section">
+        <div class="section-head">
+          <h2>Fast Paths</h2>
+          <p>Choose the entry point that matches how you want to try the project.</p>
+        </div>
+        <div class="grid">
+          <article class="card">
+            <span class="tag">Browser</span>
+            <h3>Colab quickstart</h3>
+            <p>Build the Python package and run MPPI plus registration demos from a notebook.</p>
+            <p><a href="https://colab.research.google.com/github/rsasaki0109/CudaRobotics/blob/master/examples/colab/cudarobotics_quickstart.ipynb">Open Colab</a></p>
+          </article>
+          <article class="card">
+            <span class="tag amber">Release</span>
+            <h3>v0.1.0 assets</h3>
+            <p>Download the source distribution or Linux x86_64 wheels from GitHub Releases.</p>
+            <p><a href="https://github.com/rsasaki0109/CudaRobotics/releases/tag/v0.1.0">Open release</a></p>
+          </article>
+          <article class="card">
+            <span class="tag blue">Container</span>
+            <h3>Docker demo</h3>
+            <p>Run the Nav2 CUDA MPPI plugin smoke and benchmark path from GHCR.</p>
+            <p><a href="install.html#docker-demo">Run Docker demo</a></p>
+          </article>
+        </div>
+      </section>
+
+      <section class="section split">
+        <div>
+          <div class="section-head">
+            <h2>Core Guides</h2>
+          </div>
+          <div class="grid two">
+            <article class="card">
+              <h3><a href="python.html">Python MPPI and Registration</a></h3>
+              <p>
+                `MppiPlanner`, CUDA DLPack costmaps, FilterReg, robust
+                registration, Sinkhorn, FGR, and BCPD examples.
+              </p>
+            </article>
+            <article class="card">
+              <h3><a href="nav2.html">Nav2 CUDA MPPI Controller</a></h3>
+              <p>
+                Plugin setup, parameter validation, motion models, smoke tests,
+                and the controller architecture boundary.
+              </p>
+            </article>
+            <article class="card">
+              <h3><a href="results.html">Benchmark Results</a></h3>
+              <p>
+                Fixed-seed MPPI suites, Nav2 CPU-vs-GPU comparisons, and
+                registration external baselines.
+              </p>
+            </article>
+            <article class="card">
+              <h3><a href="https://github.com/rsasaki0109/CudaRobotics/tree/master/docs">Research Notes</a></h3>
+              <p>
+                MPPI reproduction zoo, planning demos, perception demos, and
+                reproducibility notes.
+              </p>
+            </article>
+          </div>
+        </div>
+        <figure class="media">
+          <img src="https://rsasaki0109.github.io/CudaRobotics/cuda_mppi_nav2_gazebo.gif" alt="Nav2 CUDA MPPI Gazebo demo">
+          <figcaption>Nav2 CUDA MPPI controller running through a Gazebo mission.</figcaption>
+        </figure>
+      </section>
+
+      <section class="section">
+        <div class="section-head">
+          <h2>Release Snapshot</h2>
+          <p>v0.1.0 turns the repository from a demo gallery into a usable GPU robotics toolkit.</p>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Area</th>
+                <th>What is included</th>
+                <th>Where to go</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Python</td>
+                <td>GPU MPPI planner and point-cloud registration bindings.</td>
+                <td><a href="python.html">Python API</a></td>
+              </tr>
+              <tr>
+                <td>Nav2</td>
+                <td>CUDA MPPI controller plugin with DiffDrive, Ackermann, and Omni support.</td>
+                <td><a href="nav2.html">Nav2 guide</a></td>
+              </tr>
+              <tr>
+                <td>Distribution</td>
+                <td>GitHub release assets, Colab quickstart, and GHCR demo image.</td>
+                <td><a href="install.html">Install guide</a></td>
+              </tr>
+              <tr>
+                <td>Evidence</td>
+                <td>Checked-in benchmark reports with reproducible scripts and visible caveats.</td>
+                <td><a href="results.html">Results index</a></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <footer class="footer">
+    <div class="footer-inner">
+      <span>CudaRobotics documentation</span>
+      <span><a href="https://github.com/rsasaki0109/CudaRobotics">GitHub repository</a></span>
+    </div>
+  </footer>
+</body>
+</html>

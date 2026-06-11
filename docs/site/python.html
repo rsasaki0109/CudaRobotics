@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CudaRobotics Python API</title>
+  <meta name="description" content="Python API guide for CudaRobotics MPPI and point-cloud registration bindings.">
+  <link rel="stylesheet" href="assets/site.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <a class="brand" href="index.html">CudaRobotics Docs</a>
+      <nav class="nav" aria-label="Primary">
+        <a href="install.html">Install</a>
+        <a href="python.html" aria-current="page">Python API</a>
+        <a href="nav2.html">Nav2</a>
+        <a href="results.html">Results</a>
+        <a href="https://rsasaki0109.github.io/CudaRobotics/">Gallery</a>
+      </nav>
+    </div>
+  </header>
+
+  <main>
+    <div class="page-head">
+      <p class="eyebrow">Python bindings</p>
+      <h1>MPPI and Registration API</h1>
+      <p>
+        The `cudarobotics` package exposes a GPU MPPI planner, CUDA DLPack
+        costmap input, and point-cloud registration algorithms through a small
+        Python wrapper layer over the CUDA core.
+      </p>
+    </div>
+
+    <div class="content">
+      <section class="section split">
+        <div>
+          <h2>GPU MPPI Planner</h2>
+          <p>
+            `MppiPlanner.compute()` returns `(v, vy, w, info)`. NumPy costmaps
+            use the host path. CUDA DLPack producers such as PyTorch or CuPy
+            tensors can pass a `uint8` 2D costmap without staging it through
+            host memory.
+          </p>
+          <div class="code">
+<pre><code>import numpy as np
+import cudarobotics as cr
+
+planner = cr.MppiPlanner(
+    batch_size=2048,
+    time_steps=56,
+    model_dt=0.05,
+    motion_model="diff_drive",
+)
+
+costmap = np.zeros((200, 200), dtype=np.uint8)
+path = np.array([[x, 5.0] for x in np.arange(1.0, 9.1, 0.1)], dtype=np.float32)
+v, vy, w, info = planner.compute(
+    (1.0, 5.0, 0.0),
+    costmap,
+    path,
+    (9.0, 5.0, 0.0),
+    resolution=0.05,
+)</code></pre>
+          </div>
+        </div>
+        <figure class="media">
+          <img src="https://rsasaki0109.github.io/CudaRobotics/mppi.gif" alt="GPU MPPI demo">
+          <figcaption>MPPI rollout behavior from the animated demo gallery.</figcaption>
+        </figure>
+      </section>
+
+      <section class="section">
+        <div class="section-head">
+          <h2>CUDA DLPack Costmap</h2>
+          <p>Only the costmap accepts a device DLPack producer in v0.1.0. Path and footprint inputs remain host arrays.</p>
+        </div>
+        <div class="card">
+          <div class="code">
+<pre><code>import numpy as np
+import torch
+import cudarobotics as cr
+
+planner = cr.MppiPlanner(batch_size=2048, time_steps=56, model_dt=0.05)
+costmap = torch.zeros((200, 200), dtype=torch.uint8, device="cuda")
+path = np.array([[1.0, 5.0], [5.0, 5.0]], dtype=np.float32)
+
+v, vy, w, info = planner.compute(
+    (1.0, 5.0, 0.0),
+    costmap,
+    path,
+    (5.0, 5.0, 0.0),
+    resolution=0.05,
+)</code></pre>
+          </div>
+        </div>
+      </section>
+
+      <section class="section">
+        <div class="section-head">
+          <h2>Registration Classes</h2>
+          <p>All rigid registration wrappers return rotation, translation, and an info object unless noted.</p>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Class</th>
+                <th>Purpose</th>
+                <th>Example</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>`FilterReg`</td>
+                <td>GPU filtered-EM rigid point-cloud registration.</td>
+                <td>`rotation, translation, info = reg.register(target, source)`</td>
+              </tr>
+              <tr>
+                <td>`RobustP2Plane`</td>
+                <td>Robust Student's-t point-to-plane registration.</td>
+                <td>`rotation, translation, info = reg.register(target, source)`</td>
+              </tr>
+              <tr>
+                <td>`RobustTreg`</td>
+                <td>Robust Student's-t point-to-point registration.</td>
+                <td>`rotation, translation, info = reg.register(target, source)`</td>
+              </tr>
+              <tr>
+                <td>`SinkhornReg`</td>
+                <td>Unbalanced optimal-transport registration.</td>
+                <td>`rotation, translation, info = reg.register(target, source)`</td>
+              </tr>
+              <tr>
+                <td>`Fgr`</td>
+                <td>Fast Global Registration with FPFH and graduated non-convexity.</td>
+                <td>`rotation, translation, info = reg.register(target, source)`</td>
+              </tr>
+              <tr>
+                <td>`Bcpd`</td>
+                <td>GPU BCPD non-rigid point-set registration.</td>
+                <td>`deformed, info = reg.register(target, source)`</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="section">
+        <div class="grid two">
+          <article class="card">
+            <h3>Package source</h3>
+            <p><a href="https://github.com/rsasaki0109/CudaRobotics/tree/master/python/src/cudarobotics">python/src/cudarobotics</a></p>
+          </article>
+          <article class="card">
+            <h3>Examples</h3>
+            <p><a href="https://github.com/rsasaki0109/CudaRobotics/tree/master/examples/python">examples/python</a></p>
+          </article>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <footer class="footer">
+    <div class="footer-inner">
+      <span>CudaRobotics documentation</span>
+      <span><a href="index.html">Docs home</a></span>
+    </div>
+  </footer>
+</body>
+</html>

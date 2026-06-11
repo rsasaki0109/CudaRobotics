@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CudaRobotics Results</title>
+  <meta name="description" content="Benchmark and reproducibility result index for CudaRobotics.">
+  <link rel="stylesheet" href="assets/site.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <a class="brand" href="index.html">CudaRobotics Docs</a>
+      <nav class="nav" aria-label="Primary">
+        <a href="install.html">Install</a>
+        <a href="python.html">Python API</a>
+        <a href="nav2.html">Nav2</a>
+        <a href="results.html" aria-current="page">Results</a>
+        <a href="https://rsasaki0109.github.io/CudaRobotics/">Gallery</a>
+      </nav>
+    </div>
+  </header>
+
+  <main>
+    <div class="page-head">
+      <p class="eyebrow">Evidence index</p>
+      <h1>Results and Reproducibility</h1>
+      <p>
+        CudaRobotics keeps benchmark reports in the repository so wins,
+        negative controls, and limitations are visible next to the code.
+      </p>
+    </div>
+
+    <div class="content">
+      <section class="section">
+        <div class="section-head">
+          <h2>Distribution Results</h2>
+          <p>Start here for the v0.1.0 user-facing evidence.</p>
+        </div>
+        <div class="grid">
+          <article class="card">
+            <span class="tag blue">Nav2</span>
+            <h3>CUDA MPPI vs Nav2 CPU MPPI</h3>
+            <p>Closed-loop pluginlib comparison on the same costmap, plan, and limits.</p>
+            <p><a href="https://github.com/rsasaki0109/CudaRobotics/blob/master/docs/results/cuda_mppi_vs_nav2_2026-06-10.md">Open report</a></p>
+          </article>
+          <article class="card">
+            <span class="tag">Registration</span>
+            <h3>External baselines</h3>
+            <p>FilterReg comparison against probreg and Open3D CPU baselines.</p>
+            <p><a href="https://github.com/rsasaki0109/CudaRobotics/blob/master/docs/results/registration_external_baselines_2026-06-11.md">Open report</a></p>
+          </article>
+          <article class="card">
+            <span class="tag amber">Release</span>
+            <h3>v0.1.0 smoke checklist</h3>
+            <p>Local release checks, artifact expectations, and publish steps.</p>
+            <p><a href="https://github.com/rsasaki0109/CudaRobotics/blob/master/docs/releases/v0.1.0_smoke_checklist.md">Open checklist</a></p>
+          </article>
+        </div>
+      </section>
+
+      <section class="section split">
+        <div>
+          <h2>MPPI Zoo</h2>
+          <p>
+            The fixed-seed suite compares the baseline MPPI planner against a
+            growing set of paper-inspired variants. It is not a universal claim;
+            it is a reproducible local stress suite with both successes and
+            failures checked in.
+          </p>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Report</th>
+                  <th>Scope</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><a href="https://github.com/rsasaki0109/CudaRobotics/blob/master/docs/results/mppi_zoo_suite_2026-06-10.md">2026-06-10 suite</a></td>
+                  <td>Five scenarios, ten planners, multiple sample counts.</td>
+                </tr>
+                <tr>
+                  <td><a href="https://github.com/rsasaki0109/CudaRobotics/blob/master/docs/results/mppi_zoo_smoke_2026-06-05.md">Smoke suite</a></td>
+                  <td>Small quick-run suite for fast regression checks.</td>
+                </tr>
+                <tr>
+                  <td><a href="https://github.com/rsasaki0109/CudaRobotics/blob/master/docs/mppi_reproduction_zoo.md">Reproduction zoo</a></td>
+                  <td>Research backlog with implementation notes and limitations.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+        <figure class="media">
+          <img src="https://raw.githubusercontent.com/rsasaki0109/CudaRobotics/master/docs/results/mppi_zoo_suite_2026-06-10.svg" alt="MPPI zoo fixed-seed suite chart">
+          <figcaption>Checked-in MPPI zoo chart generated from the repository benchmark scripts.</figcaption>
+        </figure>
+      </section>
+
+      <section class="section">
+        <div class="section-head">
+          <h2>Release Notes</h2>
+        </div>
+        <div class="grid two">
+          <article class="card">
+            <h3>v0.1.0 notes</h3>
+            <p><a href="https://github.com/rsasaki0109/CudaRobotics/blob/master/docs/releases/v0.1.0_notes.md">Open release notes source</a></p>
+          </article>
+          <article class="card">
+            <h3>GitHub release</h3>
+            <p><a href="https://github.com/rsasaki0109/CudaRobotics/releases/tag/v0.1.0">Open published release</a></p>
+          </article>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <footer class="footer">
+    <div class="footer-inner">
+      <span>CudaRobotics documentation</span>
+      <span><a href="index.html">Docs home</a></span>
+    </div>
+  </footer>
+</body>
+</html>
