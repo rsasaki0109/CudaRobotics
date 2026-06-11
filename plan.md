@@ -1,12 +1,12 @@
 # CudaRobotics Plan / Handoff (for Codex / Claude)
 
-Last updated: 2026-06-11 JST (`51b663f` — v0.1.0 release docs merged,
-tagged, released, and the GHCR tag workflow verified after Nav2 parameter
-validation, CUDA DLPack costmaps, and the registration external benchmark.
-Current active work is the docs site source on `codex/docs-site`. Jetson/aarch64
-support is intentionally skipped for now by user direction. Note: some older
-sections below carry their own internal dates — treat section headers as the
-ordering authority within each line, not this single timestamp.)
+Last updated: 2026-06-11 JST (`35be4a2` — docs site source merged after
+v0.1.0 release docs, tag, GitHub Release assets, and GHCR tag workflow
+verification. Current active work is the ESDF-style MPPI clearance critic on
+`codex/esdf-mppi-critic`. Jetson/aarch64 support is intentionally skipped for
+now by user direction. Note: some older sections below carry their own internal
+dates — treat section headers as the ordering authority within each line, not
+this single timestamp.)
 
 This document is the long-form handoff for the next coding agent (Codex).
 It captures: (1) where the repo is right now, (2) what was just done over
@@ -27,9 +27,9 @@ There are now **two active lines** in this repo:
    plugin (#175), pip bindings + packaging (#176–#180), Colab quickstart
    (#181), Docker demo (#183), working manylinux wheels (#184–#186),
    registration-vs-probreg/Open3D benchmark results (#187), CUDA DLPack
-   costmaps (#188), Nav2 parameter validation (#189), and the v0.1.0 release
-   checklist / notes (#190). v0.1.0 is published from the current `master`
-   line.
+   costmaps (#188), Nav2 parameter validation (#189), the v0.1.0 release
+   checklist / notes (#190), and docs site source (#191). v0.1.0 is published
+   from the current `master` line.
 2. **Research line** — SOPPI / Diff-MPPI box-pushing reproduction zoo
    (see "Research Line State" below; `box_align_contact_loss` lifted to **1.00**;
    `box_align_detour` still the open hard cell at **0.25**).
@@ -38,13 +38,13 @@ There are now **two active lines** in this repo:
 
 ## Current State (2026-06-11) — star-growth funnel sprint
 
-Mainline: **`master` at `51b663f`**, in sync with `origin/master`, after the
+Mainline: **`master` at `35be4a2`**, in sync with `origin/master`, after the
 hardware-string history rewrite, registration external benchmark merge (#187),
 CUDA DLPack costmap merge (#188), Nav2 parameter validation merge (#189), and
-v0.1.0 release docs merge (#190). Tag `v0.1.0`, GitHub Release assets, and the
-GHCR tag workflow are complete. Current local work: docs site source on
-`codex/docs-site`, intended to publish under the existing Pages gallery at
-`/docs/` without replacing the `gh-pages` root.
+v0.1.0 release docs merge (#190), and docs site source merge (#191). Tag
+`v0.1.0`, GitHub Release assets, GHCR tag workflow, and the live docs site are
+complete. Current local work: ESDF-style MPPI clearance critic on
+`codex/esdf-mppi-critic`.
 
 ### What landed this session (all squash-merged)
 
@@ -60,6 +60,7 @@ GHCR tag workflow are complete. Current local work: docs site source on
 | #188 | CUDA DLPack costmap support for Python `MppiPlanner.compute()` | learning stacks can pass CUDA tensors as costmaps without staging through host memory; NumPy host path remains unchanged |
 | #189 | Nav2 MPPI parameter validation (`parameter_validation_test`, Humble/Jazzy exception shims) | invalid controller settings fail clearly during configure/live updates, before reaching CUDA allocation/rollout |
 | #190 | v0.1.0 release checklist / notes, tag, GitHub Release assets, and GHCR tag workflow verification | first public release path with wheels, sdist, Colab, Docker, and explicit PyPI skip |
+| #191 | Static docs site source under `docs/site/` plus live Pages publish under `/docs/` | browsable install, Python API, Nav2, release, and benchmark entry points without replacing the existing gallery root |
 
 Wheel sanity check done: the cp312 manylinux wheel was installed into a fresh
 venv on this machine; `MppiPlanner.compute` and
@@ -90,20 +91,35 @@ to the GitHub Release:
 PyPI remains explicitly **skipped by user decision** — do not add PyPI
 publishing in this release.
 
-### Docs site — IN FLIGHT (`codex/docs-site`)
+### Docs site — LANDED (#191)
 
 Goal: make install, Python API, Nav2 plugin, Docker/release, and benchmark
 entry points browsable from a small static site under
 `https://rsasaki0109.github.io/CudaRobotics/docs/`.
 
-Implementation direction:
+Implementation:
 
 - Keep existing GitHub Pages source as `gh-pages:/`; it serves the animated
   gallery and must not be replaced by a whole-branch Pages deploy workflow.
-- Add source files under `docs/site/` on `master`.
-- Deploy by copying `docs/site/` into `gh-pages:/docs/` so the docs site can
-  coexist with the gallery root.
-- README should link to the live docs URL after `gh-pages` is updated.
+- Source files live under `docs/site/` on `master`.
+- `gh-pages:/docs/` serves the live docs site alongside the gallery root.
+- The gallery root now links to `/docs/`.
+
+### ESDF-style MPPI clearance critic — IN FLIGHT (`codex/esdf-mppi-critic`)
+
+Goal: add an algorithmic obstacle-clearance critic to the production MPPI core
+without changing default behavior.
+
+Implementation direction:
+
+- Add optional `distance_field_weight` and `distance_field_cutoff` to
+  `MppiParams`; default weight stays `0.0`.
+- Build a truncated GPU distance-to-obstacle field from the same local costmap
+  buffer used by the rollout kernel, including CUDA DLPack costmaps.
+- Add the quadratic clearance stage cost only inside the cutoff radius.
+- Expose the parameters through Python and Nav2 validation/config examples.
+- Verify with `mppi_gpu_standalone 2048 esdf`, default `diff` smoke,
+  `parameter_validation_test`, pluginlib load, and Python tests.
 
 ### Registration external benchmark — LANDED (#187)
 
@@ -171,8 +187,8 @@ Implementation:
 
 Short term (this week):
 
-1. **Finish docs site**: land `docs/site/`, publish it to `gh-pages:/docs/`,
-   and verify the live URL does not disturb the gallery root.
+1. **Finish ESDF-style MPPI critic**: land optional distance-field clearance
+   cost in the core, Python bindings, Nav2 parameters, and focused smoke tests.
 2. **Distribution** (HN / Reddit / ROS Discourse / X / Zenn) remains
    user-owned. Agents can prepare copy, but should not post externally.
 
@@ -185,7 +201,7 @@ Mid term — pick ONE based on which funnel converts after the release
   footprint device inputs only if a real user workflow needs them.
 - **nav2 plugin field validation** — real robot / real bag data; produces
   ROS-Discourse-grade material. Humble compat is already in.
-- **Docs site** — selected now. Keep it focused on user entry points and avoid
+- **Docs site** — landed. Keep it focused on user entry points and avoid
   replacing the existing `gh-pages` gallery.
 
 Research line: the Diff-MPPI contact paper is at the **submit** stage
@@ -200,9 +216,10 @@ agents build material, the user distributes and publishes.
 
 ### Working tree inventory (untracked / WIP — handle with care)
 
-- `docs/site/` — static docs site source for `/docs/` on GitHub Pages.
-- `readme.md` — docs site badge / Start Here row.
-- `plan.md` — current handoff update after v0.1.0 publishing and docs site
+- MPPI ESDF critic files: `src/mppi_gpu.cu`,
+  `include/cuda_mppi_controller/mppi_gpu.hpp`, synced `python/core/*`,
+  Python binding/tests, Nav2 params/config/docs, and docs site source updates.
+- `plan.md` — current handoff update after docs site merge and ESDF critic
   selection.
 - `src/benchmark_diff_mppi_pushing_box.cu` — user research WIP if present; do
   not bundle into this star-growth docs commit.

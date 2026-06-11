@@ -53,6 +53,10 @@ int main(int argc, char ** argv)
     {"negative_v_max", rclcpp::Parameter("FollowPath.v_max", -0.1)},
     {"v_min_above_v_max", rclcpp::Parameter("FollowPath.v_min", 1.0)},
     {"negative_w_max", rclcpp::Parameter("FollowPath.w_max", -1.0)},
+    {"negative_distance_field_weight",
+      rclcpp::Parameter("FollowPath.distance_field_weight", -1.0)},
+    {"negative_distance_field_cutoff",
+      rclcpp::Parameter("FollowPath.distance_field_cutoff", -0.1)},
     {"negative_lookahead", rclcpp::Parameter("FollowPath.lookahead_dist", -1.0)},
     {"negative_transform_tolerance", rclcpp::Parameter("FollowPath.transform_tolerance", -0.1)},
   };

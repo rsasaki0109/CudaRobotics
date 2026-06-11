@@ -99,6 +99,8 @@ void validateControllerParams(const MppiParams & params, double lookahead_dist,
   requireNonNegative("path_follow_weight", params.path_follow_weight);
   requireNonNegative("follow_lookahead", params.follow_lookahead);
   requireNonNegative("costmap_weight", params.costmap_weight);
+  requireNonNegative("distance_field_weight", params.distance_field_weight);
+  requireNonNegative("distance_field_cutoff", params.distance_field_cutoff);
   requireNonNegative("smoothness_weight", params.smoothness_weight);
   requireNonNegative("backward_weight", params.backward_weight);
   requireNonNegative("speed_weight", params.speed_weight);
@@ -157,6 +159,10 @@ bool applyControllerParameter(const std::string & key, const rclcpp::Parameter &
     params.follow_lookahead = static_cast<float>(parameter.as_double());
   } else if (key == "costmap_weight") {
     params.costmap_weight = static_cast<float>(parameter.as_double());
+  } else if (key == "distance_field_weight") {
+    params.distance_field_weight = static_cast<float>(parameter.as_double());
+  } else if (key == "distance_field_cutoff") {
+    params.distance_field_cutoff = static_cast<float>(parameter.as_double());
   } else if (key == "smoothness_weight") {
     params.smoothness_weight = static_cast<float>(parameter.as_double());
   } else if (key == "backward_weight") {
@@ -210,6 +216,8 @@ bool CudaMppiController::updateParamsFromNode(
   double path_follow_weight = next.path_follow_weight;
   double follow_lookahead = next.follow_lookahead;
   double costmap_weight = next.costmap_weight;
+  double distance_field_weight = next.distance_field_weight;
+  double distance_field_cutoff = next.distance_field_cutoff;
   double smoothness_weight = next.smoothness_weight;
   double backward_weight = next.backward_weight;
   double speed_weight = next.speed_weight;
@@ -239,6 +247,8 @@ bool CudaMppiController::updateParamsFromNode(
   node->get_parameter(name_ + ".path_follow_weight", path_follow_weight);
   node->get_parameter(name_ + ".follow_lookahead", follow_lookahead);
   node->get_parameter(name_ + ".costmap_weight", costmap_weight);
+  node->get_parameter(name_ + ".distance_field_weight", distance_field_weight);
+  node->get_parameter(name_ + ".distance_field_cutoff", distance_field_cutoff);
   node->get_parameter(name_ + ".smoothness_weight", smoothness_weight);
   node->get_parameter(name_ + ".backward_weight", backward_weight);
   node->get_parameter(name_ + ".speed_weight", speed_weight);
@@ -270,6 +280,8 @@ bool CudaMppiController::updateParamsFromNode(
   next.path_follow_weight = static_cast<float>(path_follow_weight);
   next.follow_lookahead = static_cast<float>(follow_lookahead);
   next.costmap_weight = static_cast<float>(costmap_weight);
+  next.distance_field_weight = static_cast<float>(distance_field_weight);
+  next.distance_field_cutoff = static_cast<float>(distance_field_cutoff);
   next.smoothness_weight = static_cast<float>(smoothness_weight);
   next.backward_weight = static_cast<float>(backward_weight);
   next.speed_weight = static_cast<float>(speed_weight);
@@ -329,6 +341,8 @@ void CudaMppiController::configure(
   declare_param("path_follow_weight", static_cast<double>(params_.path_follow_weight));
   declare_param("follow_lookahead", static_cast<double>(params_.follow_lookahead));
   declare_param("costmap_weight", static_cast<double>(params_.costmap_weight));
+  declare_param("distance_field_weight", static_cast<double>(params_.distance_field_weight));
+  declare_param("distance_field_cutoff", static_cast<double>(params_.distance_field_cutoff));
   declare_param("smoothness_weight", static_cast<double>(params_.smoothness_weight));
   declare_param("backward_weight", static_cast<double>(params_.backward_weight));
   declare_param("speed_weight", static_cast<double>(params_.speed_weight));

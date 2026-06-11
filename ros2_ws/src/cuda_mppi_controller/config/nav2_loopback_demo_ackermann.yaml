@@ -119,6 +119,8 @@ controller_server:
       speed_weight: 3.0
       angular_weight: 0.5
       costmap_weight: 3.0
+      distance_field_weight: 0.0
+      distance_field_cutoff: 0.75
       smoothness_weight: 0.2
       backward_weight: 0.5
       yaw_goal_activation_dist: 0.5
