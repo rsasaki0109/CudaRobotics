@@ -1,0 +1,7 @@
+scenario,label,path_angle_weight,success,collided,steps,sim_s,mean_ms,p95_ms,max_ms,exceptions
+wall_gap,gpu_costmap_K8192_no_path_angle,0,1,0,330,16.5,1.12517,1.30986,1.44418,0
+wall_gap,gpu_costmap_K8192_path_angle,0.25,1,0,327,16.35,1.07237,1.1444,1.20658,0
+narrow_corridor,gpu_costmap_K8192_no_path_angle,0,1,0,349,17.45,1.15226,1.35242,1.56524,0
+narrow_corridor,gpu_costmap_K8192_path_angle,0.25,1,0,348,17.4,1.08016,1.16815,1.26823,0
+u_turn,gpu_costmap_K8192_no_path_angle,0,1,0,895,44.75,1.05825,1.13819,1.38535,0
+u_turn,gpu_costmap_K8192_path_angle,0.25,1,0,798,39.9,1.10555,1.18573,1.48347,0

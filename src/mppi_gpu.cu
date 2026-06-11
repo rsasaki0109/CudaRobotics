@@ -41,7 +41,7 @@ struct DeviceParams
   float v_max, v_min, vy_max, w_max;
   float min_turning_r;
   float v_std, vy_std, w_std;
-  float goal_w, goal_yaw_w, path_w, follow_w, costmap_w, smooth_w, backward_w;
+  float goal_w, goal_yaw_w, path_w, follow_w, path_angle_w, costmap_w, smooth_w, backward_w;
   float distance_field_w, distance_field_cutoff;
   float speed_w, angular_w;
   int follow_offset;   // path index offset for the path-follow cost
@@ -336,6 +336,27 @@ __global__ void rollout_kernel(
       float fdx = x - path[fi * 2 + 0];
       float fdy = y - path[fi * 2 + 1];
       cost += p.follow_w * sqrtf(fdx * fdx + fdy * fdy) * p.dt;
+
+      if (p.path_angle_w > 0.0f && p.path_len > 1) {
+        int prev_i = max(0, fi - 1);
+        int next_i = min(p.path_len - 1, fi + 1);
+        float tx = path[next_i * 2 + 0] - path[prev_i * 2 + 0];
+        float ty = path[next_i * 2 + 1] - path[prev_i * 2 + 1];
+        if (tx * tx + ty * ty < 1.0e-8f) {
+          prev_i = max(0, best_i - 1);
+          next_i = min(p.path_len - 1, best_i + 1);
+          tx = path[next_i * 2 + 0] - path[prev_i * 2 + 0];
+          ty = path[next_i * 2 + 1] - path[prev_i * 2 + 1];
+        }
+        if (tx * tx + ty * ty > 1.0e-8f) {
+          float path_yaw = atan2f(ty, tx);
+          if (v < -1.0e-3f) {
+            path_yaw = wrap_angle(path_yaw + 3.14159265358979323846f);
+          }
+          const float yaw_err = wrap_angle(yaw - path_yaw);
+          cost += p.path_angle_w * yaw_err * yaw_err * p.dt;
+        }
+      }
     }
 
     // smoothness + backward motion penalties
@@ -573,6 +594,7 @@ MppiResult MppiGpu::computeInternal(
   dp.goal_yaw_w = mp.goal_yaw_weight;
   dp.path_w = mp.path_weight;
   dp.follow_w = mp.path_follow_weight;
+  dp.path_angle_w = mp.path_angle_weight;
   dp.follow_offset = follow_offset;
   dp.costmap_w = mp.costmap_weight;
   dp.distance_field_w = mp.distance_field_weight;

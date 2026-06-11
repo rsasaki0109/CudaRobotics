@@ -112,6 +112,7 @@ controller_server:
       goal_yaw_weight: 3.0
       path_weight: 10.0
       path_follow_weight: 5.0
+      path_angle_weight: 0.25
       follow_lookahead: 1.0
       speed_weight: 3.0
       angular_weight: 0.5

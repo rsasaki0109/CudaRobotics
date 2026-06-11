@@ -1,7 +1,7 @@
 scenario,label,batch_size,success,collided,steps,sim_s,mean_ms,p95_ms,max_ms,exceptions,distance_field_weight,distance_field_cutoff
-wall_gap,gpu_costmap_K8192,8192,1,0,330,16.5,1.11827,1.30665,1.40751,0,0,0.75
-wall_gap,gpu_esdf_K8192,8192,1,0,331,16.55,1.16164,1.21738,1.4467,0,12,0.8
-narrow_corridor,gpu_costmap_K8192,8192,1,0,349,17.45,1.17199,1.31126,1.35485,0,0,0.75
-narrow_corridor,gpu_esdf_K8192,8192,1,0,355,17.75,1.16214,1.20576,1.28185,0,12,0.8
-u_turn,gpu_costmap_K8192,8192,1,0,895,44.75,1.03473,1.07552,1.36347,0,0,0.75
-u_turn,gpu_esdf_K8192,8192,1,0,799,39.95,1.1831,1.22558,1.31247,0,12,0.8
+wall_gap,gpu_costmap_K8192,8192,1,0,327,16.35,1.15897,1.38055,1.61845,0,0,0.75
+wall_gap,gpu_esdf_K8192,8192,1,0,351,17.55,1.20723,1.28877,1.50166,0,12,0.8
+narrow_corridor,gpu_costmap_K8192,8192,1,0,348,17.4,1.17134,1.36919,1.61099,0,0,0.75
+narrow_corridor,gpu_esdf_K8192,8192,1,0,335,16.75,1.21645,1.2877,1.37731,0,12,0.8
+u_turn,gpu_costmap_K8192,8192,1,0,798,39.9,1.09266,1.15045,1.2875,0,0,0.75
+u_turn,gpu_esdf_K8192,8192,1,0,798,39.9,1.23263,1.29692,1.46687,0,12,0.8

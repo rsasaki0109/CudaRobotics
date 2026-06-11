@@ -7,7 +7,8 @@ the optional ESDF-style distance-field clearance critic added to
 Hardware: local CUDA-capable benchmark machine, ROS 2 workspace, Release build.
 Scenario setup: 10 m x 10 m synthetic costmap, 20 Hz closed loop,
 K = 8192, T = 56, dt = 0.05. ESDF row uses
-`distance_field_weight=12.0` and `distance_field_cutoff=0.8`.
+`distance_field_weight=12.0` and `distance_field_cutoff=0.8`; both rows
+use the default path-angle critic (`path_angle_weight=0.25`).
 
 CSV: [`cuda_mppi_esdf_2026-06-11.csv`](cuda_mppi_esdf_2026-06-11.csv)
 
@@ -15,12 +16,12 @@ CSV: [`cuda_mppi_esdf_2026-06-11.csv`](cuda_mppi_esdf_2026-06-11.csv)
 
 | scenario | critic | result | sim time | mean solve | p95 | max | exceptions |
 |---|---|---:|---:|---:|---:|---:|---:|
-| wall_gap | costmap | success | 16.5s | 1.12 ms | 1.31 ms | 1.41 ms | 0 |
-| wall_gap | costmap + ESDF | success | 16.6s | 1.16 ms | 1.22 ms | 1.45 ms | 0 |
-| narrow_corridor | costmap | success | 17.4s | 1.17 ms | 1.31 ms | 1.35 ms | 0 |
-| narrow_corridor | costmap + ESDF | success | 17.8s | 1.16 ms | 1.21 ms | 1.28 ms | 0 |
-| u_turn | costmap | success | 44.8s | 1.03 ms | 1.08 ms | 1.36 ms | 0 |
-| u_turn | costmap + ESDF | success | 40.0s | 1.18 ms | 1.23 ms | 1.31 ms | 0 |
+| wall_gap | costmap | success | 16.4s | 1.16 ms | 1.38 ms | 1.62 ms | 0 |
+| wall_gap | costmap + ESDF | success | 17.6s | 1.21 ms | 1.29 ms | 1.50 ms | 0 |
+| narrow_corridor | costmap | success | 17.4s | 1.17 ms | 1.37 ms | 1.61 ms | 0 |
+| narrow_corridor | costmap + ESDF | success | 16.8s | 1.22 ms | 1.29 ms | 1.38 ms | 0 |
+| u_turn | costmap | success | 39.9s | 1.09 ms | 1.15 ms | 1.29 ms | 0 |
+| u_turn | costmap + ESDF | success | 39.9s | 1.23 ms | 1.30 ms | 1.47 ms | 0 |
 
 ## Readout
 
@@ -28,9 +29,9 @@ CSV: [`cuda_mppi_esdf_2026-06-11.csv`](cuda_mppi_esdf_2026-06-11.csv)
   for the `gpu_esdf_K8192` rows.
 - All three corrected scenarios succeed with both the default costmap
   critic and the ESDF clearance critic at K=8192.
-- ESDF keeps similar solve latency on `wall_gap` and `narrow_corridor`,
-  while the corrected `u_turn` cell finishes sooner with ESDF enabled in
-  this run.
+- ESDF keeps similar solve latency and time-to-goal on the corrected
+  scenarios in this run; it is a clearance smoother rather than a speed
+  optimization.
 - The corrected `u_turn` path goes around the obstacle endpoint; the
   previous benchmark path crossed a lethal wall cell and was therefore
   not a valid planner-tracking test.
