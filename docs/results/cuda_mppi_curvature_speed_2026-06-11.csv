@@ -1,0 +1,7 @@
+scenario,label,curvature_speed_weight,curvature_speed_min,success,collided,steps,sim_s,mean_ms,p95_ms,max_ms,exceptions
+wall_gap,gpu_costmap_K8192_no_curvature_speed,0,0.18,1,0,327,16.35,1.34868,1.49644,10.2008,0
+wall_gap,gpu_costmap_K8192_curvature_speed,8,0.18,1,0,327,16.35,1.35145,1.38666,10.1011,0
+narrow_corridor,gpu_costmap_K8192_no_curvature_speed,0,0.18,1,0,348,17.4,1.37685,1.46977,10.5103,0
+narrow_corridor,gpu_costmap_K8192_curvature_speed,8,0.18,1,0,348,17.4,1.39288,1.42256,10.1214,0
+u_turn,gpu_costmap_K8192_no_curvature_speed,0,0.18,1,0,798,39.9,1.30498,1.5447,2.00905,0
+u_turn,gpu_costmap_K8192_curvature_speed,8,0.18,1,0,828,41.4,1.23907,1.48318,2.09699,0
