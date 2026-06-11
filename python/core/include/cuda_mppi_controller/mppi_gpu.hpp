@@ -45,6 +45,10 @@ struct MppiParams
   float path_follow_weight = 5.0f;   // stage distance to a point ahead on the path
   float follow_lookahead = 1.0f;     // [m] how far ahead that point is
   float costmap_weight = 3.0f;       // stage costmap cost (normalized 0..1, squared)
+  // Optional truncated distance-field obstacle critic. Disabled by default so
+  // existing costmap-only tuning stays unchanged.
+  float distance_field_weight = 0.0f;  // stage clearance cost from nearest obstacle
+  float distance_field_cutoff = 0.75f; // [m] no clearance penalty beyond this distance
   float smoothness_weight = 0.2f;    // stage (du)^2 between consecutive steps
   float backward_weight = 0.5f;      // stage penalty on v < 0
   // stage penalty on (v_max - v): counters the softmin saturation bias

@@ -42,6 +42,7 @@ struct DeviceParams
   float min_turning_r;
   float v_std, vy_std, w_std;
   float goal_w, goal_yaw_w, path_w, follow_w, costmap_w, smooth_w, backward_w;
+  float distance_field_w, distance_field_cutoff;
   float speed_w, angular_w;
   int follow_offset;   // path index offset for the path-follow cost
   float collision_cost;
@@ -78,6 +79,70 @@ __device__ __forceinline__ unsigned char cell_cost(
     return 0;  // out of the local costmap -> treat as free
   }
   return costmap[my * p.size_x + mx];
+}
+
+__device__ __forceinline__ bool is_obstacle_distance_cell(
+  unsigned char cost, unsigned char lethal_threshold)
+{
+  return cost != 255 && cost >= lethal_threshold;
+}
+
+__device__ __forceinline__ float distance_field_value(
+  const float * __restrict__ distance_field, const DeviceParams & p,
+  float x, float y)
+{
+  int mx = __float2int_rd((x - p.origin_x) / p.resolution);
+  int my = __float2int_rd((y - p.origin_y) / p.resolution);
+  if (mx < 0 || mx >= p.size_x || my < 0 || my >= p.size_y) {
+    return p.distance_field_cutoff;
+  }
+  return distance_field[my * p.size_x + mx];
+}
+
+__global__ void build_distance_field_kernel(
+  const unsigned char * __restrict__ costmap,
+  float * __restrict__ distance_field,
+  int size_x, int size_y,
+  float resolution, float cutoff,
+  unsigned char lethal_threshold)
+{
+  const int idx = blockIdx.x * blockDim.x + threadIdx.x;
+  const int cell_count = size_x * size_y;
+  if (idx >= cell_count) {
+    return;
+  }
+
+  const unsigned char center = costmap[idx];
+  if (is_obstacle_distance_cell(center, lethal_threshold)) {
+    distance_field[idx] = 0.0f;
+    return;
+  }
+
+  const int mx = idx % size_x;
+  const int my = idx / size_x;
+  const int radius_cells = max(1, __float2int_ru(cutoff / resolution));
+  const float cutoff_cells = cutoff / resolution;
+  float best_cells2 = cutoff_cells * cutoff_cells;
+
+  for (int dy = -radius_cells; dy <= radius_cells; ++dy) {
+    const int yy = my + dy;
+    if (yy < 0 || yy >= size_y) {
+      continue;
+    }
+    for (int dx = -radius_cells; dx <= radius_cells; ++dx) {
+      const int xx = mx + dx;
+      if (xx < 0 || xx >= size_x) {
+        continue;
+      }
+      if (!is_obstacle_distance_cell(costmap[yy * size_x + xx], lethal_threshold)) {
+        continue;
+      }
+      const float d2 = static_cast<float>(dx * dx + dy * dy);
+      best_cells2 = fminf(best_cells2, d2);
+    }
+  }
+
+  distance_field[idx] = fminf(sqrtf(best_cells2) * resolution, cutoff);
 }
 
 // Sample the footprint polygon edges at costmap resolution and report
@@ -152,6 +217,7 @@ __global__ void init_rng_kernel(curandState * states, unsigned long long seed, i
 __global__ void rollout_kernel(
   DeviceParams p,
   const unsigned char * __restrict__ costmap,
+  const float * __restrict__ distance_field,
   const float * __restrict__ path,        // [path_len * 2]
   const float * __restrict__ nominal,     // [T * kCtrlDim]
   float * __restrict__ perturbed,         // [K * T * kCtrlDim]
@@ -235,6 +301,16 @@ __global__ void rollout_kernel(
           const float cn = static_cast<float>(c) / 252.0f;
           cost += p.costmap_w * cn * cn * p.dt;
         }
+      }
+    }
+
+    if (p.distance_field_w > 0.0f && distance_field != nullptr &&
+      p.distance_field_cutoff > 1.0e-6f)
+    {
+      const float dist = distance_field_value(distance_field, p, x, y);
+      if (dist < p.distance_field_cutoff) {
+        const float q = (p.distance_field_cutoff - dist) / p.distance_field_cutoff;
+        cost += p.distance_field_w * q * q * p.dt;
       }
     }
 
@@ -323,7 +399,9 @@ struct MppiGpu::Impl
   float * d_weights = nullptr;     // [K]
   float * d_path = nullptr;        // [kMaxPathPoints * 2]
   unsigned char * d_costmap = nullptr;
+  float * d_distance_field = nullptr;
   size_t costmap_capacity = 0;
+  size_t distance_field_capacity = 0;
 
   std::vector<float> h_costs;
   std::vector<float> h_weights;
@@ -364,6 +442,7 @@ struct MppiGpu::Impl
     cudaFree(d_weights);
     cudaFree(d_path);
     cudaFree(d_costmap);
+    cudaFree(d_distance_field);
   }
 
   void reset()
@@ -385,6 +464,16 @@ struct MppiGpu::Impl
       costmap_capacity = bytes;
     }
     CUDA_CHECK(cudaMemcpy(d_costmap, costmap, bytes, cudaMemcpyHostToDevice));
+  }
+
+  void ensureDistanceField(size_t cells)
+  {
+    const size_t bytes = cells * sizeof(float);
+    if (bytes > distance_field_capacity) {
+      cudaFree(d_distance_field);
+      CUDA_CHECK(cudaMalloc(&d_distance_field, bytes));
+      distance_field_capacity = bytes;
+    }
   }
 };
 
@@ -441,6 +530,7 @@ MppiResult MppiGpu::computeInternal(
     }
   }
   const unsigned char * rollout_costmap = nullptr;
+  const float * rollout_distance_field = nullptr;
   if (costmap != nullptr && size_x > 0 && size_y > 0) {
     if (costmap_is_device) {
       rollout_costmap = costmap;
@@ -451,6 +541,19 @@ MppiResult MppiGpu::computeInternal(
   } else {
     size_x = 0;
     size_y = 0;
+  }
+
+  if (rollout_costmap != nullptr && mp.distance_field_weight > 0.0f &&
+    mp.distance_field_cutoff > 1.0e-6f)
+  {
+    const int threads = 256;
+    const int cell_count = size_x * size_y;
+    im.ensureDistanceField(static_cast<size_t>(cell_count));
+    build_distance_field_kernel<<<(cell_count + threads - 1) / threads, threads>>>(
+      rollout_costmap, im.d_distance_field, size_x, size_y,
+      resolution, mp.distance_field_cutoff, mp.lethal_threshold);
+    CUDA_CHECK(cudaGetLastError());
+    rollout_distance_field = im.d_distance_field;
   }
 
   DeviceParams dp;
@@ -472,6 +575,8 @@ MppiResult MppiGpu::computeInternal(
   dp.follow_w = mp.path_follow_weight;
   dp.follow_offset = follow_offset;
   dp.costmap_w = mp.costmap_weight;
+  dp.distance_field_w = mp.distance_field_weight;
+  dp.distance_field_cutoff = mp.distance_field_cutoff;
   dp.smooth_w = mp.smoothness_weight;
   dp.backward_w = mp.backward_weight;
   dp.speed_w = mp.speed_weight;
@@ -508,7 +613,8 @@ MppiResult MppiGpu::computeInternal(
   float min_cost = 0.0f;
   for (int iter = 0; iter < mp.iteration_count; ++iter) {
     rollout_kernel<<<rollout_blocks, threads>>>(
-      dp, rollout_costmap, im.d_path, im.d_nominal, im.d_perturbed, im.d_costs, im.d_rng);
+      dp, rollout_costmap, rollout_distance_field, im.d_path, im.d_nominal, im.d_perturbed,
+      im.d_costs, im.d_rng);
     CUDA_CHECK(cudaGetLastError());
     CUDA_CHECK(cudaMemcpy(
         im.h_costs.data(), im.d_costs, K * sizeof(float), cudaMemcpyDeviceToHost));

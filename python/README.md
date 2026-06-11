@@ -43,14 +43,22 @@ python examples/python/registration_quickstart.py
 
 `MppiPlanner.compute()` accepts CUDA DLPack producers for the `costmap`
 argument, so PyTorch or CuPy costmaps can stay on the GPU. NumPy and other CPU
-buffer-protocol arrays continue to use the existing host path.
+buffer-protocol arrays continue to use the existing host path. Set
+`distance_field_weight > 0` to enable the optional GPU distance-field
+clearance critic built from the same costmap.
 
 ```python
 import numpy as np
 import torch
 import cudarobotics as cr
 
-planner = cr.MppiPlanner(batch_size=2048, time_steps=56, model_dt=0.05)
+planner = cr.MppiPlanner(
+    batch_size=2048,
+    time_steps=56,
+    model_dt=0.05,
+    distance_field_weight=12.0,
+    distance_field_cutoff=0.8,
+)
 costmap = torch.zeros((200, 200), dtype=torch.uint8, device="cuda")
 path = np.array([[1.0, 5.0], [5.0, 5.0]], dtype=np.float32)
 v, vy, w, info = planner.compute(

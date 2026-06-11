@@ -14,7 +14,13 @@ def test_version():
 
 def test_mppi_planner_smoke():
     try:
-        planner = cr.MppiPlanner(batch_size=64, time_steps=8, model_dt=0.05)
+        planner = cr.MppiPlanner(
+            batch_size=64,
+            time_steps=8,
+            model_dt=0.05,
+            distance_field_weight=1.0,
+            distance_field_cutoff=0.5,
+        )
     except RuntimeError as exc:
         if "no CUDA-capable device" in str(exc):
             pytest.skip("CUDA GPU not available in this environment")
@@ -35,7 +41,13 @@ def test_mppi_planner_cuda_dlpack_costmap_smoke():
     if not torch.cuda.is_available():
         pytest.skip("CUDA GPU not available for torch DLPack smoke test")
     try:
-        planner = cr.MppiPlanner(batch_size=64, time_steps=8, model_dt=0.05)
+        planner = cr.MppiPlanner(
+            batch_size=64,
+            time_steps=8,
+            model_dt=0.05,
+            distance_field_weight=1.0,
+            distance_field_cutoff=0.5,
+        )
     except RuntimeError as exc:
         if "no CUDA-capable device" in str(exc):
             pytest.skip("CUDA GPU not available in this environment")

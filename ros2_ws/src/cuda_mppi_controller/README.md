@@ -70,6 +70,9 @@ Motion models: **DiffDrive** (`vx`, `ωz`), **Ackermann** (curvature limit
   the final goal
 - **Costmap** — per-step lookup in the local costmap; lethal/inscribed cells
   add a collision penalty, inflated cells add a graded cost
+- **Distance field** (optional, `distance_field_weight`) — builds a truncated
+  GPU distance-to-obstacle field from the same local costmap each control
+  cycle and adds a smooth clearance cost inside `distance_field_cutoff`
 - **Footprint** (optional, `consider_footprint`) — the robot's polygon
   footprint is swept along each rollout; edge cells are sampled at costmap
   resolution at intermediate SE(2) poses, so rotation-in-place can catch
@@ -112,6 +115,7 @@ ros2 run cuda_mppi_controller parameter_validation_test
 ros2 run cuda_mppi_controller mppi_gpu_standalone           # default K=2048
 ros2 run cuda_mppi_controller mppi_gpu_standalone 16384     # K sweep
 ros2 run cuda_mppi_controller mppi_gpu_standalone 2048 ackermann   # or omni / footprint
+ros2 run cuda_mppi_controller mppi_gpu_standalone 2048 esdf        # distance-field critic
 ```
 
 ## Use with Nav2
@@ -154,6 +158,8 @@ controller_server:
 | `path_follow_weight` | 5.0 | pull toward a point ahead on the plan |
 | `follow_lookahead` | 1.0 | [m] how far ahead that point is |
 | `costmap_weight` | 3.0 | graded cost for inflated cells |
+| `distance_field_weight` | 0.0 | optional ESDF-style clearance cost; disabled by default |
+| `distance_field_cutoff` | 0.75 | [m] distance-field penalty radius |
 | `smoothness_weight` | 0.2 | (Δu)² between consecutive steps |
 | `backward_weight` | 0.5 | penalty on v < 0 |
 | `speed_weight` | 3.0 | penalty on (v_max − v): cruise at the limit |
