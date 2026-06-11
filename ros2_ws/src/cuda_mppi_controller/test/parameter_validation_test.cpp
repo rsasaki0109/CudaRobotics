@@ -64,6 +64,8 @@ int main(int argc, char ** argv)
       rclcpp::Parameter("FollowPath.distance_field_cutoff", -0.1)},
     {"negative_lookahead", rclcpp::Parameter("FollowPath.lookahead_dist", -1.0)},
     {"negative_transform_tolerance", rclcpp::Parameter("FollowPath.transform_tolerance", -0.1)},
+    {"negative_diagnostics_log_period",
+      rclcpp::Parameter("FollowPath.diagnostics_log_period", -0.1)},
   };
 
   bool ok = true;

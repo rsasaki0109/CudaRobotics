@@ -3,10 +3,12 @@
 // nav2's controller_server loads them, driving the same unicycle plant
 // through synthetic costmaps.
 //
-// Usage: controller_benchmark <out_dir> [scenario]
-//   scenario: wall_gap | narrow_corridor | u_turn | all | esdf | path_angle | curvature_speed
+// Usage: controller_benchmark <out_dir> [scenario] [preset]
+//   scenario: wall_gap | narrow_corridor | u_turn | double_gap | moving_crossing
+//             | all | esdf | path_angle | curvature_speed
 //             (default: wall_gap)
-//   writes <out_dir>/summary.csv and <out_dir>/traj_<label>.csv
+//   preset  : full | quick | cpu_gpu (standard scenarios only; default: full)
+//   writes <out_dir>/<scenario>/summary.csv and <out_dir>/<scenario>/traj_<label>.csv
 #include <algorithm>
 #include <array>
 #include <chrono>
@@ -47,12 +49,73 @@ struct Scenario
   double goal_x;
   double goal_y;
   std::function<bool(double, double)> lethal;
+  std::function<bool(double, double, double)> dynamic_lethal;
+  std::function<void(nav2_costmap_2d::Costmap2D &, double)> paint_costmap;
   std::function<nav_msgs::msg::Path(const rclcpp::Time &)> make_plan;
+  bool dynamic_costmap = false;
+  int dynamic_repaint_period = 1;
+  bool inflate_costmap = true;
 };
 
 bool inRect(double x, double y, double x0, double x1, double y0, double y1)
 {
   return x >= x0 && x < x1 && y >= y0 && y < y1;
+}
+
+bool scenarioLethal(const Scenario & scenario, double x, double y, double sim_time)
+{
+  return (scenario.lethal && scenario.lethal(x, y)) ||
+         (scenario.dynamic_lethal && scenario.dynamic_lethal(x, y, sim_time));
+}
+
+void clearCostmap(nav2_costmap_2d::Costmap2D & costmap)
+{
+  costmap.resetMapToValue(
+    0, 0, costmap.getSizeInCellsX(), costmap.getSizeInCellsY(), nav2_costmap_2d::FREE_SPACE);
+}
+
+void paintRect(
+  nav2_costmap_2d::Costmap2D & costmap,
+  double x0, double x1, double y0, double y1, unsigned char cost)
+{
+  const double origin_x = costmap.getOriginX();
+  const double origin_y = costmap.getOriginY();
+  const double resolution = costmap.getResolution();
+  const int nx = static_cast<int>(costmap.getSizeInCellsX());
+  const int ny = static_cast<int>(costmap.getSizeInCellsY());
+  const int mx0 = std::max(0, static_cast<int>(std::floor((x0 - origin_x) / resolution)));
+  const int mx1 = std::min(nx - 1, static_cast<int>(std::ceil((x1 - origin_x) / resolution)));
+  const int my0 = std::max(0, static_cast<int>(std::floor((y0 - origin_y) / resolution)));
+  const int my1 = std::min(ny - 1, static_cast<int>(std::ceil((y1 - origin_y) / resolution)));
+  if (mx0 > mx1 || my0 > my1) {
+    return;
+  }
+  for (int my = my0; my <= my1; ++my) {
+    for (int mx = mx0; mx <= mx1; ++mx) {
+      costmap.setCost(static_cast<unsigned int>(mx), static_cast<unsigned int>(my), cost);
+    }
+  }
+}
+
+void appendPathSegment(
+  nav_msgs::msg::Path & path,
+  double x0, double y0, double x1, double y1,
+  double step = 0.05)
+{
+  const double len = std::hypot(x1 - x0, y1 - y0);
+  const int steps = std::max(1, static_cast<int>(len / step));
+  for (int i = 0; i <= steps; ++i) {
+    if (!path.poses.empty() && i == 0) {
+      continue;
+    }
+    const double t = static_cast<double>(i) / steps;
+    geometry_msgs::msg::PoseStamped p;
+    p.header = path.header;
+    p.pose.position.x = x0 + t * (x1 - x0);
+    p.pose.position.y = y0 + t * (y1 - y0);
+    p.pose.orientation.w = 1.0;
+    path.poses.push_back(p);
+  }
 }
 
 Scenario makeWallGap()
@@ -132,20 +195,71 @@ Scenario makeUTurn()
       const std::array<std::array<double, 2>, 4> pts = {{
         {1.5, 1.5}, {8.5, 1.5}, {8.5, 8.5}, {1.5, 8.5}}};
       for (size_t seg = 0; seg + 1 < pts.size(); ++seg) {
-        const double x0 = pts[seg][0], y0 = pts[seg][1];
-        const double x1 = pts[seg + 1][0], y1 = pts[seg + 1][1];
-        const double len = std::hypot(x1 - x0, y1 - y0);
-        const int steps = std::max(1, static_cast<int>(len / 0.05));
-        for (int i = 0; i <= steps; ++i) {
-          const double t = static_cast<double>(i) / steps;
-          geometry_msgs::msg::PoseStamped p;
-          p.header = path.header;
-          p.pose.position.x = x0 + t * (x1 - x0);
-          p.pose.position.y = y0 + t * (y1 - y0);
-          p.pose.orientation.w = 1.0;
-          path.poses.push_back(p);
-        }
+        appendPathSegment(path, pts[seg][0], pts[seg][1], pts[seg + 1][0], pts[seg + 1][1]);
       }
+      return path;
+    };
+  return s;
+}
+
+Scenario makeDoubleGap()
+{
+  Scenario s;
+  s.name = "double_gap";
+  s.start_x = 1.0;
+  s.start_y = 5.0;
+  s.goal_x = 9.0;
+  s.goal_y = 5.0;
+  s.lethal = [](double x, double y) {
+      const bool first_wall =
+        inRect(x, y, 3.8, 4.0, 0.0, 2.2) || inRect(x, y, 3.8, 4.0, 3.8, 10.0);
+      const bool second_wall =
+        inRect(x, y, 6.0, 6.2, 0.0, 6.2) || inRect(x, y, 6.0, 6.2, 7.8, 10.0);
+      return first_wall || second_wall;
+    };
+  s.make_plan = [](const rclcpp::Time & stamp) {
+      nav_msgs::msg::Path path;
+      path.header.frame_id = "odom";
+      path.header.stamp = stamp;
+      const std::array<std::array<double, 2>, 6> pts = {{
+        {1.0, 5.0}, {3.4, 3.0}, {4.4, 3.0}, {5.6, 7.0}, {6.6, 7.0}, {9.0, 5.0}}};
+      for (size_t seg = 0; seg + 1 < pts.size(); ++seg) {
+        appendPathSegment(path, pts[seg][0], pts[seg][1], pts[seg + 1][0], pts[seg + 1][1]);
+      }
+      return path;
+    };
+  return s;
+}
+
+Scenario makeMovingCrossing()
+{
+  Scenario s;
+  s.name = "moving_crossing";
+  s.start_x = 1.0;
+  s.start_y = 5.0;
+  s.goal_x = 9.0;
+  s.goal_y = 5.0;
+  s.lethal = [](double, double) {
+      return false;
+    };
+  s.dynamic_lethal = [](double x, double y, double sim_time) {
+      const double center_y = 1.0 + 0.5 * sim_time;
+      return inRect(x, y, 4.65, 5.35, center_y - 0.45, center_y + 0.45);
+    };
+  s.dynamic_costmap = true;
+  s.dynamic_repaint_period = 4;  // 5 Hz obstacle-map updates inside a 20 Hz control loop.
+  s.inflate_costmap = false;  // keep per-step repaint cheap for this moving-obstacle smoke.
+  s.paint_costmap = [](nav2_costmap_2d::Costmap2D & costmap, double sim_time) {
+      const double center_y = 1.0 + 0.5 * sim_time;
+      paintRect(
+        costmap, 4.65, 5.35, center_y - 0.45, center_y + 0.45,
+        nav2_costmap_2d::LETHAL_OBSTACLE);
+    };
+  s.make_plan = [](const rclcpp::Time & stamp) {
+      nav_msgs::msg::Path path;
+      path.header.frame_id = "odom";
+      path.header.stamp = stamp;
+      appendPathSegment(path, 1.0, 5.0, 9.0, 5.0);
       return path;
     };
   return s;
@@ -153,24 +267,37 @@ Scenario makeUTurn()
 
 std::vector<Scenario> allScenarios()
 {
-  return {makeWallGap(), makeNarrowCorridor(), makeUTurn()};
+  return {
+    makeWallGap(), makeNarrowCorridor(), makeUTurn(), makeDoubleGap(), makeMovingCrossing()};
 }
 
-void paintCostmap(nav2_costmap_2d::Costmap2D & costmap, const Scenario & scenario)
+void paintCostmap(
+  nav2_costmap_2d::Costmap2D & costmap, const Scenario & scenario, double sim_time)
 {
   const unsigned int nx = costmap.getSizeInCellsX();
   const unsigned int ny = costmap.getSizeInCellsY();
+  clearCostmap(costmap);
+  if (scenario.paint_costmap) {
+    scenario.paint_costmap(costmap, sim_time);
+    return;
+  }
+
   std::vector<std::pair<double, double>> lethal_centers;
   for (unsigned int my = 0; my < ny; ++my) {
     for (unsigned int mx = 0; mx < nx; ++mx) {
       double wx, wy;
       costmap.mapToWorld(mx, my, wx, wy);
-      if (scenario.lethal(wx, wy)) {
+      if (scenarioLethal(scenario, wx, wy, sim_time)) {
         costmap.setCost(mx, my, nav2_costmap_2d::LETHAL_OBSTACLE);
         lethal_centers.emplace_back(wx, wy);
       }
     }
   }
+
+  if (!scenario.inflate_costmap || lethal_centers.empty()) {
+    return;
+  }
+
   for (unsigned int my = 0; my < ny; ++my) {
     for (unsigned int mx = 0; mx < nx; ++mx) {
       if (costmap.getCost(mx, my) == nav2_costmap_2d::LETHAL_OBSTACLE) {
@@ -220,6 +347,7 @@ struct RunResult
 RunResult runClosedLoop(
   nav2_core::Controller & controller,
   const rclcpp_lifecycle::LifecycleNode::SharedPtr & node,
+  nav2_costmap_2d::Costmap2D & costmap,
   const Scenario & scenario)
 {
   RunResult res;
@@ -235,6 +363,11 @@ RunResult runClosedLoop(
   int command_samples = 0;
 
   for (res.steps = 0; res.steps < kMaxSteps; ++res.steps) {
+    const double sim_time = res.steps * kControlDt;
+    if (scenario.dynamic_costmap && res.steps % scenario.dynamic_repaint_period == 0) {
+      paintCostmap(costmap, scenario, sim_time);
+    }
+
     res.traj.push_back({x, y, yaw});
     geometry_msgs::msg::PoseStamped pose;
     pose.header.frame_id = "odom";
@@ -274,7 +407,7 @@ RunResult runClosedLoop(
       std::sin(yaw + kControlDt * cmd.angular.z),
       std::cos(yaw + kControlDt * cmd.angular.z));
 
-    if (scenario.lethal(x, y)) {
+    if (scenarioLethal(scenario, x, y, (res.steps + 1) * kControlDt)) {
       res.collided = true;
       break;
     }
@@ -338,6 +471,22 @@ std::vector<Config> benchmarkConfigs(bool include_motion_models)
   return configs;
 }
 
+std::vector<Config> quickBenchmarkConfigs()
+{
+  return {
+    {"gpu_mppi_K2048", "cuda_mppi_controller::CudaMppiController", 2048},
+    {"gpu_mppi_K8192", "cuda_mppi_controller::CudaMppiController", 8192},
+  };
+}
+
+std::vector<Config> cpuGpuBenchmarkConfigs()
+{
+  return {
+    {"cpu_mppi_K2000", "nav2_mppi_controller::MPPIController", 2000},
+    {"gpu_mppi_K8192", "cuda_mppi_controller::CudaMppiController", 8192},
+  };
+}
+
 std::vector<Config> esdfBenchmarkConfigs()
 {
   return {
@@ -389,7 +538,7 @@ void runScenario(
   });
   auto local_costmap = std::make_shared<nav2_costmap_2d::Costmap2DROS>(costmap_options);
   local_costmap->configure();
-  paintCostmap(*local_costmap->getCostmap(), scenario);
+  paintCostmap(*local_costmap->getCostmap(), scenario, 0.0);
 
   const std::string scenario_dir = out_dir + "/" + scenario.name;
   std::filesystem::create_directories(scenario_dir);
@@ -439,7 +588,7 @@ void runScenario(
     controller->activate();
 
     std::printf("=== %s / %s (%s) ===\n", scenario.name.c_str(), cfg.label.c_str(), cfg.plugin.c_str());
-    const RunResult r = runClosedLoop(*controller, node, scenario);
+    const RunResult r = runClosedLoop(*controller, node, *local_costmap->getCostmap(), scenario);
     std::printf(
       "  %s steps=%d sim=%.1fs solve mean=%.2fms p95=%.2fms max=%.2fms "
       "dist=%.2fm mean_v=%.2fm/s max_w=%.2frad/s exc=%d\n",
@@ -478,6 +627,7 @@ int main(int argc, char ** argv)
   rclcpp::init(argc, argv);
   const std::string out_dir = argc > 1 ? argv[1] : ".";
   const std::string scenario_arg = argc > 2 ? argv[2] : "wall_gap";
+  const std::string preset_arg = argc > 3 ? argv[3] : "full";
   std::filesystem::create_directories(out_dir);
 
   rclcpp::NodeOptions costmap_options;
@@ -517,6 +667,7 @@ int main(int argc, char ** argv)
   auto costmap_ros = std::make_shared<nav2_costmap_2d::Costmap2DROS>(costmap_options);
   costmap_ros->configure();
   auto tf = std::make_shared<tf2_ros::Buffer>(costmap_ros->get_clock());
+  tf->setUsingDedicatedThread(true);
 
   pluginlib::ClassLoader<nav2_core::Controller> loader(
     "nav2_core", "nav2_core::Controller");
@@ -524,13 +675,33 @@ int main(int argc, char ** argv)
   const bool motion_checks = scenario_arg == "all" || scenario_arg == "wall_gap";
   std::vector<Config> configs;
   if (path_angle_benchmark) {
+    if (preset_arg != "full") {
+      std::fprintf(stderr, "Preset '%s' is not supported for path_angle\n", preset_arg.c_str());
+      return 1;
+    }
     configs = pathAngleBenchmarkConfigs();
   } else if (curvature_speed_benchmark) {
+    if (preset_arg != "full") {
+      std::fprintf(
+        stderr, "Preset '%s' is not supported for curvature_speed\n", preset_arg.c_str());
+      return 1;
+    }
     configs = curvatureSpeedBenchmarkConfigs();
   } else if (esdf_benchmark) {
+    if (preset_arg != "full") {
+      std::fprintf(stderr, "Preset '%s' is not supported for esdf\n", preset_arg.c_str());
+      return 1;
+    }
     configs = esdfBenchmarkConfigs();
-  } else {
+  } else if (preset_arg == "full") {
     configs = benchmarkConfigs(motion_checks);
+  } else if (preset_arg == "quick") {
+    configs = quickBenchmarkConfigs();
+  } else if (preset_arg == "cpu_gpu") {
+    configs = cpuGpuBenchmarkConfigs();
+  } else {
+    std::fprintf(stderr, "Unknown preset '%s' (full | quick | cpu_gpu)\n", preset_arg.c_str());
+    return 1;
   }
 
   for (const auto & scenario : scenarios) {
