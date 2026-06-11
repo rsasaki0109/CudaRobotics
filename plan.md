@@ -1,12 +1,11 @@
 # CudaRobotics Plan / Handoff (for Codex / Claude)
 
-Last updated: 2026-06-11 JST (`b917597` — star-growth **funnel sprint**
-landed: Colab quickstart #181, Docker demo image #183, master-CI repair #182,
-and the manylinux wheel pipeline fixed end-to-end in #184/#185/#186 — the
-first successful manylinux wheels ever built for this repo. v0.1.0 release is
-fully prepared but NOT yet published (user-owned action; see below). Note:
-some older sections below carry their own internal dates — treat section
-headers as the ordering authority within each line, not this single
+Last updated: 2026-06-11 JST (`4082282` — registration external benchmark
+landed after the history rewrite; current feature branch is
+`codex/mppi-dlpack-costmap`, adding CUDA DLPack costmap input for Python MPPI.
+v0.1.0 release is fully prepared but NOT yet published (user-owned action; see
+below). Note: some older sections below carry their own internal dates — treat
+section headers as the ordering authority within each line, not this single
 timestamp.)
 
 This document is the long-form handoff for the next coding agent (Codex).
@@ -37,10 +36,10 @@ There are now **two active lines** in this repo:
 
 ## Current State (2026-06-11) — star-growth funnel sprint
 
-Mainline: **`master` at `21e2ae9`** after the hardware-string history rewrite,
-in sync with `origin/master`. No in-flight PR. Local working tree now carries
-the registration external benchmark artifact set (script + docs/results CSV/MD
-+ README links) and this `plan.md` update; see "Working tree inventory" below.
+Mainline: **`master` at `4082282`**, in sync with `origin/master`, after the
+hardware-string history rewrite and registration external benchmark merge
+(#187). Current local branch: **`codex/mppi-dlpack-costmap`**, WIP for zero-copy
+CUDA costmaps in Python MPPI.
 
 ### What landed this session (all squash-merged)
 
@@ -52,6 +51,7 @@ the registration external benchmark artifact set (script + docs/results CSV/MD
 | #184 | cibuildwheel: NVIDIA **deleted** `cuda-keyring-1.1-1.noarch.rpm` from the rhel8 repo (404) → switched to `yum-config-manager + cuda-rhel8.repo` + `--setopt=obsoletes=0` (repo now marks `cuda-cccl-12-0` obsoleted by `cccl-13-3`) | manylinux wheels had NEVER built successfully; the Ubuntu keyring debs (`ros2_cuda_mppi.yml`, `docker/Dockerfile`) still exist and are unaffected |
 | #185 | cibuildwheel: add `libcurand-devel-12-0` (CMake `CUDA::curand` target missing) | exposed only after #184 let the build reach CMake for the first time |
 | #186 | cibuildwheel: add `*i686*` to skip lists (NVIDIA ships no 32-bit CUDA; the i686 container died in before-all) | with this, **cibuildwheel is green**: cp310/cp312 manylinux2014 x86_64 wheels (113 MB artifact, run 27308990292) |
+| #187 | registration external benchmark results (`scripts/benchmark_registration_external.py`, `docs/results/registration_external_baselines_2026-06-11.*`, README links) | distribution-ready comparison against probreg/Open3D CPU baselines, with generic hardware wording only |
 
 Wheel sanity check done: the cp312 manylinux wheel was installed into a fresh
 venv on this machine; `MppiPlanner.compute` and
@@ -77,14 +77,14 @@ already downloaded to `/tmp/v010_wheels/` (re-download with
 `gh run download 27308990292` if /tmp was cleared). PyPI was explicitly
 **skipped by user decision** — do not add PyPI publishing.
 
-### Registration external benchmark — LOCAL ARTIFACTS READY
+### Registration external benchmark — LANDED (#187)
 
 Goal: a distribution-ready table comparing CudaRobotics FilterReg against
 probreg 0.3.8 (CPU) and Open3D 0.19.0 (CPU) on the same deterministic pairs
 (lumpy surface, 85% overlap, sigma 0.02 noise, identity init), median of 3
 trials, per-cell subprocess isolation.
 
-Artifacts prepared in the working tree:
+Artifacts now on `master`:
 
 - `scripts/benchmark_registration_external.py`
 - `docs/results/registration_external_baselines_2026-06-11.csv`
@@ -107,9 +107,23 @@ Observed signals in this run:
   universal GPU-over-CPU claim; the clean headline is the same-algorithm
   probreg FilterReg comparison.
 
-NEXT STEP: commit these five files together on a feature branch and open the
-results-doc PR. Do not add exact machine or device model strings back into the
-docs or CSV.
+Do not add exact machine or device model strings back into the docs or CSV.
+
+### CUDA DLPack costmaps — IN FLIGHT (`codex/mppi-dlpack-costmap`)
+
+Goal: let learning stacks hand `MppiPlanner.compute()` a CUDA DLPack producer
+for `costmap` (PyTorch/CuPy tensor) so the MPPI rollout reads the existing
+device pointer directly instead of staging the costmap through host memory.
+
+Current implementation direction:
+
+- Add `MppiGpu::computeWithDeviceCostmap()` in the public C++ header and synced
+  Python vendored core.
+- Keep the existing CPU buffer-protocol path for NumPy and other host arrays.
+- In nanobind, consume `dltensor` / `dltensor_versioned` capsules for `costmap`
+  only; validate CUDA device, `uint8`, 2D shape, and C-contiguous layout.
+- Path and footprint remain CPU buffer-protocol arrays for now.
+- Smoke coverage: NumPy MPPI path plus optional torch CUDA DLPack costmap test.
 
 ### Direction from here (2026-06-11) — supersedes the old Next-Task Menu below
 
@@ -117,8 +131,8 @@ Short term (this week):
 
 1. **Publish v0.1.0** (user; commands above) → then distribution
    (HN / Reddit / ROS Discourse / X / Zenn — user-owned, never agents).
-2. **Commit / PR the registration external benchmark artifacts** (agent;
-   NEXT STEP above). This is the last piece of distribution material.
+2. **Finish / PR CUDA DLPack costmap support** (agent; current branch). This
+   directly serves learning-pipeline users by removing a costmap host copy.
 
 Mid term — pick ONE based on which funnel converts after the release
 (watch stars/traffic/issues per entry point):
@@ -126,9 +140,8 @@ Mid term — pick ONE based on which funnel converts after the release
 - **Jetson / aarch64** — most robotics GPU users run Jetson, not desktop
   GPUs. arm64 wheels and/or an L4T Docker image. Caveat: no Jetson on this
   machine; needs user hardware for verification.
-- **torch/cupy zero-copy (`__dlpack__`)** — lets the GPU MPPI core sit
-  inside learning pipelines without host round-trips; deliberately deferred
-  from the first pip release.
+- **Broaden zero-copy inputs** — after costmap DLPack lands, consider path /
+  footprint device inputs only if a real user workflow needs them.
 - **nav2 plugin field validation** — real robot / real bag data; produces
   ROS-Discourse-grade material. Humble compat is already in.
 - **Docs site** — API reference (nanobind stubs) on gh-pages next to the
@@ -147,11 +160,15 @@ agents build material, the user distributes and publishes.
 
 ### Working tree inventory (untracked / WIP — handle with care)
 
-- `scripts/benchmark_registration_external.py` — NEW, commit with results docs.
-- `docs/results/registration_external_baselines_2026-06-11.{md,csv}` — NEW,
-  commit with the script.
-- `docs/results/README.md`, `readme.md` — modified to link the benchmark.
-- `plan.md` — modified handoff update after the history rewrite and benchmark.
+- `include/cuda_mppi_controller/mppi_gpu.hpp`, `src/mppi_gpu.cu` — DLPack
+  device-costmap entry point and core dispatch.
+- `python/core/include/cuda_mppi_controller/mppi_gpu.hpp`,
+  `python/core/src/mppi_gpu.cu` — synced Python vendored core.
+- `python/src/cudarobotics/bindings.cpp` — minimal DLPack capsule consumer for
+  CUDA `uint8` 2D costmaps.
+- `python/tests/test_import.py`, `python/README.md`, `readme.md` — smoke
+  coverage and user docs for CUDA DLPack costmaps.
+- `plan.md` — current handoff update for the DLPack branch.
 - `.release_notes_v0.1.0.md` — release-notes draft may exist outside this
   checkout; keep untracked if present.
 - `src/benchmark_diff_mppi_pushing_box.cu` — user research WIP if present; do

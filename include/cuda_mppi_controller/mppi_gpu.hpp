@@ -108,7 +108,26 @@ public:
     float goal_x, float goal_y, float goal_yaw, bool goal_is_final,
     const float * footprint_xy = nullptr, int footprint_len = 0);
 
+  // Variant for callers that already own a CUDA device costmap buffer, for
+  // example a PyTorch/CuPy tensor consumed through DLPack. The pointer must
+  // remain valid until this synchronous call returns.
+  MppiResult computeWithDeviceCostmap(
+    float robot_x, float robot_y, float robot_yaw,
+    const unsigned char * device_costmap, int size_x, int size_y,
+    float origin_x, float origin_y, float resolution,
+    const float * path_xy, int path_len,
+    float goal_x, float goal_y, float goal_yaw, bool goal_is_final,
+    const float * footprint_xy = nullptr, int footprint_len = 0);
+
 private:
+  MppiResult computeInternal(
+    float robot_x, float robot_y, float robot_yaw,
+    const unsigned char * costmap, int size_x, int size_y, bool costmap_is_device,
+    float origin_x, float origin_y, float resolution,
+    const float * path_xy, int path_len,
+    float goal_x, float goal_y, float goal_yaw, bool goal_is_final,
+    const float * footprint_xy = nullptr, int footprint_len = 0);
+
   struct Impl;
   std::unique_ptr<Impl> impl_;
 };
