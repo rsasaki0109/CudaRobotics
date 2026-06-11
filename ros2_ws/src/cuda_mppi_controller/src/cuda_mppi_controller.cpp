@@ -2,6 +2,7 @@
 #include "cuda_mppi_controller/nav2_compat.hpp"
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <limits>
 #include <mutex>
@@ -73,7 +74,7 @@ void requireNonNegative(const std::string & name, double value)
 }
 
 void validateControllerParams(const MppiParams & params, double lookahead_dist,
-                              double transform_tolerance)
+                              double transform_tolerance, double diagnostics_log_period)
 {
   requireParam(params.batch_size > 0, "batch_size", "must be greater than 0");
   requireParam(params.time_steps > 0, "time_steps", "must be greater than 0");
@@ -114,11 +115,15 @@ void validateControllerParams(const MppiParams & params, double lookahead_dist,
 
   requirePositive("lookahead_dist", lookahead_dist);
   requireNonNegative("transform_tolerance", transform_tolerance);
+  requireNonNegative("diagnostics_log_period", diagnostics_log_period);
 }
 
 bool applyControllerParameter(const std::string & key, const rclcpp::Parameter & parameter,
                               MppiParams & params, double & lookahead_dist,
-                              double & transform_tolerance)
+                              double & transform_tolerance,
+                              double & diagnostics_log_period,
+                              std::string & diagnostics_csv_path,
+                              bool & optimizer_params_changed)
 {
   if (key == "batch_size") {
     params.batch_size = static_cast<int>(parameter.as_int());
@@ -190,9 +195,16 @@ bool applyControllerParameter(const std::string & key, const rclcpp::Parameter &
     lookahead_dist = parameter.as_double();
   } else if (key == "transform_tolerance") {
     transform_tolerance = parameter.as_double();
+  } else if (key == "diagnostics_log_period") {
+    diagnostics_log_period = parameter.as_double();
+    return true;
+  } else if (key == "diagnostics_csv_path") {
+    diagnostics_csv_path = parameter.as_string();
+    return true;
   } else {
     return false;
   }
+  optimizer_params_changed = true;
   return true;
 }
 
@@ -208,6 +220,8 @@ bool CudaMppiController::updateParamsFromNode(
   MppiParams next = params_;
   double next_lookahead_dist = lookahead_dist_;
   double next_transform_tolerance = transform_tolerance_;
+  double next_diagnostics_log_period = diagnostics_log_period_;
+  std::string next_diagnostics_csv_path = diagnostics_csv_path_;
 
   int batch_size = next.batch_size;
   int time_steps = next.time_steps;
@@ -273,6 +287,8 @@ bool CudaMppiController::updateParamsFromNode(
   node->get_parameter(name_ + ".retreat_scale", retreat_scale);
   node->get_parameter(name_ + ".lookahead_dist", next_lookahead_dist);
   node->get_parameter(name_ + ".transform_tolerance", next_transform_tolerance);
+  node->get_parameter(name_ + ".diagnostics_log_period", next_diagnostics_log_period);
+  node->get_parameter(name_ + ".diagnostics_csv_path", next_diagnostics_csv_path);
 
   next.batch_size = batch_size;
   next.time_steps = time_steps;
@@ -308,11 +324,14 @@ bool CudaMppiController::updateParamsFromNode(
   next.enable_retreat = enable_retreat;
   next.retreat_scale = static_cast<float>(retreat_scale);
 
-  validateControllerParams(next, next_lookahead_dist, next_transform_tolerance);
+  validateControllerParams(
+    next, next_lookahead_dist, next_transform_tolerance, next_diagnostics_log_period);
 
   params_ = next;
   lookahead_dist_ = next_lookahead_dist;
   transform_tolerance_ = next_transform_tolerance;
+  diagnostics_log_period_ = next_diagnostics_log_period;
+  diagnostics_csv_path_ = next_diagnostics_csv_path;
   return true;
 }
 
@@ -373,8 +392,11 @@ void CudaMppiController::configure(
   declare_param("retreat_scale", static_cast<double>(params_.retreat_scale));
   declare_param("lookahead_dist", lookahead_dist_);
   declare_param("transform_tolerance", transform_tolerance_);
+  declare_param("diagnostics_log_period", diagnostics_log_period_);
+  declare_param("diagnostics_csv_path", diagnostics_csv_path_);
 
   updateParamsFromNode(node);
+  diagnostics_csv_ = openDiagnosticsCsv(diagnostics_csv_path_);
 
   optimizer_ = std::make_unique<MppiGpu>(params_);
 
@@ -386,30 +408,49 @@ void CudaMppiController::configure(
       MppiParams next_params = params_;
       double next_lookahead_dist = lookahead_dist_;
       double next_transform_tolerance = transform_tolerance_;
+      double next_diagnostics_log_period = diagnostics_log_period_;
+      std::string next_diagnostics_csv_path = diagnostics_csv_path_;
       bool changed = false;
+      bool optimizer_params_changed = false;
       for (const auto & parameter : parameters) {
         const std::string & full_name = parameter.get_name();
         if (full_name.rfind(prefix, 0) != 0) {
           continue;
         }
         const std::string key = full_name.substr(prefix.size());
-        changed = applyControllerParameter(key, parameter, next_params, next_lookahead_dist,
-                                           next_transform_tolerance) ||
+        changed = applyControllerParameter(
+          key, parameter, next_params, next_lookahead_dist, next_transform_tolerance,
+          next_diagnostics_log_period, next_diagnostics_csv_path, optimizer_params_changed) ||
                   changed;
       }
       if (!changed) {
         return result;
       }
       try {
-        validateControllerParams(next_params, next_lookahead_dist, next_transform_tolerance);
+        validateControllerParams(
+          next_params, next_lookahead_dist, next_transform_tolerance,
+          next_diagnostics_log_period);
         std::unique_ptr<MppiGpu> next_optimizer;
-        if (optimizer_) {
+        if (optimizer_ && optimizer_params_changed) {
           next_optimizer = std::make_unique<MppiGpu>(next_params);
+        }
+        DiagnosticsCsv next_diagnostics_csv;
+        const bool diagnostics_csv_changed =
+          next_diagnostics_csv_path != diagnostics_csv_path_;
+        if (diagnostics_csv_changed) {
+          next_diagnostics_csv = openDiagnosticsCsv(next_diagnostics_csv_path);
         }
         params_ = next_params;
         lookahead_dist_ = next_lookahead_dist;
         transform_tolerance_ = next_transform_tolerance;
-        optimizer_ = std::move(next_optimizer);
+        diagnostics_log_period_ = next_diagnostics_log_period;
+        diagnostics_csv_path_ = next_diagnostics_csv_path;
+        if (optimizer_params_changed) {
+          optimizer_ = std::move(next_optimizer);
+        }
+        if (diagnostics_csv_changed) {
+          diagnostics_csv_ = std::move(next_diagnostics_csv);
+        }
       } catch (const std::exception & ex) {
         result.successful = false;
         result.reason = ex.what();
@@ -427,6 +468,7 @@ void CudaMppiController::cleanup()
 {
   param_callback_.reset();
   optimizer_.reset();
+  diagnostics_csv_ = DiagnosticsCsv{};
 }
 
 void CudaMppiController::activate()
@@ -449,6 +491,71 @@ void CudaMppiController::reset()
 {
   if (optimizer_) {
     optimizer_->reset();
+  }
+}
+
+CudaMppiController::DiagnosticsCsv CudaMppiController::openDiagnosticsCsv(
+  const std::string & path) const
+{
+  DiagnosticsCsv output;
+  if (path.empty()) {
+    return output;
+  }
+
+  output.file.open(path, std::ios::out | std::ios::app);
+  if (!output.file.is_open()) {
+    throw std::runtime_error(
+            "CudaMppiController: failed to open diagnostics_csv_path '" + path + "'");
+  }
+  output.enabled = true;
+  output.file
+    << "stamp_sec,solve_ms,best_cost,mean_cost,sampled_rollouts,valid_rollouts,"
+    << "valid_rollout_ratio,all_colliding,retreating,path_points,costmap_size_x,"
+    << "costmap_size_y,cmd_v,cmd_vy,cmd_w\n";
+  return output;
+}
+
+void CudaMppiController::emitDiagnostics(
+  const MppiResult & result, double solve_ms, int path_points,
+  int costmap_size_x, int costmap_size_y)
+{
+  const auto node = node_.lock();
+  const rclcpp::Time now = node ? node->now() : rclcpp::Clock(RCL_ROS_TIME).now();
+
+  if (diagnostics_log_period_ > 0.0 && node) {
+    const bool due =
+      !has_diagnostics_log_time_ ||
+      (now - last_diagnostics_log_time_).seconds() >= diagnostics_log_period_;
+    if (due) {
+      last_diagnostics_log_time_ = now;
+      has_diagnostics_log_time_ = true;
+      RCLCPP_INFO(
+        logger_,
+        "CUDA MPPI diagnostics: solve=%.2f ms valid=%d/%d (%.1f%%) best=%.3f mean=%.3f "
+        "retreat=%s cmd=(%.3f, %.3f, %.3f)",
+        solve_ms, result.valid_rollouts, result.sampled_rollouts,
+        100.0 * result.valid_rollout_ratio, result.best_cost, result.mean_cost,
+        result.retreating ? "true" : "false", result.v, result.vy, result.w);
+    }
+  }
+
+  if (diagnostics_csv_.enabled && diagnostics_csv_.file.is_open()) {
+    diagnostics_csv_.file
+      << now.seconds() << ','
+      << solve_ms << ','
+      << result.best_cost << ','
+      << result.mean_cost << ','
+      << result.sampled_rollouts << ','
+      << result.valid_rollouts << ','
+      << result.valid_rollout_ratio << ','
+      << (result.all_colliding ? 1 : 0) << ','
+      << (result.retreating ? 1 : 0) << ','
+      << path_points << ','
+      << costmap_size_x << ','
+      << costmap_size_y << ','
+      << result.v << ','
+      << result.vy << ','
+      << result.w << '\n';
   }
 }
 
@@ -541,22 +648,32 @@ geometry_msgs::msg::TwistStamped CudaMppiController::computeVelocityCommands(
 
   nav2_costmap_2d::Costmap2D * costmap = costmap_ros_->getCostmap();
   MppiResult result;
+  int costmap_size_x = 0;
+  int costmap_size_y = 0;
+  double solve_ms = 0.0;
   {
     std::unique_lock<nav2_costmap_2d::Costmap2D::mutex_t> lock(*costmap->getMutex());
+    costmap_size_x = static_cast<int>(costmap->getSizeInCellsX());
+    costmap_size_y = static_cast<int>(costmap->getSizeInCellsY());
+    const auto solve_start = std::chrono::steady_clock::now();
     result = optimizer_->compute(
       static_cast<float>(pose.pose.position.x),
       static_cast<float>(pose.pose.position.y),
       static_cast<float>(tf2::getYaw(pose.pose.orientation)),
       costmap->getCharMap(),
-      static_cast<int>(costmap->getSizeInCellsX()),
-      static_cast<int>(costmap->getSizeInCellsY()),
+      costmap_size_x,
+      costmap_size_y,
       static_cast<float>(costmap->getOriginX()),
       static_cast<float>(costmap->getOriginY()),
       static_cast<float>(costmap->getResolution()),
       path_xy.data(), static_cast<int>(path_xy.size() / 2),
       goal_x, goal_y, goal_yaw, goal_is_final,
       footprint_xy.data(), static_cast<int>(footprint_xy.size() / 2));
+    const auto solve_end = std::chrono::steady_clock::now();
+    solve_ms = std::chrono::duration<double, std::milli>(solve_end - solve_start).count();
   }
+  emitDiagnostics(
+    result, solve_ms, static_cast<int>(path_xy.size() / 2), costmap_size_x, costmap_size_y);
 
   if (result.all_colliding && !result.retreating) {
     throw NoValidControl(

@@ -42,3 +42,5 @@ controller_server:
       yaw_goal_activation_dist: 0.5
       lookahead_dist: 3.0       # [m] global plan window fed to the GPU
       transform_tolerance: 0.1
+      diagnostics_log_period: 0.0 # [s] 0 disables periodic solve/valid-rollout logs
+      diagnostics_csv_path: ""    # optional CSV trace path for per-cycle diagnostics

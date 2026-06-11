@@ -83,6 +83,10 @@ struct MppiResult
   float vy = 0.0f;
   float w = 0.0f;
   float best_cost = 0.0f;   // min sampled trajectory cost (collision diagnosis)
+  float mean_cost = 0.0f;   // mean sampled trajectory cost from the final iteration
+  int sampled_rollouts = 0;
+  int valid_rollouts = 0;    // sampled trajectories with no collision-cost hit
+  float valid_rollout_ratio = 0.0f;
   bool all_colliding = false;
   bool retreating = false;   // true when command is a recovery back-out action
 };
