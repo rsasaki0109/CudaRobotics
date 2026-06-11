@@ -56,6 +56,7 @@ planner = cr.MppiPlanner(
     batch_size=2048,
     time_steps=56,
     model_dt=0.05,
+    path_angle_weight=0.25,
     distance_field_weight=12.0,
     distance_field_cutoff=0.8,
 )

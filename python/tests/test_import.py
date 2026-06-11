@@ -18,6 +18,7 @@ def test_mppi_planner_smoke():
             batch_size=64,
             time_steps=8,
             model_dt=0.05,
+            path_angle_weight=0.25,
             distance_field_weight=1.0,
             distance_field_cutoff=0.5,
         )
@@ -45,6 +46,7 @@ def test_mppi_planner_cuda_dlpack_costmap_smoke():
             batch_size=64,
             time_steps=8,
             model_dt=0.05,
+            path_angle_weight=0.25,
             distance_field_weight=1.0,
             distance_field_cutoff=0.5,
         )

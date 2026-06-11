@@ -35,6 +35,25 @@ python scripts/benchmark_registration_external.py \
   --csv docs/results/registration_external_baselines_2026-06-11.csv
 ```
 
+## CUDA MPPI Path-Angle Critic, 2026-06-11
+
+- Report: [`cuda_mppi_path_angle_2026-06-11.md`](cuda_mppi_path_angle_2026-06-11.md)
+- CSV: [`cuda_mppi_path_angle_2026-06-11.csv`](cuda_mppi_path_angle_2026-06-11.csv)
+- Scope: GPU-only `cuda_mppi_controller` comparison of the default costmap
+  critic with and without the path-angle critic
+- Scenarios: `wall_gap`, `narrow_corridor`, `u_turn`
+- Config: `K=8192`, `T=56`, `dt=0.05`; path-angle row uses
+  `path_angle_weight=0.25`
+
+Key signals:
+
+- The corrected `u_turn` cell benefits most: K8192 time-to-goal drops from
+  44.75 s to 39.9 s while keeping mean solve time close to 1 ms.
+- `wall_gap` and `narrow_corridor` remain successful with similar time-to-goal.
+- A stronger `path_angle_weight=2.0` over-selected stationary
+  straight-heading rollouts in this sampler; the checked-in default is the
+  lighter `0.25`.
+
 ## CUDA MPPI ESDF Clearance Critic, 2026-06-11
 
 - Report: [`cuda_mppi_esdf_2026-06-11.md`](cuda_mppi_esdf_2026-06-11.md)
@@ -43,14 +62,15 @@ python scripts/benchmark_registration_external.py \
   critic vs the optional ESDF-style distance-field clearance critic
 - Scenarios: `wall_gap`, `narrow_corridor`, `u_turn`
 - Config: `K=8192`, `T=56`, `dt=0.05`; ESDF row uses
-  `distance_field_weight=12.0`, `distance_field_cutoff=0.8`
+  `distance_field_weight=12.0`, `distance_field_cutoff=0.8`; both rows use
+  `path_angle_weight=0.25`
 
 Key signals:
 
 - All three corrected scenarios succeed with both the default costmap critic and
   the ESDF clearance critic at K=8192.
-- ESDF keeps similar solve latency on `wall_gap` and `narrow_corridor`, while
-  the corrected `u_turn` cell finishes sooner with ESDF enabled in this run.
+- ESDF keeps similar solve latency and time-to-goal on the corrected scenarios
+  in this run; it is a clearance smoother rather than a speed optimization.
 - The corrected `u_turn` path goes around the obstacle endpoint; the previous
   benchmark path crossed a lethal wall cell and was not a valid
   planner-tracking test.
