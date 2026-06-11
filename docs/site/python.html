@@ -99,6 +99,46 @@ v, vy, w, info = planner.compute(
     resolution=0.05,
 )</code></pre>
           </div>
+          <p>
+            Runnable example:
+            <a href="https://github.com/rsasaki0109/CudaRobotics/blob/master/examples/python/mppi_dlpack_costmap.py">mppi_dlpack_costmap.py</a>.
+            It uses CUDA PyTorch when available and falls back to CuPy.
+          </p>
+        </div>
+      </section>
+
+      <section class="section">
+        <div class="section-head">
+          <h2>MPPI Info Fields</h2>
+          <p>`compute()` returns diagnostics for controller tuning and failure analysis.</p>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Field</th>
+                <th>Meaning</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>`best_cost` / `mean_cost`</td>
+                <td>Lowest and mean sampled rollout cost in the final MPPI iteration.</td>
+              </tr>
+              <tr>
+                <td>`sampled_rollouts` / `valid_rollouts`</td>
+                <td>Total samples and samples that avoided collision-cost hits.</td>
+              </tr>
+              <tr>
+                <td>`valid_rollout_ratio`</td>
+                <td>Quick health signal for costmap geometry, sample count, and local path quality.</td>
+              </tr>
+              <tr>
+                <td>`all_colliding` / `retreating`</td>
+                <td>Collision saturation and recovery back-out state.</td>
+              </tr>
+            </tbody>
+          </table>
         </div>
       </section>
 

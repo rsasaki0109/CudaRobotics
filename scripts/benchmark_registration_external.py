@@ -34,7 +34,43 @@ ALGORITHMS = (
     "open3d_gicp_cpu",
 )
 
+SCENARIOS = {
+    "lumpy_partial": {
+        "overlap": 0.85,
+        "noise_sigma": 0.02,
+        "outlier_ratio": 0.0,
+        "euler": (0.12, -0.18, 0.08),
+        "translation": (0.35, -0.25, 0.20),
+        "notes": "asymmetric lumpy surface, 85% overlap, 2 cm noise",
+    },
+    "low_overlap": {
+        "overlap": 0.60,
+        "noise_sigma": 0.02,
+        "outlier_ratio": 0.0,
+        "euler": (0.12, -0.18, 0.08),
+        "translation": (0.35, -0.25, 0.20),
+        "notes": "same surface and transform, 60% source overlap",
+    },
+    "outlier_partial": {
+        "overlap": 0.85,
+        "noise_sigma": 0.02,
+        "outlier_ratio": 0.10,
+        "euler": (0.12, -0.18, 0.08),
+        "translation": (0.35, -0.25, 0.20),
+        "notes": "85% overlap plus 10% uniform source outliers",
+    },
+    "large_offset": {
+        "overlap": 0.85,
+        "noise_sigma": 0.02,
+        "outlier_ratio": 0.0,
+        "euler": (0.28, -0.32, 0.22),
+        "translation": (0.60, -0.45, 0.35),
+        "notes": "larger rigid transform under identity initialization",
+    },
+}
+
 CSV_FIELDS = (
+    "scenario",
     "algorithm",
     "size",
     "target_points",
@@ -122,18 +158,26 @@ def euler_xyz(rx: float, ry: float, rz: float) -> np.ndarray:
     )
 
 
-def make_pair(n: int, trial: int) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+def make_pair(
+    n: int, trial: int, scenario: str = "lumpy_partial"
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    spec = SCENARIOS[scenario]
     target = make_lumpy(n, seed=101 + trial)
-    gt_rotation = euler_xyz(0.12, -0.18, 0.08)
-    gt_translation = np.array([0.35, -0.25, 0.20], dtype=np.float64)
+    gt_rotation = euler_xyz(*spec["euler"])
+    gt_translation = np.array(spec["translation"], dtype=np.float64)
     rng = np.random.default_rng(700 + trial)
-    keep = rng.uniform(0.0, 1.0, len(target)) <= 0.85
+    keep = rng.uniform(0.0, 1.0, len(target)) <= float(spec["overlap"])
     source = (
         target.astype(np.float64) @ gt_rotation.T
         + gt_translation
-        + rng.normal(0.0, 0.02, size=target.shape)
+        + rng.normal(0.0, float(spec["noise_sigma"]), size=target.shape)
     )
     source = source[keep].astype(np.float32)
+    outlier_ratio = float(spec["outlier_ratio"])
+    if outlier_ratio > 0.0:
+        outlier_count = max(1, int(round(len(source) * outlier_ratio)))
+        outliers = rng.uniform(-3.5, 3.5, size=(outlier_count, 3)).astype(np.float32)
+        source = np.vstack([source, outliers])
     expected_rotation = gt_rotation.T
     expected_translation = -gt_rotation.T @ gt_translation
     return target, source, expected_rotation, expected_translation
@@ -301,6 +345,7 @@ def joined(values: list[float]) -> str:
 def run_child(args: argparse.Namespace) -> int:
     load_before = read_load1()
     row: dict[str, Any] = {
+        "scenario": args.scenario,
         "algorithm": args.algorithm,
         "size": args.size,
         "target_points": args.size,
@@ -326,7 +371,7 @@ def run_child(args: argparse.Namespace) -> int:
     try:
         row.update(version_info(args.algorithm))
         warm_n = min(512, args.size)
-        target, source, _, _ = make_pair(warm_n, -1)
+        target, source, _, _ = make_pair(warm_n, -1, args.scenario)
         run_algorithm(args.algorithm, target, source, args.maxiter)
 
         elapsed_ms: list[float] = []
@@ -336,7 +381,7 @@ def run_child(args: argparse.Namespace) -> int:
         source_counts: list[int] = []
         for trial in range(args.trials):
             target, source, expected_rotation, expected_translation = make_pair(
-                args.size, trial
+                args.size, trial, args.scenario
             )
             source_counts.append(int(len(source)))
             start = time.perf_counter()
@@ -370,6 +415,8 @@ def run_child(args: argparse.Namespace) -> int:
         row["rmse_m_trials"] = joined(rmses)
         if args.algorithm == "probreg_filterreg_cpu":
             row["notes"] = "probreg update_sigma2=True"
+        scenario_note = SCENARIOS[args.scenario]["notes"]
+        row["notes"] = (row["notes"] + "; " if row["notes"] else "") + scenario_note
     except Exception as exc:
         row["error"] = f"{type(exc).__name__}: {exc}"
         if args.traceback:
@@ -389,6 +436,7 @@ def wait_for_load(max_load: float, timeout_s: float, sleep_s: float) -> None:
 
 
 def timeout_row(
+    scenario: str,
     algorithm: str,
     size: int,
     trials: int,
@@ -399,6 +447,7 @@ def timeout_row(
     row = {field: "" for field in CSV_FIELDS}
     row.update(
         {
+            "scenario": scenario,
             "algorithm": algorithm,
             "size": size,
             "target_points": size,
@@ -418,6 +467,7 @@ def timeout_row(
 
 
 def error_row(
+    scenario: str,
     algorithm: str,
     size: int,
     trials: int,
@@ -427,6 +477,7 @@ def error_row(
     row = {field: "" for field in CSV_FIELDS}
     row.update(
         {
+            "scenario": scenario,
             "algorithm": algorithm,
             "size": size,
             "target_points": size,
@@ -449,97 +500,103 @@ def run_parent(args: argparse.Namespace) -> int:
     csv_path = Path(args.csv)
     csv_path.parent.mkdir(parents=True, exist_ok=True)
 
-    for size in args.sizes:
-        for algorithm in algorithms:
-            wait_for_load(args.load_gate, args.load_gate_timeout, args.load_gate_sleep)
-            load_before = read_load1()
-            cmd = [
-                sys.executable,
-                str(Path(__file__).resolve()),
-                "--run-cell",
-                "--algorithm",
-                algorithm,
-                "--size",
-                str(size),
-                "--trials",
-                str(args.trials),
-                "--maxiter",
-                str(args.maxiter),
-            ]
-            if args.traceback:
-                cmd.append("--traceback")
-            print(
-                f"[cell] algorithm={algorithm} size={size} trials={args.trials} "
-                f"load={load_before:.2f}",
-                file=sys.stderr,
-                flush=True,
-            )
-            try:
-                completed = subprocess.run(
-                    cmd,
-                    text=True,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
-                    timeout=args.timeout_seconds,
-                    check=False,
-                )
-            except subprocess.TimeoutExpired as exc:
-                stderr = exc.stderr if isinstance(exc.stderr, str) else ""
-                row = timeout_row(
+    for scenario in args.scenarios:
+        for size in args.sizes:
+            for algorithm in algorithms:
+                wait_for_load(args.load_gate, args.load_gate_timeout, args.load_gate_sleep)
+                load_before = read_load1()
+                cmd = [
+                    sys.executable,
+                    str(Path(__file__).resolve()),
+                    "--run-cell",
+                    "--scenario",
+                    scenario,
+                    "--algorithm",
                     algorithm,
-                    size,
-                    args.trials,
-                    args.timeout_seconds,
-                    load_before,
-                    stderr,
-                )
-                rows.append(row)
-                write_csv(csv_path, rows)
+                    "--size",
+                    str(size),
+                    "--trials",
+                    str(args.trials),
+                    "--maxiter",
+                    str(args.maxiter),
+                ]
+                if args.traceback:
+                    cmd.append("--traceback")
                 print(
-                    f"[cell] timeout algorithm={algorithm} size={size}",
+                    f"[cell] scenario={scenario} algorithm={algorithm} size={size} "
+                    f"trials={args.trials} load={load_before:.2f}",
                     file=sys.stderr,
                     flush=True,
                 )
-                continue
-
-            stdout_lines = [line for line in completed.stdout.splitlines() if line]
-            if not stdout_lines:
-                stderr = completed.stderr.strip()
-                message = f"exit code {completed.returncode}"
-                if stderr:
-                    message += f"; stderr={stderr[-1000:]}"
-                row = error_row(
-                    algorithm,
-                    size,
-                    args.trials,
-                    load_before,
-                    message,
-                )
-            else:
                 try:
-                    row = json.loads(stdout_lines[-1])
-                except json.JSONDecodeError as exc:
+                    completed = subprocess.run(
+                        cmd,
+                        text=True,
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.PIPE,
+                        timeout=args.timeout_seconds,
+                        check=False,
+                    )
+                except subprocess.TimeoutExpired as exc:
+                    stderr = exc.stderr if isinstance(exc.stderr, str) else ""
+                    row = timeout_row(
+                        scenario,
+                        algorithm,
+                        size,
+                        args.trials,
+                        args.timeout_seconds,
+                        load_before,
+                        stderr,
+                    )
+                    rows.append(row)
+                    write_csv(csv_path, rows)
+                    print(
+                        f"[cell] timeout scenario={scenario} algorithm={algorithm} size={size}",
+                        file=sys.stderr,
+                        flush=True,
+                    )
+                    continue
+
+                stdout_lines = [line for line in completed.stdout.splitlines() if line]
+                if not stdout_lines:
+                    stderr = completed.stderr.strip()
+                    message = f"exit code {completed.returncode}"
+                    if stderr:
+                        message += f"; stderr={stderr[-1000:]}"
                     row = error_row(
+                        scenario,
                         algorithm,
                         size,
                         args.trials,
                         load_before,
-                        f"could not parse child JSON: {exc}; stdout={completed.stdout[-500:]}",
+                        message,
                     )
-            if completed.returncode != 0 and row.get("status") == "ok":
-                row["status"] = "error"
-                row["error"] = completed.stderr.strip() or f"exit code {completed.returncode}"
-            if completed.stderr.strip() and row.get("status") != "ok":
-                err = row.get("error", "")
-                row["error"] = (err + "\n" if err else "") + completed.stderr.strip()[-1000:]
-            rows.append(row)
-            write_csv(csv_path, rows)
-            print(
-                f"[cell] status={row.get('status')} algorithm={algorithm} size={size} "
-                f"median_ms={row.get('median_ms', '')}",
-                file=sys.stderr,
-                flush=True,
-            )
+                else:
+                    try:
+                        row = json.loads(stdout_lines[-1])
+                    except json.JSONDecodeError as exc:
+                        row = error_row(
+                            scenario,
+                            algorithm,
+                            size,
+                            args.trials,
+                            load_before,
+                            f"could not parse child JSON: {exc}; stdout={completed.stdout[-500:]}",
+                        )
+                if completed.returncode != 0 and row.get("status") == "ok":
+                    row["status"] = "error"
+                    row["error"] = completed.stderr.strip() or f"exit code {completed.returncode}"
+                if completed.stderr.strip() and row.get("status") != "ok":
+                    err = row.get("error", "")
+                    row["error"] = (err + "\n" if err else "") + completed.stderr.strip()[-1000:]
+                rows.append(row)
+                write_csv(csv_path, rows)
+                print(
+                    f"[cell] status={row.get('status')} scenario={scenario} "
+                    f"algorithm={algorithm} size={size} median_ms={row.get('median_ms', '')}",
+                    file=sys.stderr,
+                    flush=True,
+                )
 
     write_csv(csv_path, rows)
     return 0
@@ -558,6 +615,13 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--sizes", nargs="+", type=int, default=[2000, 8000, 32000])
     parser.add_argument("--trials", type=int, default=3)
     parser.add_argument("--csv", default="docs/results/registration_external_baselines_2026-06-11.csv")
+    parser.add_argument(
+        "--scenarios",
+        nargs="+",
+        choices=tuple(SCENARIOS),
+        default=["lumpy_partial"],
+        help="Synthetic registration data scenarios to benchmark.",
+    )
     parser.add_argument("--algorithms", nargs="+", choices=ALGORITHMS, default=list(ALGORITHMS))
     parser.add_argument("--timeout-seconds", type=float, default=300.0)
     parser.add_argument("--maxiter", type=int, default=64)
@@ -566,11 +630,12 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--load-gate-sleep", type=float, default=15.0)
     parser.add_argument("--traceback", action="store_true")
     parser.add_argument("--run-cell", action="store_true", help=argparse.SUPPRESS)
+    parser.add_argument("--scenario", choices=tuple(SCENARIOS), help=argparse.SUPPRESS)
     parser.add_argument("--algorithm", choices=ALGORITHMS, help=argparse.SUPPRESS)
     parser.add_argument("--size", type=int, help=argparse.SUPPRESS)
     args = parser.parse_args(argv)
-    if args.run_cell and (args.algorithm is None or args.size is None):
-        parser.error("--run-cell requires --algorithm and --size")
+    if args.run_cell and (args.scenario is None or args.algorithm is None or args.size is None):
+        parser.error("--run-cell requires --scenario, --algorithm and --size")
     return args
 
 

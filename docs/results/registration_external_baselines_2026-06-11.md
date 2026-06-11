@@ -71,6 +71,7 @@ python3 -m venv --system-site-packages /path/to/regbench_venv
 /path/to/regbench_venv/bin/python scripts/benchmark_registration_external.py \
   --sizes 2000 8000 32000 \
   --trials 3 \
+  --scenarios lumpy_partial \
   --timeout-seconds 360 \
   --load-gate 12 \
   --csv docs/results/registration_external_baselines_2026-06-11.csv
@@ -81,3 +82,8 @@ If it is not installed, install `open3d==0.19.0` into the benchmark environment.
 
 Raw aggregate CSV:
 [`registration_external_baselines_2026-06-11.csv`](registration_external_baselines_2026-06-11.csv).
+
+Script note: `scripts/benchmark_registration_external.py` now keeps this
+scenario as `lumpy_partial` and can also generate follow-up stress rows with
+`--scenarios low_overlap outlier_partial large_offset`. Those additional rows
+are not part of the 2026-06-11 checked-in numbers above.

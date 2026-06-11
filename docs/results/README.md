@@ -12,6 +12,9 @@ fixed-seed smoke results with enough detail to make wins and failures visible.
   and Open3D GICP (CPU)
 - Sizes: `N=2000,8000,32000`
 - Trials: 3 per method/size cell, subprocess-isolated
+- Default data scenario: `lumpy_partial`. The benchmark script can also run
+  `low_overlap`, `outlier_partial`, and `large_offset` stress scenarios for
+  follow-up reports.
 
 Key signals:
 
@@ -30,9 +33,43 @@ external baselines:
 python scripts/benchmark_registration_external.py \
   --sizes 2000 8000 32000 \
   --trials 3 \
+  --scenarios lumpy_partial \
   --timeout-seconds 360 \
   --load-gate 12 \
   --csv docs/results/registration_external_baselines_2026-06-11.csv
+```
+
+## CUDA MPPI Extended Controller Scenarios, 2026-06-12
+
+- Report: [`cuda_mppi_extended_scenarios_2026-06-12.md`](cuda_mppi_extended_scenarios_2026-06-12.md)
+- CSV: [`cuda_mppi_extended_scenarios_2026-06-12.csv`](cuda_mppi_extended_scenarios_2026-06-12.csv)
+- Scope: closed-loop `cuda_mppi_controller` coverage beyond the original
+  wall-gap / narrow-corridor / U-turn smoke set
+- Scenarios: `double_gap`, `moving_crossing`
+- Config: `double_gap cpu_gpu` compares CPU K=2000 against GPU K=8192;
+  `moving_crossing quick` compares GPU K=2048 and K=8192 on a dynamic costmap
+
+Key signals:
+
+- `double_gap` succeeds for both CPU K=2000 and GPU K=8192. GPU reaches the
+  goal sooner in this run (23.4 s vs 29.4 s) with lower solve latency
+  (1.13 ms mean vs 6.83 ms).
+- `moving_crossing` succeeds for both GPU K=2048 and K=8192. K=8192 is still
+  around 1.07 ms mean solve time while the dynamic costmap is repainted.
+- These are synthetic development scenarios; use them for regression coverage
+  and diagnostics, not broad deployment claims.
+
+Reproduce from the repository root:
+
+```bash
+cd ros2_ws
+colcon build --packages-select cuda_mppi_controller \
+  --cmake-args -DCMAKE_BUILD_TYPE=Release
+source install/setup.bash
+ros2 run cuda_mppi_controller controller_benchmark /tmp/mppi_extended_scenarios double_gap cpu_gpu
+ros2 run cuda_mppi_controller controller_benchmark /tmp/mppi_extended_scenarios moving_crossing quick
+cd ..
+python3 scripts/render_cuda_mppi_extended_scenarios.py /tmp/mppi_extended_scenarios 2026-06-12
 ```
 
 ## CUDA MPPI Curvature Speed Critic Metrics Refresh, 2026-06-12
