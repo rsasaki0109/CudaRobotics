@@ -36,6 +36,7 @@ NVIDIA driver at runtime.
 ```bash
 python -c "import cudarobotics as cr; print(cr.__version__)"
 python examples/python/mppi_quickstart.py
+python examples/python/mppi_dlpack_costmap.py  # requires CUDA PyTorch or CuPy
 python examples/python/registration_quickstart.py
 ```
 
@@ -68,6 +69,26 @@ v, vy, w, info = planner.compute(
     (1.0, 5.0, 0.0), costmap, path, (5.0, 5.0, 0.0), resolution=0.05
 )
 ```
+
+Example script:
+[`examples/python/mppi_dlpack_costmap.py`](../examples/python/mppi_dlpack_costmap.py).
+It tries CUDA PyTorch first, then CuPy, and prints the rollout validity
+diagnostics returned by `compute()`.
+
+## MPPI Diagnostics Info
+
+`MppiPlanner.compute()` returns `(v, vy, w, info)`. The `info` dictionary is
+intended for controller tuning and failure diagnosis:
+
+| field | meaning |
+|---|---|
+| `best_cost` | lowest sampled rollout cost in the final iteration |
+| `mean_cost` | mean sampled rollout cost in the final iteration |
+| `sampled_rollouts` | number of sampled trajectories |
+| `valid_rollouts` | sampled trajectories that avoided collision-cost hits |
+| `valid_rollout_ratio` | `valid_rollouts / sampled_rollouts` |
+| `all_colliding` | all sampled rollouts collided before retreat handling |
+| `retreating` | command came from the recovery back-out sequence |
 
 ## Layout
 

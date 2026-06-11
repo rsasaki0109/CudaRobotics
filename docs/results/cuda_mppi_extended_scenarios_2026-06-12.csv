@@ -1,0 +1,5 @@
+scenario,label,plugin,batch_size,motion_model,success,collided,steps,sim_s,mean_ms,p95_ms,max_ms,exceptions,distance_m,mean_speed_mps,max_speed_mps,mean_abs_w_radps,max_abs_w_radps,mean_abs_curvature,distance_field_weight,distance_field_cutoff,path_angle_weight,curvature_speed_weight,curvature_speed_min
+double_gap,cpu_mppi_K2000,nav2_mppi_controller::MPPIController,2000,DiffDrive,1,0,589,29.45,6.83234,8.2529,9.60053,0,12.0415,0.408186,0.501771,0.193125,0.783522,0.574245,0,0.75,0.25,0,0.18
+double_gap,gpu_mppi_K8192,cuda_mppi_controller::CudaMppiController,8192,DiffDrive,1,0,467,23.35,1.131,1.32059,1.50021,0,10.7537,0.45956,0.5,0.375323,1.59032,1.00554,0,0.75,0.25,0,0.18
+moving_crossing,gpu_mppi_K2048,cuda_mppi_controller::CudaMppiController,2048,DiffDrive,1,0,403,20.15,0.419652,0.44593,0.680222,0,8.8847,0.439837,0.5,0.350442,1.9,1.12377,0,0.75,0.25,0,0.18
+moving_crossing,gpu_mppi_K8192,cuda_mppi_controller::CudaMppiController,8192,DiffDrive,1,0,392,19.6,1.07161,1.10871,1.19565,0,8.84427,0.45009,0.5,0.349184,1.82993,1.04534,0,0.75,0.25,0,0.18
