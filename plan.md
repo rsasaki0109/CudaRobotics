@@ -1,13 +1,12 @@
 # CudaRobotics Plan / Handoff (for Codex / Claude)
 
-Last updated: 2026-06-11 JST (`7927fc9` — CUDA DLPack costmap input for Python
-MPPI landed after the registration external benchmark and hardware-string
-history rewrite. Current feature work is Nav2 plugin parameter validation.
-v0.1.0 release is fully prepared but NOT yet published (user-owned action; see
-below). Jetson/aarch64 support is intentionally skipped for now by user
-direction. Note: some older sections below carry their own internal dates —
-treat section headers as the ordering authority within each line, not this
-single timestamp.)
+Last updated: 2026-06-11 JST (`9f3b951` — Nav2 plugin parameter validation
+landed after CUDA DLPack costmaps and the registration external benchmark.
+v0.1.0 release publishing is authorized and in progress; release notes and the
+smoke checklist now live under `docs/releases/`. Jetson/aarch64 support is
+intentionally skipped for now by user direction. Note: some older sections below
+carry their own internal dates — treat section headers as the ordering authority
+within each line, not this single timestamp.)
 
 This document is the long-form handoff for the next coding agent (Codex).
 It captures: (1) where the repo is right now, (2) what was just done over
@@ -26,9 +25,10 @@ There are now **two active lines** in this repo:
 1. **Star-growth / product line** (top section) — make CudaRobotics a
    *used* library, not a watched gallery. Shipped so far: nav2 GPU MPPI
    plugin (#175), pip bindings + packaging (#176–#180), Colab quickstart
-   (#181), Docker demo (#183), working manylinux wheels (#184–#186).
-   v0.1.0 release prepared; registration-vs-probreg/Open3D benchmark results
-   are prepared locally (see Current State 2026-06-11).
+   (#181), Docker demo (#183), working manylinux wheels (#184–#186),
+   registration-vs-probreg/Open3D benchmark results (#187), CUDA DLPack
+   costmaps (#188), and Nav2 parameter validation (#189). v0.1.0 release is
+   being published from the current `master` line.
 2. **Research line** — SOPPI / Diff-MPPI box-pushing reproduction zoo
    (see "Research Line State" below; `box_align_contact_loss` lifted to **1.00**;
    `box_align_detour` still the open hard cell at **0.25**).
@@ -37,11 +37,10 @@ There are now **two active lines** in this repo:
 
 ## Current State (2026-06-11) — star-growth funnel sprint
 
-Mainline: **`master` at `7927fc9`**, in sync with `origin/master`, after the
+Mainline: **`master` at `9f3b951`**, in sync with `origin/master`, after the
 hardware-string history rewrite, registration external benchmark merge (#187),
-and CUDA DLPack costmap merge (#188). Current local work: Nav2 plugin parameter
-validation so invalid controller settings fail clearly at configure/live-update
-time.
+CUDA DLPack costmap merge (#188), and Nav2 parameter validation merge (#189).
+Current local work: v0.1.0 release checklist / notes, then tag + GitHub release.
 
 ### What landed this session (all squash-merged)
 
@@ -55,30 +54,40 @@ time.
 | #186 | cibuildwheel: add `*i686*` to skip lists (NVIDIA ships no 32-bit CUDA; the i686 container died in before-all) | with this, **cibuildwheel is green**: cp310/cp312 manylinux2014 x86_64 wheels (113 MB artifact, run 27308990292) |
 | #187 | registration external benchmark results (`scripts/benchmark_registration_external.py`, `docs/results/registration_external_baselines_2026-06-11.*`, README links) | distribution-ready comparison against probreg/Open3D CPU baselines, with generic hardware wording only |
 | #188 | CUDA DLPack costmap support for Python `MppiPlanner.compute()` | learning stacks can pass CUDA tensors as costmaps without staging through host memory; NumPy host path remains unchanged |
+| #189 | Nav2 MPPI parameter validation (`parameter_validation_test`, Humble/Jazzy exception shims) | invalid controller settings fail clearly during configure/live updates, before reaching CUDA allocation/rollout |
 
 Wheel sanity check done: the cp312 manylinux wheel was installed into a fresh
 venv on this machine; `MppiPlanner.compute` and
 `registration.FilterReg.register` both run correctly on the GPU.
 
-### v0.1.0 release — PREPARED, awaiting the user (publishing is user-owned)
+### v0.1.0 release — AUTHORIZED / IN PROGRESS
 
-Everything is staged; the permission system (correctly) refuses agents
-pushing tags / creating public releases. To publish:
+The user explicitly authorized `1,2,3 de yattekou!` after the release plan:
+update `plan.md`, add a release smoke checklist, then publish v0.1.0.
+
+Release docs:
+
+- `docs/releases/v0.1.0_smoke_checklist.md`
+- `docs/releases/v0.1.0_notes.md`
+
+Artifacts were re-downloaded from Python package run `27308990292` to
+`/tmp/v010_wheels/`:
+
+- `cudarobotics-0.1.0.tar.gz`
+- CPython 3.10 / 3.12 manylinux x86_64 wheels
 
 ```bash
 git fetch origin && git tag v0.1.0 origin/master && git push origin v0.1.0
 # tag push auto-builds + publishes the GHCR demo image (docker-image.yml)
 gh release create v0.1.0 \
-  --title "v0.1.0 — Nav2 GPU MPPI plugin, Python package, Colab & Docker" \
-  --notes-file .release_notes_v0.1.0.md \
+  --title "v0.1.0 - Nav2 GPU MPPI plugin, Python package, Colab & Docker" \
+  --notes-file docs/releases/v0.1.0_notes.md \
   /tmp/v010_wheels/cudarobotics-manylinux-wheels/*.whl \
   /tmp/v010_wheels/cudarobotics-wheels/cudarobotics-0.1.0.tar.gz
 ```
 
-Notes draft: `.release_notes_v0.1.0.md` (repo root, untracked). Wheels are
-already downloaded to `/tmp/v010_wheels/` (re-download with
-`gh run download 27308990292` if /tmp was cleared). PyPI was explicitly
-**skipped by user decision** — do not add PyPI publishing.
+PyPI remains explicitly **skipped by user decision** — do not add PyPI
+publishing in this release.
 
 ### Registration external benchmark — LANDED (#187)
 
@@ -128,12 +137,12 @@ Implementation:
 - Path and footprint remain CPU buffer-protocol arrays for now.
 - Smoke coverage: NumPy MPPI path plus optional torch CUDA DLPack costmap test.
 
-### Nav2 plugin validation — IN FLIGHT
+### Nav2 plugin validation — LANDED (#189)
 
 Goal: make the Nav2 controller safer for real deployments by rejecting invalid
 configuration and live ROS parameter updates before the GPU optimizer is built.
 
-Current implementation direction:
+Implementation:
 
 - Validate positive sizes/step/temperature/control limits, finite non-negative
   weights, and valid motion model strings during `configure()`.
@@ -146,11 +155,11 @@ Current implementation direction:
 
 Short term (this week):
 
-1. **Publish v0.1.0** (user; commands above) → then distribution
-   (HN / Reddit / ROS Discourse / X / Zenn — user-owned, never agents).
-2. **Finish / PR Nav2 plugin parameter validation** (agent; current branch).
-   This makes the installed controller fail fast on unsafe or nonsensical
-   settings instead of letting them reach CUDA memory allocation or rollout.
+1. **Finish v0.1.0 publish** (agent authorized this turn): merge release docs,
+   tag `origin/master`, create the GitHub release with wheel/sdist assets, then
+   verify the GHCR tag workflow.
+2. **Distribution** (HN / Reddit / ROS Discourse / X / Zenn) remains
+   user-owned. Agents can prepare copy, but should not post externally.
 
 Mid term — pick ONE based on which funnel converts after the release
 (watch stars/traffic/issues per entry point):
@@ -177,18 +186,9 @@ agents build material, the user distributes and publishes.
 
 ### Working tree inventory (untracked / WIP — handle with care)
 
-- `ros2_ws/src/cuda_mppi_controller/src/cuda_mppi_controller.cpp` and matching
-  header cleanup — parameter validation and live-update application from
-  proposed ROS parameters.
-- `ros2_ws/src/cuda_mppi_controller/include/cuda_mppi_controller/nav2_compat.hpp`
-  — Humble/Jazzy exception aliases for controller failure paths.
-- `ros2_ws/src/cuda_mppi_controller/test/parameter_validation_test.cpp` — invalid
-  configure-time smoke executable.
-- `ros2_ws/src/cuda_mppi_controller/CMakeLists.txt` and README — build/docs for
-  the validation executable.
-- `plan.md` — current handoff update for the validation branch.
-- `.release_notes_v0.1.0.md` — release-notes draft may exist outside this
-  checkout; keep untracked if present.
+- `docs/releases/v0.1.0_smoke_checklist.md` — release smoke checklist.
+- `docs/releases/v0.1.0_notes.md` — GitHub release notes file.
+- `plan.md` — current handoff update for v0.1.0 publishing.
 - `src/benchmark_diff_mppi_pushing_box.cu` — user research WIP if present; do
   not bundle into this star-growth benchmark commit.
 
@@ -200,9 +200,8 @@ agents build material, the user distributes and publishes.
   master CI failures this session alongside the macro breakage).
 - **Permission boundary**: agents may create branches/PRs freely; merging
   to master, pushing tags, and creating releases require explicit user
-  authorization in the current message ("merge!" worked; tag+release was
-  refused even after merges — that refusal is correct, leave publishing to
-  the user).
+  authorization in the current message. For v0.1.0, the user explicitly
+  authorized the release flow with `1,2,3 de yattekou!`.
 - **CPU benchmarking on this box needs a load gate**: check `/proc/loadavg`
   (<8 1-min) before starting and record per-cell load; other projects'
   batch jobs start unpredictably.
