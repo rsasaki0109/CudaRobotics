@@ -27,8 +27,8 @@ There are now **two active lines** in this repo:
    *used* library, not a watched gallery. Shipped so far: nav2 GPU MPPI
    plugin (#175), pip bindings + packaging (#176–#180), Colab quickstart
    (#181), Docker demo (#183), working manylinux wheels (#184–#186).
-   v0.1.0 release prepared; registration-vs-probreg/Open3D benchmark in
-   flight (see Current State 2026-06-11).
+   v0.1.0 release prepared; registration-vs-probreg/Open3D benchmark results
+   are prepared locally (see Current State 2026-06-11).
 2. **Research line** — SOPPI / Diff-MPPI box-pushing reproduction zoo
    (see "Research Line State" below; `box_align_contact_loss` lifted to **1.00**;
    `box_align_detour` still the open hard cell at **0.25**).
@@ -37,12 +37,10 @@ There are now **two active lines** in this repo:
 
 ## Current State (2026-06-11) — star-growth funnel sprint
 
-Mainline: **`master` at `b917597`**, in sync with `origin/master`, **all CI
-green** (build + python-package incl. cibuildwheel). No in-flight PR. Local
-working tree carries the user's research WIP (`plan.md`,
-`src/benchmark_diff_mppi_pushing_box.cu` — detour-tuning sweep flags, do NOT
-bundle into unrelated commits) plus two new untracked files (see "Working
-tree inventory" below).
+Mainline: **`master` at `21e2ae9`** after the hardware-string history rewrite,
+in sync with `origin/master`. No in-flight PR. Local working tree now carries
+the registration external benchmark artifact set (script + docs/results CSV/MD
++ README links) and this `plan.md` update; see "Working tree inventory" below.
 
 ### What landed this session (all squash-merged)
 
@@ -79,42 +77,39 @@ already downloaded to `/tmp/v010_wheels/` (re-download with
 `gh run download 27308990292` if /tmp was cleared). PyPI was explicitly
 **skipped by user decision** — do not add PyPI publishing.
 
-### Registration external benchmark — IN PROGRESS (the one open thread)
+### Registration external benchmark — LOCAL ARTIFACTS READY
 
-Goal: a distribution-ready table comparing our GPU registration against
-probreg 0.3.8 (CPU) and Open3D 0.19.0 (CPU) — same pairs (lumpy surface, 85%
-overlap, sigma 0.02 noise, identity init), median of 3 trials, per-cell
-subprocess isolation (probreg CPD OOM-killed a monolithic run once).
-Script: `scripts/benchmark_registration_external.py` (untracked, working;
-venv: `/tmp/regbench_venv`).
+Goal: a distribution-ready table comparing CudaRobotics FilterReg against
+probreg 0.3.8 (CPU) and Open3D 0.19.0 (CPU) on the same deterministic pairs
+(lumpy surface, 85% overlap, sigma 0.02 noise, identity init), median of 3
+trials, per-cell subprocess isolation.
 
-Stable findings across runs (benchmark GPU vs benchmark CPU):
+Artifacts prepared in the working tree:
 
-- **cudarobotics FilterReg (GPU): ~140→190 ms flat across N=2k→32k**,
-  rot_err 0.05–0.15 deg; run-to-run variance <3%.
-- **probreg FilterReg (same algorithm, CPU): 5x–33x slower**, gap grows
-  with N. FAIRNESS NOTE (do not regress this): probreg needs
-  `update_sigma2=True` or it plateaus at >15 deg rotation error on these
-  partially overlapping pairs — defaults would be a strawman. Already set
-  in the script with a comment.
-- probreg CPD rigid: accurate but O(N^2) — 4 s @2k, 75 s @8k, timeout @32k.
-- Open3D GICP is the strongest CPU baseline (accurate, 130–574 ms); our
-  GPU FilterReg is comparable-to-3x vs it. Do NOT oversell this cell;
-  the headline is the same-algorithm probreg comparison.
-- **Measurement hygiene**: this machine runs other projects' batch jobs
-  (rko_lio, sr_fuse, gnss_ppp, pytest sweeps; AirSim was killed with user
-  permission) — load spiked to 34 mid-run once and inflated the 32k CPU
-  cells ~4x. The script now records `load_before`/`load_after` per cell;
-  a background retry loop is armed to capture a fully-clean run (every
-  cell load <12) into `/tmp/regbench_clean.csv` (up to 6 attempts).
+- `scripts/benchmark_registration_external.py`
+- `docs/results/registration_external_baselines_2026-06-11.csv`
+- `docs/results/registration_external_baselines_2026-06-11.md`
+- `docs/results/README.md` entry
+- `readme.md` Start Here entry
 
-NEXT STEP for the next agent: take `/tmp/regbench_clean.csv` (or re-run
-`scripts/benchmark_registration_external.py --sizes 2000 8000 32000
---trials 3 --csv ...` with `/tmp/regbench_venv/bin/python` when 1-min load
-is <8), write `docs/results/registration_external_baselines_<date>.md` +
-CSV (include library versions, hardware, protocol, the update_sigma2
-fairness note, and the per-cell load columns), commit the script alongside,
-PR it. Optionally add a row to the readme Start Here table.
+Observed signals in this run:
+
+- Same-algorithm FilterReg: CudaRobotics GPU is **1.3x / 4.8x / 11.3x**
+  faster than probreg CPU at `N=2000 / 8000 / 32000`.
+- CudaRobotics FilterReg stays under **0.70 s** from 2k to 32k points, with
+  median rotation error below **0.15 deg** and translation error below
+  **1.5 mm**.
+- probreg FilterReg uses `update_sigma2=True`; keep this fairness note.
+- probreg CPD rigid is accurate but scales poorly: **4.57 s @2k**,
+  **69.3 s @8k**, and **exit code -9 @32k**.
+- Open3D GICP is the strongest CPU baseline in this identity-init benchmark
+  and is faster than CudaRobotics FilterReg in this run. Do not oversell a
+  universal GPU-over-CPU claim; the clean headline is the same-algorithm
+  probreg FilterReg comparison.
+
+NEXT STEP: commit these five files together on a feature branch and open the
+results-doc PR. Do not add exact machine or device model strings back into the
+docs or CSV.
 
 ### Direction from here (2026-06-11) — supersedes the old Next-Task Menu below
 
@@ -122,9 +117,8 @@ Short term (this week):
 
 1. **Publish v0.1.0** (user; commands above) → then distribution
    (HN / Reddit / ROS Discourse / X / Zenn — user-owned, never agents).
-2. **Finish the registration external benchmark** (agent; NEXT STEP above)
-   → `docs/results/` MD+CSV PR. This is the last piece of distribution
-   material.
+2. **Commit / PR the registration external benchmark artifacts** (agent;
+   NEXT STEP above). This is the last piece of distribution material.
 
 Mid term — pick ONE based on which funnel converts after the release
 (watch stars/traffic/issues per entry point):
@@ -153,14 +147,15 @@ agents build material, the user distributes and publishes.
 
 ### Working tree inventory (untracked / WIP — handle with care)
 
-- `scripts/benchmark_registration_external.py` — NEW, to be committed with
-  the results-doc PR.
-- `.release_notes_v0.1.0.md` — release-notes draft consumed by
-  `gh release create`; keep untracked (it is release copy, not a repo doc).
-- `plan.md`, `src/benchmark_diff_mppi_pushing_box.cu` — the user's research
-  WIP (box_align_detour sweep). Do not commit as part of star-growth work.
-- venvs: `/tmp/regbench_venv` (probreg + open3d + cudarobotics),
-  `/tmp/wheeltest_venv` (wheel verification).
+- `scripts/benchmark_registration_external.py` — NEW, commit with results docs.
+- `docs/results/registration_external_baselines_2026-06-11.{md,csv}` — NEW,
+  commit with the script.
+- `docs/results/README.md`, `readme.md` — modified to link the benchmark.
+- `plan.md` — modified handoff update after the history rewrite and benchmark.
+- `.release_notes_v0.1.0.md` — release-notes draft may exist outside this
+  checkout; keep untracked if present.
+- `src/benchmark_diff_mppi_pushing_box.cu` — user research WIP if present; do
+  not bundle into this star-growth benchmark commit.
 
 ### New environment gotchas (this session)
 

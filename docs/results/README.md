@@ -4,6 +4,37 @@ This directory stores benchmark artifacts that are meant to be inspected before
 running a GPU locally. They are not final paper-faithful claims; they are
 fixed-seed smoke results with enough detail to make wins and failures visible.
 
+## Registration External Baselines, 2026-06-11
+
+- Report: [`registration_external_baselines_2026-06-11.md`](registration_external_baselines_2026-06-11.md)
+- CSV: [`registration_external_baselines_2026-06-11.csv`](registration_external_baselines_2026-06-11.csv)
+- Scope: CudaRobotics FilterReg (GPU) vs probreg FilterReg / CPD rigid (CPU)
+  and Open3D GICP (CPU)
+- Sizes: `N=2000,8000,32000`
+- Trials: 3 per method/size cell, subprocess-isolated
+
+Key signals:
+
+- Same-algorithm FilterReg: CudaRobotics GPU is 1.3x, 4.8x, and 11.3x faster
+  than probreg CPU at 2k, 8k, and 32k points in this benchmark run.
+- probreg CPD is accurate but scales poorly: 69.3 s at 8k and exit code -9 at
+  32k.
+- Open3D GICP is the strongest CPU baseline in this identity-init case and is
+  faster than CudaRobotics FilterReg in this run; do not read this artifact as
+  a universal GPU-over-CPU claim.
+
+Reproduce from the repository root after installing the Python package and
+external baselines:
+
+```bash
+python scripts/benchmark_registration_external.py \
+  --sizes 2000 8000 32000 \
+  --trials 3 \
+  --timeout-seconds 360 \
+  --load-gate 12 \
+  --csv docs/results/registration_external_baselines_2026-06-11.csv
+```
+
 ## MPPI Zoo Smoke, 2026-06-05
 
 - Report: [`mppi_zoo_smoke_2026-06-05.md`](mppi_zoo_smoke_2026-06-05.md)
