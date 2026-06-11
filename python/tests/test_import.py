@@ -37,6 +37,15 @@ def test_mppi_planner_smoke():
     assert isinstance(vy, float)
     assert isinstance(w, float)
     assert isinstance(info, dict)
+    assert {
+        "best_cost",
+        "mean_cost",
+        "sampled_rollouts",
+        "valid_rollouts",
+        "valid_rollout_ratio",
+        "all_colliding",
+        "retreating",
+    }.issubset(info)
 
 
 def test_mppi_planner_cuda_dlpack_costmap_smoke():
@@ -67,6 +76,7 @@ def test_mppi_planner_cuda_dlpack_costmap_smoke():
     assert isinstance(vy, float)
     assert isinstance(w, float)
     assert isinstance(info, dict)
+    assert "valid_rollout_ratio" in info
 
 
 @pytest.mark.parametrize(

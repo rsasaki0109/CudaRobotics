@@ -117,8 +117,10 @@ int main(int argc, char ** argv)
 
   float x = 1.0f, y = 5.0f, yaw = 0.0f;
   double total_ms = 0.0, max_ms = 0.0;
+  double min_valid_ratio = 1.0;
   double dist = 0.0;
   int wall_cross_step = -1, near_goal_step = -1;
+  int retreat_count = 0;
   int steps = 0;
   const int max_steps = 1200;
 
@@ -161,6 +163,10 @@ int main(int argc, char ** argv)
     const double ms = std::chrono::duration<double, std::milli>(t1 - t0).count();
     total_ms += ms;
     max_ms = std::max(max_ms, ms);
+    min_valid_ratio = std::min(min_valid_ratio, static_cast<double>(res.valid_rollout_ratio));
+    if (res.retreating) {
+      ++retreat_count;
+    }
 
     if (res.all_colliding) {
       std::printf("FAIL: all sampled trajectories colliding at step %d\n", steps);
@@ -168,8 +174,11 @@ int main(int argc, char ** argv)
     }
 
     if (std::getenv("MPPI_TRACE") && steps % 20 == 0) {
-      std::fprintf(stderr, "t=%5.2f x=%.2f y=%.2f yaw=%6.2f v=%5.2f w=%6.2f\n",
-        steps * params.model_dt, x, y, yaw, res.v, res.w);
+      std::fprintf(
+        stderr,
+        "t=%5.2f x=%.2f y=%.2f yaw=%6.2f v=%5.2f w=%6.2f valid=%d/%d best=%.3f\n",
+        steps * params.model_dt, x, y, yaw, res.v, res.w,
+        res.valid_rollouts, res.sampled_rollouts, res.best_cost);
     }
     // apply first control to the plant (same model as the rollouts)
     const float px = x, py = y;
@@ -212,5 +221,8 @@ int main(int argc, char ** argv)
   std::printf(
     "solve time: mean %.2f ms, max %.2f ms (K=%d, T=%d, incl. costmap upload)\n",
     total_ms / (steps + 1), max_ms, params.batch_size, params.time_steps);
+  std::printf(
+    "diagnostics: min valid rollout ratio %.1f%% | retreat cycles %d\n",
+    100.0 * min_valid_ratio, retreat_count);
   return 0;
 }

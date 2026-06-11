@@ -707,7 +707,19 @@ MppiResult MppiGpu::computeInternal(
   }
 
   MppiResult res;
+  res.sampled_rollouts = K;
+  double cost_sum = 0.0;
+  int valid_rollouts = 0;
+  for (const float cost : im.h_costs) {
+    cost_sum += cost;
+    if (cost < mp.collision_cost) {
+      ++valid_rollouts;
+    }
+  }
   res.best_cost = min_cost;
+  res.mean_cost = static_cast<float>(cost_sum / static_cast<double>(K));
+  res.valid_rollouts = valid_rollouts;
+  res.valid_rollout_ratio = static_cast<float>(valid_rollouts) / static_cast<float>(K);
   res.all_colliding = min_cost >= mp.collision_cost;
 
   if (res.all_colliding) {

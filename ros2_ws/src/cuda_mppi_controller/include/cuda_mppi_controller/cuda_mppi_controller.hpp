@@ -2,6 +2,7 @@
 #define CUDA_MPPI_CONTROLLER__CUDA_MPPI_CONTROLLER_HPP_
 
 #include <memory>
+#include <fstream>
 #include <string>
 #include <vector>
 
@@ -48,12 +49,23 @@ public:
   void reset();
 
 private:
+  struct DiagnosticsCsv
+  {
+    std::ofstream file;
+    bool enabled = false;
+  };
+
   // Extract the local window of the global plan around the robot, transformed
   // into the costmap global frame. Returns flattened [x0,y0,x1,y1,...] points;
   // sets goal pose (window end) and whether it is the true final goal.
   std::vector<float> extractLocalPath(
     const geometry_msgs::msg::PoseStamped & robot_pose,
     float & goal_x, float & goal_y, float & goal_yaw, bool & goal_is_final);
+
+  DiagnosticsCsv openDiagnosticsCsv(const std::string & path) const;
+  void emitDiagnostics(
+    const MppiResult & result, double solve_ms, int path_points,
+    int costmap_size_x, int costmap_size_y);
 
   rclcpp_lifecycle::LifecycleNode::WeakPtr node_;
   std::string name_;
@@ -67,6 +79,11 @@ private:
 
   double lookahead_dist_ = 3.0;
   double transform_tolerance_ = 0.1;
+  double diagnostics_log_period_ = 0.0;
+  std::string diagnostics_csv_path_;
+  DiagnosticsCsv diagnostics_csv_;
+  rclcpp::Time last_diagnostics_log_time_{0, 0, RCL_ROS_TIME};
+  bool has_diagnostics_log_time_ = false;
   rclcpp::node_interfaces::OnSetParametersCallbackHandle::SharedPtr param_callback_;
   bool updateParamsFromNode(const rclcpp_lifecycle::LifecycleNode::SharedPtr & node);
 };
