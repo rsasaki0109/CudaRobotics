@@ -19,6 +19,8 @@ def test_mppi_planner_smoke():
             time_steps=8,
             model_dt=0.05,
             path_angle_weight=0.25,
+            curvature_speed_weight=8.0,
+            curvature_speed_min=0.18,
             distance_field_weight=1.0,
             distance_field_cutoff=0.5,
         )
@@ -47,6 +49,8 @@ def test_mppi_planner_cuda_dlpack_costmap_smoke():
             time_steps=8,
             model_dt=0.05,
             path_angle_weight=0.25,
+            curvature_speed_weight=8.0,
+            curvature_speed_min=0.18,
             distance_field_weight=1.0,
             distance_field_cutoff=0.5,
         )

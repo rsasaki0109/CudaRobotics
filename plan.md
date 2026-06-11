@@ -1,9 +1,10 @@
 # CudaRobotics Plan / Handoff (for Codex / Claude)
 
-Last updated: 2026-06-11 JST (`31d1150` — corrected `u_turn` benchmark path
-merged after ESDF-style MPPI clearance critic/report, docs site source, v0.1.0
-release docs, tag, GitHub Release assets, and GHCR tag workflow verification.
-Current active work is the path-angle critic on `codex/mppi-path-angle-critic`.
+Last updated: 2026-06-11 JST (`babfd43` — path-angle MPPI critic merged after
+the corrected `u_turn` benchmark path, ESDF-style MPPI clearance critic/report,
+docs site source, v0.1.0 release docs, tag, GitHub Release assets, and GHCR tag
+workflow verification. Current active work is the optional curvature-speed
+critic on `codex/mppi-curvature-speed-critic`.
 Jetson/aarch64 support is
 intentionally skipped for now by user direction. Note: some older sections below
 carry their own internal dates — treat section headers as the ordering authority
@@ -30,9 +31,9 @@ There are now **two active lines** in this repo:
    registration-vs-probreg/Open3D benchmark results (#187), CUDA DLPack
    costmaps (#188), Nav2 parameter validation (#189), the v0.1.0 release
    checklist / notes (#190), docs site source (#191), ESDF-style MPPI
-   clearance critic (#192), the ESDF benchmark report (#193), and the corrected
-   `u_turn` benchmark path (#194). v0.1.0 is published from the current
-   `master` line.
+   clearance critic (#192), the ESDF benchmark report (#193), the corrected
+   `u_turn` benchmark path (#194), and the path-angle critic (#195). v0.1.0 is
+   published from the current `master` line.
 2. **Research line** — SOPPI / Diff-MPPI box-pushing reproduction zoo
    (see "Research Line State" below; `box_align_contact_loss` lifted to **1.00**;
    `box_align_detour` still the open hard cell at **0.25**).
@@ -41,14 +42,15 @@ There are now **two active lines** in this repo:
 
 ## Current State (2026-06-11) — star-growth funnel sprint
 
-Mainline: **`master` at `31d1150`**, in sync with `origin/master`, after the
+Mainline: **`master` at `babfd43`**, in sync with `origin/master`, after the
 hardware-string history rewrite, registration external benchmark merge (#187),
 CUDA DLPack costmap merge (#188), Nav2 parameter validation merge (#189), and
 v0.1.0 release docs merge (#190), docs site source merge (#191), and ESDF-style
 MPPI clearance critic merge (#192), ESDF benchmark report merge (#193), and
-corrected `u_turn` benchmark path merge (#194). Tag `v0.1.0`, GitHub Release
-assets, GHCR tag workflow, and the live docs site are complete. Current local
-work: path-angle critic on `codex/mppi-path-angle-critic`.
+corrected `u_turn` benchmark path merge (#194), and path-angle critic merge
+(#195). Tag `v0.1.0`, GitHub Release assets, GHCR tag workflow, and the live
+docs site are complete. Current local work: optional curvature-speed critic on
+`codex/mppi-curvature-speed-critic`.
 
 ### What landed this session (all squash-merged)
 
@@ -68,6 +70,7 @@ work: path-angle critic on `codex/mppi-path-angle-critic`.
 | #192 | ESDF-style MPPI clearance critic (`distance_field_weight`, `distance_field_cutoff`) | optional GPU distance-field clearance cost, disabled by default, exposed through Python/Nav2 and verified by local + CI smoke tests |
 | #193 | ESDF benchmark report (`controller_benchmark ... esdf`, `scripts/render_cuda_mppi_esdf_benchmark.py`, checked-in CSV/Markdown) | GPU-only costmap-vs-ESDF comparison for `wall_gap`, `narrow_corridor`, and `u_turn` |
 | #194 | Corrected `u_turn` benchmark path | moved the U-turn vertical leg outside the wall endpoint so the benchmark path no longer crosses lethal cells; post-merge CI green |
+| #195 | Path-angle MPPI critic | added `path_angle_weight=0.25`, Python/Nav2/config/docs exposure, and a GPU-only path-angle benchmark report; CI green and merged |
 
 Wheel sanity check done: the cp312 manylinux wheel was installed into a fresh
 venv on this machine; `MppiPlanner.compute` and
@@ -151,7 +154,7 @@ crossed a lethal cell. #194 moved that vertical leg to `x=8.5`, outside the
 obstacle endpoint, and regenerated the ESDF CSV/Markdown so the cell is a valid
 planner-tracking test.
 
-### Path-angle MPPI critic — ACTIVE (`codex/mppi-path-angle-critic`)
+### Path-angle MPPI critic — LANDED (#195)
 
 Goal: improve high-curvature path tracking without hurting wall-gap or corridor
 smoke cells.
@@ -168,6 +171,24 @@ Implementation direction:
   straight-heading rollouts in the standalone wall-gap smoke. The active default
   is `0.25`, which keeps the standalone smoke passing and improves corrected
   `u_turn` K8192 from 44.75 s to 39.9 s in the local benchmark.
+
+### Curvature-speed MPPI critic — ACTIVE (`codex/mppi-curvature-speed-critic`)
+
+Goal: add an optional bend-entry speed target for users who prefer smoother
+high-curvature tracking over fastest time-to-goal.
+
+Implementation direction:
+
+- Add `curvature_speed_weight` and `curvature_speed_min` to `MppiParams`,
+  Python bindings, Nav2 params, validation, examples, and docs.
+- Keep `curvature_speed_weight=0.0` by default because the local benchmark shows
+  the expected speed/smoothness trade-off rather than a universal speed win.
+- Add `controller_benchmark ... curvature_speed` plus checked-in
+  `docs/results/cuda_mppi_curvature_speed_2026-06-11.{csv,md}`.
+- Local tuning snapshot: enabled row (`weight=8.0`, `min=0.18`) keeps
+  `wall_gap` and `narrow_corridor` unchanged, slows the corrected `u_turn` from
+  39.9 s to 41.4 s, and reduces average speed within 1 m of the two bends from
+  0.497 m/s to 0.481 m/s.
 
 ### Registration external benchmark — LANDED (#187)
 

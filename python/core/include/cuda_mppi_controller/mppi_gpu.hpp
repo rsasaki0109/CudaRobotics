@@ -44,6 +44,8 @@ struct MppiParams
   float path_weight = 10.0f;         // stage lateral distance² to reference path
   float path_follow_weight = 5.0f;   // stage distance to a point ahead on the path
   float path_angle_weight = 0.25f;    // stage yaw error to the local path tangent
+  float curvature_speed_weight = 0.0f; // optional overspeed penalty near sharp path bends
+  float curvature_speed_min = 0.18f;   // [m/s] floor for curvature-limited target speed
   float follow_lookahead = 1.0f;     // [m] how far ahead that point is
   float costmap_weight = 3.0f;       // stage costmap cost (normalized 0..1, squared)
   // Optional truncated distance-field obstacle critic. Disabled by default so

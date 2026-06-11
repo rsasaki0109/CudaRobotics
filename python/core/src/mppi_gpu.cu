@@ -41,7 +41,9 @@ struct DeviceParams
   float v_max, v_min, vy_max, w_max;
   float min_turning_r;
   float v_std, vy_std, w_std;
-  float goal_w, goal_yaw_w, path_w, follow_w, path_angle_w, costmap_w, smooth_w, backward_w;
+  float goal_w, goal_yaw_w, path_w, follow_w, path_angle_w, curvature_speed_w, costmap_w;
+  float smooth_w, backward_w;
+  float curvature_speed_min;
   float distance_field_w, distance_field_cutoff;
   float speed_w, angular_w;
   int follow_offset;   // path index offset for the path-follow cost
@@ -357,6 +359,30 @@ __global__ void rollout_kernel(
           cost += p.path_angle_w * yaw_err * yaw_err * p.dt;
         }
       }
+
+      if (p.curvature_speed_w > 0.0f && p.path_len > 2 && v > 0.0f) {
+        const int span = max(1, p.follow_offset / 2);
+        const int prev_i = max(0, fi - span);
+        const int next_i = min(p.path_len - 1, fi + span);
+        const float ax = path[fi * 2 + 0] - path[prev_i * 2 + 0];
+        const float ay = path[fi * 2 + 1] - path[prev_i * 2 + 1];
+        const float bx = path[next_i * 2 + 0] - path[fi * 2 + 0];
+        const float by = path[next_i * 2 + 1] - path[fi * 2 + 1];
+        const float alen = sqrtf(ax * ax + ay * ay);
+        const float blen = sqrtf(bx * bx + by * by);
+        if (alen > 1.0e-4f && blen > 1.0e-4f) {
+          const float ayaw = atan2f(ay, ax);
+          const float byaw = atan2f(by, bx);
+          const float arc = fmaxf(0.5f * (alen + blen), 1.0e-3f);
+          const float curvature = fabsf(wrap_angle(byaw - ayaw)) / arc;
+          if (curvature > 1.0e-4f) {
+            const float floor_v = fminf(fmaxf(p.curvature_speed_min, 0.0f), p.v_max);
+            const float target_v = fmaxf(floor_v, p.v_max / (1.0f + curvature));
+            const float overspeed = fmaxf(v - target_v, 0.0f);
+            cost += p.curvature_speed_w * overspeed * overspeed * p.dt;
+          }
+        }
+      }
     }
 
     // smoothness + backward motion penalties
@@ -595,6 +621,8 @@ MppiResult MppiGpu::computeInternal(
   dp.path_w = mp.path_weight;
   dp.follow_w = mp.path_follow_weight;
   dp.path_angle_w = mp.path_angle_weight;
+  dp.curvature_speed_w = mp.curvature_speed_weight;
+  dp.curvature_speed_min = mp.curvature_speed_min;
   dp.follow_offset = follow_offset;
   dp.costmap_w = mp.costmap_weight;
   dp.distance_field_w = mp.distance_field_weight;

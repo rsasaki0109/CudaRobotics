@@ -98,6 +98,8 @@ void validateControllerParams(const MppiParams & params, double lookahead_dist,
   requireNonNegative("path_weight", params.path_weight);
   requireNonNegative("path_follow_weight", params.path_follow_weight);
   requireNonNegative("path_angle_weight", params.path_angle_weight);
+  requireNonNegative("curvature_speed_weight", params.curvature_speed_weight);
+  requireNonNegative("curvature_speed_min", params.curvature_speed_min);
   requireNonNegative("follow_lookahead", params.follow_lookahead);
   requireNonNegative("costmap_weight", params.costmap_weight);
   requireNonNegative("distance_field_weight", params.distance_field_weight);
@@ -158,6 +160,10 @@ bool applyControllerParameter(const std::string & key, const rclcpp::Parameter &
     params.path_follow_weight = static_cast<float>(parameter.as_double());
   } else if (key == "path_angle_weight") {
     params.path_angle_weight = static_cast<float>(parameter.as_double());
+  } else if (key == "curvature_speed_weight") {
+    params.curvature_speed_weight = static_cast<float>(parameter.as_double());
+  } else if (key == "curvature_speed_min") {
+    params.curvature_speed_min = static_cast<float>(parameter.as_double());
   } else if (key == "follow_lookahead") {
     params.follow_lookahead = static_cast<float>(parameter.as_double());
   } else if (key == "costmap_weight") {
@@ -218,6 +224,8 @@ bool CudaMppiController::updateParamsFromNode(
   double path_weight = next.path_weight;
   double path_follow_weight = next.path_follow_weight;
   double path_angle_weight = next.path_angle_weight;
+  double curvature_speed_weight = next.curvature_speed_weight;
+  double curvature_speed_min = next.curvature_speed_min;
   double follow_lookahead = next.follow_lookahead;
   double costmap_weight = next.costmap_weight;
   double distance_field_weight = next.distance_field_weight;
@@ -250,6 +258,8 @@ bool CudaMppiController::updateParamsFromNode(
   node->get_parameter(name_ + ".path_weight", path_weight);
   node->get_parameter(name_ + ".path_follow_weight", path_follow_weight);
   node->get_parameter(name_ + ".path_angle_weight", path_angle_weight);
+  node->get_parameter(name_ + ".curvature_speed_weight", curvature_speed_weight);
+  node->get_parameter(name_ + ".curvature_speed_min", curvature_speed_min);
   node->get_parameter(name_ + ".follow_lookahead", follow_lookahead);
   node->get_parameter(name_ + ".costmap_weight", costmap_weight);
   node->get_parameter(name_ + ".distance_field_weight", distance_field_weight);
@@ -284,6 +294,8 @@ bool CudaMppiController::updateParamsFromNode(
   next.path_weight = static_cast<float>(path_weight);
   next.path_follow_weight = static_cast<float>(path_follow_weight);
   next.path_angle_weight = static_cast<float>(path_angle_weight);
+  next.curvature_speed_weight = static_cast<float>(curvature_speed_weight);
+  next.curvature_speed_min = static_cast<float>(curvature_speed_min);
   next.follow_lookahead = static_cast<float>(follow_lookahead);
   next.costmap_weight = static_cast<float>(costmap_weight);
   next.distance_field_weight = static_cast<float>(distance_field_weight);
@@ -346,6 +358,8 @@ void CudaMppiController::configure(
   declare_param("path_weight", static_cast<double>(params_.path_weight));
   declare_param("path_follow_weight", static_cast<double>(params_.path_follow_weight));
   declare_param("path_angle_weight", static_cast<double>(params_.path_angle_weight));
+  declare_param("curvature_speed_weight", static_cast<double>(params_.curvature_speed_weight));
+  declare_param("curvature_speed_min", static_cast<double>(params_.curvature_speed_min));
   declare_param("follow_lookahead", static_cast<double>(params_.follow_lookahead));
   declare_param("costmap_weight", static_cast<double>(params_.costmap_weight));
   declare_param("distance_field_weight", static_cast<double>(params_.distance_field_weight));
