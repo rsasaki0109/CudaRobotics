@@ -436,6 +436,15 @@ success for sampling planners and full success for Diff-MPPI.
 requires collision-free success. Only `diff_mppi_3` clears a seed in the checked-in
 run; treat this as a gradient-positive / sampling-negative obstacle cell.
 
+Detour guidance after the 2026-06-12 handoff: do not spend another sprint on
+blind SOPPI hyperparameter sweeps for this cell. The observed failures cluster
+near the strict position gate, larger K regressed the hybrid planners in earlier
+probes, and object-informed nominal seeding is the only known mechanism that
+cleanly changes the mode. Reopen this cell only with a mechanism change such as
+object-level nominal planning / CEM seeding, a deliberately wider companion
+`box_align_detour_arc` acceptance gate, or a geometry audit that explains why
+the current obstacle placement is over-constraining the contact sequence.
+
 | Scenario | Planner | Success | Steps | Final Dist | Cost | Avg ms |
 |---|---|---:|---:|---:|---:|---:|
 | box_align_contact_loss | mppi | 0.00 | 240.0 | 0.286 | 4.8 | 0.654 |
@@ -542,3 +551,7 @@ with a step-count advantage over MPPI.
    + one nominal grad step reaches **1.00** on strict cell; `box_align_contact_arc`
    documents pure-SOPPI at `1.00` (see `docs/results/soppi_box_pushing_2026-06-10.md`).
 3. Consider caching partial rollout states for the box autodiff score kernel if another speed pass is needed.
+4. For `box_align_detour`, avoid more same-mechanism tuning unless the change
+   alters nominal mode discovery. Preferred next experiments are object-level
+   nominal planning, CEM/object-trajectory seeding, or an explicit wider-gate
+   companion cell that documents the near-miss regime without overselling it.

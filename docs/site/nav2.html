@@ -174,6 +174,29 @@ ros2 run cuda_mppi_controller mppi_gpu_standalone 2048 esdf</code></pre>
       </section>
 
       <section class="section">
+        <div class="section-head">
+          <h2>Diagnostics and Bag Evaluation</h2>
+          <p>Capture per-cycle solve, validity, cost, retreat, and command signals when moving beyond synthetic benchmarks.</p>
+        </div>
+        <div class="grid two">
+          <article class="card">
+            <h3>Diagnostics CSV</h3>
+            <p>Set `diagnostics_csv_path`, then render the result with `scripts/render_cuda_mppi_diagnostics.py`.</p>
+            <div class="code">
+<pre><code>python3 scripts/render_cuda_mppi_diagnostics.py \
+  /tmp/cuda_mppi_diagnostics.csv \
+  --output-stem docs/results/cuda_mppi_diagnostics_run</code></pre>
+            </div>
+          </article>
+          <article class="card">
+            <h3>Bag / real-data harness</h3>
+            <p>Use `scripts/run_cuda_mppi_bag_eval.py` to coordinate Nav2 startup, rosbag playback, topic recording, and diagnostics rendering.</p>
+            <p><a href="https://github.com/rsasaki0109/CudaRobotics/blob/master/docs/cuda_mppi_bag_eval.md">Open harness guide</a></p>
+          </article>
+        </div>
+      </section>
+
+      <section class="section">
         <div class="grid two">
           <article class="card">
             <h3>Plugin README</h3>

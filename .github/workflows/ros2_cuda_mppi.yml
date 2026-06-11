@@ -73,3 +73,13 @@ jobs:
             --cmake-args \
               -DCMAKE_BUILD_TYPE=Release \
               -DCMAKE_CUDA_ARCHITECTURES=75
+
+      - name: Run no-GPU runtime smoke tests
+        shell: bash
+        run: |
+          set -eo pipefail
+          source /opt/ros/jazzy/setup.bash
+          cd ros2_ws
+          source install/setup.bash
+          ros2 run cuda_mppi_controller plugin_load_test
+          ros2 run cuda_mppi_controller parameter_validation_test

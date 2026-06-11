@@ -188,6 +188,19 @@ includes solve time, best/mean rollout cost, valid rollout count and ratio,
 all-colliding/retreat flags, path window size, costmap size, and the selected
 command.
 
+Render a diagnostics CSV into a compact plot and Markdown summary:
+
+```bash
+python3 scripts/render_cuda_mppi_diagnostics.py \
+  /tmp/cuda_mppi_diagnostics.csv \
+  --output-stem docs/results/cuda_mppi_diagnostics_run
+```
+
+For bag replay or live-stack evaluation, use
+[`docs/cuda_mppi_bag_eval.md`](../../../docs/cuda_mppi_bag_eval.md) and
+`scripts/run_cuda_mppi_bag_eval.py` to keep launch logs, recorded topics,
+diagnostics, and command metadata under one output directory.
+
 ## Benchmark scenarios
 
 `controller_benchmark` runs closed-loop CPU vs GPU comparisons on synthetic maps:
@@ -221,6 +234,8 @@ Results:
 `curvature_speed` runs a GPU-only comparison with and without the optional
 curvature speed critic. Results:
 [`docs/results/cuda_mppi_curvature_speed_2026-06-12.md`](../../../docs/results/cuda_mppi_curvature_speed_2026-06-12.md).
+Extended `double_gap` and `moving_crossing` scenario results:
+[`docs/results/cuda_mppi_extended_scenarios_2026-06-12.md`](../../../docs/results/cuda_mppi_extended_scenarios_2026-06-12.md).
 Each scenario writes `summary.csv` with outcome, solve-time, and trajectory
 quality columns: distance traveled, mean/max command speed, mean/max absolute
 yaw rate, and mean absolute curvature.
