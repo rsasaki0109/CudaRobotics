@@ -1,0 +1,7 @@
+scenario,label,curvature_speed_weight,curvature_speed_min,success,collided,steps,sim_s,mean_ms,p95_ms,max_ms,exceptions,distance_m,mean_speed_mps,max_speed_mps,mean_abs_w_radps,max_abs_w_radps,mean_abs_curvature
+wall_gap,gpu_costmap_K8192_no_curvature_speed,0,0.18,1,0,327,16.35,1.05856,1.10187,1.26429,0,7.79757,0.475462,0.5,0.24871,1.82992,0.747233
+wall_gap,gpu_costmap_K8192_curvature_speed,8,0.18,1,0,327,16.35,1.10845,1.15877,1.21522,0,7.79757,0.475462,0.5,0.24871,1.82992,0.747233
+narrow_corridor,gpu_costmap_K8192_no_curvature_speed,0,0.18,1,0,348,17.4,1.20125,1.35243,1.40199,0,7.90202,0.452838,0.5,0.279071,1.42203,0.89022
+narrow_corridor,gpu_costmap_K8192_curvature_speed,8,0.18,1,0,348,17.4,1.1135,1.17544,1.22419,0,7.90202,0.452838,0.5,0.279071,1.42203,0.89022
+u_turn,gpu_costmap_K8192_no_curvature_speed,0,0.18,1,0,798,39.9,1.08584,1.11865,1.18493,0,19.2591,0.48208,0.5,0.281006,1.82992,0.692449
+u_turn,gpu_costmap_K8192_curvature_speed,8,0.18,1,0,828,41.4,1.13613,1.17292,1.23135,0,19.9043,0.480201,0.5,0.33225,1.82992,0.794266
