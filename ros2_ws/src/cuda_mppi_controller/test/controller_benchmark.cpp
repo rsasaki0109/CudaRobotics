@@ -208,6 +208,12 @@ struct RunResult
   double mean_ms = 0.0;
   double max_ms = 0.0;
   double p95_ms = 0.0;
+  double distance_m = 0.0;
+  double mean_speed_mps = 0.0;
+  double max_speed_mps = 0.0;
+  double mean_abs_w_radps = 0.0;
+  double max_abs_w_radps = 0.0;
+  double mean_abs_curvature = 0.0;
   std::vector<std::array<double, 3>> traj;
 };
 
@@ -223,6 +229,10 @@ RunResult runClosedLoop(
   geometry_msgs::msg::Twist cmd;
   std::vector<double> solve_ms;
   solve_ms.reserve(kMaxSteps);
+  double sum_speed = 0.0;
+  double sum_abs_w = 0.0;
+  double sum_abs_curvature = 0.0;
+  int command_samples = 0;
 
   for (res.steps = 0; res.steps < kMaxSteps; ++res.steps) {
     res.traj.push_back({x, y, yaw});
@@ -243,6 +253,18 @@ RunResult runClosedLoop(
     }
     const auto t1 = std::chrono::steady_clock::now();
     solve_ms.push_back(std::chrono::duration<double, std::milli>(t1 - t0).count());
+
+    const double speed = std::hypot(cmd.linear.x, cmd.linear.y);
+    const double abs_w = std::abs(cmd.angular.z);
+    res.distance_m += speed * kControlDt;
+    sum_speed += speed;
+    sum_abs_w += abs_w;
+    if (speed > 1.0e-3) {
+      sum_abs_curvature += abs_w / speed;
+    }
+    res.max_speed_mps = std::max(res.max_speed_mps, speed);
+    res.max_abs_w_radps = std::max(res.max_abs_w_radps, abs_w);
+    ++command_samples;
 
     x += kControlDt * (
       cmd.linear.x * std::cos(yaw) - cmd.linear.y * std::sin(yaw));
@@ -272,6 +294,12 @@ RunResult runClosedLoop(
     res.mean_ms = sum / solve_ms.size();
     res.max_ms = sorted.back();
     res.p95_ms = sorted[static_cast<size_t>(0.95 * (sorted.size() - 1))];
+  }
+  if (command_samples > 0) {
+    const double inv = 1.0 / static_cast<double>(command_samples);
+    res.mean_speed_mps = sum_speed * inv;
+    res.mean_abs_w_radps = sum_abs_w * inv;
+    res.mean_abs_curvature = sum_abs_curvature * inv;
   }
   return res;
 }
@@ -368,7 +396,9 @@ void runScenario(
 
   std::ofstream summary(scenario_dir + "/summary.csv");
   summary << "scenario,label,plugin,batch_size,motion_model,success,collided,steps,sim_s,"
-    "mean_ms,p95_ms,max_ms,exceptions,distance_field_weight,distance_field_cutoff,"
+    "mean_ms,p95_ms,max_ms,exceptions,distance_m,mean_speed_mps,max_speed_mps,"
+    "mean_abs_w_radps,max_abs_w_radps,mean_abs_curvature,"
+    "distance_field_weight,distance_field_cutoff,"
     "path_angle_weight,curvature_speed_weight,curvature_speed_min\n";
 
   for (const auto & cfg : configs) {
@@ -411,9 +441,11 @@ void runScenario(
     std::printf("=== %s / %s (%s) ===\n", scenario.name.c_str(), cfg.label.c_str(), cfg.plugin.c_str());
     const RunResult r = runClosedLoop(*controller, node, scenario);
     std::printf(
-      "  %s steps=%d sim=%.1fs solve mean=%.2fms p95=%.2fms max=%.2fms exc=%d\n",
+      "  %s steps=%d sim=%.1fs solve mean=%.2fms p95=%.2fms max=%.2fms "
+      "dist=%.2fm mean_v=%.2fm/s max_w=%.2frad/s exc=%d\n",
       r.success ? "SUCCESS" : (r.collided ? "COLLIDED" : "TIMEOUT"),
-      r.steps, r.steps * kControlDt, r.mean_ms, r.p95_ms, r.max_ms, r.exceptions);
+      r.steps, r.steps * kControlDt, r.mean_ms, r.p95_ms, r.max_ms,
+      r.distance_m, r.mean_speed_mps, r.max_abs_w_radps, r.exceptions);
 
     summary << scenario.name << ',' << cfg.label << ',' << cfg.plugin << ','
             << cfg.batch_size << ',' << cfg.motion_model << ','
@@ -421,6 +453,9 @@ void runScenario(
             << r.steps << ',' << r.steps * kControlDt << ','
             << r.mean_ms << ',' << r.p95_ms << ',' << r.max_ms << ','
             << r.exceptions << ','
+            << r.distance_m << ',' << r.mean_speed_mps << ',' << r.max_speed_mps << ','
+            << r.mean_abs_w_radps << ',' << r.max_abs_w_radps << ','
+            << r.mean_abs_curvature << ','
             << cfg.distance_field_weight << ',' << cfg.distance_field_cutoff << ','
             << cfg.path_angle_weight << ','
             << cfg.curvature_speed_weight << ',' << cfg.curvature_speed_min << '\n';

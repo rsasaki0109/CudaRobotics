@@ -204,6 +204,9 @@ Results:
 `curvature_speed` runs a GPU-only comparison with and without the optional
 curvature speed critic. Results:
 [`docs/results/cuda_mppi_curvature_speed_2026-06-11.md`](../../../docs/results/cuda_mppi_curvature_speed_2026-06-11.md).
+Each scenario writes `summary.csv` with outcome, solve-time, and trajectory
+quality columns: distance traveled, mean/max command speed, mean/max absolute
+yaw rate, and mean absolute curvature.
 
 Loopback motion-model configs: `config/nav2_loopback_demo_{ackermann,omni}.yaml`.
 
