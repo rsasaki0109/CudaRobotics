@@ -35,6 +35,37 @@ python scripts/benchmark_registration_external.py \
   --csv docs/results/registration_external_baselines_2026-06-11.csv
 ```
 
+## CUDA MPPI ESDF Clearance Critic, 2026-06-11
+
+- Report: [`cuda_mppi_esdf_2026-06-11.md`](cuda_mppi_esdf_2026-06-11.md)
+- CSV: [`cuda_mppi_esdf_2026-06-11.csv`](cuda_mppi_esdf_2026-06-11.csv)
+- Scope: GPU-only `cuda_mppi_controller` comparison of the default costmap
+  critic vs the optional ESDF-style distance-field clearance critic
+- Scenarios: `wall_gap`, `narrow_corridor`, `u_turn`
+- Config: `K=8192`, `T=56`, `dt=0.05`; ESDF row uses
+  `distance_field_weight=12.0`, `distance_field_cutoff=0.8`
+
+Key signals:
+
+- `wall_gap` and `narrow_corridor` remain successful with ESDF enabled, with
+  slightly more conservative time-to-goal and similar mean solve time.
+- ESDF lowers p95/max solve-time spikes on the two successful corridor cells in
+  this run, but it is a clearance smoother rather than a speed optimization.
+- `u_turn` stays unsolved at this budget for both critics; do not present ESDF
+  as a universal local-planner fix.
+
+Reproduce from the repository root:
+
+```bash
+cd ros2_ws
+colcon build --packages-select cuda_mppi_controller \
+  --cmake-args -DCMAKE_BUILD_TYPE=Release
+source install/setup.bash
+ros2 run cuda_mppi_controller controller_benchmark /tmp/mppi_esdf_bench esdf
+cd ..
+python3 scripts/render_cuda_mppi_esdf_benchmark.py /tmp/mppi_esdf_bench 2026-06-11
+```
+
 ## MPPI Zoo Smoke, 2026-06-05
 
 - Report: [`mppi_zoo_smoke_2026-06-05.md`](mppi_zoo_smoke_2026-06-05.md)

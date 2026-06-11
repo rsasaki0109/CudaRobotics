@@ -182,9 +182,13 @@ ros2 run cuda_mppi_controller controller_benchmark /tmp/bench wall_gap
 ros2 run cuda_mppi_controller controller_benchmark /tmp/bench narrow_corridor
 ros2 run cuda_mppi_controller controller_benchmark /tmp/bench u_turn
 ros2 run cuda_mppi_controller controller_benchmark /tmp/bench all
+ros2 run cuda_mppi_controller controller_benchmark /tmp/bench esdf
 ```
 
 `all` also runs Ackermann/Omni GPU configs (`gpu_ackermann_K8192`, `gpu_omni_K8192`).
+`esdf` runs a GPU-only comparison of the default costmap critic against the
+optional distance-field clearance critic. Results:
+[`docs/results/cuda_mppi_esdf_2026-06-11.md`](../../../docs/results/cuda_mppi_esdf_2026-06-11.md).
 
 Loopback motion-model configs: `config/nav2_loopback_demo_{ackermann,omni}.yaml`.
 
