@@ -1,12 +1,12 @@
 # CudaRobotics Plan / Handoff (for Codex / Claude)
 
-Last updated: 2026-06-11 JST (`35be4a2` — docs site source merged after
-v0.1.0 release docs, tag, GitHub Release assets, and GHCR tag workflow
-verification. Current active work is the ESDF-style MPPI clearance critic on
-`codex/esdf-mppi-critic`. Jetson/aarch64 support is intentionally skipped for
-now by user direction. Note: some older sections below carry their own internal
-dates — treat section headers as the ordering authority within each line, not
-this single timestamp.)
+Last updated: 2026-06-11 JST (`ba64def` — ESDF-style MPPI clearance critic
+merged after docs site source, v0.1.0 release docs, tag, GitHub Release assets,
+and GHCR tag workflow verification. Current active work is the ESDF benchmark
+report on `codex/esdf-benchmark-report`. Jetson/aarch64 support is
+intentionally skipped for now by user direction. Note: some older sections below
+carry their own internal dates — treat section headers as the ordering authority
+within each line, not this single timestamp.)
 
 This document is the long-form handoff for the next coding agent (Codex).
 It captures: (1) where the repo is right now, (2) what was just done over
@@ -28,8 +28,8 @@ There are now **two active lines** in this repo:
    (#181), Docker demo (#183), working manylinux wheels (#184–#186),
    registration-vs-probreg/Open3D benchmark results (#187), CUDA DLPack
    costmaps (#188), Nav2 parameter validation (#189), the v0.1.0 release
-   checklist / notes (#190), and docs site source (#191). v0.1.0 is published
-   from the current `master` line.
+   checklist / notes (#190), docs site source (#191), and ESDF-style MPPI
+   clearance critic (#192). v0.1.0 is published from the current `master` line.
 2. **Research line** — SOPPI / Diff-MPPI box-pushing reproduction zoo
    (see "Research Line State" below; `box_align_contact_loss` lifted to **1.00**;
    `box_align_detour` still the open hard cell at **0.25**).
@@ -38,13 +38,13 @@ There are now **two active lines** in this repo:
 
 ## Current State (2026-06-11) — star-growth funnel sprint
 
-Mainline: **`master` at `35be4a2`**, in sync with `origin/master`, after the
+Mainline: **`master` at `ba64def`**, in sync with `origin/master`, after the
 hardware-string history rewrite, registration external benchmark merge (#187),
 CUDA DLPack costmap merge (#188), Nav2 parameter validation merge (#189), and
-v0.1.0 release docs merge (#190), and docs site source merge (#191). Tag
-`v0.1.0`, GitHub Release assets, GHCR tag workflow, and the live docs site are
-complete. Current local work: ESDF-style MPPI clearance critic on
-`codex/esdf-mppi-critic`.
+v0.1.0 release docs merge (#190), docs site source merge (#191), and ESDF-style
+MPPI clearance critic merge (#192). Tag `v0.1.0`, GitHub Release assets, GHCR
+tag workflow, and the live docs site are complete. Current local work: ESDF
+benchmark report on `codex/esdf-benchmark-report`.
 
 ### What landed this session (all squash-merged)
 
@@ -61,6 +61,7 @@ complete. Current local work: ESDF-style MPPI clearance critic on
 | #189 | Nav2 MPPI parameter validation (`parameter_validation_test`, Humble/Jazzy exception shims) | invalid controller settings fail clearly during configure/live updates, before reaching CUDA allocation/rollout |
 | #190 | v0.1.0 release checklist / notes, tag, GitHub Release assets, and GHCR tag workflow verification | first public release path with wheels, sdist, Colab, Docker, and explicit PyPI skip |
 | #191 | Static docs site source under `docs/site/` plus live Pages publish under `/docs/` | browsable install, Python API, Nav2, release, and benchmark entry points without replacing the existing gallery root |
+| #192 | ESDF-style MPPI clearance critic (`distance_field_weight`, `distance_field_cutoff`) | optional GPU distance-field clearance cost, disabled by default, exposed through Python/Nav2 and verified by local + CI smoke tests |
 
 Wheel sanity check done: the cp312 manylinux wheel was installed into a fresh
 venv on this machine; `MppiPlanner.compute` and
@@ -105,7 +106,7 @@ Implementation:
 - `gh-pages:/docs/` serves the live docs site alongside the gallery root.
 - The gallery root now links to `/docs/`.
 
-### ESDF-style MPPI clearance critic — IN FLIGHT (`codex/esdf-mppi-critic`)
+### ESDF-style MPPI clearance critic — LANDED (#192)
 
 Goal: add an algorithmic obstacle-clearance critic to the production MPPI core
 without changing default behavior.
@@ -120,6 +121,21 @@ Implementation direction:
 - Expose the parameters through Python and Nav2 validation/config examples.
 - Verify with `mppi_gpu_standalone 2048 esdf`, default `diff` smoke,
   `parameter_validation_test`, pluginlib load, and Python tests.
+
+### ESDF clearance benchmark — IN FLIGHT (`codex/esdf-benchmark-report`)
+
+Goal: make the ESDF critic behavior inspectable with checked-in numbers rather
+than only implementation knobs.
+
+Implementation direction:
+
+- Add a lightweight `controller_benchmark ... esdf` mode that runs GPU-only
+  `costmap` vs `costmap + ESDF` at `K=8192`.
+- Cover `wall_gap`, `narrow_corridor`, and `u_turn`.
+- Add `scripts/render_cuda_mppi_esdf_benchmark.py` to aggregate scenario
+  summaries into `docs/results/cuda_mppi_esdf_2026-06-11.{csv,md}`.
+- Keep the interpretation honest: ESDF is a clearance smoother, not a universal
+  speed-up or a fix for the `u_turn` timeout cell.
 
 ### Registration external benchmark — LANDED (#187)
 
@@ -187,8 +203,8 @@ Implementation:
 
 Short term (this week):
 
-1. **Finish ESDF-style MPPI critic**: land optional distance-field clearance
-   cost in the core, Python bindings, Nav2 parameters, and focused smoke tests.
+1. **Finish ESDF benchmark report**: land the lightweight GPU-only comparison,
+   checked-in CSV/Markdown, and docs/readme links.
 2. **Distribution** (HN / Reddit / ROS Discourse / X / Zenn) remains
    user-owned. Agents can prepare copy, but should not post externally.
 
@@ -216,11 +232,10 @@ agents build material, the user distributes and publishes.
 
 ### Working tree inventory (untracked / WIP — handle with care)
 
-- MPPI ESDF critic files: `src/mppi_gpu.cu`,
-  `include/cuda_mppi_controller/mppi_gpu.hpp`, synced `python/core/*`,
-  Python binding/tests, Nav2 params/config/docs, and docs site source updates.
-- `plan.md` — current handoff update after docs site merge and ESDF critic
-  selection.
+- ESDF benchmark report files: `ros2_ws/src/cuda_mppi_controller/test/controller_benchmark.cpp`,
+  `scripts/render_cuda_mppi_esdf_benchmark.py`,
+  `docs/results/cuda_mppi_esdf_2026-06-11.{csv,md}`, docs/readme links, and
+  `plan.md`.
 - `src/benchmark_diff_mppi_pushing_box.cu` — user research WIP if present; do
   not bundle into this star-growth docs commit.
 

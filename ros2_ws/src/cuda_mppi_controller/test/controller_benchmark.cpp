@@ -4,7 +4,7 @@
 // through synthetic costmaps.
 //
 // Usage: controller_benchmark <out_dir> [scenario]
-//   scenario: wall_gap | narrow_corridor | u_turn | all (default: wall_gap)
+//   scenario: wall_gap | narrow_corridor | u_turn | all | esdf (default: wall_gap)
 //   writes <out_dir>/summary.csv and <out_dir>/traj_<label>.csv
 #include <algorithm>
 #include <array>
@@ -281,6 +281,8 @@ struct Config
   std::string plugin;
   int batch_size;
   std::string motion_model = "DiffDrive";
+  double distance_field_weight = 0.0;
+  double distance_field_cutoff = 0.75;
 };
 
 std::vector<Config> benchmarkConfigs(bool include_motion_models)
@@ -302,6 +304,15 @@ std::vector<Config> benchmarkConfigs(bool include_motion_models)
       {"gpu_omni_K8192", "cuda_mppi_controller::CudaMppiController", 8192, "Omni"});
   }
   return configs;
+}
+
+std::vector<Config> esdfBenchmarkConfigs()
+{
+  return {
+    {"gpu_costmap_K8192", "cuda_mppi_controller::CudaMppiController", 8192},
+    {"gpu_esdf_K8192", "cuda_mppi_controller::CudaMppiController", 8192,
+      "DiffDrive", 12.0, 0.8},
+  };
 }
 
 void runScenario(
@@ -333,7 +344,7 @@ void runScenario(
 
   std::ofstream summary(scenario_dir + "/summary.csv");
   summary << "scenario,label,plugin,batch_size,motion_model,success,collided,steps,sim_s,"
-    "mean_ms,p95_ms,max_ms,exceptions\n";
+    "mean_ms,p95_ms,max_ms,exceptions,distance_field_weight,distance_field_cutoff\n";
 
   for (const auto & cfg : configs) {
     rclcpp::NodeOptions options;
@@ -350,6 +361,8 @@ void runScenario(
       rclcpp::Parameter("FollowPath.v_min", -0.35),
       rclcpp::Parameter("FollowPath.w_max", 1.9),
       rclcpp::Parameter("FollowPath.motion_model", cfg.motion_model),
+      rclcpp::Parameter("FollowPath.distance_field_weight", cfg.distance_field_weight),
+      rclcpp::Parameter("FollowPath.distance_field_cutoff", cfg.distance_field_cutoff),
       rclcpp::Parameter("FollowPath.visualize", false),
       rclcpp::Parameter(
         "FollowPath.critics", std::vector<std::string>{
@@ -379,7 +392,8 @@ void runScenario(
             << (r.success ? 1 : 0) << ',' << (r.collided ? 1 : 0) << ','
             << r.steps << ',' << r.steps * kControlDt << ','
             << r.mean_ms << ',' << r.p95_ms << ',' << r.max_ms << ','
-            << r.exceptions << '\n';
+            << r.exceptions << ','
+            << cfg.distance_field_weight << ',' << cfg.distance_field_cutoff << '\n';
 
     std::ofstream traj(scenario_dir + "/traj_" + cfg.label + ".csv");
     traj << "x,y,yaw\n";
@@ -416,7 +430,8 @@ int main(int argc, char ** argv)
   });
 
   std::vector<Scenario> scenarios;
-  if (scenario_arg == "all") {
+  const bool esdf_benchmark = scenario_arg == "esdf";
+  if (scenario_arg == "all" || esdf_benchmark) {
     scenarios = allScenarios();
   } else {
     for (const auto & s : allScenarios()) {
@@ -438,7 +453,8 @@ int main(int argc, char ** argv)
     "nav2_core", "nav2_core::Controller");
 
   const bool motion_checks = scenario_arg == "all" || scenario_arg == "wall_gap";
-  const auto configs = benchmarkConfigs(motion_checks);
+  const auto configs = esdf_benchmark ?
+    esdfBenchmarkConfigs() : benchmarkConfigs(motion_checks);
 
   for (const auto & scenario : scenarios) {
     runScenario(scenario, out_dir, configs, loader, tf);
