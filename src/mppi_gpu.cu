@@ -405,9 +405,10 @@ void MppiGpu::setSpeedLimit(float v_max)
   impl_->v_max_limit = v_max;
 }
 
-MppiResult MppiGpu::compute(
+MppiResult MppiGpu::computeInternal(
   float robot_x, float robot_y, float robot_yaw,
   const unsigned char * costmap, int size_x, int size_y,
+  bool costmap_is_device,
   float origin_x, float origin_y, float resolution,
   const float * path_xy, int path_len,
   float goal_x, float goal_y, float goal_yaw, bool goal_is_final,
@@ -439,8 +440,14 @@ MppiResult MppiGpu::compute(
       }
     }
   }
+  const unsigned char * rollout_costmap = nullptr;
   if (costmap != nullptr && size_x > 0 && size_y > 0) {
-    im.uploadCostmap(costmap, static_cast<size_t>(size_x) * size_y);
+    if (costmap_is_device) {
+      rollout_costmap = costmap;
+    } else {
+      im.uploadCostmap(costmap, static_cast<size_t>(size_x) * size_y);
+      rollout_costmap = im.d_costmap;
+    }
   } else {
     size_x = 0;
     size_y = 0;
@@ -501,7 +508,7 @@ MppiResult MppiGpu::compute(
   float min_cost = 0.0f;
   for (int iter = 0; iter < mp.iteration_count; ++iter) {
     rollout_kernel<<<rollout_blocks, threads>>>(
-      dp, im.d_costmap, im.d_path, im.d_nominal, im.d_perturbed, im.d_costs, im.d_rng);
+      dp, rollout_costmap, im.d_path, im.d_nominal, im.d_perturbed, im.d_costs, im.d_rng);
     CUDA_CHECK(cudaGetLastError());
     CUDA_CHECK(cudaMemcpy(
         im.h_costs.data(), im.d_costs, K * sizeof(float), cudaMemcpyDeviceToHost));
@@ -603,6 +610,40 @@ MppiResult MppiGpu::compute(
       ctrl_count * sizeof(float), cudaMemcpyHostToDevice));
 
   return res;
+}
+
+MppiResult MppiGpu::compute(
+  float robot_x, float robot_y, float robot_yaw,
+  const unsigned char * costmap, int size_x, int size_y,
+  float origin_x, float origin_y, float resolution,
+  const float * path_xy, int path_len,
+  float goal_x, float goal_y, float goal_yaw, bool goal_is_final,
+  const float * footprint_xy, int footprint_len)
+{
+  return computeInternal(
+    robot_x, robot_y, robot_yaw,
+    costmap, size_x, size_y, false,
+    origin_x, origin_y, resolution,
+    path_xy, path_len,
+    goal_x, goal_y, goal_yaw, goal_is_final,
+    footprint_xy, footprint_len);
+}
+
+MppiResult MppiGpu::computeWithDeviceCostmap(
+  float robot_x, float robot_y, float robot_yaw,
+  const unsigned char * device_costmap, int size_x, int size_y,
+  float origin_x, float origin_y, float resolution,
+  const float * path_xy, int path_len,
+  float goal_x, float goal_y, float goal_yaw, bool goal_is_final,
+  const float * footprint_xy, int footprint_len)
+{
+  return computeInternal(
+    robot_x, robot_y, robot_yaw,
+    device_costmap, size_x, size_y, true,
+    origin_x, origin_y, resolution,
+    path_xy, path_len,
+    goal_x, goal_y, goal_yaw, goal_is_final,
+    footprint_xy, footprint_len);
 }
 
 }  // namespace cuda_mppi_controller
