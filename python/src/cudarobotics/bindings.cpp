@@ -422,6 +422,10 @@ public:
 
     nb::dict info;
     info["best_cost"] = result.best_cost;
+    info["mean_cost"] = result.mean_cost;
+    info["sampled_rollouts"] = result.sampled_rollouts;
+    info["valid_rollouts"] = result.valid_rollouts;
+    info["valid_rollout_ratio"] = result.valid_rollout_ratio;
     info["all_colliding"] = result.all_colliding;
     info["retreating"] = result.retreating;
     return nb::make_tuple(result.v, result.vy, result.w, info);
@@ -737,6 +741,10 @@ NB_MODULE(_cudarobotics, m)
     .def_rw("vy", &cr::MppiResult::vy)
     .def_rw("w", &cr::MppiResult::w)
     .def_rw("best_cost", &cr::MppiResult::best_cost)
+    .def_rw("mean_cost", &cr::MppiResult::mean_cost)
+    .def_rw("sampled_rollouts", &cr::MppiResult::sampled_rollouts)
+    .def_rw("valid_rollouts", &cr::MppiResult::valid_rollouts)
+    .def_rw("valid_rollout_ratio", &cr::MppiResult::valid_rollout_ratio)
     .def_rw("all_colliding", &cr::MppiResult::all_colliding)
     .def_rw("retreating", &cr::MppiResult::retreating);
 

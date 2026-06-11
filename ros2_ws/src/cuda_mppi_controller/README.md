@@ -174,11 +174,19 @@ controller_server:
 | `yaw_goal_activation_dist` | 0.5 | [m] range to enable the yaw goal cost |
 | `lookahead_dist` | 3.0 | [m] global plan window fed to the GPU |
 | `transform_tolerance` | 0.1 | [s] TF lookup tolerance |
+| `diagnostics_log_period` | 0.0 | [s] periodic one-line solve/valid-rollout logging; 0 disables |
+| `diagnostics_csv_path` | `""` | optional per-cycle diagnostics CSV path |
 
 Parameters above are validated at configure time and during live ROS parameter
 updates. Invalid values, such as zero horizon length, non-positive model step,
 unknown motion models, or negative cost weights, are rejected before the GPU
 optimizer is rebuilt.
+
+Set `diagnostics_log_period` to a positive value for throttled controller logs,
+or set `diagnostics_csv_path` to capture one row per control cycle. The CSV
+includes solve time, best/mean rollout cost, valid rollout count and ratio,
+all-colliding/retreat flags, path window size, costmap size, and the selected
+command.
 
 ## Benchmark scenarios
 
@@ -188,11 +196,20 @@ optimizer is rebuilt.
 ros2 run cuda_mppi_controller controller_benchmark /tmp/bench wall_gap
 ros2 run cuda_mppi_controller controller_benchmark /tmp/bench narrow_corridor
 ros2 run cuda_mppi_controller controller_benchmark /tmp/bench u_turn
+ros2 run cuda_mppi_controller controller_benchmark /tmp/bench double_gap
+ros2 run cuda_mppi_controller controller_benchmark /tmp/bench moving_crossing quick
 ros2 run cuda_mppi_controller controller_benchmark /tmp/bench all
+ros2 run cuda_mppi_controller controller_benchmark /tmp/bench double_gap quick
+ros2 run cuda_mppi_controller controller_benchmark /tmp/bench double_gap cpu_gpu
 ros2 run cuda_mppi_controller controller_benchmark /tmp/bench esdf
 ros2 run cuda_mppi_controller controller_benchmark /tmp/bench path_angle
 ros2 run cuda_mppi_controller controller_benchmark /tmp/bench curvature_speed
 ```
+
+The optional preset is `full` by default. Use `quick` for GPU K=2,048/8,192
+smoke runs, or `cpu_gpu` for CPU K=2,000 vs GPU K=8,192. The `esdf`,
+`path_angle`, and `curvature_speed` benchmark families keep their fixed
+comparison sets.
 
 `all` also runs Ackermann/Omni GPU configs (`gpu_ackermann_K8192`, `gpu_omni_K8192`).
 `esdf` runs a GPU-only comparison of the default costmap critic against the
