@@ -63,6 +63,8 @@ Full animated gallery: https://rsasaki0109.github.io/CudaRobotics/
 | Visual demos | [Full animated gallery](https://rsasaki0109.github.io/CudaRobotics/) |
 | **GPU MPPI controller plugin for Nav2** | [`ros2_ws/src/cuda_mppi_controller/`](ros2_ws/src/cuda_mppi_controller/) |
 | Nav2 CPU vs CUDA MPPI head-to-head | [`docs/results/cuda_mppi_vs_nav2_2026-06-10.md`](docs/results/cuda_mppi_vs_nav2_2026-06-10.md) |
+| CUDA MPPI extended controller scenarios | [`docs/results/cuda_mppi_extended_scenarios_2026-06-12.md`](docs/results/cuda_mppi_extended_scenarios_2026-06-12.md) |
+| CUDA MPPI bag / real-data evaluation harness | [`docs/cuda_mppi_bag_eval.md`](docs/cuda_mppi_bag_eval.md) |
 | CUDA MPPI curvature speed critic | [`docs/results/cuda_mppi_curvature_speed_2026-06-12.md`](docs/results/cuda_mppi_curvature_speed_2026-06-12.md) |
 | CUDA MPPI path-angle critic | [`docs/results/cuda_mppi_path_angle_2026-06-12.md`](docs/results/cuda_mppi_path_angle_2026-06-12.md) |
 | CUDA MPPI ESDF clearance critic | [`docs/results/cuda_mppi_esdf_2026-06-11.md`](docs/results/cuda_mppi_esdf_2026-06-11.md) |
@@ -91,6 +93,7 @@ in your browser.
 pip install -e python/
 pip install -e 'python/[examples]'  # optional: GIF rendering dependencies
 python examples/python/mppi_quickstart.py
+python examples/python/mppi_dlpack_costmap.py  # optional: CUDA PyTorch or CuPy costmap
 ```
 
 **Install from source distribution** (self-contained sdist; compiles against local CUDA):
@@ -125,6 +128,8 @@ v, vy, w, info = planner.compute(
 For learning stacks, `costmap` may also be a CUDA DLPack producer such as a
 PyTorch or CuPy tensor. In that case the MPPI core consumes the device pointer
 directly instead of staging the costmap through host memory.
+See [`examples/python/mppi_dlpack_costmap.py`](examples/python/mppi_dlpack_costmap.py)
+for a runnable torch/CuPy example and `info` diagnostics readout.
 
 ## Python Registration Quickstart
 
