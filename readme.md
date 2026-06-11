@@ -117,6 +117,10 @@ v, vy, w, info = planner.compute(
 )
 ```
 
+For learning stacks, `costmap` may also be a CUDA DLPack producer such as a
+PyTorch or CuPy tensor. In that case the MPPI core consumes the device pointer
+directly instead of staging the costmap through host memory.
+
 ## Python Registration Quickstart
 
 Rigid and non-rigid registration live under `cudarobotics.registration`:

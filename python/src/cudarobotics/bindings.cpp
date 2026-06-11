@@ -30,6 +30,74 @@ namespace
 namespace cr = cuda_mppi_controller;
 namespace reg = cudarobotics;
 
+enum DLDeviceType : int32_t
+{
+  kDLCPU = 1,
+  kDLCUDA = 2,
+  kDLCUDAManaged = 13,
+};
+
+enum DLDataTypeCode : uint8_t
+{
+  kDLInt = 0U,
+  kDLUInt = 1U,
+  kDLFloat = 2U,
+};
+
+struct DLDevice
+{
+  DLDeviceType device_type;
+  int32_t device_id;
+};
+
+struct DLDataType
+{
+  uint8_t code;
+  uint8_t bits;
+  uint16_t lanes;
+};
+
+struct DLTensor
+{
+  void * data;
+  DLDevice device;
+  int32_t ndim;
+  DLDataType dtype;
+  int64_t * shape;
+  int64_t * strides;
+  uint64_t byte_offset;
+};
+
+struct DLManagedTensor
+{
+  DLTensor dl_tensor;
+  void * manager_ctx;
+  void (* deleter)(DLManagedTensor * self);
+};
+
+struct DLPackVersion
+{
+  uint32_t major;
+  uint32_t minor;
+};
+
+struct DLManagedTensorVersioned
+{
+  DLPackVersion version;
+  void * manager_ctx;
+  void (* deleter)(DLManagedTensorVersioned * self);
+  uint64_t flags;
+  DLTensor dl_tensor;
+};
+
+struct PyObjectDeleter
+{
+  void operator()(PyObject * object) const noexcept
+  {
+    Py_XDECREF(object);
+  }
+};
+
 class BufferView
 {
 public:
@@ -97,6 +165,141 @@ private:
   bool acquired_ = false;
 };
 
+class DLPackTensorView
+{
+public:
+  DLPackTensorView(
+    nb::handle object, int ndim, int second_dim,
+    uint8_t dtype_code, uint8_t dtype_bits, uint16_t dtype_lanes,
+    const char * name)
+  : name_(name)
+  {
+    if (!supportsDLPack(object)) {
+      throw std::invalid_argument(
+              std::string(name_) +
+              " must support the Python buffer protocol or CUDA DLPack");
+    }
+
+    std::unique_ptr<PyObject, PyObjectDeleter> capsule_guard(
+      PyObject_CallMethod(object.ptr(), "__dlpack__", nullptr));
+    if (!capsule_guard) {
+      throw nb::python_error();
+    }
+
+    const char * used_name = nullptr;
+    if (PyCapsule_IsValid(capsule_guard.get(), "dltensor")) {
+      managed_ = static_cast<DLManagedTensor *>(
+        PyCapsule_GetPointer(capsule_guard.get(), "dltensor"));
+      if (managed_ == nullptr) {
+        throw nb::python_error();
+      }
+      tensor_ = &managed_->dl_tensor;
+      used_name = "used_dltensor";
+    } else if (PyCapsule_IsValid(capsule_guard.get(), "dltensor_versioned")) {
+      versioned_ = static_cast<DLManagedTensorVersioned *>(
+        PyCapsule_GetPointer(capsule_guard.get(), "dltensor_versioned"));
+      if (versioned_ == nullptr) {
+        throw nb::python_error();
+      }
+      if (versioned_->version.major != 1U) {
+        throw std::invalid_argument(std::string(name_) + " has unsupported DLPack major version");
+      }
+      tensor_ = &versioned_->dl_tensor;
+      used_name = "used_dltensor_versioned";
+    } else {
+      throw std::invalid_argument(std::string(name_) + " __dlpack__ returned an invalid capsule");
+    }
+
+    validate(ndim, second_dim, dtype_code, dtype_bits, dtype_lanes);
+
+    if (PyCapsule_SetName(capsule_guard.get(), used_name) != 0) {
+      throw nb::python_error();
+    }
+    capsule_ = capsule_guard.release();
+  }
+
+  ~DLPackTensorView()
+  {
+    if (managed_ != nullptr && managed_->deleter != nullptr) {
+      managed_->deleter(managed_);
+    }
+    if (versioned_ != nullptr && versioned_->deleter != nullptr) {
+      versioned_->deleter(versioned_);
+    }
+    Py_XDECREF(capsule_);
+  }
+
+  DLPackTensorView(const DLPackTensorView &) = delete;
+  DLPackTensorView & operator=(const DLPackTensorView &) = delete;
+
+  static bool supportsDLPack(nb::handle object)
+  {
+    return PyObject_HasAttrString(object.ptr(), "__dlpack__") == 1;
+  }
+
+  template<typename T>
+  const T * data() const
+  {
+    auto * bytes = static_cast<const std::uint8_t *>(tensor_->data);
+    return reinterpret_cast<const T *>(bytes + tensor_->byte_offset);
+  }
+
+  int dim(int axis) const
+  {
+    if (tensor_->shape[axis] > std::numeric_limits<int>::max()) {
+      throw std::invalid_argument(std::string(name_) + " dimension is too large");
+    }
+    return static_cast<int>(tensor_->shape[axis]);
+  }
+
+private:
+  void validate(
+    int ndim, int second_dim,
+    uint8_t dtype_code, uint8_t dtype_bits, uint16_t dtype_lanes) const
+  {
+    if (tensor_->device.device_type != kDLCUDA &&
+      tensor_->device.device_type != kDLCUDAManaged)
+    {
+      throw std::invalid_argument(std::string(name_) + " DLPack tensor must live on a CUDA device");
+    }
+    if (tensor_->ndim != ndim) {
+      throw std::invalid_argument(
+              std::string(name_) + " DLPack tensor must have " + std::to_string(ndim) +
+              " dimensions");
+    }
+    if (tensor_->shape == nullptr) {
+      throw std::invalid_argument(std::string(name_) + " DLPack tensor has no shape");
+    }
+    if (second_dim >= 0 && tensor_->shape[1] != second_dim) {
+      throw std::invalid_argument(
+              std::string(name_) + " DLPack tensor must have shape (N, " +
+              std::to_string(second_dim) + ")");
+    }
+    if (tensor_->dtype.code != dtype_code ||
+      tensor_->dtype.bits != dtype_bits ||
+      tensor_->dtype.lanes != dtype_lanes)
+    {
+      throw std::invalid_argument(std::string(name_) + " DLPack tensor has an unsupported dtype");
+    }
+
+    int64_t expected_stride = 1;
+    if (tensor_->strides != nullptr) {
+      for (int axis = tensor_->ndim - 1; axis >= 0; --axis) {
+        if (tensor_->strides[axis] != expected_stride) {
+          throw std::invalid_argument(std::string(name_) + " DLPack tensor must be C-contiguous");
+        }
+        expected_stride *= tensor_->shape[axis];
+      }
+    }
+  }
+
+  const char * name_;
+  PyObject * capsule_ = nullptr;
+  DLManagedTensor * managed_ = nullptr;
+  DLManagedTensorVersioned * versioned_ = nullptr;
+  DLTensor * tensor_ = nullptr;
+};
+
 template<size_t N>
 std::array<float, N> readFloatSequence(nb::handle object, const char * name)
 {
@@ -161,12 +364,26 @@ public:
     const unsigned char * costmap_ptr = nullptr;
     int size_x = 0;
     int size_y = 0;
+    bool costmap_is_device = false;
     std::unique_ptr<BufferView> costmap_view;
+    std::unique_ptr<DLPackTensorView> costmap_dlpack_view;
     if (costmap.ptr() != Py_None) {
-      costmap_view = std::make_unique<BufferView>(costmap, 2, -1, 1, "costmap");
-      costmap_ptr = costmap_view->data<unsigned char>();
-      size_y = costmap_view->dim(0);
-      size_x = costmap_view->dim(1);
+      if (PyObject_CheckBuffer(costmap.ptr())) {
+        costmap_view = std::make_unique<BufferView>(costmap, 2, -1, 1, "costmap");
+        costmap_ptr = costmap_view->data<unsigned char>();
+        size_y = costmap_view->dim(0);
+        size_x = costmap_view->dim(1);
+      } else if (DLPackTensorView::supportsDLPack(costmap)) {
+        costmap_dlpack_view =
+          std::make_unique<DLPackTensorView>(costmap, 2, -1, kDLUInt, 8, 1, "costmap");
+        costmap_ptr = costmap_dlpack_view->data<unsigned char>();
+        size_y = costmap_dlpack_view->dim(0);
+        size_x = costmap_dlpack_view->dim(1);
+        costmap_is_device = true;
+      } else {
+        throw std::invalid_argument(
+                "costmap must support the Python buffer protocol or CUDA DLPack");
+      }
     }
 
     const float * path_ptr = nullptr;
@@ -187,13 +404,21 @@ public:
       footprint_len = footprint_view->dim(0);
     }
 
-    cr::MppiResult result = planner_.compute(
-      s[0], s[1], s[2],
-      costmap_ptr, size_x, size_y,
-      o[0], o[1], resolution,
-      path_ptr, path_len,
-      g[0], g[1], g[2], goal_is_final,
-      footprint_ptr, footprint_len);
+    cr::MppiResult result = costmap_is_device ?
+      planner_.computeWithDeviceCostmap(
+        s[0], s[1], s[2],
+        costmap_ptr, size_x, size_y,
+        o[0], o[1], resolution,
+        path_ptr, path_len,
+        g[0], g[1], g[2], goal_is_final,
+        footprint_ptr, footprint_len) :
+      planner_.compute(
+        s[0], s[1], s[2],
+        costmap_ptr, size_x, size_y,
+        o[0], o[1], resolution,
+        path_ptr, path_len,
+        g[0], g[1], g[2], goal_is_final,
+        footprint_ptr, footprint_len);
 
     nb::dict info;
     info["best_cost"] = result.best_cost;

@@ -39,6 +39,25 @@ python examples/python/mppi_quickstart.py
 python examples/python/registration_quickstart.py
 ```
 
+## DLPack Costmaps
+
+`MppiPlanner.compute()` accepts CUDA DLPack producers for the `costmap`
+argument, so PyTorch or CuPy costmaps can stay on the GPU. NumPy and other CPU
+buffer-protocol arrays continue to use the existing host path.
+
+```python
+import numpy as np
+import torch
+import cudarobotics as cr
+
+planner = cr.MppiPlanner(batch_size=2048, time_steps=56, model_dt=0.05)
+costmap = torch.zeros((200, 200), dtype=torch.uint8, device="cuda")
+path = np.array([[1.0, 5.0], [5.0, 5.0]], dtype=np.float32)
+v, vy, w, info = planner.compute(
+    (1.0, 5.0, 0.0), costmap, path, (5.0, 5.0, 0.0), resolution=0.05
+)
+```
+
 ## Layout
 
 - `src/cudarobotics/` — pure Python package + nanobind module
