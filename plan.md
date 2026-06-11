@@ -1,11 +1,12 @@
 # CudaRobotics Plan / Handoff (for Codex / Claude)
 
-Last updated: 2026-06-11 JST (`737f7dd` — optional curvature-speed MPPI critic
-merged after path-angle MPPI critic, the corrected `u_turn` benchmark path,
-ESDF-style MPPI clearance critic/report, docs site source, v0.1.0 release docs,
-tag, GitHub Release assets, and GHCR tag workflow verification. Current active
-work is trajectory-quality metrics for `controller_benchmark` on
-`codex/benchmark-trajectory-metrics`.
+Last updated: 2026-06-12 JST (`f8672a4` — controller benchmark trajectory
+metrics merged after optional curvature-speed MPPI critic, path-angle MPPI
+critic, the corrected `u_turn` benchmark path, ESDF-style MPPI clearance
+critic/report, docs site source, v0.1.0 release docs, tag, GitHub Release
+assets, and GHCR tag workflow verification. Current active work is metrics
+refresh reports for path-angle and curvature-speed critics on
+`codex/mppi-metrics-reports`.
 Jetson/aarch64 support is
 intentionally skipped for now by user direction. Note: some older sections below
 carry their own internal dates — treat section headers as the ordering authority
@@ -33,27 +34,28 @@ There are now **two active lines** in this repo:
    costmaps (#188), Nav2 parameter validation (#189), the v0.1.0 release
    checklist / notes (#190), docs site source (#191), ESDF-style MPPI
    clearance critic (#192), the ESDF benchmark report (#193), the corrected
-   `u_turn` benchmark path (#194), the path-angle critic (#195), and the
-   optional curvature-speed critic (#196). v0.1.0 is published from the current
-   `master` line.
+   `u_turn` benchmark path (#194), the path-angle critic (#195), the optional
+   curvature-speed critic (#196), and controller benchmark trajectory metrics
+   (#197). v0.1.0 is published from the current `master` line.
 2. **Research line** — SOPPI / Diff-MPPI box-pushing reproduction zoo
    (see "Research Line State" below; `box_align_contact_loss` lifted to **1.00**;
    `box_align_detour` still the open hard cell at **0.25**).
 
 ---
 
-## Current State (2026-06-11) — star-growth funnel sprint
+## Current State (2026-06-12) — star-growth funnel sprint
 
-Mainline: **`master` at `737f7dd`**, in sync with `origin/master`, after the
+Mainline: **`master` at `f8672a4`**, in sync with `origin/master`, after the
 hardware-string history rewrite, registration external benchmark merge (#187),
 CUDA DLPack costmap merge (#188), Nav2 parameter validation merge (#189), and
 v0.1.0 release docs merge (#190), docs site source merge (#191), and ESDF-style
 MPPI clearance critic merge (#192), ESDF benchmark report merge (#193), and
 corrected `u_turn` benchmark path merge (#194), and path-angle critic merge
-(#195), and optional curvature-speed critic merge (#196). Tag `v0.1.0`, GitHub
-Release assets, GHCR tag workflow, and the live docs site are complete. Current
-local work: trajectory-quality metrics for `controller_benchmark` on
-`codex/benchmark-trajectory-metrics`.
+(#195), optional curvature-speed critic merge (#196), and controller benchmark
+trajectory metrics merge (#197). Tag `v0.1.0`, GitHub Release assets, GHCR tag
+workflow, and the live docs site are complete. Current local work: metrics
+refresh reports for path-angle and curvature-speed critics on
+`codex/mppi-metrics-reports`.
 
 ### What landed this session (all squash-merged)
 
@@ -75,6 +77,7 @@ local work: trajectory-quality metrics for `controller_benchmark` on
 | #194 | Corrected `u_turn` benchmark path | moved the U-turn vertical leg outside the wall endpoint so the benchmark path no longer crosses lethal cells; post-merge CI green |
 | #195 | Path-angle MPPI critic | added `path_angle_weight=0.25`, Python/Nav2/config/docs exposure, and a GPU-only path-angle benchmark report; CI green and merged |
 | #196 | Curvature-speed MPPI critic | added optional `curvature_speed_weight` / `curvature_speed_min`, benchmark mode, and report; default stays disabled because it trades time-to-goal for bend-entry slowdown |
+| #197 | Controller benchmark trajectory metrics | added distance, speed, yaw-rate, and curvature metrics to `summary.csv`; CI green and merged |
 
 Wheel sanity check done: the cp312 manylinux wheel was installed into a fresh
 venv on this machine; `MppiPlanner.compute` and
@@ -194,7 +197,7 @@ Implementation direction:
   39.9 s to 41.4 s, and reduces average speed within 1 m of the two bends from
   0.497 m/s to 0.481 m/s.
 
-### Controller benchmark trajectory metrics — ACTIVE (`codex/benchmark-trajectory-metrics`)
+### Controller benchmark trajectory metrics — LANDED (#197)
 
 Goal: make MPPI critic tuning easier to evaluate than success/time-to-goal
 alone.
@@ -208,6 +211,25 @@ Implementation direction:
   can ignore the extra fields.
 - Local wall-gap smoke after the change succeeds and shows the new columns for
   CPU, GPU, Ackermann, and Omni rows.
+
+### MPPI critic metrics report refresh — ACTIVE (`codex/mppi-metrics-reports`)
+
+Goal: rerun the path-angle and curvature-speed critic benchmark modes after
+#197 so checked-in reports include distance, speed, yaw-rate, and curvature
+metrics.
+
+Implementation direction:
+
+- Add `docs/results/cuda_mppi_path_angle_2026-06-12.{csv,md}` from
+  `/tmp/mppi_metrics_path_angle`.
+- Add `docs/results/cuda_mppi_curvature_speed_2026-06-12.{csv,md}` from
+  `/tmp/mppi_metrics_curvature_speed`.
+- Update `docs/results/README.md`, the docs site results page, the top-level
+  README, and the Nav2 README to point latest path-angle / curvature-speed
+  report links at the 2026-06-12 metrics refresh.
+- Key result: path-angle now has stronger evidence (`u_turn` mean absolute
+  curvature 3.08 -> 0.69), while curvature-speed remains default-off because
+  aggregate metrics do not improve in the fixed-seed enabled row.
 
 ### Registration external benchmark — LANDED (#187)
 

@@ -200,10 +200,10 @@ optional distance-field clearance critic. Results:
 [`docs/results/cuda_mppi_esdf_2026-06-11.md`](../../../docs/results/cuda_mppi_esdf_2026-06-11.md).
 `path_angle` runs a GPU-only comparison with and without the path-angle critic.
 Results:
-[`docs/results/cuda_mppi_path_angle_2026-06-11.md`](../../../docs/results/cuda_mppi_path_angle_2026-06-11.md).
+[`docs/results/cuda_mppi_path_angle_2026-06-12.md`](../../../docs/results/cuda_mppi_path_angle_2026-06-12.md).
 `curvature_speed` runs a GPU-only comparison with and without the optional
 curvature speed critic. Results:
-[`docs/results/cuda_mppi_curvature_speed_2026-06-11.md`](../../../docs/results/cuda_mppi_curvature_speed_2026-06-11.md).
+[`docs/results/cuda_mppi_curvature_speed_2026-06-12.md`](../../../docs/results/cuda_mppi_curvature_speed_2026-06-12.md).
 Each scenario writes `summary.csv` with outcome, solve-time, and trajectory
 quality columns: distance traveled, mean/max command speed, mean/max absolute
 yaw rate, and mean absolute curvature.

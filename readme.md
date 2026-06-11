@@ -63,8 +63,8 @@ Full animated gallery: https://rsasaki0109.github.io/CudaRobotics/
 | Visual demos | [Full animated gallery](https://rsasaki0109.github.io/CudaRobotics/) |
 | **GPU MPPI controller plugin for Nav2** | [`ros2_ws/src/cuda_mppi_controller/`](ros2_ws/src/cuda_mppi_controller/) |
 | Nav2 CPU vs CUDA MPPI head-to-head | [`docs/results/cuda_mppi_vs_nav2_2026-06-10.md`](docs/results/cuda_mppi_vs_nav2_2026-06-10.md) |
-| CUDA MPPI curvature speed critic | [`docs/results/cuda_mppi_curvature_speed_2026-06-11.md`](docs/results/cuda_mppi_curvature_speed_2026-06-11.md) |
-| CUDA MPPI path-angle critic | [`docs/results/cuda_mppi_path_angle_2026-06-11.md`](docs/results/cuda_mppi_path_angle_2026-06-11.md) |
+| CUDA MPPI curvature speed critic | [`docs/results/cuda_mppi_curvature_speed_2026-06-12.md`](docs/results/cuda_mppi_curvature_speed_2026-06-12.md) |
+| CUDA MPPI path-angle critic | [`docs/results/cuda_mppi_path_angle_2026-06-12.md`](docs/results/cuda_mppi_path_angle_2026-06-12.md) |
 | CUDA MPPI ESDF clearance critic | [`docs/results/cuda_mppi_esdf_2026-06-11.md`](docs/results/cuda_mppi_esdf_2026-06-11.md) |
 | Registration external baselines | [`docs/results/registration_external_baselines_2026-06-11.md`](docs/results/registration_external_baselines_2026-06-11.md) |
 | Latest fixed-seed MPPI result | [`docs/results/mppi_zoo_suite_2026-06-10.md`](docs/results/mppi_zoo_suite_2026-06-10.md) |
