@@ -43,6 +43,7 @@ struct MppiParams
   float goal_yaw_weight = 3.0f;      // terminal yaw error (active near final goal)
   float path_weight = 10.0f;         // stage lateral distance² to reference path
   float path_follow_weight = 5.0f;   // stage distance to a point ahead on the path
+  float path_angle_weight = 0.25f;    // stage yaw error to the local path tangent
   float follow_lookahead = 1.0f;     // [m] how far ahead that point is
   float costmap_weight = 3.0f;       // stage costmap cost (normalized 0..1, squared)
   // Optional truncated distance-field obstacle critic. Disabled by default so

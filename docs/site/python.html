@@ -52,6 +52,7 @@ planner = cr.MppiPlanner(
     time_steps=56,
     model_dt=0.05,
     motion_model="diff_drive",
+    path_angle_weight=0.25,
     distance_field_weight=12.0,
     distance_field_cutoff=0.8,
 )

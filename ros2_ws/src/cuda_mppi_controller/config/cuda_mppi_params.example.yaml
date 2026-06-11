@@ -28,6 +28,7 @@ controller_server:
       goal_yaw_weight: 3.0
       path_weight: 10.0         # lateral deviation^2 from the plan
       path_follow_weight: 5.0   # pull toward a point ahead on the plan
+      path_angle_weight: 0.25    # align rollout heading with the local path tangent
       follow_lookahead: 1.0     # [m]
       costmap_weight: 3.0
       distance_field_weight: 0.0 # optional ESDF-style clearance critic
