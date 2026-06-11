@@ -35,12 +35,13 @@ python scripts/benchmark_registration_external.py \
   --csv docs/results/registration_external_baselines_2026-06-11.csv
 ```
 
-## CUDA MPPI Curvature Speed Critic, 2026-06-11
+## CUDA MPPI Curvature Speed Critic Metrics Refresh, 2026-06-12
 
-- Report: [`cuda_mppi_curvature_speed_2026-06-11.md`](cuda_mppi_curvature_speed_2026-06-11.md)
-- CSV: [`cuda_mppi_curvature_speed_2026-06-11.csv`](cuda_mppi_curvature_speed_2026-06-11.csv)
+- Report: [`cuda_mppi_curvature_speed_2026-06-12.md`](cuda_mppi_curvature_speed_2026-06-12.md)
+- CSV: [`cuda_mppi_curvature_speed_2026-06-12.csv`](cuda_mppi_curvature_speed_2026-06-12.csv)
 - Scope: GPU-only `cuda_mppi_controller` comparison of the default path/costmap
-  critics with and without the optional curvature speed critic
+  critics with and without the optional curvature speed critic, including
+  trajectory-quality metrics from `controller_benchmark`
 - Scenarios: `wall_gap`, `narrow_corridor`, `u_turn`
 - Config: `K=8192`, `T=56`, `dt=0.05`, `path_angle_weight=0.25`;
   enabled row uses `curvature_speed_weight=8.0` and
@@ -49,17 +50,19 @@ python scripts/benchmark_registration_external.py \
 Key signals:
 
 - Straight-path cells are unchanged because local path curvature is zero.
-- The corrected `u_turn` row slows near the 90-degree bends; average speed
-  within 1 m of the bends changes from 0.497 m/s to 0.481 m/s.
-- The checked-in default keeps `curvature_speed_weight=0.0` because this is a
-  speed-vs-smoothness tuning knob, not a universal time-to-goal improvement.
+- The aggregate `u_turn` metrics do not improve with this fixed-seed enabled
+  row: time-to-goal increases from 39.9 s to 41.4 s, distance increases from
+  19.26 m to 19.90 m, and mean absolute curvature increases from 0.69 to 0.79.
+- The checked-in default remains `curvature_speed_weight=0.0`; this critic is a
+  user-tuned safety/smoothness knob, not a default performance improvement.
 
-## CUDA MPPI Path-Angle Critic, 2026-06-11
+## CUDA MPPI Path-Angle Critic Metrics Refresh, 2026-06-12
 
-- Report: [`cuda_mppi_path_angle_2026-06-11.md`](cuda_mppi_path_angle_2026-06-11.md)
-- CSV: [`cuda_mppi_path_angle_2026-06-11.csv`](cuda_mppi_path_angle_2026-06-11.csv)
+- Report: [`cuda_mppi_path_angle_2026-06-12.md`](cuda_mppi_path_angle_2026-06-12.md)
+- CSV: [`cuda_mppi_path_angle_2026-06-12.csv`](cuda_mppi_path_angle_2026-06-12.csv)
 - Scope: GPU-only `cuda_mppi_controller` comparison of the default costmap
-  critic with and without the path-angle critic
+  critic with and without the path-angle critic, including trajectory-quality
+  metrics from `controller_benchmark`
 - Scenarios: `wall_gap`, `narrow_corridor`, `u_turn`
 - Config: `K=8192`, `T=56`, `dt=0.05`; path-angle row uses
   `path_angle_weight=0.25`
@@ -67,11 +70,12 @@ Key signals:
 Key signals:
 
 - The corrected `u_turn` cell benefits most: K8192 time-to-goal drops from
-  44.75 s to 39.9 s while keeping mean solve time close to 1 ms.
-- `wall_gap` and `narrow_corridor` remain successful with similar time-to-goal.
-- A stronger `path_angle_weight=2.0` over-selected stationary
-  straight-heading rollouts in this sampler; the checked-in default is the
-  lighter `0.25`.
+  44.75 s to 39.9 s and distance drops from 19.81 m to 19.26 m.
+- The new trajectory metrics show lower mean absolute curvature:
+  `u_turn` drops from 3.08 to 0.69, and `narrow_corridor` drops from 1.38 to
+  0.89.
+- `wall_gap` and `narrow_corridor` remain successful with similar time-to-goal
+  while reducing mean absolute yaw rate.
 
 ## CUDA MPPI ESDF Clearance Critic, 2026-06-11
 
