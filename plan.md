@@ -1,15 +1,14 @@
 # CudaRobotics Plan / Handoff (for Codex / Claude)
 
-Last updated: 2026-06-12 JST (`2998fac` — CUDA MPPI diagnostics and extended
-benchmark scenarios merged after the path-angle / curvature-speed metrics
-refresh, controller benchmark trajectory metrics, optional curvature-speed MPPI
-critic, path-angle MPPI critic, corrected `u_turn` path, ESDF-style MPPI
-clearance critic/report, docs site source, v0.1.0 release docs, tag, GitHub
-Release assets, and GHCR tag workflow verification. Current active work is the
-user-selected follow-up set: extended scenario report, diagnostics rendering,
-bag/real-data evaluation harness, plan sync, registration stress scenarios,
-SOPPI detour guidance, no-GPU ROS2 CI runtime smoke, and Python DLPack usability
-docs/examples.
+Last updated: 2026-06-12 JST (`13471ef` — PR #200 merged the MPPI diagnostics
+follow-up set after the CUDA MPPI diagnostics / extended benchmark scenarios,
+path-angle / curvature-speed metrics refresh, controller benchmark trajectory
+metrics, optional curvature-speed MPPI critic, path-angle MPPI critic, corrected
+`u_turn` path, ESDF-style MPPI clearance critic/report, docs site source, v0.1.0
+release docs, tag, GitHub Release assets, and GHCR tag workflow verification.
+Current local worktree is clean on `master`; the next active work should convert
+the new harnesses into real-data validation or continue the SOPPI/object-level
+planning research line.
 Jetson/aarch64 support is
 intentionally skipped for now by user direction. Note: some older sections below
 carry their own internal dates — treat section headers as the ordering authority
@@ -40,7 +39,7 @@ There are now **two active lines** in this repo:
    `u_turn` benchmark path (#194), the path-angle critic (#195), the optional
    curvature-speed critic (#196), controller benchmark trajectory metrics
    (#197), MPPI critic metrics refresh (#198), and CUDA MPPI diagnostics plus
-   `double_gap` / `moving_crossing` benchmark scenarios (#199). v0.1.0 is
+   `double_gap` / `moving_crossing` benchmark scenarios (#199/#200). v0.1.0 is
    published from the current `master` line.
 2. **Research line** — SOPPI / Diff-MPPI box-pushing reproduction zoo
    (see "Research Line State" below; `box_align_contact_loss` lifted to **1.00**;
@@ -50,7 +49,7 @@ There are now **two active lines** in this repo:
 
 ## Current State (2026-06-12) — star-growth funnel sprint
 
-Mainline: **`master` at `2998fac`**, in sync with `origin/master`, after the
+Mainline: **`master` at `13471ef`**, in sync with `origin/master`, after the
 hardware-string history rewrite, registration external benchmark merge (#187),
 CUDA DLPack costmap merge (#188), Nav2 parameter validation merge (#189), and
 v0.1.0 release docs merge (#190), docs site source merge (#191), and ESDF-style
@@ -58,11 +57,27 @@ MPPI clearance critic merge (#192), ESDF benchmark report merge (#193), and
 corrected `u_turn` benchmark path merge (#194), and path-angle critic merge
 (#195), optional curvature-speed critic merge (#196), and controller benchmark
 trajectory metrics merge (#197), MPPI critic metrics refresh merge (#198), and
-CUDA MPPI diagnostics / extended scenario benchmark merge (#199). Tag `v0.1.0`,
-GitHub Release assets, GHCR tag workflow, and the live docs site are complete.
-Current local work: extended scenario report, diagnostics plotter, bag/real-data
-evaluation harness, registration stress-scenario support, and SOPPI detour
-guidance.
+CUDA MPPI diagnostics / extended scenario benchmark merge (#199), and MPPI
+diagnostics follow-up tooling merge (#200). Tag `v0.1.0`, GitHub Release assets,
+GHCR tag workflow, and the live docs site are complete. Current local worktree:
+clean.
+
+### Project target
+
+Make CudaRobotics a reproducible OSS lab for GPU-accelerated robot planning,
+control, registration, and learning interfaces. The repo should keep converting
+CUDA demos into reusable Python/ROS entry points, checked-in benchmark results,
+CI smoke tests, and real-data validation loops.
+
+Near-term success definition:
+
+- MPPI/Nav2: bag or live-stack diagnostics collected with the checked-in harness
+  and rendered into a report.
+- Registration: stress scenarios compared against probreg/Open3D in an
+  environment with all external packages installed.
+- Python: CUDA tensor/DLPack examples runtime-verified from the install path.
+- Research: SOPPI detour/object-level nominal planning explored only when it
+  adds a distinct mechanism or result, not another same-model sweep.
 
 ### What landed this session (all squash-merged)
 
@@ -87,6 +102,7 @@ guidance.
 | #197 | Controller benchmark trajectory metrics | added distance, speed, yaw-rate, and curvature metrics to `summary.csv`; CI green and merged |
 | #198 | MPPI critic metrics refresh | regenerated path-angle and curvature-speed reports with trajectory-quality columns; path-angle evidence is stronger, curvature-speed stays default-off |
 | #199 | CUDA MPPI diagnostics and benchmark scenarios | added per-cycle diagnostics logging/CSV plus `double_gap` and `moving_crossing` controller benchmark coverage |
+| #200 | MPPI diagnostics follow-up tooling | added extended scenario reports, diagnostics rendering, bag/real-data evaluation harness, registration stress scenarios, SOPPI detour guidance, no-GPU ROS2 CI runtime smoke, and Python DLPack example/docs |
 
 Wheel sanity check done: the cp312 manylinux wheel was installed into a fresh
 venv on this machine; `MppiPlanner.compute` and
@@ -221,7 +237,7 @@ Implementation direction:
 - Local wall-gap smoke after the change succeeds and shows the new columns for
   CPU, GPU, Ackermann, and Omni rows.
 
-### MPPI critic metrics report refresh — ACTIVE (`codex/mppi-metrics-reports`)
+### MPPI critic metrics report refresh — LANDED (#198)
 
 Goal: rerun the path-angle and curvature-speed critic benchmark modes after
 #197 so checked-in reports include distance, speed, yaw-rate, and curvature
@@ -306,7 +322,7 @@ Implementation:
 
 Short term (this week):
 
-1. **Use #199 diagnostics in real runs**: collect `diagnostics_csv_path` from a
+1. **Use #199/#200 diagnostics in real runs**: collect `diagnostics_csv_path` from a
    bag replay or live-stack session and render it with
    `scripts/render_cuda_mppi_diagnostics.py`.
 2. **Extended scenario coverage**: keep `double_gap` and `moving_crossing`
@@ -348,7 +364,7 @@ priority.
 Standing principles: stars come from being *used*; depth over breadth;
 agents build material, the user distributes and publishes.
 
-### Working tree inventory (untracked / WIP — handle with care)
+### Recently landed in #200
 
 - Extended scenario report and tooling:
   `scripts/render_cuda_mppi_extended_scenarios.py`,
