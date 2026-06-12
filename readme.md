@@ -44,6 +44,11 @@ CUDA Robotics is a GPU-first robotics playground and benchmark suite for SLAM,
 mapping, perception, planning, MPPI control, point-cloud registration, and
 learning demos in C++/CUDA.
 
+Project goal: make this repo a reproducible OSS lab for GPU-accelerated robot
+planning, control, registration, and learning interfaces. New work should move
+at least one of those tracks from demo code toward runnable benchmarks,
+documented results, Python/ROS usability, or real-data validation.
+
 If you are looking for a reason to star it: this repo turns robotics algorithms
 into small, runnable CUDA examples, then records both the speedups and the
 failure cases.
