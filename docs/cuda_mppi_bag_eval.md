@@ -84,3 +84,47 @@ Use the diagnostics plot to inspect:
 Treat this as an evaluation harness, not a pass/fail benchmark by itself. The
 scenario, map, localization quality, costmap layers, footprint, and waypoint
 policy determine whether the run is comparable across commits.
+
+## Public ERL-Inspired Dataset
+
+The open [ERL-inspired navigation benchmark dataset](https://doi.org/10.5281/zenodo.10518775)
+contains five ROS 2 Humble runs (6 GB compressed, CC BY 4.0). Download, verify,
+extract, and inspect its Nav2 topic compatibility with:
+
+```bash
+python3 scripts/prepare_erl_navigation_bags.py --download --extract
+```
+
+The command writes `build/datasets/erl_navigation/compatibility_report.json`.
+Each bag is classified as `shadow_ready`, `adapter_required`, or
+`insufficient_for_nav2_replay`, and its scan, odometry, TF, command, map, and
+plan topics are listed. Use the reported topic names to configure remappings
+before passing a bag to `run_cuda_mppi_bag_eval.py`.
+
+Recorded motion does not react to newly computed commands. Public bags are
+therefore suitable for sensor/costmap replay and shadow-mode command analysis,
+not by themselves for claims about closed-loop controller success.
+
+### Offline inspection without ROS
+
+The rosbag2 SQLite databases can be inventoried on a machine without ROS:
+
+```bash
+python3 scripts/analyze_rosbag_db3.py /data/erl_navigation/extracted \
+  --json build/erl_offline_summary.json \
+  --csv build/erl_offline_topics.csv
+```
+
+The outputs report per-bag duration and per-topic message count, observed rate,
+time coverage, and serialized payload bytes. This inspects recording health and
+topic availability; it does not deserialize CDR message payloads.
+
+Twist commands and Odometry poses can also be decoded without ROS:
+
+```bash
+python3 scripts/export_rosbag_motion.py /data/erl_navigation/extracted/Prueba5/*.db3 \
+  --output-dir build/prueba5_motion
+```
+
+This writes `cmd_vel.csv`, `odometry.csv`, and `motion_summary.json`, including
+path length, displacement, observed speeds, command speeds, and stop ratio.
