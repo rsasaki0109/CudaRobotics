@@ -112,3 +112,42 @@ This was performance-neutral in end-to-end timing versus the immediately prior
 0.34/3.35 ms run, within run-to-run noise. It is retained because it removes a
 full-array write and launch without reducing success or clearance in the smoke
 test; no additional speedup is claimed.
+
+## Control-major rollout storage follow-up
+
+Nsight Systems showed that the rollout kernel consumed 89.9% of GPU kernel
+time at K=65,536 (2.95 ms per call), while control update consumed 9.3%
+(0.304 ms). PTXAS reported 58 registers and no spills, ruling out an obvious
+register-spill problem.
+
+The remaining issue was memory layout. Rollout threads are adjacent in K, but
+the old `[K][T][3]` array made a warp write with a `T*3` stride. The new
+`[T][3][K]` control-major layout makes rollout writes contiguous. Control update
+now assigns one block to each control and reduces adjacent K entries, so its
+reads are contiguous as well.
+
+Synthetic write-only layout comparison:
+
+| K | Rollout-major write | Control-major write | Speedup |
+|---:|---:|---:|---:|
+| 2,048 | 0.065894 ms | 0.007270 ms | 9.06x |
+| 65,536 | 6.321626 ms | 0.192367 ms | 32.86x |
+
+Production wall-gap comparison against the precise build immediately before
+the layout change:
+
+| K | Before | Control-major | End-to-end speedup | Sim time before/after |
+|---:|---:|---:|---:|---:|
+| 2,048 | 0.34 ms | 0.32 ms | 1.06x | 18.5 / 18.0 s |
+| 65,536 | 3.41 ms | 1.46 ms | 2.34x | 16.1 / 16.5 s |
+
+Post-change Nsight profiling at K=65,536 measured rollout at 1.03 ms (2.86x
+faster) and control update at 0.235 ms (1.29x faster). DiffDrive, Ackermann,
+Omni, footprint, and ESDF wall-gap smokes all passed without collision.
+
+The next bottleneck is exact nearest-path search inside every rollout step.
+After the layout change, a fixed-state K=65,536 ablation measured 0.62 ms with
+no path, 1.25 ms with 32 path points, 1.79 ms with 81 points, and 3.94 ms with
+256 points. Typical controller windowing is near the 32-point case, so a safe
+path-search optimization has roughly another 1.5-1.7x end-to-end ceiling in
+that workload; it is not itself another several-fold opportunity.

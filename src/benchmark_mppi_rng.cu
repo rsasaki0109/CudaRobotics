@@ -1,0 +1,15 @@
+// Attribute rollout time to XORWOW Gaussian sampling and test normal2.
+#include <cuda_runtime.h>
+#include <curand_kernel.h>
+#include <cstdio>
+#include <cstdlib>
+
+#define CUDA_CHECK(x) do{cudaError_t e=(x);if(e!=cudaSuccess){std::fprintf(stderr,"%s\n",cudaGetErrorString(e));std::exit(1);}}while(0)
+__global__ void init(curandState*s,int n){int k=blockIdx.x*blockDim.x+threadIdx.x;if(k<n)curand_init(42,k,0,&s[k]);}
+__global__ void scalar_rng(curandState*s,float*out,int K,int T){int k=blockIdx.x*blockDim.x+threadIdx.x;if(k>=K)return;auto r=s[k];float x=0,y=0,a=0;for(int t=0;t<T;++t){float v=0.3f+0.2f*curand_normal(&r),w=0.4f*curand_normal(&r);x+=0.05f*v*cosf(a);y+=0.05f*v*sinf(a);a+=0.05f*w;out[(k*T+t)*3]=v;out[(k*T+t)*3+1]=0;out[(k*T+t)*3+2]=w;}out[k]+=x+y+a;s[k]=r;}
+__global__ void vector_rng(curandState*s,float*out,int K,int T){int k=blockIdx.x*blockDim.x+threadIdx.x;if(k>=K)return;auto r=s[k];float x=0,y=0,a=0;for(int t=0;t<T;++t){float2 n=curand_normal2(&r);float v=0.3f+0.2f*n.x,w=0.4f*n.y;x+=0.05f*v*cosf(a);y+=0.05f*v*sinf(a);a+=0.05f*w;out[(k*T+t)*3]=v;out[(k*T+t)*3+1]=0;out[(k*T+t)*3+2]=w;}out[k]+=x+y+a;s[k]=r;}
+__global__ void no_rng(float*out,int K,int T){int k=blockIdx.x*blockDim.x+threadIdx.x;if(k>=K)return;float x=0,y=0,a=0;for(int t=0;t<T;++t){float v=0.3f,w=0.1f;x+=0.05f*v*cosf(a);y+=0.05f*v*sinf(a);a+=0.05f*w;out[(k*T+t)*3]=v;out[(k*T+t)*3+1]=0;out[(k*T+t)*3+2]=w;}out[k]+=x+y+a;}
+__global__ void no_trig(float*out,int K,int T){int k=blockIdx.x*blockDim.x+threadIdx.x;if(k>=K)return;float x=0;for(int t=0;t<T;++t){float v=0.3f,w=0.1f;x+=0.05f*v;out[(k*T+t)*3]=v;out[(k*T+t)*3+1]=0;out[(k*T+t)*3+2]=w;}out[k]+=x;}
+__global__ void transposed_write(float*out,int K,int T){int k=blockIdx.x*blockDim.x+threadIdx.x;if(k>=K)return;for(int t=0;t<T;++t){out[(t*3+0)*K+k]=0.3f;out[(t*3+1)*K+k]=0;out[(t*3+2)*K+k]=0.1f;}}
+template<class F>float measure(F f){for(int i=0;i<20;++i)f();cudaDeviceSynchronize();cudaEvent_t a,b;cudaEventCreate(&a);cudaEventCreate(&b);cudaEventRecord(a);for(int i=0;i<200;++i)f();cudaEventRecord(b);cudaEventSynchronize(b);float ms;cudaEventElapsedTime(&ms,a,b);cudaEventDestroy(a);cudaEventDestroy(b);return ms/200;}
+int main(int argc,char**argv){int K=argc>1?std::atoi(argv[1]):65536,T=56,threads=256,blocks=(K+threads-1)/threads;curandState*s;float*out;cudaMalloc(&s,K*sizeof(*s));cudaMalloc(&out,size_t(K)*T*3*sizeof(float));init<<<blocks,threads>>>(s,K);cudaDeviceSynchronize();float scalar=measure([&]{scalar_rng<<<blocks,threads>>>(s,out,K,T);});init<<<blocks,threads>>>(s,K);cudaDeviceSynchronize();float vector=measure([&]{vector_rng<<<blocks,threads>>>(s,out,K,T);});float none=measure([&]{no_rng<<<blocks,threads>>>(out,K,T);});float linear=measure([&]{no_trig<<<blocks,threads>>>(out,K,T);});float transposed=measure([&]{transposed_write<<<blocks,threads>>>(out,K,T);});std::printf("K,scalar_normal_ms,normal2_ms,no_rng_ms,no_trig_ms,transposed_write_ms,layout_speedup\n%d,%.6f,%.6f,%.6f,%.6f,%.6f,%.2f\n",K,scalar,vector,none,linear,transposed,linear/transposed);cudaFree(s);cudaFree(out);}
