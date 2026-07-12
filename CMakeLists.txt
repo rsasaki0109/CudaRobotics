@@ -155,6 +155,12 @@ add_executable(benchmark_diff_mppi src/benchmark_diff_mppi.cu)
 add_executable(benchmark_mppi_control_update src/benchmark_mppi_control_update.cu)
 add_executable(benchmark_mppi_softmin src/benchmark_mppi_softmin.cu)
 add_executable(benchmark_mppi_diagnostics src/benchmark_mppi_diagnostics.cu)
+add_executable(benchmark_mppi_rollout_ablation
+  src/benchmark_mppi_rollout_ablation.cpp
+  src/mppi_gpu.cu)
+target_compile_options(benchmark_mppi_rollout_ablation PRIVATE
+  $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
+add_executable(benchmark_mppi_rng src/benchmark_mppi_rng.cu)
 add_executable(benchmark_diff_mppi_cartpole src/benchmark_diff_mppi_cartpole.cu)
 add_executable(benchmark_diff_mppi_dynamic_bicycle src/benchmark_diff_mppi_dynamic_bicycle.cu)
 add_executable(benchmark_diff_mppi_manipulator src/benchmark_diff_mppi_manipulator.cu)

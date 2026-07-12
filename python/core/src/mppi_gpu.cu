@@ -269,9 +269,12 @@ __global__ void rollout_kernel(
       const float w_dyn = fabsf(v) / p.min_turning_r;
       w = fminf(fmaxf(w, -w_dyn), w_dyn);
     }
-    perturbed[(k * p.T + t) * kCtrlDim + 0] = v_raw;
-    perturbed[(k * p.T + t) * kCtrlDim + 1] = vy_raw;
-    perturbed[(k * p.T + t) * kCtrlDim + 2] = w_raw;
+    // Control-major layout [T * kCtrlDim][K]. Adjacent rollout threads write
+    // adjacent addresses, avoiding the T*kCtrlDim stride of rollout-major
+    // storage. The control update reads the same layout coalescently.
+    perturbed[(t * kCtrlDim + 0) * p.K + k] = v_raw;
+    perturbed[(t * kCtrlDim + 1) * p.K + k] = vy_raw;
+    perturbed[(t * kCtrlDim + 2) * p.K + k] = w_raw;
 
     const float prev_x = x;
     const float prev_y = y;
@@ -416,10 +419,9 @@ __global__ void rollout_kernel(
   rng_states[k] = rng;
 }
 
-// nominal[t][d] = sum_k weight[k] * perturbed[k][t][d]. A block owns a tile of
-// 32 adjacent controls: warp lanes therefore read adjacent perturbed values,
-// while the block's eight warps split K. This preserves coalescing and exposes
-// more parallelism than the previous one-thread-per-control implementation.
+// nominal[t][d] = sum_k weight[k] * perturbed[t][d][k]. One block owns one
+// control element and reduces adjacent K entries in parallel. Both weights and
+// perturbed controls are coalesced in the control-major layout.
 __global__ void update_controls_kernel(
   const float * __restrict__ perturbed,
   const float * __restrict__ weights,
@@ -427,28 +429,26 @@ __global__ void update_controls_kernel(
   float * __restrict__ nominal,
   int K, int T)
 {
-  constexpr int kTile = 32;
-  constexpr int kWarps = 8;
-  const int lane = threadIdx.x & (kTile - 1);
-  const int warp = threadIdx.x / kTile;
-  const int idx = blockIdx.x * kTile + lane;
+  const int idx = blockIdx.x;
   const int controls = T * kCtrlDim;
+  if (idx >= controls) {
+    return;
+  }
   extern __shared__ float partial[];
   float acc = 0.0f;
-  if (idx < controls) {
-    for (int k = warp; k < K; k += kWarps) {
-      acc += weights[k] * perturbed[k * controls + idx];
-    }
+  for (int k = threadIdx.x; k < K; k += blockDim.x) {
+    acc += weights[k] * perturbed[idx * K + k];
   }
   partial[threadIdx.x] = acc;
   __syncthreads();
-  if (warp == 0 && idx < controls) {
-    float total = partial[lane];
-#pragma unroll
-    for (int other = 1; other < kWarps; ++other) {
-      total += partial[other * kTile + lane];
+  for (int offset = blockDim.x / 2; offset > 0; offset >>= 1) {
+    if (threadIdx.x < offset) {
+      partial[threadIdx.x] += partial[threadIdx.x + offset];
     }
-    nominal[idx] = total / *weight_sum;
+    __syncthreads();
+  }
+  if (threadIdx.x == 0) {
+    nominal[idx] = partial[0] / *weight_sum;
   }
 }
 
@@ -749,7 +749,7 @@ MppiResult MppiGpu::computeInternal(
     CUDA_CHECK(cudaGetLastError());
     CUDA_CHECK(cub::DeviceReduce::Sum(
         im.d_reduce_temp, im.reduce_temp_bytes, im.d_weights, im.d_weight_sum, K));
-    update_controls_kernel<<<(ctrl_count + 31) / 32, threads, threads * sizeof(float)>>>(
+    update_controls_kernel<<<ctrl_count, threads, threads * sizeof(float)>>>(
       im.d_perturbed, im.d_weights, im.d_weight_sum, im.d_nominal, K, T);
     CUDA_CHECK(cudaGetLastError());
   }

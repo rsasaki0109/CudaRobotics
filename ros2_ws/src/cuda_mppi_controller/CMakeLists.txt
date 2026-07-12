@@ -1,6 +1,8 @@
 cmake_minimum_required(VERSION 3.18)
 project(cuda_mppi_controller LANGUAGES CXX CUDA)
 
+option(CUDA_MPPI_FAST_MATH "Use CUDA fast math in MPPI (may change trajectories)" OFF)
+
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CUDA_STANDARD 17)
@@ -59,6 +61,9 @@ set_target_properties(${PROJECT_NAME} PROPERTIES
 target_compile_options(${PROJECT_NAME} PRIVATE
   $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>
 )
+if(CUDA_MPPI_FAST_MATH)
+  target_compile_options(${PROJECT_NAME} PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--use_fast_math>)
+endif()
 if(DEFINED ENV{ROS_DISTRO} AND "$ENV{ROS_DISTRO}" STREQUAL "humble")
   target_compile_definitions(${PROJECT_NAME} PRIVATE CUDAMPPI_NAV2_HUMBLE=1)
 endif()
