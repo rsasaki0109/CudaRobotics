@@ -31,6 +31,7 @@
 
 #include <cuda_runtime.h>
 #include <curand_kernel.h>
+#include <cub/device/device_scan.cuh>
 #include <opencv2/opencv.hpp>
 
 #include <algorithm>
@@ -656,10 +657,8 @@ __global__ void normalize_kernel(float* wgt, float sum, int n) {
     wgt[i] = (sum > 1e-30f) ? wgt[i] / sum : 1.0f / n;
 }
 
-__global__ void cumsum_kernel(const float* wgt, float* wcum, int n) {
+__global__ void close_cdf_kernel(float* wcum, int n) {
     if (threadIdx.x != 0 || blockIdx.x != 0) return;
-    float acc = 0.0f;
-    for (int i = 0; i < n; ++i) { acc += wgt[i]; wcum[i] = acc; }
     wcum[n - 1] = 1.0f;
 }
 
@@ -844,6 +843,8 @@ struct ParticleSet {
     float *x, *y, *z, *qw, *qx, *qy, *qz, *w, *score;
     float *stx, *sty, *stz, *srx, *sry, *srz;
     float *x2, *y2, *z2, *qw2, *qx2, *qy2, *qz2, *wcum, *redux;
+    void* scan_tmp = nullptr;
+    size_t scan_tmp_bytes = 0;
     curandState* rng;
     std::vector<float> hx, hy, hz;
 
@@ -854,6 +855,8 @@ struct ParticleSet {
         m(&x); m(&y); m(&z); m(&qw); m(&qx); m(&qy); m(&qz); m(&w); m(&score);
         m(&stx); m(&sty); m(&stz); m(&srx); m(&sry); m(&srz);
         m(&x2); m(&y2); m(&z2); m(&qw2); m(&qx2); m(&qy2); m(&qz2); m(&wcum);
+        CUDA_CHECK(cub::DeviceScan::InclusiveSum(nullptr, scan_tmp_bytes, w, wcum, n));
+        CUDA_CHECK(cudaMalloc(&scan_tmp, scan_tmp_bytes));
         CUDA_CHECK(cudaMalloc(&redux, sizeof(float)));
         CUDA_CHECK(cudaMalloc(&rng, n * sizeof(curandState)));
         hx.resize(n); hy.resize(n); hz.resize(n);
@@ -865,6 +868,7 @@ struct ParticleSet {
                          x2, y2, z2, qw2, qx2, qy2, qz2, wcum, redux})
             CUDA_CHECK(cudaFree(p));
         CUDA_CHECK(cudaFree(rng));
+        CUDA_CHECK(cudaFree(scan_tmp));
     }
     void copy_pos_host() {
         CUDA_CHECK(cudaMemcpy(hx.data(), x, n * sizeof(float), cudaMemcpyDeviceToHost));
@@ -975,7 +979,8 @@ static Pose6 local_step(ParticleSet& p, RepBuckets& rb, const DeviceMap& dm,
     normalize_kernel<<<blocks, THREADS>>>(p.w, sum, p.n);
     CUDA_CHECK(cudaGetLastError());
     Pose6 est = representative(p, rb);
-    cumsum_kernel<<<1, 1>>>(p.w, p.wcum, p.n);
+    CUDA_CHECK(cub::DeviceScan::InclusiveSum(p.scan_tmp, p.scan_tmp_bytes, p.w, p.wcum, p.n));
+    close_cdf_kernel<<<1, 1>>>(p.wcum, p.n);
     CUDA_CHECK(cudaGetLastError());
     std::uniform_real_distribution<float> unif(0.0f, 1.0f / p.n);
     resample_kernel<<<blocks, THREADS>>>(p.x, p.y, p.z, p.qw, p.qx, p.qy, p.qz, p.wcum,

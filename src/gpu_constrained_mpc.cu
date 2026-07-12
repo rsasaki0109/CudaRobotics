@@ -46,7 +46,7 @@
 namespace cudabot {
 
 static const int NX=3, NU=2, T=24, OBST=6;
-static const float DT=0.12f;
+static constexpr float DT=0.12f;
 
 struct Obs { float x,y,r; };
 __constant__ Obs c_obs[OBST];

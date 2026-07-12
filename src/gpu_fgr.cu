@@ -153,10 +153,15 @@ __global__ void fpfh_kernel(const float* __restrict__ P,const int* __restrict__ 
 
 // for each source point, nearest target FPFH (33-D brute force) -> corr index.
 __global__ void match_kernel(const float* __restrict__ FS,int M,const float* __restrict__ FT,int N,int* __restrict__ corr){
-    int i=blockIdx.x*blockDim.x+threadIdx.x; if(i>=M)return;
-    const float* fs=FS+i*FDIM; float best=1e30f; int bj=-1;
-    for(int j=0;j<N;++j){ const float* ft=FT+j*FDIM; float d=0; for(int b=0;b<FDIM;++b){float e=fs[b]-ft[b]; d+=e*e;} if(d<best){best=d;bj=j;} }
-    corr[i]=bj; }
+    constexpr int TILE=32; __shared__ float ftile[TILE*FDIM];
+    int i=blockIdx.x*blockDim.x+threadIdx.x; bool active=i<M;
+    const float* fs=active?FS+i*FDIM:FS; float best=1e30f; int bj=-1;
+    for(int base=0;base<N;base+=TILE){ int count=min(TILE,N-base);
+        for(int q=threadIdx.x;q<count*FDIM;q+=blockDim.x)ftile[q]=FT[base*FDIM+q];
+        __syncthreads();
+        if(active)for(int j=0;j<count;++j){float d=0;for(int b=0;b<FDIM;++b){float e=fs[b]-ftile[j*FDIM+b];d+=e*e;}if(d<best){best=d;bj=base+j;}}
+        __syncthreads(); }
+    if(active)corr[i]=bj; }
 
 // FGR weighted twist GN over correspondences: p_i=T s_i, q_i=target[corr_i],
 // Geman-McClure weight w=(mu/(mu+||r||^2))^2.  Accumulate H(21)/g(6)/cost/wsum.
