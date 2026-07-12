@@ -152,6 +152,9 @@ add_executable(comparison_diff_mppi src/comparison_diff_mppi.cu)
 target_link_libraries(comparison_diff_mppi ${OpenCV_LIBS})
 
 add_executable(benchmark_diff_mppi src/benchmark_diff_mppi.cu)
+add_executable(benchmark_mppi_control_update src/benchmark_mppi_control_update.cu)
+add_executable(benchmark_mppi_softmin src/benchmark_mppi_softmin.cu)
+add_executable(benchmark_mppi_diagnostics src/benchmark_mppi_diagnostics.cu)
 add_executable(benchmark_diff_mppi_cartpole src/benchmark_diff_mppi_cartpole.cu)
 add_executable(benchmark_diff_mppi_dynamic_bicycle src/benchmark_diff_mppi_dynamic_bicycle.cu)
 add_executable(benchmark_diff_mppi_manipulator src/benchmark_diff_mppi_manipulator.cu)
@@ -868,7 +871,22 @@ add_test(NAME check_planner_falsifier_summary
     --markdown-out ${CMAKE_BINARY_DIR}/gpu_planner_falsifier_benchmark.md
     --strict
   WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
-set_tests_properties(validate_design_workflow check_design_regressions check_scaffold check_repro_suite_dry_run check_mppi_zoo_smoke_dry_run check_mppi_zoo_chart_render check_planner_showdown_summary check_planner_showdown_matrix_summary check_planner_falsifier_summary
+add_test(NAME check_erl_navigation_bag_inspector
+  COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/test_prepare_erl_navigation_bags.py
+  WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+add_test(NAME check_offline_rosbag_db3_analyzer
+  COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/test_analyze_rosbag_db3.py
+  WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+add_test(NAME check_offline_rosbag_motion_decoder
+  COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/test_export_rosbag_motion.py
+  WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+add_test(NAME check_offline_rosbag_motion_comparison
+  COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/test_compare_rosbag_motion.py
+  WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+add_test(NAME check_offline_rosbag_clearance_decoder
+  COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/test_analyze_rosbag_clearance.py
+  WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+set_tests_properties(validate_design_workflow check_design_regressions check_scaffold check_repro_suite_dry_run check_mppi_zoo_smoke_dry_run check_mppi_zoo_chart_render check_planner_showdown_summary check_planner_showdown_matrix_summary check_planner_falsifier_summary check_erl_navigation_bag_inspector check_offline_rosbag_db3_analyzer check_offline_rosbag_motion_decoder check_offline_rosbag_motion_comparison check_offline_rosbag_clearance_decoder
   PROPERTIES
   TIMEOUT 30
   LABELS "python")

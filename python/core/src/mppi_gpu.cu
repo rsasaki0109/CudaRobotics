@@ -5,11 +5,13 @@
 
 #include <cuda_runtime.h>
 #include <curand_kernel.h>
+#include <cub/device/device_reduce.cuh>
 
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <stdexcept>
+#include <string>
 #include <vector>
 
 namespace cuda_mppi_controller
@@ -414,22 +416,79 @@ __global__ void rollout_kernel(
   rng_states[k] = rng;
 }
 
-// nominal[t][d] = sum_k weight[k] * perturbed[k][t][d]
+// nominal[t][d] = sum_k weight[k] * perturbed[k][t][d]. A block owns a tile of
+// 32 adjacent controls: warp lanes therefore read adjacent perturbed values,
+// while the block's eight warps split K. This preserves coalescing and exposes
+// more parallelism than the previous one-thread-per-control implementation.
 __global__ void update_controls_kernel(
   const float * __restrict__ perturbed,
   const float * __restrict__ weights,
+  const float * __restrict__ weight_sum,
   float * __restrict__ nominal,
   int K, int T)
 {
-  const int idx = blockIdx.x * blockDim.x + threadIdx.x;
-  if (idx >= T * kCtrlDim) {
-    return;
-  }
+  constexpr int kTile = 32;
+  constexpr int kWarps = 8;
+  const int lane = threadIdx.x & (kTile - 1);
+  const int warp = threadIdx.x / kTile;
+  const int idx = blockIdx.x * kTile + lane;
+  const int controls = T * kCtrlDim;
+  extern __shared__ float partial[];
   float acc = 0.0f;
-  for (int k = 0; k < K; ++k) {
-    acc += weights[k] * perturbed[k * T * kCtrlDim + idx];
+  if (idx < controls) {
+    for (int k = warp; k < K; k += kWarps) {
+      acc += weights[k] * perturbed[k * controls + idx];
+    }
   }
-  nominal[idx] = acc;
+  partial[threadIdx.x] = acc;
+  __syncthreads();
+  if (warp == 0 && idx < controls) {
+    float total = partial[lane];
+#pragma unroll
+    for (int other = 1; other < kWarps; ++other) {
+      total += partial[other * kTile + lane];
+    }
+    nominal[idx] = total / *weight_sum;
+  }
+}
+
+__global__ void softmin_weights_kernel(
+  const float * __restrict__ costs,
+  float * __restrict__ weights,
+  const float * __restrict__ min_cost,
+  float lambda, int K)
+{
+  const int k = blockIdx.x * blockDim.x + threadIdx.x;
+  if (k < K) {
+    weights[k] = expf(-(costs[k] - *min_cost) / lambda);
+  }
+}
+
+struct DeviceDiagnostics
+{
+  float min_cost;
+  float cost_sum;
+  int valid_rollouts;
+};
+
+__global__ void count_valid_rollouts_kernel(
+  const float * costs, int * valid_rollouts, float collision_cost, int K)
+{
+  const int k = blockIdx.x * blockDim.x + threadIdx.x;
+  if (k < K && costs[k] < collision_cost) {
+    atomicAdd(valid_rollouts, 1);
+  }
+}
+
+__global__ void pack_diagnostics_kernel(
+  const float * min_cost, const float * cost_sum, const int * valid_rollouts,
+  DeviceDiagnostics * diagnostics)
+{
+  if (blockIdx.x == 0 && threadIdx.x == 0) {
+    diagnostics->min_cost = *min_cost;
+    diagnostics->cost_sum = *cost_sum;
+    diagnostics->valid_rollouts = *valid_rollouts;
+  }
 }
 
 }  // namespace
@@ -444,14 +503,19 @@ struct MppiGpu::Impl
   float * d_perturbed = nullptr;   // [K * T * kCtrlDim]
   float * d_costs = nullptr;       // [K]
   float * d_weights = nullptr;     // [K]
+  float * d_min_cost = nullptr;
+  float * d_weight_sum = nullptr;
+  float * d_cost_sum = nullptr;
+  int * d_valid_rollouts = nullptr;
+  DeviceDiagnostics * d_diagnostics = nullptr;
+  void * d_reduce_temp = nullptr;
+  size_t reduce_temp_bytes = 0;
   float * d_path = nullptr;        // [kMaxPathPoints * 2]
   unsigned char * d_costmap = nullptr;
   float * d_distance_field = nullptr;
   size_t costmap_capacity = 0;
   size_t distance_field_capacity = 0;
 
-  std::vector<float> h_costs;
-  std::vector<float> h_weights;
   std::vector<float> h_nominal;
   std::vector<float> h_last_valid_nominal;
   bool has_last_valid_nominal = false;
@@ -467,10 +531,18 @@ struct MppiGpu::Impl
     CUDA_CHECK(cudaMalloc(&d_perturbed, static_cast<size_t>(K) * T * kCtrlDim * sizeof(float)));
     CUDA_CHECK(cudaMalloc(&d_costs, K * sizeof(float)));
     CUDA_CHECK(cudaMalloc(&d_weights, K * sizeof(float)));
+    CUDA_CHECK(cudaMalloc(&d_min_cost, sizeof(float)));
+    CUDA_CHECK(cudaMalloc(&d_weight_sum, sizeof(float)));
+    CUDA_CHECK(cudaMalloc(&d_cost_sum, sizeof(float)));
+    CUDA_CHECK(cudaMalloc(&d_valid_rollouts, sizeof(int)));
+    CUDA_CHECK(cudaMalloc(&d_diagnostics, sizeof(DeviceDiagnostics)));
+    size_t min_bytes = 0, sum_bytes = 0;
+    CUDA_CHECK(cub::DeviceReduce::Min(nullptr, min_bytes, d_costs, d_min_cost, K));
+    CUDA_CHECK(cub::DeviceReduce::Sum(nullptr, sum_bytes, d_weights, d_weight_sum, K));
+    reduce_temp_bytes = std::max(min_bytes, sum_bytes);
+    CUDA_CHECK(cudaMalloc(&d_reduce_temp, reduce_temp_bytes));
     CUDA_CHECK(cudaMalloc(&d_path, kMaxPathPoints * 2 * sizeof(float)));
 
-    h_costs.resize(K);
-    h_weights.resize(K);
     h_nominal.assign(T * kCtrlDim, 0.0f);
     h_last_valid_nominal.assign(T * kCtrlDim, 0.0f);
 
@@ -487,6 +559,12 @@ struct MppiGpu::Impl
     cudaFree(d_perturbed);
     cudaFree(d_costs);
     cudaFree(d_weights);
+    cudaFree(d_min_cost);
+    cudaFree(d_weight_sum);
+    cudaFree(d_cost_sum);
+    cudaFree(d_valid_rollouts);
+    cudaFree(d_diagnostics);
+    cudaFree(d_reduce_temp);
     cudaFree(d_path);
     cudaFree(d_costmap);
     cudaFree(d_distance_field);
@@ -658,35 +736,35 @@ MppiResult MppiGpu::computeInternal(
   const int threads = 256;
   const int rollout_blocks = (K + threads - 1) / threads;
   const int ctrl_count = T * kCtrlDim;
-  const int update_blocks = (ctrl_count + threads - 1) / threads;
 
-  float min_cost = 0.0f;
   for (int iter = 0; iter < mp.iteration_count; ++iter) {
     rollout_kernel<<<rollout_blocks, threads>>>(
       dp, rollout_costmap, rollout_distance_field, im.d_path, im.d_nominal, im.d_perturbed,
       im.d_costs, im.d_rng);
     CUDA_CHECK(cudaGetLastError());
-    CUDA_CHECK(cudaMemcpy(
-        im.h_costs.data(), im.d_costs, K * sizeof(float), cudaMemcpyDeviceToHost));
-
-    // softmin weights on host: K floats, negligible next to the rollout
-    min_cost = *std::min_element(im.h_costs.begin(), im.h_costs.end());
-    double sum = 0.0;
-    for (int k = 0; k < K; ++k) {
-      im.h_weights[k] = std::exp(-(im.h_costs[k] - min_cost) / mp.lambda);
-      sum += im.h_weights[k];
-    }
-    const float inv = static_cast<float>(1.0 / sum);
-    for (int k = 0; k < K; ++k) {
-      im.h_weights[k] *= inv;
-    }
-    CUDA_CHECK(cudaMemcpy(
-        im.d_weights, im.h_weights.data(), K * sizeof(float), cudaMemcpyHostToDevice));
-
-    update_controls_kernel<<<update_blocks, threads>>>(
-      im.d_perturbed, im.d_weights, im.d_nominal, K, T);
+    CUDA_CHECK(cub::DeviceReduce::Min(
+        im.d_reduce_temp, im.reduce_temp_bytes, im.d_costs, im.d_min_cost, K));
+    softmin_weights_kernel<<<rollout_blocks, threads>>>(
+      im.d_costs, im.d_weights, im.d_min_cost, mp.lambda, K);
+    CUDA_CHECK(cudaGetLastError());
+    CUDA_CHECK(cub::DeviceReduce::Sum(
+        im.d_reduce_temp, im.reduce_temp_bytes, im.d_weights, im.d_weight_sum, K));
+    update_controls_kernel<<<(ctrl_count + 31) / 32, threads, threads * sizeof(float)>>>(
+      im.d_perturbed, im.d_weights, im.d_weight_sum, im.d_nominal, K, T);
     CUDA_CHECK(cudaGetLastError());
   }
+
+  CUDA_CHECK(cub::DeviceReduce::Sum(
+      im.d_reduce_temp, im.reduce_temp_bytes, im.d_costs, im.d_cost_sum, K));
+  CUDA_CHECK(cudaMemset(im.d_valid_rollouts, 0, sizeof(int)));
+  count_valid_rollouts_kernel<<<rollout_blocks, threads>>>(
+    im.d_costs, im.d_valid_rollouts, mp.collision_cost, K);
+  pack_diagnostics_kernel<<<1, 1>>>(
+    im.d_min_cost, im.d_cost_sum, im.d_valid_rollouts, im.d_diagnostics);
+  CUDA_CHECK(cudaGetLastError());
+  DeviceDiagnostics diagnostics;
+  CUDA_CHECK(cudaMemcpy(
+      &diagnostics, im.d_diagnostics, sizeof(diagnostics), cudaMemcpyDeviceToHost));
 
   CUDA_CHECK(cudaMemcpy(
       im.h_nominal.data(), im.d_nominal,
@@ -708,19 +786,11 @@ MppiResult MppiGpu::computeInternal(
 
   MppiResult res;
   res.sampled_rollouts = K;
-  double cost_sum = 0.0;
-  int valid_rollouts = 0;
-  for (const float cost : im.h_costs) {
-    cost_sum += cost;
-    if (cost < mp.collision_cost) {
-      ++valid_rollouts;
-    }
-  }
-  res.best_cost = min_cost;
-  res.mean_cost = static_cast<float>(cost_sum / static_cast<double>(K));
-  res.valid_rollouts = valid_rollouts;
-  res.valid_rollout_ratio = static_cast<float>(valid_rollouts) / static_cast<float>(K);
-  res.all_colliding = min_cost >= mp.collision_cost;
+  res.best_cost = diagnostics.min_cost;
+  res.mean_cost = diagnostics.cost_sum / static_cast<float>(K);
+  res.valid_rollouts = diagnostics.valid_rollouts;
+  res.valid_rollout_ratio = static_cast<float>(diagnostics.valid_rollouts) / static_cast<float>(K);
+  res.all_colliding = diagnostics.min_cost >= mp.collision_cost;
 
   if (res.all_colliding) {
     ++im.consecutive_all_colliding;
