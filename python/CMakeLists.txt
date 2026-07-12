@@ -1,6 +1,8 @@
 cmake_minimum_required(VERSION 3.18)
 project(cudarobotics_python LANGUAGES CXX CUDA)
 
+option(CUDA_MPPI_FAST_MATH "Use CUDA fast math in the MPPI/registration extension (may change trajectories)" OFF)
+
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CUDA_STANDARD 17)
@@ -39,6 +41,12 @@ target_link_libraries(_cudarobotics PRIVATE CUDA::cudart CUDA::curand)
 target_compile_options(_cudarobotics PRIVATE
   $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>
 )
+if(CUDA_MPPI_FAST_MATH)
+  set_source_files_properties(
+    ${CUDAROBOTICS_ROOT}/src/mppi_gpu.cu
+    PROPERTIES COMPILE_OPTIONS "--use_fast_math"
+  )
+endif()
 set_target_properties(_cudarobotics PROPERTIES
   POSITION_INDEPENDENT_CODE ON
   CUDA_SEPARABLE_COMPILATION OFF

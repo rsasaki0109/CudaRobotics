@@ -128,3 +128,11 @@ python3 scripts/export_rosbag_motion.py /data/erl_navigation/extracted/Prueba5/*
 
 This writes `cmd_vel.csv`, `odometry.csv`, and `motion_summary.json`, including
 path length, displacement, observed speeds, command speeds, and stop ratio.
+
+## Optional fast-math build
+
+For latency-sensitive, smaller-batch deployments, the CUDA core can be built
+with `-DCUDA_MPPI_FAST_MATH=ON`. It is disabled by default because it changes
+floating-point behavior and may change an MPPI trajectory. See
+[`results/mppi_fast_math_2026-07-12.md`](results/mppi_fast_math_2026-07-12.md)
+for the measured speed/quality trade-off and build commands.
