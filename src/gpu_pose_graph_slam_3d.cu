@@ -736,6 +736,30 @@ __global__ void add_damping_kernel(int n, float damping, const float* x, float* 
     if (idx < n) y[idx] += damping * x[idx];
 }
 
+__global__ void pcg_alpha_kernel(float* s) {
+    if (blockIdx.x || threadIdx.x) return;
+    s[3] = s[2] > 1.0e-20f ? s[0] / s[2] : 0.0f;
+}
+
+__global__ void pcg_beta_kernel(float* s) {
+    if (blockIdx.x || threadIdx.x) return;
+    const bool active = s[4] >= fmaxf(s[1], 1.0e-12f) * 1.0e-7f;
+    s[3] = active ? s[5] / fmaxf(s[0], 1.0e-20f) : 0.0f;
+    s[0] = s[5];
+}
+
+__global__ void axpy_device_scalar_kernel(int n, const float* a, float sign,
+                                           const float* x, float* y) {
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i < n) y[i] += sign * a[0] * x[i];
+}
+
+__global__ void xpay_device_scalar_kernel(int n, const float* a,
+                                           const float* x, float* y) {
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i < n) y[i] = x[i] + a[0] * y[i];
+}
+
 __global__ void zero_anchor6_kernel(float* x) {
     int k = threadIdx.x;
     if (k < 6) x[k] = 0.0f;
@@ -1038,7 +1062,7 @@ static double run_gpu_solver(const std::vector<Pose>& initial,
     CUDA_CHECK(cudaMalloc(&d_z, n_state * sizeof(float)));
     CUDA_CHECK(cudaMalloc(&d_p, n_state * sizeof(float)));
     CUDA_CHECK(cudaMalloc(&d_Ap, n_state * sizeof(float)));
-    CUDA_CHECK(cudaMalloc(&d_scratch, sizeof(float)));
+    CUDA_CHECK(cudaMalloc(&d_scratch, 6 * sizeof(float)));
 
     CUDA_CHECK(cudaMemcpy(d_ei, ei.data(), n_edges * sizeof(int), cudaMemcpyHostToDevice));
     CUDA_CHECK(cudaMemcpy(d_ej, ej.data(), n_edges * sizeof(int), cudaMemcpyHostToDevice));
@@ -1084,15 +1108,9 @@ static double run_gpu_solver(const std::vector<Pose>& initial,
         zero_anchor6_kernel<<<1, 6>>>(d_z);
         copy_kernel<<<blocks_state, THREADS>>>(n_state, d_z, d_p);
 
-        float rz_old = 0.0f;
-        float rr0 = 0.0f;
-        CUDA_CHECK(cudaMemset(d_scratch, 0, sizeof(float)));
+        CUDA_CHECK(cudaMemset(d_scratch, 0, 6 * sizeof(float)));
         dot_kernel<<<32, 256>>>(n_state, d_r, d_z, d_scratch);
-        CUDA_CHECK(cudaMemcpy(&rz_old, d_scratch, sizeof(float), cudaMemcpyDeviceToHost));
-        CUDA_CHECK(cudaMemset(d_scratch, 0, sizeof(float)));
-        dot_kernel<<<32, 256>>>(n_state, d_r, d_r, d_scratch);
-        CUDA_CHECK(cudaMemcpy(&rr0, d_scratch, sizeof(float), cudaMemcpyDeviceToHost));
-        rr0 = fmaxf(rr0, 1.0e-12f);
+        dot_kernel<<<32, 256>>>(n_state, d_r, d_r, d_scratch + 1);
 
         for (int pcg = 0; pcg < PCG_ITERS; pcg++) {
             zero_kernel<<<blocks_state, THREADS>>>(n_state, d_Ap);
@@ -1103,31 +1121,21 @@ static double run_gpu_solver(const std::vector<Pose>& initial,
             add_damping_kernel<<<blocks_state, THREADS>>>(n_state, DAMPING, d_p, d_Ap);
             zero_anchor6_kernel<<<1, 6>>>(d_Ap);
 
-            float pAp = 0.0f;
-            CUDA_CHECK(cudaMemset(d_scratch, 0, sizeof(float)));
-            dot_kernel<<<32, 256>>>(n_state, d_p, d_Ap, d_scratch);
-            CUDA_CHECK(cudaMemcpy(&pAp, d_scratch, sizeof(float), cudaMemcpyDeviceToHost));
-            if (pAp <= 1.0e-20f) break;
-            float alpha = rz_old / pAp;
-            axpy_kernel<<<blocks_state, THREADS>>>(n_state, alpha, d_p, d_dx);
-            axpy_kernel<<<blocks_state, THREADS>>>(n_state, -alpha, d_Ap, d_r);
+            CUDA_CHECK(cudaMemset(d_scratch + 2, 0, sizeof(float)));
+            dot_kernel<<<32, 256>>>(n_state, d_p, d_Ap, d_scratch + 2);
+            pcg_alpha_kernel<<<1, 1>>>(d_scratch);
+            axpy_device_scalar_kernel<<<blocks_state, THREADS>>>(n_state, d_scratch + 3, 1.0f, d_p, d_dx);
+            axpy_device_scalar_kernel<<<blocks_state, THREADS>>>(n_state, d_scratch + 3, -1.0f, d_Ap, d_r);
             zero_anchor6_kernel<<<1, 6>>>(d_r);
 
-            float rr = 0.0f;
-            CUDA_CHECK(cudaMemset(d_scratch, 0, sizeof(float)));
-            dot_kernel<<<32, 256>>>(n_state, d_r, d_r, d_scratch);
-            CUDA_CHECK(cudaMemcpy(&rr, d_scratch, sizeof(float), cudaMemcpyDeviceToHost));
-            if (rr < rr0 * 1.0e-7f) break;
+            CUDA_CHECK(cudaMemset(d_scratch + 4, 0, 2 * sizeof(float)));
+            dot_kernel<<<32, 256>>>(n_state, d_r, d_r, d_scratch + 4);
             apply_precond_kernel<<<blocks_pose, THREADS>>>(N_POSES, d_diag, d_r, DAMPING, d_z);
             zero_anchor6_kernel<<<1, 6>>>(d_z);
-            float rz_new = 0.0f;
-            CUDA_CHECK(cudaMemset(d_scratch, 0, sizeof(float)));
-            dot_kernel<<<32, 256>>>(n_state, d_r, d_z, d_scratch);
-            CUDA_CHECK(cudaMemcpy(&rz_new, d_scratch, sizeof(float), cudaMemcpyDeviceToHost));
-            float beta = rz_new / fmaxf(1.0e-20f, rz_old);
-            xpay_kernel<<<blocks_state, THREADS>>>(n_state, beta, d_z, d_p);
+            dot_kernel<<<32, 256>>>(n_state, d_r, d_z, d_scratch + 5);
+            pcg_beta_kernel<<<1, 1>>>(d_scratch);
+            xpay_device_scalar_kernel<<<blocks_state, THREADS>>>(n_state, d_scratch + 3, d_z, d_p);
             zero_anchor6_kernel<<<1, 6>>>(d_p);
-            rz_old = rz_new;
         }
 
         CUDA_CHECK(cudaMemcpy(dx_host.data(), d_dx, n_state * sizeof(float), cudaMemcpyDeviceToHost));
@@ -1354,10 +1362,15 @@ static void write_video(const std::vector<Snapshot>& snapshots,
                         const std::vector<Pose>& initial,
                         const std::vector<Edge>& edges,
                         const BenchResult& bench) {
-    int mkdir_rc = std::system("mkdir -p gif");
+    int mkdir_rc = 0;
+#ifdef _WIN32
+    mkdir_rc = std::system("if not exist gif mkdir gif");
+#else
+    mkdir_rc = std::system("mkdir -p gif");
+#endif
     if (mkdir_rc != 0) {
         std::fprintf(stderr, "Failed to create gif directory\n");
-        std::exit(1);
+        return;
     }
     const std::string avi_path = std::string("gif/") + OUTPUT_STEM + ".avi";
     const std::string gif_path = std::string("gif/") + OUTPUT_STEM + ".gif";
@@ -1368,7 +1381,7 @@ static void write_video(const std::vector<Snapshot>& snapshots,
         cv::Size(PANEL_W, PANEL_H));
     if (!writer.isOpened()) {
         std::fprintf(stderr, "Failed to open %s\n", avi_path.c_str());
-        std::exit(1);
+        return;
     }
     for (const Snapshot& s : snapshots) writer.write(draw_frame(s, gt, initial, edges, bench));
     for (int i = 0; i < 8; i++) {

@@ -398,11 +398,11 @@ static Dataset build_dataset(unsigned long seed) {
     // 3-loop spiral trajectory so 1000 poses cover the scene without overlap
     for (int i = 0; i < N_POSES; i++) {
         float s = (float)i / (N_POSES - 1);
-        float t = s * 3.0f * 2.0f * (float)M_PI;
+        float t = s * 3.0f * 2.0f * 3.14159265358979323846f;
         float r = 8.0f + 20.0f * s;
         float cx = WORLD * 0.5f + r * std::cos(t);
         float cy = WORLD * 0.5f + r * std::sin(t);
-        float th = t + (float)M_PI / 2.0f;
+        float th = t + 3.14159265358979323846f / 2.0f;
         d.poses_gt[i * 3 + 0] = cx;
         d.poses_gt[i * 3 + 1] = cy;
         d.poses_gt[i * 3 + 2] = th;
