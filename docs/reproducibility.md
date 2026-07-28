@@ -136,3 +136,23 @@ python3 scripts/validate_contact_robustness.py \
 ```
 
 See [`contact_diff_mppi_robustness.md`](contact_diff_mppi_robustness.md).
+
+## Release Preflight
+
+The benchmark suites above regenerate research results. Release candidates use
+a separate preflight so package, registration, artifact, and repository gates
+are recorded together without treating local checks as proof of remote CI:
+
+```bash
+python3 scripts/run_release_preflight.py \
+  --profile gpu \
+  --build-dir build \
+  --dist-dir build/release_v0.2.0/dist \
+  --output-dir build/release_v0.2.0/preflight \
+  --require-clean
+```
+
+The output directory contains `manifest.json`, `report.md`, per-gate logs,
+registration CSV/Markdown, and the Python artifact SHA256 manifest. GitHub
+Build, manylinux wheel, ROS 2, and final evidence checks remain explicit
+external gates and must be attached to the same release-candidate commit.

@@ -52,7 +52,7 @@ cmake.source-dir = "."
 wheel.packages = ["src/cudarobotics"]
 sdist.include = [
   "core/**",
-  "README.md",
+  "/README.md",
 ]
 sdist.exclude = [
   "dist/**",

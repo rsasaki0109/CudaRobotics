@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Ensure the Python extension and ROS package versions stay synchronized."""
+"""Ensure package, release-document, and docs-site versions stay synchronized."""
 
 from __future__ import annotations
 
@@ -35,9 +35,29 @@ def main() -> int:
             REPO / "ros2_ws" / "src" / "cuda_robotics" / "package.xml",
             r"<version>([^<]+)</version>",
         ),
+        "release_notes": capture(
+            REPO / "docs" / "releases" / "v0.2.0_notes.md",
+            r"(?m)^# v([0-9]+\.[0-9]+\.[0-9]+)\b",
+        ),
+        "release_checklist": capture(
+            REPO / "docs" / "releases" / "v0.2.0_smoke_checklist.md",
+            r"(?m)^- Tag: `v([0-9]+\.[0-9]+\.[0-9]+)`$",
+        ),
     }
     assert len(set(versions.values())) == 1, versions
-    print(f"version consistency checks passed: {next(iter(versions.values()))}")
+    version = next(iter(versions.values()))
+    release_label = f"v{version}"
+    docs_pages = (
+        REPO / "docs" / "site" / "index.html",
+        REPO / "docs" / "site" / "install.html",
+        REPO / "docs" / "site" / "nav2.html",
+        REPO / "docs" / "site" / "results.html",
+    )
+    for path in docs_pages:
+        assert release_label in path.read_text(encoding="utf-8"), (
+            f"{release_label} not found in {path}"
+        )
+    print(f"version consistency checks passed: {version}")
     return 0
 
 

@@ -79,7 +79,7 @@ v, vy, w, info = planner.compute(
       <section class="section">
         <div class="section-head">
           <h2>CUDA DLPack Costmap</h2>
-          <p>Only the costmap accepts a device DLPack producer in v0.1.0. Path and footprint inputs remain host arrays.</p>
+          <p>Only the costmap currently accepts a device DLPack producer. Path and footprint inputs remain host arrays.</p>
         </div>
         <div class="card">
           <div class="code">
@@ -145,7 +145,18 @@ v, vy, w, info = planner.compute(
       <section class="section">
         <div class="section-head">
           <h2>Registration Classes</h2>
-          <p>All rigid registration wrappers return rotation, translation, and an info object unless noted.</p>
+          <p>
+            Rigid wrappers retain the tuple-returning `register()` API and add
+            `register_result()` for a normalized, typed `RegistrationResult`.
+          </p>
+        </div>
+        <div class="card">
+          <div class="code">
+<pre><code>result = registration.RobustP2Plane().register_result(target, source)
+rotation = result.rotation
+translation = result.translation
+info = result.info</code></pre>
+          </div>
         </div>
         <div class="table-wrap">
           <table>
