@@ -74,27 +74,46 @@ def sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
+def parse_gpu_identity(
+    output: str, visible: str
+) -> list[dict[str, str]]:
+    gpus = []
+    for line in output.splitlines():
+        fields = [field.strip() for field in line.split(",")]
+        if len(fields) == 5:
+            gpus.append(
+                {
+                    "physical_index": fields[0],
+                    "name": fields[1],
+                    "uuid": fields[2],
+                    "driver_version": fields[3],
+                    "memory_total_mib": fields[4],
+                }
+            )
+    visible = visible.strip()
+    if not visible:
+        return gpus
+    requested = {token.strip() for token in visible.split(",") if token.strip()}
+    if requested == {"-1"}:
+        return []
+    return [
+        gpu
+        for gpu in gpus
+        if gpu["physical_index"] in requested or gpu["uuid"] in requested
+    ]
+
+
 def gpu_identity() -> list[dict[str, str]]:
     output = command_output(
         [
             "nvidia-smi",
-            "--query-gpu=name,uuid,driver_version,memory.total",
+            "--query-gpu=index,name,uuid,driver_version,memory.total",
             "--format=csv,noheader,nounits",
         ]
     )
-    gpus = []
-    for line in output.splitlines():
-        fields = [field.strip() for field in line.split(",")]
-        if len(fields) == 4:
-            gpus.append(
-                {
-                    "name": fields[0],
-                    "uuid": fields[1],
-                    "driver_version": fields[2],
-                    "memory_total_mib": fields[3],
-                }
-            )
-    return gpus
+    return parse_gpu_identity(
+        output, os.environ.get("CUDA_VISIBLE_DEVICES", "")
+    )
 
 
 def git_dirty() -> bool | None:

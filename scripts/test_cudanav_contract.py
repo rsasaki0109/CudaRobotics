@@ -420,6 +420,28 @@ def main() -> int:
         "temporary.replace(output)",
     ):
         assert term in renderer_source
+    multi_gpu_source = (
+        ROOT / "scripts" / "cudanav_multi_gpu.py"
+    ).read_text(encoding="utf-8")
+    for term in (
+        '"same_git_commit"',
+        '"same_config"',
+        '"gpu_device_coverage"',
+        '"gpu_model_coverage"',
+        '"device_binding"',
+        "is_relative_to(root)",
+    ):
+        assert term in multi_gpu_source
+    multi_gpu_runner = (
+        ROOT / "scripts" / "run_cudanav_multi_gpu.py"
+    ).read_text(encoding="utf-8")
+    for term in (
+        '"CUDA_VISIBLE_DEVICES"',
+        '"minimum_gpu_devices"',
+        '"minimum_gpu_models"',
+        "output inside the repository must be git-ignored",
+    ):
+        assert term in multi_gpu_runner
 
     architecture = (
         ROOT / "docs" / "cudanav_architecture.md"

@@ -78,6 +78,9 @@ sudo apt install python3-pil ros-jazzy-ros2bag \
   ros-jazzy-rosbag2-storage-mcap
 ```
 
+For hardware-matrix acquisition and cross-run invariants, continue with
+[cudanav_multi_gpu.md](cudanav_multi_gpu.md).
+
 The S-course geometry and path clearance have a no-ROS deterministic unit test.
 The ROS Jazzy workflow compiles the complete stack, loads both plugins, and runs
 all no-GPU tests. A real GPU run of this launch is still required before its

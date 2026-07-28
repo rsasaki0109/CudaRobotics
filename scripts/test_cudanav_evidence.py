@@ -82,7 +82,15 @@ class CudaNavEvidenceTest(unittest.TestCase):
                 "git_commit": "a" * 40,
                 "git_dirty": False,
                 "config_sha256": config_hash,
-                "gpu": [{"name": "test"}],
+                "gpu": [
+                    {
+                        "physical_index": "0",
+                        "name": "test",
+                        "uuid": "GPU-test",
+                        "driver_version": "999.0",
+                        "memory_total_mib": "8192",
+                    }
+                ],
                 "artifacts": {
                     "summary": "mission_summary.json",
                     "trajectory": "trajectory.csv",

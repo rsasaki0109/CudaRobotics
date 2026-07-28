@@ -14,10 +14,14 @@ on:
       - ros2_ws/src/cuda_nav_bringup/**
       - ros2_ws/src/cuda_mppi_controller/**
       - scripts/cudanav_evidence.py
+      - scripts/cudanav_multi_gpu.py
       - scripts/run_cudanav_closed_loop.py
+      - scripts/run_cudanav_multi_gpu.py
       - scripts/render_cudanav_trajectory.py
       - scripts/test_cudanav_evidence.py
+      - scripts/test_cudanav_multi_gpu.py
       - scripts/validate_cudanav_closed_loop.py
+      - scripts/validate_cudanav_multi_gpu.py
       - include/cudarobotics/kiss_icp_gpu.hpp
       - src/gpu_kiss_icp.cu
       - include/cudarobotics/voxel_mapping_gpu.hpp
@@ -39,10 +43,14 @@ on:
       - ros2_ws/src/cuda_nav_bringup/**
       - ros2_ws/src/cuda_mppi_controller/**
       - scripts/cudanav_evidence.py
+      - scripts/cudanav_multi_gpu.py
       - scripts/run_cudanav_closed_loop.py
+      - scripts/run_cudanav_multi_gpu.py
       - scripts/render_cudanav_trajectory.py
       - scripts/test_cudanav_evidence.py
+      - scripts/test_cudanav_multi_gpu.py
       - scripts/validate_cudanav_closed_loop.py
+      - scripts/validate_cudanav_multi_gpu.py
       - include/cudarobotics/kiss_icp_gpu.hpp
       - src/gpu_kiss_icp.cu
       - include/cudarobotics/voxel_mapping_gpu.hpp
@@ -125,6 +133,7 @@ jobs:
           cd ros2_ws
           source install/setup.bash
           python ../scripts/test_cudanav_evidence.py
+          python ../scripts/test_cudanav_multi_gpu.py
           ros2 run cuda_voxel_costmap_layer plugin_load_test
           ros2 run cuda_mppi_controller plugin_load_test
           ros2 run cuda_mppi_controller parameter_validation_test
