@@ -34,13 +34,13 @@ explicit failure reporting across the complete loop.
 
 | Area | Implemented | Evidence still required |
 |---|---|---|
-| v0.2 closure | Release preflight, artifact verifier, synchronized Python CUDA core, release notes/site | Green final-commit Build, Python manylinux, and ROS 2 workflows; tag/release |
+| v0.2 closure | CPU/GPU release preflight, rebuilt sdist/Windows wheel, artifact verifier, synchronized Python CUDA core, release notes/site | Green final-commit Build, Python manylinux, and ROS 2 workflows; tag/release |
 | GPU odometry | Reusable voxel-hash KISS-ICP core and lifecycle ROS component | ROS 2 Jazzy compile plus recorded-stream runtime evidence |
 | Mapping | Rolling voxel map, exact typed ESDF, lifecycle nodes | ROS 2 Jazzy stream latency/correctness evidence |
 | Nav2 integration | Voxel costmap plugin, CUDA MPPI, deterministic closed-loop bringup | Plugin-load CI and release-profile 10-minute GPU run |
 | Reproducibility | Closed-loop, real-rosbag shadow, and multi-GPU manifest gates | One release run, one real bag run, and two physical GPU models |
-| Contact paper | 32,400-episode robustness protocol, statistics, validator | Complete GPU matrix, exact matched-compute, and external-fidelity experiment |
-| Papers | Machine-checked claim/evidence ledgers | Every submission-required claim must reach `supported` |
+| Contact paper | Published 32,400-episode robustness, exact 10 ms matched-compute, and 3,150-episode closed-loop MuJoCo evidence | Submission freeze, narrative/table regeneration, and optional independent-hardware replication |
+| Papers | Contact-rich Diff-MPPI ledger is `ready: true`; systems ledger is machine-checked | Complete CudaNav closed-loop, recorded-shadow, multi-GPU, and ROS 2 evidence |
 
 Implementation status is not evidence status. The machine-readable paper
 ledgers under `paper/artifacts/` remain `ready: false` until the rightmost

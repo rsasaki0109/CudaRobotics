@@ -31,14 +31,15 @@
     },
     {
       "id": "matched_compute_contact",
-      "statement": "Hybrid refinement improves contact-task success against sampling-only baselines under an exact matched wall-clock controller budget.",
+      "statement": "With enforced 10 ms control slots and held-out seeds, Diff-MPPI-3 reaches 1.00 real-time success on box_align_contact_loss versus MPPI at 0.467, a +0.533 paired delta with Holm p=0.000305.",
       "submission_required": true,
-      "status": "planned",
+      "status": "supported",
       "evidence": [
         "contact_matched_compute"
       ],
       "limitations": [
-        "Current contact tables compare fixed K and report latency but do not enforce exact matched time."
+        "The other four scenario cells are not Holm-significant, and box_align_detour remains 0/30 for every planner.",
+        "All planners calibrated to K=1024 on the reference GTX 1660 Ti; the equal-budget claim is enforced by the 10 ms slot, not by different selected sample counts."
       ]
     },
     {
@@ -230,7 +231,7 @@
     },
     {
       "id": "contact_matched_compute",
-      "status": "pending",
+      "status": "complete",
       "kind": "csv_assertions",
       "generator_command": [
         "python3",
@@ -241,6 +242,52 @@
         "bin/benchmark_diff_mppi_pushing_box",
         "--profile",
         "release"
+      ],
+      "artifacts": [
+        {
+          "path": "docs/results/contact_matched_compute_2026-07-28_comparisons.csv",
+          "normalization": "text_lf",
+          "sha256": "dcb33318871f4f5915f961439cc7b0f10ed6c8768ee92dafff6db20f44d6b4d8"
+        }
+      ],
+      "assertions": [
+        {
+          "filters": {
+            "scenario": "box_align_contact_loss",
+            "planner": "diff_mppi_3",
+            "baseline": "mppi"
+          },
+          "field": "paired_episodes",
+          "aggregate": "mean",
+          "min_rows": 1,
+          "op": "eq",
+          "value": 30
+        },
+        {
+          "filters": {
+            "scenario": "box_align_contact_loss",
+            "planner": "diff_mppi_3",
+            "baseline": "mppi"
+          },
+          "field": "real_time_success_delta",
+          "aggregate": "mean",
+          "min_rows": 1,
+          "op": "approx",
+          "value": 0.5333333333333333,
+          "tolerance": 1e-12
+        },
+        {
+          "filters": {
+            "scenario": "box_align_contact_loss",
+            "planner": "diff_mppi_3",
+            "baseline": "mppi"
+          },
+          "field": "mcnemar_holm_p",
+          "aggregate": "mean",
+          "min_rows": 1,
+          "op": "lt",
+          "value": 0.001
+        }
       ]
     },
     {

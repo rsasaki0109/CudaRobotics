@@ -1,0 +1,11 @@
+scenario,baseline,planner,baseline_k,planner_k,paired_episodes,real_time_success_delta,success_delta_ci_low,success_delta_ci_high,mcnemar_p,mcnemar_holm_p
+box_swivel,mppi,diff_mppi_3,1024,1024,30,0.03333333333333333,0.0,0.1,1.0,1.0
+box_swivel,mppi,soppi_fast,1024,1024,30,0.03333333333333333,0.0,0.1,1.0,1.0
+box_align_strict,mppi,diff_mppi_3,1024,1024,30,0.06666666666666667,0.0,0.16666666666666666,0.5,1.0
+box_align_strict,mppi,soppi_fast,1024,1024,30,0.06666666666666667,0.0,0.16666666666666666,0.5,1.0
+box_align_detour,mppi,diff_mppi_3,1024,1024,30,0.0,0.0,0.0,1.0,1.0
+box_align_detour,mppi,soppi_fast,1024,1024,30,0.0,0.0,0.0,1.0,1.0
+box_align_contact_loss,mppi,diff_mppi_3,1024,1024,30,0.5333333333333333,0.36666666666666664,0.7,3.0517578125e-05,0.00030517578125
+box_align_contact_loss,mppi,soppi_fast,1024,1024,30,0.5,0.3,0.7,0.000274658203125,0.002471923828125
+box_align_contact_arc,mppi,diff_mppi_3,1024,1024,30,0.0,0.0,0.0,1.0,1.0
+box_align_contact_arc,mppi,soppi_fast,1024,1024,30,0.0,0.0,0.0,1.0,1.0

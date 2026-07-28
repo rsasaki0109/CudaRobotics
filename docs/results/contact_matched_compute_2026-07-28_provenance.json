@@ -1,0 +1,155 @@
+{
+  "evidence_mode": "published_contact_matched_compute",
+  "published_artifacts": {
+    "calibration": {
+      "path": "contact_matched_compute_2026-07-28_calibration.csv",
+      "sha256": "08197238f6d508fd8dd76174f9d4265525a61be40b20ac74e1467929ed038d2c"
+    },
+    "comparisons": {
+      "path": "contact_matched_compute_2026-07-28_comparisons.csv",
+      "sha256": "c743f1deec4b070790d20ba5af5800c7d6b2bedd6b3d0e38493792bdc55a989c"
+    },
+    "report": {
+      "path": "contact_matched_compute_2026-07-28_report.md",
+      "sha256": "fc89da12f0d1d4641d2b177f3f6e79b4b879b4bd7eba560519f46a00b7fcb492"
+    },
+    "summary": {
+      "path": "contact_matched_compute_2026-07-28_summary.csv",
+      "sha256": "a8dbcbd361e567e6335a6abf2af5c643b39960dc6f258b818d1eb8f1f31f2f31"
+    }
+  },
+  "result_id": "contact_matched_compute_2026-07-28",
+  "schema_version": 1,
+  "source": {
+    "artifacts": {
+      "binary": {
+        "sha256": "60455badaf6b4ba643b057d1a6f9cd2ed8ee4d2cce37401b5dd5b1312582afd0"
+      },
+      "calibration": {
+        "sha256": "08197238f6d508fd8dd76174f9d4265525a61be40b20ac74e1467929ed038d2c"
+      },
+      "calibration_episodes": {
+        "sha256": "471db074cc423813c44a2c447259e93ced45c4e374d66aa1f22aeb33af16fb17"
+      },
+      "comparisons": {
+        "sha256": "c743f1deec4b070790d20ba5af5800c7d6b2bedd6b3d0e38493792bdc55a989c"
+      },
+      "evaluation_episodes": {
+        "sha256": "a381dcdf1bb845fb78f7fdc9197ef39fbe65bfbcdf37b095af36f66bbdb17cc1"
+      },
+      "plan": {
+        "sha256": "255674a43c75f52bc68572584f473a7c9b9585814349790a64ee009f2302d3d7"
+      },
+      "report": {
+        "sha256": "fc89da12f0d1d4641d2b177f3f6e79b4b879b4bd7eba560519f46a00b7fcb492"
+      },
+      "state": {
+        "sha256": "ba84c94236ad9050e437aebcf863bc13d6fe5cf12f89328238aed8b410c184d2"
+      },
+      "summary": {
+        "sha256": "a8dbcbd361e567e6335a6abf2af5c643b39960dc6f258b818d1eb8f1f31f2f31"
+      }
+    },
+    "experiment": {
+      "binary": "C:\\Users\\rsasa\\Workspace\\CudaRobotics\\build\\contact_matched_compute_release\\artifacts\\benchmark_diff_mppi_pushing_box.exe",
+      "binary_sha256": "60455badaf6b4ba643b057d1a6f9cd2ed8ee4d2cce37401b5dd5b1312582afd0",
+      "binary_source": "C:\\Users\\rsasa\\Workspace\\CudaRobotics\\bin\\benchmark_diff_mppi_pushing_box.exe",
+      "bootstrap_resamples": 5000,
+      "calibration_seed_count": 5,
+      "calibration_seed_offset": 0,
+      "deadline_ms": 10.0,
+      "evaluation_seed_count": 30,
+      "evaluation_seed_offset": 100,
+      "git_commit": "a6ca48ae09e4e1def2e08ed3249cdd385f2cfef4",
+      "horizon": 16,
+      "identity_sha256": "002c7745d91fbc2b1858626785f4d2514e586531d6f32da0736351105a464e5d",
+      "k_candidates": [
+        64,
+        128,
+        256,
+        512,
+        1024
+      ],
+      "planners": [
+        "mppi",
+        "diff_mppi_3",
+        "soppi_fast"
+      ],
+      "profile": "release",
+      "scenarios": [
+        "box_swivel",
+        "box_align_strict",
+        "box_align_detour",
+        "box_align_contact_loss",
+        "box_align_contact_arc"
+      ],
+      "schema_version": 1
+    },
+    "finished_at": "2026-07-28T23:54:49.515271+00:00",
+    "git_dirty": false,
+    "gpu": [
+      {
+        "driver_version": "596.36",
+        "memory_total_mib": "6144",
+        "name": "NVIDIA GeForce GTX 1660 Ti",
+        "physical_index": "0",
+        "uuid": "GPU-f635286a-d68f-5039-cbc9-22d7f295b3a3"
+      }
+    ],
+    "integrity_gate": {
+      "all_selected_budgets_zero_miss_in_calibration": true,
+      "calibration_complete": true,
+      "calibration_evaluation_seeds_disjoint": true,
+      "clean_worktree": true,
+      "gpu_identified": true,
+      "held_out_evaluation_complete": true
+    },
+    "manifest_sha256": "62aea455368f5f909e7ac6f88a38fc13a65e1dc00c6ee67ccce30eaf60485716",
+    "matrix": {
+      "calibration_episodes": 375,
+      "evaluation_episodes": 450,
+      "evaluation_seeds": 30,
+      "planners": 3,
+      "scenarios": 5
+    },
+    "profile": "release",
+    "selected_k": {
+      "diff_mppi_3": 1024,
+      "mppi": 1024,
+      "soppi_fast": 1024
+    }
+  },
+  "validation": {
+    "checks": {
+      "artifact_binary": true,
+      "artifact_calibration": true,
+      "artifact_calibration_episodes": true,
+      "artifact_comparisons": true,
+      "artifact_evaluation_episodes": true,
+      "artifact_plan": true,
+      "artifact_report": true,
+      "artifact_state": true,
+      "artifact_summary": true,
+      "artifact_table": true,
+      "binary_binding": true,
+      "calibration_matrix": true,
+      "clean_release": true,
+      "derived_artifacts_reproducible": true,
+      "evaluation_matrix": true,
+      "evidence_mode": true,
+      "experiment_identity": true,
+      "experiment_profile": true,
+      "experiment_schema": true,
+      "gpu_identified": true,
+      "integrity_gate": true,
+      "manifest_passed": true,
+      "manifest_schema": true,
+      "matrix_counts": true,
+      "plan_binding": true,
+      "profile": true,
+      "raw_attempt_binding": true,
+      "selected_k": true
+    },
+    "passed": true
+  }
+}

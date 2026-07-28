@@ -90,3 +90,19 @@ interval, deadline misses, latency, and final distance. Comparisons use
 seed-index-paired bootstrap intervals and exact McNemar tests with Holm
 correction over the complete declared family. Failures and negative results
 remain in the output; hypothesis outcome is not an integrity gate.
+
+## Release result
+
+The 2026-07-28 UTC release run completed 375 calibration and 450 held-out
+evaluation episodes on a GTX 1660 Ti. All three planners selected K=1024 and
+were evaluated with the same enforced 10 ms slot. Aggregate real-time success
+was 0.800 for Diff-MPPI-3, 0.673 for MPPI, and 0.793 for SOPPI-fast.
+
+On `box_align_contact_loss`, Diff-MPPI-3 reached 1.00 versus MPPI at 0.467
+(paired delta +0.533, Holm p=0.000305); SOPPI-fast reached 0.967
+(+0.500, Holm p=0.002472). The other scenarios were not Holm-significant, and
+`box_align_detour` remained 0/30 for every planner. Evaluation-time overruns
+remain visible: MPPI recorded four deadline misses, Diff-MPPI-3 one, and
+SOPPI-fast 55. See
+[`contact_matched_compute_2026-07-28_report.md`](results/contact_matched_compute_2026-07-28_report.md)
+and the adjacent provenance JSON.
