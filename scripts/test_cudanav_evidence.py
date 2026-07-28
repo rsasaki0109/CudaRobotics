@@ -13,6 +13,7 @@ from cudanav_evidence import (
     evaluate_summary,
     validate_summary,
 )
+from render_cudanav_trajectory import load_trajectory, render
 
 
 def valid_summary() -> dict:
@@ -29,6 +30,18 @@ def valid_summary() -> dict:
         "command_intervals": 700,
         "command_deadline_misses": 2,
         "command_deadline_miss_rate": 2 / 700,
+        "traversals_requested": 1,
+        "traversals_completed": 1,
+        "trajectory_csv": "trajectory.csv",
+        "diagnostic_error_count": 0,
+        "diagnostic_warn_count": 0,
+        "diagnostic_status_samples": 30,
+        "diagnostic_components": ["esdf", "mapping", "odometry"],
+        "failure_counters": {
+            "esdf:maps_dropped": 0,
+            "mapping:maps_dropped": 0,
+            "odometry:schema_failures": 0,
+        },
     }
 
 
@@ -55,6 +68,12 @@ class CudaNavEvidenceTest(unittest.TestCase):
             root = Path(directory)
             for name in ("mission_summary.json", "launch.log", "controller.yaml"):
                 (root / name).write_text("{}\n", encoding="utf-8")
+            (root / "trajectory.csv").write_text(
+                "elapsed_sec,truth_x,truth_y,odom_x,odom_y\n"
+                "0.0,0.0,0.0,,\n"
+                "1.0,1.0,0.0,0.9,0.0\n",
+                encoding="utf-8",
+            )
             config_hash = hashlib.sha256(
                 (root / "controller.yaml").read_bytes()
             ).hexdigest()
@@ -66,6 +85,7 @@ class CudaNavEvidenceTest(unittest.TestCase):
                 "gpu": [{"name": "test"}],
                 "artifacts": {
                     "summary": "mission_summary.json",
+                    "trajectory": "trajectory.csv",
                     "launch_log": "launch.log",
                     "controller_config": "controller.yaml",
                     "rosbag": None,
@@ -79,6 +99,10 @@ class CudaNavEvidenceTest(unittest.TestCase):
             self.assertFalse(release["checks"]["artifact_rosbag"])
             self.assertFalse(release["checks"]["artifact_video"])
 
+            manifest["bag_command"] = ["ros2", "bag", "record"]
+            requested_bag = evaluate_manifest(manifest, root, "smoke")
+            self.assertFalse(requested_bag["checks"]["artifact_rosbag"])
+            manifest["bag_command"] = None
             manifest["config_sha256"] = "0" * 64
             mismatch = evaluate_manifest(manifest, root, "smoke")
             self.assertFalse(mismatch["checks"]["config_sha256_matches"])
@@ -103,6 +127,22 @@ class CudaNavEvidenceTest(unittest.TestCase):
             "command_deadline_misses cannot exceed command_intervals",
             errors,
         )
+
+    def test_trajectory_renderer_writes_animated_gif(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            csv_path = root / "trajectory.csv"
+            csv_path.write_text(
+                "elapsed_sec,truth_x,truth_y,odom_x,odom_y\n"
+                "0.0,0.0,0.0,0.0,0.0\n"
+                "1.0,1.0,0.2,0.95,0.18\n"
+                "2.0,2.0,0.0,1.9,0.02\n",
+                encoding="utf-8",
+            )
+            output = root / "trajectory.gif"
+            render(load_trajectory(csv_path), output, max_frames=3)
+            self.assertTrue(output.is_file())
+            self.assertEqual(output.read_bytes()[:6], b"GIF89a")
 
 
 if __name__ == "__main__":

@@ -15,6 +15,7 @@ on:
       - ros2_ws/src/cuda_mppi_controller/**
       - scripts/cudanav_evidence.py
       - scripts/run_cudanav_closed_loop.py
+      - scripts/render_cudanav_trajectory.py
       - scripts/test_cudanav_evidence.py
       - scripts/validate_cudanav_closed_loop.py
       - include/cudarobotics/kiss_icp_gpu.hpp
@@ -39,6 +40,7 @@ on:
       - ros2_ws/src/cuda_mppi_controller/**
       - scripts/cudanav_evidence.py
       - scripts/run_cudanav_closed_loop.py
+      - scripts/render_cudanav_trajectory.py
       - scripts/test_cudanav_evidence.py
       - scripts/validate_cudanav_closed_loop.py
       - include/cudarobotics/kiss_icp_gpu.hpp
@@ -89,6 +91,7 @@ jobs:
           sudo apt-get install -y --no-install-recommends \
             build-essential \
             cmake \
+            python3-pil \
             python3-colcon-common-extensions \
             ros-jazzy-ros-base \
             ros-jazzy-nav2-core \
@@ -97,6 +100,8 @@ jobs:
             ros-jazzy-nav2-msgs \
             ros-jazzy-nav2-util \
             ros-jazzy-nav2-mppi-controller \
+            ros-jazzy-ros2bag \
+            ros-jazzy-rosbag2-storage-mcap \
             ros-jazzy-ament-cmake-gtest \
             ros-jazzy-rosidl-default-generators
 

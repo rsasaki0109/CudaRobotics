@@ -316,10 +316,13 @@ def main() -> int:
         "cuda_mppi_controller",
         "cuda_voxel_costmap_layer",
         "cuda_voxel_mapping",
+        "diagnostic_msgs",
         "lifecycle_msgs",
         "nav2_controller",
         "nav2_msgs",
         "rclpy",
+        "ros2bag",
+        "rosbag2_storage_mcap",
         "sensor_msgs",
     } <= bringup_dependencies
     bringup_launch = (
@@ -369,6 +372,12 @@ def main() -> int:
         '"odometry_drift_percent"',
         '"command_deadline_miss_rate"',
         '"smoke_pass"',
+        '"traversals_requested"',
+        '"traversals_completed"',
+        '"trajectory_csv"',
+        '"diagnostic_error_count"',
+        '"diagnostic_components"',
+        '"failure_counters"',
     ):
         assert term in mission_source
     evidence_source = (ROOT / "scripts" / "cudanav_evidence.py").read_text(
@@ -383,6 +392,7 @@ def main() -> int:
         "require_bag=True",
         "require_video=True",
         "is_relative_to(root)",
+        '"all_traversals_completed"',
     ):
         assert term in evidence_source
     harness_source = (
@@ -394,9 +404,22 @@ def main() -> int:
         '"config_sha256"',
         '"gpu"',
         '"launch_log"',
+        '"rosbag"',
+        '"video"',
+        '"traversal_count"',
         "refusing non-empty output directory",
     ):
         assert term in harness_source
+    renderer_source = (
+        ROOT / "scripts" / "render_cudanav_trajectory.py"
+    ).read_text(encoding="utf-8")
+    for term in (
+        "default_segments",
+        "Image.new",
+        'format="GIF"',
+        "temporary.replace(output)",
+    ):
+        assert term in renderer_source
 
     architecture = (
         ROOT / "docs" / "cudanav_architecture.md"

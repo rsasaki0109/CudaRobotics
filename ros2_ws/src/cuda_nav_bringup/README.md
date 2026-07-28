@@ -31,6 +31,8 @@ Use `scripts/run_cudanav_closed_loop.py` from the repository root to retain the
 summary together with the exact commit, configuration hash, GPU identity, and
 launch log. `scripts/validate_cudanav_closed_loop.py` rechecks either the
 `smoke` or strict `release` policy without rerunning the stack.
+Release acquisition alternates the S-course 30 times, retains an MCAP rosbag,
+and renders the recorded truth/odometry trajectory as a GIF.
 
 Lifecycle transitions use the standard `change_state` and `get_state` services
 in dependency order. This avoids pretending that the custom lifecycle nodes
