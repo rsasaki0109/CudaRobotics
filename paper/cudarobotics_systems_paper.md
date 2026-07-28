@@ -1,5 +1,15 @@
 # CudaRobotics: A GPU-Parallel Suite for Robotics Algorithm Benchmarking
 
+> Status note (2026-07-29): this is a legacy breadth-oriented draft and is not
+> submission-ready. Several counts and benchmark claims below predate the
+> CudaNav end-to-end stack and must be regenerated before reuse. The
+> authoritative current claim ledger is
+> [`artifacts/cudarobotics_systems.json`](artifacts/cudarobotics_systems.json);
+> it intentionally reports the paper as not ready until ROS 2 Jazzy,
+> release-profile closed-loop, real-rosbag, and physical multi-GPU evidence is
+> attached. The target paper title is now “CudaNav: A Reproducible End-to-End
+> GPU Autonomy Stack.”
+
 ## Abstract
 
 We present CudaRobotics, an open-source C++/CUDA repository containing 97 GPU-parallel implementations spanning localization, path planning, navigation, mapping, point-cloud processing, differentiable control, neuroevolution, and swarm optimization. Each algorithm provides a CPU vs GPU comparison with GIF-based visualization, enabling direct visual assessment of quality differences from GPU parallelism (e.g., 100 vs 10,000 particles for particle filtering, 50 vs 50,000 samples for DWA). The repository includes research-style extensions: a differentiable MPPI controller with matched-time evaluation across 8 baselines and a 7-DOF manipulator benchmark, neural SDF navigation, a GPU CartPole RL environment, and GPU point-cloud processing with up to 599x speedup. All implementations run on a single consumer GPU with no external dependencies beyond CUDA, OpenCV, and Eigen.

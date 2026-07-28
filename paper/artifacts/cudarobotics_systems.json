@@ -1,0 +1,174 @@
+{
+  "schema_version": 1,
+  "paper_id": "cudarobotics-systems",
+  "title": "CudaNav: A Reproducible End-to-End GPU Autonomy Stack",
+  "claims": [
+    {
+      "id": "reproducibility_contracts",
+      "statement": "The repository provides distinct, machine-gated evidence contracts for closed-loop simulation, real-rosbag shadow replay, and physical multi-GPU reproduction.",
+      "submission_required": true,
+      "status": "supported",
+      "evidence": [
+        "evidence_contract_sources"
+      ],
+      "limitations": [
+        "This proves that the evidence contracts exist and are content-bound; it does not substitute for executing their release profiles."
+      ]
+    },
+    {
+      "id": "integrated_gpu_stack",
+      "statement": "GPU KISS-ICP, rolling voxel mapping, exact typed ESDF, a Nav2 costmap bridge, and CUDA MPPI build and run as one ROS 2 Jazzy stack.",
+      "submission_required": true,
+      "status": "partial",
+      "evidence": [
+        "stack_source_contract",
+        "ros_jazzy_ci"
+      ],
+      "limitations": [
+        "Reusable CUDA sources and ROS integration are present, but a green ROS 2 Jazzy build and plugin-load run from the paper commit is still required."
+      ]
+    },
+    {
+      "id": "closed_loop_autonomy",
+      "statement": "CudaNav completes the deterministic S-course for at least ten minutes with zero collisions, less than one percent odometry drift, and less than one percent controller deadline misses.",
+      "submission_required": true,
+      "status": "planned",
+      "evidence": [
+        "closed_loop_release"
+      ],
+      "limitations": [
+        "No release-profile ROS 2 GPU run is currently attached."
+      ]
+    },
+    {
+      "id": "real_data_shadow",
+      "statement": "The same CUDA controller stack meets its declared latency, rollout-validity, and clearance gates on a content-addressed public real rosbag.",
+      "submission_required": true,
+      "status": "planned",
+      "evidence": [
+        "real_rosbag_release"
+      ],
+      "limitations": [
+        "Rosbag replay is shadow-controller evidence and is not a closed-loop success claim."
+      ]
+    },
+    {
+      "id": "multi_gpu_reproduction",
+      "statement": "The closed-loop smoke gate reproduces from the same commit and configuration on at least two distinct physical GPU models.",
+      "submission_required": true,
+      "status": "planned",
+      "evidence": [
+        "multi_gpu_release"
+      ],
+      "limitations": [
+        "No two-model physical GPU matrix is currently attached."
+      ]
+    }
+  ],
+  "evidence": [
+    {
+      "id": "evidence_contract_sources",
+      "status": "complete",
+      "kind": "file_set",
+      "generator_command": [
+        "python3",
+        "scripts/test_cudanav_evidence.py"
+      ],
+      "artifacts": [
+        {
+          "path": "scripts/cudanav_evidence.py",
+          "normalization": "text_lf",
+          "sha256": "0917d1f0ae63fd561dd9f7ed1f35cdd91a6e2ea5479e5617b91509ba3d7e31f7"
+        },
+        {
+          "path": "scripts/cudanav_multi_gpu.py",
+          "normalization": "text_lf",
+          "sha256": "9c5824cac89bea32b35d685d012f59b4a4d78ab7f9683be182f8a20692061313"
+        },
+        {
+          "path": "scripts/cudanav_rosbag_evidence.py",
+          "normalization": "text_lf",
+          "sha256": "a11b7287a8530f38d230a0045662cd27e033372f0d703fca653912bd3254de14"
+        }
+      ]
+    },
+    {
+      "id": "stack_source_contract",
+      "status": "complete",
+      "kind": "file_set",
+      "generator_command": [
+        "python3",
+        "scripts/test_cudanav_contract.py"
+      ],
+      "artifacts": [
+        {
+          "path": "include/cudarobotics/kiss_icp_gpu.hpp",
+          "normalization": "text_lf",
+          "sha256": "d7abdc921536ff6283ee7fef0dee020aa6f28fdd69a305865e000df1332ee0f4"
+        },
+        {
+          "path": "include/cudarobotics/voxel_mapping_gpu.hpp",
+          "normalization": "text_lf",
+          "sha256": "fb3a46acfac5f30e69a5fbf21dd9ca48765d3beac8f24515fe9d259f7b268973"
+        },
+        {
+          "path": "include/cudarobotics/esdf_2d_gpu.hpp",
+          "normalization": "text_lf",
+          "sha256": "325ed5c8afd23a87eac668d80d70374af099d8ba472c566bf5bf5ca0ee97e782"
+        },
+        {
+          "path": "ros2_ws/src/cuda_nav_bringup/launch/cudanav_closed_loop.launch.py",
+          "normalization": "text_lf",
+          "sha256": "429398d9d79b6a0dd26874916d3380bc08d39a3489891d83e50816cdf95c30a1"
+        }
+      ]
+    },
+    {
+      "id": "ros_jazzy_ci",
+      "status": "pending",
+      "kind": "json_assertions",
+      "generator_command": [
+        "gh",
+        "run",
+        "view",
+        "--json",
+        "conclusion,headSha,jobs"
+      ]
+    },
+    {
+      "id": "closed_loop_release",
+      "status": "pending",
+      "kind": "json_assertions",
+      "generator_command": [
+        "python3",
+        "scripts/run_cudanav_closed_loop.py",
+        "--output-dir",
+        "build/paper/cudanav_closed_loop",
+        "--profile",
+        "release"
+      ]
+    },
+    {
+      "id": "real_rosbag_release",
+      "status": "pending",
+      "kind": "json_assertions",
+      "generator_command": [
+        "python3",
+        "scripts/run_cudanav_rosbag_replay.py",
+        "--profile",
+        "release"
+      ]
+    },
+    {
+      "id": "multi_gpu_release",
+      "status": "pending",
+      "kind": "json_assertions",
+      "generator_command": [
+        "python3",
+        "scripts/run_cudanav_multi_gpu.py",
+        "--output-dir",
+        "build/paper/cudanav_multi_gpu"
+      ]
+    }
+  ]
+}

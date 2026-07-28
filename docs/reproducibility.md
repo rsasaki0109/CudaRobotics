@@ -108,3 +108,18 @@ and exact commands. See
 [`cuda_mppi_bag_eval.md`](cuda_mppi_bag_eval.md),
 [`cudanav_closed_loop.md`](cudanav_closed_loop.md), and
 [`cudanav_multi_gpu.md`](cudanav_multi_gpu.md).
+
+## Paper Claim Gates
+
+Paper prose is not treated as evidence. The manifests under
+`paper/artifacts/` bind supported claims to content-addressed files and numeric
+CSV/JSON assertions:
+
+```bash
+python3 scripts/validate_paper_artifacts.py
+python3 scripts/validate_paper_artifacts.py --require-ready
+```
+
+The first command validates the ledger and is suitable for CI while experiments
+are still pending. The second is the submission gate and fails until every
+submission-required systems or contact-rich Diff-MPPI claim is supported.

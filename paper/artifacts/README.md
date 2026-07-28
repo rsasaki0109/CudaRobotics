@@ -1,0 +1,35 @@
+# Paper Claim-to-Evidence Contracts
+
+These manifests are the authoritative readiness ledger for the CudaRobotics
+systems paper and the contact-rich Diff-MPPI paper. They separate three facts
+that prose drafts often blur:
+
+- `supported`: every referenced artifact exists, matches its SHA-256, and
+  passes its declared numeric assertions;
+- `partial` or `planned`: implementation or pilot evidence exists, but the
+  submission claim is not yet proved;
+- `ready`: every submission-required claim is supported by complete valid
+  evidence.
+
+Validate schema, hashes, numeric assertions, and claim consistency:
+
+```bash
+python3 scripts/validate_paper_artifacts.py
+```
+
+This command succeeds when the ledger is internally valid even if a paper is
+not ready. The output always reports `ready: false` until every required claim
+is proved. The release/submission gate is deliberately stricter:
+
+```bash
+python3 scripts/validate_paper_artifacts.py --require-ready
+```
+
+Text artifacts may declare `normalization: text_lf` so the same tracked content
+has one hash on LF and CRLF worktrees. Binary artifacts must use their raw byte
+hash without normalization.
+
+Never change a claim from `planned` or `partial` to `supported` merely because
+the implementation exists. First attach the generated artifact, freeze its
+SHA-256, and add assertions that test the exact metric used in the prose.
+Negative results should remain declared evidence rather than being removed.
