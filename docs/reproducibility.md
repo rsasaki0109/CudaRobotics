@@ -154,6 +154,21 @@ python3 scripts/validate_contact_matched_compute.py \
 
 See [`contact_matched_compute.md`](contact_matched_compute.md).
 
+The external-fidelity gate keeps the CUDA controller's nominal internal model
+but advances the selected command through a MuJoCo contact plant at every
+control step:
+
+```bash
+python3 scripts/run_contact_external_fidelity.py \
+  --output-dir build/contact_external_fidelity_release \
+  --profile release
+python3 scripts/validate_contact_external_fidelity.py \
+  build/contact_external_fidelity_release --profile release
+```
+
+See [`contact_external_fidelity.md`](contact_external_fidelity.md). This is
+closed-loop sim-to-sim transfer; it is not real-robot evidence.
+
 ## Release Preflight
 
 The benchmark suites above regenerate research results. Release candidates use

@@ -21,6 +21,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <fstream>
+#include <functional>
 #include <iostream>
 #include <map>
 #include <random>
@@ -934,6 +935,14 @@ __global__ void soppi_svgd_step_kernel(
 // ======================== Episode Runner ========================
 class EpisodeRunner {
 public:
+    using ExternalPlantReset = function<void(
+        float, float, float, float, float)>;
+    using ExternalPlantStep = function<void(
+        float, float,
+        float&, float&, float&, float&, float&,
+        float&, float&, float&)>;
+    using ExternalPlantObserve = function<void(
+        float&, float&, float&, float&, float&)>;
     bool record_traj = false;            // when set, log per-step pose to traj_flat
     vector<float> traj_flat;             // [px,py,ox,oy,oth] per recorded step
     // Mechanism diagnostic (vanilla MPPI only): per control step, measure what
@@ -990,6 +999,12 @@ public:
     // wall-clock control slot. Early results wait until the slot boundary; overruns
     // remain visible as deadline misses and invalidate real_time_success.
     float control_deadline_ms = 0.0f;
+    // Optional independently implemented true plant. The CUDA controller still
+    // rolls out its nominal smooth model; only the state transition after each
+    // selected command is delegated. This is used by the MuJoCo contact target.
+    ExternalPlantReset external_plant_reset;
+    ExternalPlantStep external_plant_step;
+    ExternalPlantObserve external_plant_observe;
 
     EpisodeRunner(const Variant& v, const BoxScenario& sc, int K, int T, int seed)
         : v_(v), sc_(sc), K_(K), T_(T), seed_(seed) {
@@ -1033,6 +1048,8 @@ public:
         hard_p_.damp_ang *= plant_damping_scale;
 
         reset_state();
+        if (external_plant_reset)
+            external_plant_reset(px_, py_, ox_, oy_, oth_);
         fill(h_nominal_.begin(), h_nominal_.end(), 0.0f);
         warmup();
         fill(h_nominal_.begin(), h_nominal_.end(), 0.0f);
@@ -1046,6 +1063,8 @@ public:
         plant_p.hx        *= plant_size_scale * plant_hx_scale;
         plant_p.hy        *= plant_size_scale * plant_hy_scale;
         const HardParams& hard_p = hard_p_;
+        if (external_plant_reset)
+            external_plant_reset(px_, py_, ox_, oy_, oth_);
 
         auto ep0 = chrono::steady_clock::now();
         float ctrl_ms = 0.0f;
@@ -1102,7 +1121,11 @@ public:
             prev_ux = h_nominal_[0];
             prev_uy = h_nominal_[1];
             have_prev_control = true;
-            if (true_plant_hard)
+            if (external_plant_step)
+                external_plant_step(
+                    h_nominal_[0], h_nominal_[1],
+                    px_, py_, ox_, oy_, oth_, vx_, vy_, w_);
+            else if (true_plant_hard)
                 push_step_box_hard_f(px_, py_, ox_, oy_, oth_, vx_, vy_, w_, h_nominal_[0], h_nominal_[1], hard_p);
             else
                 push_step_box_f(px_, py_, ox_, oy_, oth_, h_nominal_[0], h_nominal_[1], plant_p);
@@ -1155,10 +1178,22 @@ private:
     void reset_state() { px_=sc_.px0; py_=sc_.py0; ox_=sc_.ox0; oy_=sc_.oy0; oth_=sc_.oth0; vx_=vy_=w_=0.0f; steps_=0; reached_=false; cum_cost_=0; min_dist_=pos_dist(); }
     float pos_dist() const { float dx=ox_-sc_.gx, dy=oy_-sc_.gy; return sqrtf(dx*dx+dy*dy); }
     float ang_err() const { return fabsf(wrapf(oth_ - sc_.gth)); }
-    void sync_start() { float s[STATE_DIM]={px_,py_,ox_,oy_,oth_}; CUDA_CHECK(cudaMemcpy(d_start_, s, STATE_DIM*sizeof(float), cudaMemcpyHostToDevice)); }
+    void sync_start(float px, float py, float ox, float oy, float oth) {
+        float s[STATE_DIM]={px,py,ox,oy,oth};
+        CUDA_CHECK(cudaMemcpy(
+            d_start_, s, STATE_DIM*sizeof(float), cudaMemcpyHostToDevice));
+    }
     void controller_update() {
-        sync_start();
-        seed_object_informed_nominal();
+        float observed_px = px_, observed_py = py_;
+        float observed_ox = ox_, observed_oy = oy_, observed_oth = oth_;
+        if (external_plant_observe)
+            external_plant_observe(
+                observed_px, observed_py, observed_ox, observed_oy,
+                observed_oth);
+        sync_start(
+            observed_px, observed_py, observed_ox, observed_oy, observed_oth);
+        seed_object_informed_nominal(
+            observed_px, observed_py, observed_ox, observed_oy, observed_oth);
         CUDA_CHECK(cudaMemcpy(d_nominal_, h_nominal_.data(), h_nominal_.size()*sizeof(float), cudaMemcpyHostToDevice));
         int b=256;
         if (v_.hard_rollout)   // fidelity arm: sample with the exact hard-contact model (no gradient)
@@ -1209,25 +1244,26 @@ private:
     }
     void warmup() { for (int i = 0; i < 3; i++) controller_update(); }
 
-    void seed_object_informed_nominal() {
+    void seed_object_informed_nominal(
+        float px, float py, float ox, float oy, float oth) {
         if (!v_.use_object_informed || v_.oi_seed_blend <= 0.0f) return;
         const BoxParams& p = sc_.params;
         float blend = clampf_local(v_.oi_seed_blend, 0.0f, 1.0f);
-        float sim_px = px_, sim_py = py_;
-        float dxg = sc_.gx - ox_, dyg = sc_.gy - oy_;
+        float sim_px = px, sim_py = py;
+        float dxg = sc_.gx - ox, dyg = sc_.gy - oy;
         float dg = sqrtf(dxg*dxg + dyg*dyg + 1e-9f);
         float dirx = dxg / dg, diry = dyg / dg;
         float contact_offset = fmaxf(p.hx, p.hy) + p.push_r + fmaxf(0.0f, v_.oi_contact_margin);
         for (int t = 0; t < T_; t++) {
             float refx, refy, refth;
-            object_ref_box_f(ox_, oy_, oth_, sc_.gx, sc_.gy, sc_.gth,
+            object_ref_box_f(ox, oy, oth, sc_.gx, sc_.gy, sc_.gth,
                              p.dt, v_.oi_obj_speed, v_.oi_ang_speed, t + 1, refx, refy, refth);
             float target_px, target_py;
             if (dg > fmaxf(0.25f, 1.15f * sc_.pos_tol)) {
                 target_px = refx - dirx * contact_offset;
                 target_py = refy - diry * contact_offset;
             } else {
-                float need = wrapf(sc_.gth - oth_);
+                float need = wrapf(sc_.gth - oth);
                 float sign = need >= 0.0f ? 1.0f : -1.0f;
                 float c = cosf(refth), s = sinf(refth);
                 float lx = -p.hx - p.push_r - v_.oi_contact_margin;
@@ -1292,7 +1328,7 @@ private:
     // mechanism question is whether they point the same way.
     void collect_grad_agree(int step) {
         // (a) smooth gradient: exactly grad_step_kernel's gradient, on GPU.
-        sync_start();
+        sync_start(px_, py_, ox_, oy_, oth_);
         CUDA_CHECK(cudaMemcpy(d_nominal_, h_nominal_.data(), h_nominal_.size()*sizeof(float), cudaMemcpyHostToDevice));
         grad_vec_kernel<<<1,1>>>(d_start_, d_nominal_, d_grad_, sc_.params, sc_.gx, sc_.gy, sc_.gth, T_);
         CUDA_CHECK(cudaDeviceSynchronize());
@@ -1468,6 +1504,7 @@ static void print_summary(const vector<EpisodeMetrics>& rows) {
 }
 
 // ======================== Main ========================
+#ifndef CUDAROBOTICS_PUSHING_BOX_NO_MAIN
 int main(int argc, char** argv) {
     bool quick=false; string csv_path="build/benchmark_diff_mppi_pushing_box.csv";
     vector<int> k_values; vector<string> scenario_names, planner_names; int seed_count=-1;
@@ -1780,3 +1817,4 @@ int main(int argc, char** argv) {
     cout << "CSV saved to " << csv_path << endl;
     return 0;
 }
+#endif

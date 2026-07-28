@@ -15,15 +15,24 @@ if(DEFINED ENV{MUJOCO_HOME})
   list(APPEND _mujoco_roots "$ENV{MUJOCO_HOME}")
 endif()
 
+file(GLOB _mujoco_native_candidates
+  "${CMAKE_SOURCE_DIR}/.venv-mujoco/native/mujoco-*"
+  "${PROJECT_SOURCE_DIR}/.venv-mujoco/native/mujoco-*"
+)
+list(APPEND _mujoco_roots ${_mujoco_native_candidates})
+
 file(GLOB _mujoco_venv_candidates
   "${CMAKE_SOURCE_DIR}/.venv-mujoco/lib/python*/site-packages/mujoco"
   "${PROJECT_SOURCE_DIR}/.venv-mujoco/lib/python*/site-packages/mujoco"
+  "${CMAKE_SOURCE_DIR}/.venv-mujoco/Lib/site-packages/mujoco"
+  "${PROJECT_SOURCE_DIR}/.venv-mujoco/Lib/site-packages/mujoco"
 )
 list(APPEND _mujoco_roots ${_mujoco_venv_candidates})
 
 if(DEFINED ENV{VIRTUAL_ENV})
   file(GLOB _mujoco_virtualenv_candidates
     "$ENV{VIRTUAL_ENV}/lib/python*/site-packages/mujoco"
+    "$ENV{VIRTUAL_ENV}/Lib/site-packages/mujoco"
   )
   list(APPEND _mujoco_roots ${_mujoco_virtualenv_candidates})
 endif()
@@ -47,11 +56,21 @@ find_library(mujoco_LIBRARY
   PATH_SUFFIXES lib
 )
 
+if(WIN32)
+  find_file(mujoco_RUNTIME_LIBRARY
+    NAMES mujoco.dll
+    PATHS ${_mujoco_roots}
+    PATH_SUFFIXES "" bin lib
+  )
+endif()
+
 if(NOT mujoco_LIBRARY)
   foreach(_root IN LISTS _mujoco_roots)
     file(GLOB _mujoco_globbed_libs
       "${_root}/libmujoco.so*"
       "${_root}/lib/libmujoco.so*"
+      "${_root}/mujoco.lib"
+      "${_root}/lib/mujoco.lib"
     )
     if(_mujoco_globbed_libs)
       list(GET _mujoco_globbed_libs 0 mujoco_LIBRARY)
@@ -60,19 +79,42 @@ if(NOT mujoco_LIBRARY)
   endforeach()
 endif()
 
-find_package_handle_standard_args(mujoco
-  REQUIRED_VARS mujoco_INCLUDE_DIR mujoco_LIBRARY
-)
+if(WIN32)
+  find_package_handle_standard_args(mujoco
+    REQUIRED_VARS
+      mujoco_INCLUDE_DIR
+      mujoco_LIBRARY
+      mujoco_RUNTIME_LIBRARY
+  )
+else()
+  find_package_handle_standard_args(mujoco
+    REQUIRED_VARS mujoco_INCLUDE_DIR mujoco_LIBRARY
+  )
+endif()
 
 if(mujoco_FOUND)
   get_filename_component(mujoco_LIBRARY_DIR "${mujoco_LIBRARY}" DIRECTORY)
   if(NOT TARGET mujoco::mujoco)
     add_library(mujoco::mujoco SHARED IMPORTED)
-    set_target_properties(mujoco::mujoco PROPERTIES
-      IMPORTED_LOCATION "${mujoco_LIBRARY}"
-      INTERFACE_INCLUDE_DIRECTORIES "${mujoco_INCLUDE_DIR}"
-    )
+    if(WIN32)
+      set_target_properties(mujoco::mujoco PROPERTIES
+        IMPORTED_IMPLIB "${mujoco_LIBRARY}"
+        IMPORTED_LOCATION "${mujoco_RUNTIME_LIBRARY}"
+        INTERFACE_INCLUDE_DIRECTORIES "${mujoco_INCLUDE_DIR}"
+      )
+    else()
+      set_target_properties(mujoco::mujoco PROPERTIES
+        IMPORTED_LOCATION "${mujoco_LIBRARY}"
+        INTERFACE_INCLUDE_DIRECTORIES "${mujoco_INCLUDE_DIR}"
+      )
+      set(mujoco_RUNTIME_LIBRARY "${mujoco_LIBRARY}")
+    endif()
   endif()
 endif()
 
-mark_as_advanced(mujoco_INCLUDE_DIR mujoco_LIBRARY mujoco_LIBRARY_DIR)
+mark_as_advanced(
+  mujoco_INCLUDE_DIR
+  mujoco_LIBRARY
+  mujoco_LIBRARY_DIR
+  mujoco_RUNTIME_LIBRARY
+)
