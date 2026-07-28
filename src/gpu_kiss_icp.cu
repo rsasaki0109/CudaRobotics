@@ -49,8 +49,11 @@
 #include <chrono>
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
 #include <cstdint>
+#include <fstream>
 #include <random>
+#include <string>
 #include <unordered_map>
 #include <vector>
 
@@ -204,7 +207,7 @@ __global__ void gn_kernel(const float* __restrict__ Pw,const float* __restrict__
     float Hl[21]; int c=0; for(int a=0;a<6;++a)for(int b=a;b<6;++b)Hl[c++]=w*jp[a]*jp[b];
     for(int k=0;k<21;++k)atomicAdd(&Hg[k],Hl[k]);
     for(int a=0;a<6;++a)atomicAdd(&Hg[21+a],w*jp[a]*rs);
-    atomicAdd(&Hg[27],w*rs*rs); atomicAdd(&Hg[28],w); }
+    atomicAdd(&Hg[27],w*rs*rs); atomicAdd(&Hg[28],w); atomicAdd(&Hg[29],1.f); }
 
 static bool solve6(const float* Hut,const float* g,float* d){
     float H[36]; int c=0; for(int a=0;a<6;++a)for(int b=a;b<6;++b){H[a*6+b]=H[b*6+a]=Hut[c++];}
@@ -216,29 +219,57 @@ static bool solve6(const float* Hut,const float* g,float* d){
     return true; }
 
 // ============================ odometry ============================
-struct OdomOut { std::vector<Pose> est; std::vector<float> map; };
+struct AlignmentStats {
+    int iterations = 0;
+    int inliers = 0;
+    float rmse = 0.0f;
+    float nn_ms = 0.0f;
+    float threshold = 0.0f;
+};
+
+struct OdomOut {
+    std::vector<Pose> est;
+    std::vector<float> map;
+    std::vector<AlignmentStats> alignments;
+};
 
 // One ICP alignment of a scan (sensor frame) to the local map (world frame),
 // starting from T_init.  tau is the adaptive correspondence threshold.
 static Pose icp_to_map(const std::vector<float>& scan, float* dMap,float* dMapN,int mapN,
                        Pose Tinit, float tau, int max_it,
-                       float* dS,float* dPw,float* dQ,float* dNQ,float* dD2,float* dR,float* dt,float* dHg){
+                       float* dS,float* dPw,float* dQ,float* dNQ,float* dD2,float* dR,float* dt,float* dHg,
+                       AlignmentStats* stats){
     int n=scan.size()/3;
     CUDA_CHECK(cudaMemcpy(dS,scan.data(),n*3*sizeof(float),cudaMemcpyHostToDevice));
     Pose T=Tinit; float tau2=tau*tau, k2=(tau/2.f)*(tau/2.f);
+    cudaEvent_t nn_start, nn_stop;
+    CUDA_CHECK(cudaEventCreate(&nn_start));
+    CUDA_CHECK(cudaEventCreate(&nn_stop));
+    stats->threshold = tau;
     for(int it=0;it<max_it;++it){
         CUDA_CHECK(cudaMemcpy(dR,T.R.m,9*sizeof(float),cudaMemcpyHostToDevice));
         CUDA_CHECK(cudaMemcpy(dt,T.t,3*sizeof(float),cudaMemcpyHostToDevice));
         transform_kernel<<<(n+255)/256,256>>>(dS,n,dR,dt,dPw);
+        CUDA_CHECK(cudaEventRecord(nn_start));
         nn_kernel<<<(n+255)/256,256>>>(dPw,n,dMap,dMapN,mapN,tau2,dQ,dNQ,dD2);
-        CUDA_CHECK(cudaMemset(dHg,0,29*sizeof(float)));
+        CUDA_CHECK(cudaEventRecord(nn_stop));
+        CUDA_CHECK(cudaEventSynchronize(nn_stop));
+        float iteration_nn_ms = 0.0f;
+        CUDA_CHECK(cudaEventElapsedTime(&iteration_nn_ms, nn_start, nn_stop));
+        stats->nn_ms += iteration_nn_ms;
+        CUDA_CHECK(cudaMemset(dHg,0,30*sizeof(float)));
         gn_kernel<<<(n+255)/256,256>>>(dPw,dQ,dNQ,dD2,n,k2,dHg);   // point-to-plane
-        float Hg[29]; CUDA_CHECK(cudaMemcpy(Hg,dHg,29*sizeof(float),cudaMemcpyDeviceToHost));
-        if(Hg[28]<10.f) break;                           // too few inliers
+        float Hg[30]; CUDA_CHECK(cudaMemcpy(Hg,dHg,30*sizeof(float),cudaMemcpyDeviceToHost));
+        stats->iterations = it + 1;
+        stats->inliers = static_cast<int>(Hg[29]);
+        stats->rmse = Hg[28] > 0.0f ? std::sqrt(Hg[27] / Hg[28]) : 0.0f;
+        if(Hg[28]<10.f) break;                           // too little robust inlier weight
         float d[6]; if(!solve6(Hg,Hg+21,d)) break;
         T=pose_mul(se3_exp(d),T);
         float step=0; for(int k=0;k<6;++k)step+=d[k]*d[k]; if(std::sqrt(step)<1e-4f) break;
     }
+    CUDA_CHECK(cudaEventDestroy(nn_start));
+    CUDA_CHECK(cudaEventDestroy(nn_stop));
     return T;
 }
 
@@ -252,7 +283,7 @@ static OdomOut run_odometry(const std::vector<std::vector<float>>& scans,
     CUDA_CHECK(cudaMalloc(&dS,maxn*3*sizeof(float)));CUDA_CHECK(cudaMalloc(&dPw,maxn*3*sizeof(float)));
     CUDA_CHECK(cudaMalloc(&dQ,maxn*3*sizeof(float)));CUDA_CHECK(cudaMalloc(&dNQ,maxn*3*sizeof(float)));CUDA_CHECK(cudaMalloc(&dD2,maxn*sizeof(float)));
     CUDA_CHECK(cudaMalloc(&dMap,MAPCAP*3*sizeof(float)));CUDA_CHECK(cudaMalloc(&dMapN,MAPCAP*3*sizeof(float)));
-    CUDA_CHECK(cudaMalloc(&dR,9*sizeof(float)));CUDA_CHECK(cudaMalloc(&dt,3*sizeof(float)));CUDA_CHECK(cudaMalloc(&dHg,29*sizeof(float)));
+    CUDA_CHECK(cudaMalloc(&dR,9*sizeof(float)));CUDA_CHECK(cudaMalloc(&dt,3*sizeof(float)));CUDA_CHECK(cudaMalloc(&dHg,30*sizeof(float)));
 
     // persistent voxel-hash map: ONE point per voxel, kept from when the voxel was
     // FIRST observed (earliest pose = most accurate).  Never re-averaged -- that is
@@ -288,7 +319,7 @@ static OdomOut run_odometry(const std::vector<std::vector<float>>& scans,
     for(int k=0;k<K;++k){
         // 1) spatial subsample of the incoming scan
         std::vector<float> scan=voxel_downsample(scans[k],scan_voxel);
-        Pose Test; float tau=TAU_MAX; Pose pred;
+        Pose Test; float tau=TAU_MAX; Pose pred; AlignmentStats alignment;
         if(k==0){ Test=gt[0]; pred=gt[0]; }              // anchor odometry at the known start
         else {
             // 2) previous-pose (zero-velocity) prediction -- see header note.
@@ -300,12 +331,13 @@ static OdomOut run_odometry(const std::vector<std::vector<float>>& scans,
             int mapN=std::min((int)(localmap.size()/3),MAPCAP);
             CUDA_CHECK(cudaMemcpy(dMap,localmap.data(),mapN*3*sizeof(float),cudaMemcpyHostToDevice));
             map_normal_kernel<<<(mapN+127)/128,128>>>(dMap,mapN,12,dMapN);
-            Test=icp_to_map(scan,dMap,dMapN,mapN,pred,tau,12,dS,dPw,dQ,dNQ,dD2,dR,dt,dHg);
+            Test=icp_to_map(scan,dMap,dMapN,mapN,pred,tau,12,dS,dPw,dQ,dNQ,dD2,dR,dt,dHg,&alignment);
             // update adaptive-threshold statistic with how wrong the prediction was
             float dtr,dro; pose_delta_mag(pred,Test,dtr,dro);
             float dsq=dtr*dtr; if(!dev_init){dev_ema=dsq;dev_init=true;} else dev_ema=0.7*dev_ema+0.3*dsq;
         }
         out.est.push_back(Test);
+        out.alignments.push_back(alignment);
         // 5) insert the registered scan into the local map
         std::vector<float> sw=to_world(scan,Test);
         map_insert(sw,Test.t);
@@ -357,16 +389,164 @@ static void render_gif(const std::vector<std::vector<float>>& scans,
     std::printf("wrote gif/gpu_kiss_icp.gif\n");
 }
 
+struct Options {
+    bool check = false;
+    bool no_video = false;
+    int frames = 280;
+    std::string json_path;
+};
+
+struct Metrics {
+    int frames = 0;
+    int map_points = 0;
+    double trajectory_length_m = 0.0;
+    float ate_m = 0.0f;
+    float max_error_m = 0.0f;
+    float final_drift_m = 0.0f;
+    float final_drift_percent = 0.0f;
+    double wall_ms = 0.0;
+    double mean_ms_per_scan = 0.0;
+    double gpu_nn_ms = 0.0;
+    double mean_gpu_nn_ms_per_scan = 0.0;
+    double mean_inliers = 0.0;
+    double mean_icp_iterations = 0.0;
+    double mean_icp_rmse_m = 0.0;
+    bool passed = false;
+};
+
+static void print_usage(const char* argv0) {
+    std::printf("Usage: %s [--check] [--no-video] [--frames N] [--json PATH]\n", argv0);
+    std::printf("  --check       return non-zero when odometry accuracy/correspondence gates fail\n");
+    std::printf("  --no-video    skip AVI/GIF rendering\n");
+    std::printf("  --frames N    synthetic trajectory scan count (12..2000, default 280)\n");
+    std::printf("  --json PATH   write machine-readable odometry and GPU NN metrics\n");
+}
+
+// Return 0 on success, 1 after printing help, and 2 for invalid arguments.
+static int parse_options(int argc, char** argv, Options& opts) {
+    for (int i = 1; i < argc; ++i) {
+        std::string arg = argv[i];
+        if (arg == "--check") {
+            opts.check = true;
+        } else if (arg == "--no-video") {
+            opts.no_video = true;
+        } else if (arg == "--frames" && i + 1 < argc) {
+            opts.frames = std::atoi(argv[++i]);
+            if (opts.frames < 12 || opts.frames > 2000) {
+                std::fprintf(stderr, "--frames must be in [12, 2000]\n");
+                return 2;
+            }
+        } else if (arg == "--json" && i + 1 < argc) {
+            opts.json_path = argv[++i];
+        } else if (arg == "--help" || arg == "-h") {
+            print_usage(argv[0]);
+            return 1;
+        } else {
+            std::fprintf(stderr, "unknown or incomplete argument: %s\n", arg.c_str());
+            print_usage(argv[0]);
+            return 2;
+        }
+    }
+    return 0;
+}
+
+static Metrics evaluate(const std::vector<Pose>& gt, const OdomOut& od, double wall_ms) {
+    Metrics metrics;
+    metrics.frames = static_cast<int>(gt.size());
+    metrics.map_points = static_cast<int>(od.map.size() / 3);
+    metrics.wall_ms = wall_ms;
+    metrics.mean_ms_per_scan = wall_ms / std::max(1, metrics.frames);
+
+    double squared_error = 0.0;
+    for (int k = 0; k < metrics.frames; ++k) {
+        float dx = od.est[k].t[0] - gt[k].t[0];
+        float dy = od.est[k].t[1] - gt[k].t[1];
+        float dz = od.est[k].t[2] - gt[k].t[2];
+        float error = std::sqrt(dx * dx + dy * dy + dz * dz);
+        squared_error += error * error;
+        metrics.max_error_m = std::max(metrics.max_error_m, error);
+        if (k > 0) {
+            float lx = gt[k].t[0] - gt[k - 1].t[0];
+            float ly = gt[k].t[1] - gt[k - 1].t[1];
+            float lz = gt[k].t[2] - gt[k - 1].t[2];
+            metrics.trajectory_length_m += std::sqrt(lx * lx + ly * ly + lz * lz);
+        }
+    }
+    metrics.ate_m = static_cast<float>(std::sqrt(squared_error / metrics.frames));
+    const Pose& final_est = od.est.back();
+    const Pose& final_gt = gt.back();
+    float final_dx = final_est.t[0] - final_gt.t[0];
+    float final_dy = final_est.t[1] - final_gt.t[1];
+    float final_dz = final_est.t[2] - final_gt.t[2];
+    metrics.final_drift_m =
+        std::sqrt(final_dx * final_dx + final_dy * final_dy + final_dz * final_dz);
+    metrics.final_drift_percent =
+        static_cast<float>(100.0 * metrics.final_drift_m /
+                           std::max(1e-6, metrics.trajectory_length_m));
+
+    int registered_scans = 0;
+    for (size_t k = 1; k < od.alignments.size(); ++k) {
+        const AlignmentStats& alignment = od.alignments[k];
+        metrics.gpu_nn_ms += alignment.nn_ms;
+        metrics.mean_inliers += alignment.inliers;
+        metrics.mean_icp_iterations += alignment.iterations;
+        metrics.mean_icp_rmse_m += alignment.rmse;
+        ++registered_scans;
+    }
+    if (registered_scans > 0) {
+        metrics.mean_gpu_nn_ms_per_scan = metrics.gpu_nn_ms / registered_scans;
+        metrics.mean_inliers /= registered_scans;
+        metrics.mean_icp_iterations /= registered_scans;
+        metrics.mean_icp_rmse_m /= registered_scans;
+    }
+    metrics.passed =
+        metrics.ate_m < 0.5f &&
+        metrics.final_drift_m < 1.0f &&
+        metrics.mean_inliers >= 10.0;
+    return metrics;
+}
+
+static bool write_json(const std::string& path, const Metrics& metrics) {
+    std::ofstream out(path);
+    if (!out) {
+        std::fprintf(stderr, "cannot write JSON report: %s\n", path.c_str());
+        return false;
+    }
+    out << "{\n"
+        << "  \"frames\": " << metrics.frames << ",\n"
+        << "  \"map_points\": " << metrics.map_points << ",\n"
+        << "  \"trajectory_length_m\": " << metrics.trajectory_length_m << ",\n"
+        << "  \"ate_m\": " << metrics.ate_m << ",\n"
+        << "  \"max_error_m\": " << metrics.max_error_m << ",\n"
+        << "  \"final_drift_m\": " << metrics.final_drift_m << ",\n"
+        << "  \"final_drift_percent\": " << metrics.final_drift_percent << ",\n"
+        << "  \"wall_ms\": " << metrics.wall_ms << ",\n"
+        << "  \"mean_ms_per_scan\": " << metrics.mean_ms_per_scan << ",\n"
+        << "  \"gpu_nn_ms\": " << metrics.gpu_nn_ms << ",\n"
+        << "  \"mean_gpu_nn_ms_per_scan\": " << metrics.mean_gpu_nn_ms_per_scan << ",\n"
+        << "  \"mean_inliers\": " << metrics.mean_inliers << ",\n"
+        << "  \"mean_icp_iterations\": " << metrics.mean_icp_iterations << ",\n"
+        << "  \"mean_icp_rmse_m\": " << metrics.mean_icp_rmse_m << ",\n"
+        << "  \"passed\": " << (metrics.passed ? "true" : "false") << "\n"
+        << "}\n";
+    return true;
+}
+
 }  // namespace cudabot
 
-int main(){
+int main(int argc, char** argv){
     using namespace cudabot;
+    Options opts;
+    int parse_result = parse_options(argc, argv, opts);
+    if (parse_result == 1) return 0;
+    if (parse_result == 2) return 2;
+
     std::printf("=== GPU KISS-ICP: LiDAR odometry from scans alone ===\n");
     std::vector<float> world=make_world(1);
     std::printf("world points=%zu\n", world.size()/3);
 
     // known loop trajectory: an oval, sensor yaw following the heading, gentle z bob.
-    const int K=280; std::vector<Pose> gt;
+    const int K=opts.frames; std::vector<Pose> gt;
     const float RX=8.f, RY=6.f;
     for(int k=0;k<K;++k){ float a=2.0f*3.1415926f*k/K;
         float x=RX*std::cos(a), y=RY*std::sin(a), z=1.6f+0.1f*std::sin(3*a);
@@ -391,20 +571,24 @@ int main(){
     auto t1=std::chrono::high_resolution_clock::now();
     double ms=std::chrono::duration<double,std::milli>(t1-t0).count();
 
-    // ATE (translation) and final drift vs ground truth.
-    double se=0; float maxe=0; double pathlen=0;
-    for(int k=0;k<K;++k){ float dx=od.est[k].t[0]-gt[k].t[0],dy=od.est[k].t[1]-gt[k].t[1],dz=od.est[k].t[2]-gt[k].t[2];
-        float e=std::sqrt(dx*dx+dy*dy+dz*dz); se+=e*e; maxe=std::max(maxe,e);
-        if(k>0){ float lx=gt[k].t[0]-gt[k-1].t[0],ly=gt[k].t[1]-gt[k-1].t[1],lz=gt[k].t[2]-gt[k-1].t[2]; pathlen+=std::sqrt(lx*lx+ly*ly+lz*lz);} }
-    float ate=(float)std::sqrt(se/K);
-    float final_dx=od.est[K-1].t[0]-gt[K-1].t[0], final_dy=od.est[K-1].t[1]-gt[K-1].t[1], final_dz=od.est[K-1].t[2]-gt[K-1].t[2];
-    float final_drift=std::sqrt(final_dx*final_dx+final_dy*final_dy+final_dz*final_dz);
+    Metrics metrics = evaluate(gt, od, ms);
     std::printf("trajectory length=%.1f m   ATE(trans)=%.3f m   max err=%.3f m   final drift=%.3f m (%.2f%% of path)\n",
-                pathlen, ate, maxe, final_drift, 100.0*final_drift/pathlen);
-    std::printf("wall=%.1f ms  (%.1f ms/scan)\n", ms, ms/K);
-    if(ate<0.5f && final_drift<1.0f) std::printf("RESULT: PASS -- recovered the trajectory from scans alone with low drift.\n");
-    else std::printf("RESULT: CHECK -- drift exceeds tolerance.\n");
+                metrics.trajectory_length_m, metrics.ate_m, metrics.max_error_m,
+                metrics.final_drift_m, metrics.final_drift_percent);
+    std::printf("wall=%.1f ms  (%.1f ms/scan)   GPU NN=%.1f ms total (%.3f ms/registered scan)\n",
+                metrics.wall_ms, metrics.mean_ms_per_scan, metrics.gpu_nn_ms,
+                metrics.mean_gpu_nn_ms_per_scan);
+    std::printf("ICP mean: %.1f iterations, %.1f inliers, %.4f m robust RMSE\n",
+                metrics.mean_icp_iterations, metrics.mean_inliers, metrics.mean_icp_rmse_m);
+    if(metrics.passed) std::printf("RESULT: PASS -- recovered the trajectory from scans alone with low drift.\n");
+    else std::printf("RESULT: CHECK -- odometry accuracy/correspondence gate failed.\n");
 
-    render_gif(scans, gt, od.est);
+    if (!opts.json_path.empty()) {
+        if (!write_json(opts.json_path, metrics)) return 3;
+        std::printf("wrote %s\n", opts.json_path.c_str());
+    }
+    if (opts.no_video) std::printf("GIF rendering skipped by --no-video\n");
+    else render_gif(scans, gt, od.est);
+    if (opts.check && !metrics.passed) return 1;
     return 0;
 }

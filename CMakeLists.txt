@@ -812,6 +812,17 @@ set_tests_properties(test_autodiff test_gpu_mlp PROPERTIES
   TIMEOUT 60
   LABELS "gpu")
 
+add_test(NAME gpu_kiss_icp_gate
+  COMMAND $<TARGET_FILE:gpu_kiss_icp>
+    --check
+    --no-video
+    --frames 64
+    --json ${CMAKE_BINARY_DIR}/gpu_kiss_icp_check.json
+  WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+set_tests_properties(gpu_kiss_icp_gate PROPERTIES
+  TIMEOUT 120
+  LABELS "gpu;odometry;benchmark")
+
 add_test(NAME gpu_planner_showdown_gate
   COMMAND ${PROJECT_SOURCE_DIR}/bin/gpu_planner_showdown_benchmark
     --check
