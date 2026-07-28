@@ -1,10 +1,10 @@
-#include "cuda_kiss_icp/pointcloud_transform.hpp"
+#include "cuda_robotics_common/pointcloud_transform.hpp"
 
 #include <cmath>
 #include <stdexcept>
 #include <vector>
 
-namespace cuda_kiss_icp {
+namespace cuda_robotics_common {
 
 std::vector<float> transform_xyz(
   const std::vector<float> & xyz,
@@ -51,4 +51,4 @@ std::vector<float> transform_xyz(
   return transformed;
 }
 
-}  // namespace cuda_kiss_icp
+}  // namespace cuda_robotics_common

@@ -10,6 +10,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 PACKAGE = ROOT / "ros2_ws" / "src" / "cuda_robotics_msgs"
 ODOMETRY_PACKAGE = ROOT / "ros2_ws" / "src" / "cuda_kiss_icp"
+COMMON_PACKAGE = ROOT / "ros2_ws" / "src" / "cuda_robotics_common"
+MAPPING_PACKAGE = ROOT / "ros2_ws" / "src" / "cuda_voxel_mapping"
 
 
 def message_fields(path: Path) -> list[str]:
@@ -78,6 +80,10 @@ def main() -> int:
         "tf2_ros",
     } <= odometry_dependencies
 
+    common_root = ET.parse(COMMON_PACKAGE / "package.xml").getroot()
+    assert common_root.findtext("name") == "cuda_robotics_common"
+    assert common_root.findtext("version") == "0.3.0"
+
     odometry_cmake = (
         ODOMETRY_PACKAGE / "CMakeLists.txt"
     ).read_text(encoding="utf-8")
@@ -85,8 +91,6 @@ def main() -> int:
         "CUDAROBOTICS_KISS_ICP_CORE_ONLY",
         "gpu_kiss_icp.cu",
         "rclcpp_components_register_nodes",
-        "pointcloud_decoder_test",
-        "pointcloud_transform_test",
         "lifecycle_configuration_test",
     ):
         assert term in odometry_cmake
@@ -110,7 +114,7 @@ def main() -> int:
         assert forbidden not in odometry_source
 
     decoder_source = (
-        ODOMETRY_PACKAGE / "src" / "pointcloud_decoder.cpp"
+        COMMON_PACKAGE / "src" / "pointcloud_decoder.cpp"
     ).read_text(encoding="utf-8")
     for term in (
         'find_field(message, "x")',
@@ -123,7 +127,7 @@ def main() -> int:
         assert term in decoder_source
 
     transform_test = (
-        ODOMETRY_PACKAGE / "test" / "pointcloud_transform_test.cpp"
+        COMMON_PACKAGE / "test" / "pointcloud_transform_test.cpp"
     ).read_text(encoding="utf-8")
     for term in (
         "AppliesCompleteSe3",
@@ -132,6 +136,65 @@ def main() -> int:
         "EXPECT_NEAR",
     ):
         assert term in transform_test
+
+    mapping_root = ET.parse(MAPPING_PACKAGE / "package.xml").getroot()
+    assert mapping_root.findtext("name") == "cuda_voxel_mapping"
+    assert mapping_root.findtext("version") == "0.3.0"
+    mapping_dependencies = {
+        element.text
+        for tag in ("buildtool_depend", "depend", "test_depend")
+        for element in mapping_root.findall(tag)
+    }
+    assert {
+        "ament_cmake",
+        "cuda_robotics_common",
+        "diagnostic_msgs",
+        "nav_msgs",
+        "rclcpp_components",
+        "rclcpp_lifecycle",
+        "sensor_msgs",
+        "tf2_ros",
+    } <= mapping_dependencies
+    mapping_cmake = (
+        MAPPING_PACKAGE / "CMakeLists.txt"
+    ).read_text(encoding="utf-8")
+    for term in (
+        "voxel_mapping_gpu.cu",
+        "rclcpp_components_register_nodes",
+        "lifecycle_configuration_test",
+    ):
+        assert term in mapping_cmake
+    mapping_source = (
+        MAPPING_PACKAGE / "src" / "cuda_voxel_mapper_node.cpp"
+    ).read_text(encoding="utf-8")
+    for term in (
+        'declare_parameter("input_topic", "points")',
+        'declare_parameter("occupancy_topic", "occupancy")',
+        'declare_parameter("local_map_topic", "local_map")',
+        "cuda_robotics_common::decode_xyz",
+        "cuda_robotics_common::transform_xyz",
+        "lookupTransform",
+        "message.data = projection.data",
+        'key_value("unknown_value", "-1")',
+        'key_value("free_value", "0")',
+        'key_value("occupied_value", "100")',
+        "TRANSITION_DEACTIVATE",
+    ):
+        assert term in mapping_source, f"missing mapping contract term: {term}"
+    for forbidden in ('"/points"', '"/occupancy"', '"/local_map"', '"/diagnostics"'):
+        assert forbidden not in mapping_source
+
+    mapping_core = (
+        ROOT / "src" / "voxel_mapping_gpu.cu"
+    ).read_text(encoding="utf-8")
+    for term in (
+        "raycast_kernel",
+        "shift_grid_kernel",
+        "project_occupancy_kernel",
+        "!any_observed ? -1 : (occupied ? 100 : 0)",
+        "atomic_add_clamped",
+    ):
+        assert term in mapping_core
 
     architecture = (
         ROOT / "docs" / "cudanav_architecture.md"

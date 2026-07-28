@@ -689,6 +689,16 @@ target_link_libraries(kiss_icp_gpu_streaming_smoke cudarobotics_kiss_icp_gpu)
 target_compile_options(kiss_icp_gpu_streaming_smoke PRIVATE
   $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
 
+add_library(cudarobotics_voxel_mapping_gpu STATIC src/voxel_mapping_gpu.cu)
+add_library(CudaRobotics::voxel_mapping_gpu ALIAS cudarobotics_voxel_mapping_gpu)
+target_include_directories(cudarobotics_voxel_mapping_gpu
+  PUBLIC ${CMAKE_SOURCE_DIR}/include)
+set_target_properties(cudarobotics_voxel_mapping_gpu PROPERTIES
+  POSITION_INDEPENDENT_CODE ON)
+
+add_executable(voxel_mapping_gpu_smoke tests/voxel_mapping_gpu_smoke.cu)
+target_link_libraries(voxel_mapping_gpu_smoke cudarobotics_voxel_mapping_gpu)
+
 add_executable(gpu_mpc_qp src/gpu_mpc_qp.cu)
 target_link_libraries(gpu_mpc_qp ${OpenCV_LIBS})
 target_compile_options(gpu_mpc_qp PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
@@ -845,6 +855,12 @@ add_test(NAME kiss_icp_gpu_streaming_smoke
 set_tests_properties(kiss_icp_gpu_streaming_smoke PROPERTIES
   TIMEOUT 60
   LABELS "gpu;odometry;api")
+
+add_test(NAME voxel_mapping_gpu_smoke
+  COMMAND $<TARGET_FILE:voxel_mapping_gpu_smoke>)
+set_tests_properties(voxel_mapping_gpu_smoke PROPERTIES
+  TIMEOUT 60
+  LABELS "gpu;mapping;api")
 
 add_test(NAME gpu_planner_showdown_gate
   COMMAND ${PROJECT_SOURCE_DIR}/bin/gpu_planner_showdown_benchmark

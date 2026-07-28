@@ -328,7 +328,7 @@ std::vector<float> CudaKissIcpNode::transform_to_base(
   const auto transform = tf_buffer_->lookupTransform(
     base_frame_, source_frame, stamp, rclcpp::Duration::from_seconds(transform_timeout_sec_));
   try {
-    return transform_xyz(xyz, transform.transform);
+    return cuda_robotics_common::transform_xyz(xyz, transform.transform);
   } catch (const std::invalid_argument & exception) {
     throw tf2::TransformException(exception.what());
   }
@@ -381,7 +381,8 @@ void CudaKissIcpNode::pointcloud_callback(
       handle_fatal_error("declared cloud exceeds max_scan_points", stamp);
       return;
     }
-    DecodedPointCloud decoded = decode_xyz(*message);
+    cuda_robotics_common::DecodedPointCloud decoded =
+      cuda_robotics_common::decode_xyz(*message);
     non_finite_points_ += decoded.skipped_non_finite;
     if (decoded.xyz.size() / 3 < 10) {
       ++invalid_clouds_;
