@@ -350,7 +350,17 @@ def write_report(
         "| Planner | Selected K |",
         "|---|---:|",
     ]
-    lines.extend(f"| {planner} | {k_samples} |" for planner, k_samples in selected_k.items())
+    planner_order = list(
+        dict.fromkeys(str(row["planner"]) for row in summaries)
+    )
+    planner_order.extend(
+        sorted(planner for planner in selected_k if planner not in planner_order)
+    )
+    lines.extend(
+        f"| {planner} | {selected_k[planner]} |"
+        for planner in planner_order
+        if planner in selected_k
+    )
     lines += [
         "",
         "## Evaluation",
