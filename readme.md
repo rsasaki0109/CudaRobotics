@@ -112,6 +112,7 @@ python examples/python/registration_quickstart.py
 | ROS 2 lifecycle voxel mapper | [`ros2_ws/src/cuda_voxel_mapping/`](ros2_ws/src/cuda_voxel_mapping/) |
 | Exact GPU ESDF core and CPU reference | [`docs/esdf_2d_gpu_core.md`](docs/esdf_2d_gpu_core.md) |
 | Typed ROS 2 lifecycle ESDF component | [`ros2_ws/src/cuda_esdf/`](ros2_ws/src/cuda_esdf/) |
+| CudaRobotics 1.0 long-term roadmap | [`docs/cudarobotics_1_0_roadmap.md`](docs/cudarobotics_1_0_roadmap.md) |
 | Current roadmap snapshot | [`docs/next_actions.md`](docs/next_actions.md) |
 
 ## Python MPPI Quickstart
