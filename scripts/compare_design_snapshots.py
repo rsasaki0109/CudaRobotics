@@ -71,7 +71,7 @@ def main() -> int:
     if args.output:
         output_path = Path(args.output).resolve()
         output_path.parent.mkdir(parents=True, exist_ok=True)
-        output_path.write_text(markdown)
+        output_path.write_text(markdown, encoding="utf-8")
         print(f"Generated {output_path.relative_to(ROOT)}")
         return 0
 

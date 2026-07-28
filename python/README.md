@@ -40,6 +40,20 @@ python examples/python/mppi_dlpack_costmap.py  # requires CUDA PyTorch or CuPy
 python examples/python/registration_quickstart.py
 ```
 
+## Registration Result API
+
+v0.2 keeps the tuple API and adds a normalized dataclass result:
+
+```python
+registrar = cr.registration.FilterReg()
+result = registrar.register_result(target_xyz, source_xyz)
+print(result.rotation.shape, result.translation.shape, result.info)
+```
+
+Rigid registrars that support an initial transform accept either a `(3, 3)`
+rotation matrix or a flat length-9 array. `register()` continues to return
+`(rotation, translation, info)` for compatibility.
+
 ## DLPack Costmaps
 
 `MppiPlanner.compute()` accepts CUDA DLPack producers for the `costmap`

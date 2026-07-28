@@ -266,7 +266,7 @@ def variant_metric_block(variant, runtime_ms: float) -> dict[str, object]:
         "loc": float(static_metrics.loc),
         "branch_count": float(static_metrics.branch_count),
         "max_depth": float(static_metrics.max_depth),
-        "source_path": str(source_path.relative_to(ROOT)),
+        "source_path": source_path.relative_to(ROOT).as_posix(),
     }
 
 
