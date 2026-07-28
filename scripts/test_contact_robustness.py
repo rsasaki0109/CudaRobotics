@@ -24,6 +24,7 @@ from contact_robustness import (
     write_report,
 )
 from run_contact_robustness import canonical_sha256, experiment_identity
+from publish_contact_robustness import publish
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -241,6 +242,7 @@ class ContactRobustnessTest(unittest.TestCase):
             "evidence_mode": "contact_robustness_gpu",
             "profile": "smoke",
             "experiment": experiment,
+            "finished_at": "2026-07-29T00:00:01+00:00",
             "git_dirty": False,
             "gpu": [
                 {
@@ -265,6 +267,12 @@ class ContactRobustnessTest(unittest.TestCase):
                 "holm_significant_negative_success_cells": 0,
                 "comparison_family_size": 4,
             },
+            "integrity_gate": {
+                "complete_matrix": True,
+                "all_raw_runs_valid": True,
+                "clean_worktree": True,
+                "gpu_identified": True,
+            },
             "artifacts": artifacts,
             "passed": True,
         }
@@ -288,6 +296,39 @@ class ContactRobustnessTest(unittest.TestCase):
             result = evaluate_manifest(manifest, run, "smoke")
             self.assertFalse(result["checks"]["artifact_report"])
             self.assertFalse(result["checks"]["matrix_counts"])
+
+    def test_publication_is_compact_content_addressed_and_validated(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            run, manifest = self.make_evidence(root)
+            (run / "manifest.json").write_text(
+                json.dumps(manifest), encoding="utf-8"
+            )
+            published = publish(
+                run,
+                root / "results",
+                profile="smoke",
+                result_id="contact_fixture",
+            )
+            self.assertEqual(
+                set(published["published_artifacts"]),
+                {"summary", "comparisons", "report"},
+            )
+            self.assertEqual(published["source"]["matrix"]["episodes"], 12)
+            self.assertNotIn("episodes", published["published_artifacts"])
+            provenance = root / "results" / "contact_fixture_provenance.json"
+            self.assertEqual(
+                published["provenance"]["sha256"], sha256_file(provenance)
+            )
+
+            (run / "summary.csv").write_text("tampered\n", encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "failed validation"):
+                publish(
+                    run,
+                    root / "tampered",
+                    profile="smoke",
+                    result_id="contact_fixture",
+                )
 
 
 if __name__ == "__main__":

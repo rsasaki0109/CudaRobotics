@@ -51,6 +51,22 @@ python3 scripts/validate_contact_robustness.py \
   build/contact_robustness_release --profile release
 ```
 
+After validation, publish a compact checked-in evidence bundle:
+
+```bash
+python3 scripts/publish_contact_robustness.py \
+  build/contact_robustness_release \
+  --output-dir docs/results \
+  --profile release
+```
+
+The publisher revalidates the complete source directory before writing
+`summary.csv`, `comparisons.csv`, `report.md`, and a provenance JSON document.
+The provenance binds the full episode table, raw-run state, benchmark binary,
+GPU identity, commit, matrix, and statistical outputs by SHA-256. The large
+episode table, executable, and attempt logs remain in the local evidence
+directory instead of being duplicated in Git.
+
 ## Statistics
 
 The report includes:
