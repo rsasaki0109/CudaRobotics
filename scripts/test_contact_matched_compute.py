@@ -23,6 +23,7 @@ from contact_matched_compute import (  # noqa: E402
 from contact_robustness import SCENARIO_ORDER, sha256_file  # noqa: E402
 from run_contact_matched_compute import experiment_identity  # noqa: E402
 from run_contact_robustness import canonical_sha256  # noqa: E402
+from publish_contact_matched_compute import publish  # noqa: E402
 
 
 def rows_for(
@@ -202,6 +203,7 @@ class ContactMatchedComputeTest(unittest.TestCase):
                 "evidence_mode": "contact_matched_compute_gpu",
                 "profile": "smoke",
                 "experiment": experiment,
+                "finished_at": "2026-07-29T01:02:03+00:00",
                 "git_dirty": False,
                 "gpu": [{"name": "Test GPU"}],
                 "selected_k": selected,
@@ -231,6 +233,25 @@ class ContactMatchedComputeTest(unittest.TestCase):
             }
             result = evaluate_manifest(manifest, root, "smoke")
             self.assertTrue(result["passed"], result)
+            (root / "manifest.json").write_text(
+                json.dumps(manifest), encoding="utf-8"
+            )
+            published = publish(
+                root,
+                root / "published",
+                profile="smoke",
+                result_id="matched_fixture",
+            )
+            self.assertEqual(
+                set(published["published_artifacts"]),
+                {"calibration", "summary", "comparisons", "report"},
+            )
+            self.assertEqual(
+                published["source"]["selected_k"], selected
+            )
+            self.assertNotIn(
+                "evaluation_episodes", published["published_artifacts"]
+            )
             files["summary"].write_text("tampered\n", encoding="utf-8")
             result = evaluate_manifest(manifest, root, "smoke")
             self.assertFalse(result["checks"]["artifact_summary"])
