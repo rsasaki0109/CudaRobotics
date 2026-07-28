@@ -171,8 +171,8 @@ void CudaVoxelCostmapLayer::onInitialize()
   node->get_parameter(name_ + ".unknown_is_free", bridge_config_.unknown_is_free);
   node->get_parameter(name_ + ".use_maximum", use_maximum_);
   node->get_parameter(name_ + ".max_map_age_sec", max_map_age_sec_);
-  if (occupancy_topic_.empty() || occupancy_topic_.front() == '/') {
-    throw std::invalid_argument("occupancy_topic must be a non-empty relative name");
+  if (occupancy_topic_.empty()) {
+    throw std::invalid_argument("occupancy_topic must be non-empty");
   }
   if (threshold <= 0 || threshold > 100) {
     throw std::invalid_argument("lethal_threshold must be in [1, 100]");

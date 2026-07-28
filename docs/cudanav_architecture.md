@@ -146,7 +146,13 @@ counters.
    supports planar map-origin rotation, preserves unknown space as
    `NO_INFORMATION` by default, and projects cell centers into rolling Nav2
    master grids. ROS Jazzy plugin-load and numerical tests remain CI gates.
-6. Bring up the complete graph in simulation.
+6. Bring up the complete graph in simulation. `cuda_nav_bringup` now defines a
+   deterministic command-driven S-course where ground truth only generates
+   `PointCloud2` and evaluates the outcome. It does not publish odometry or TF:
+   GPU KISS-ICP remains the only control-side pose source. Standard lifecycle
+   services activate the stack in dependency order, and a Nav2 `FollowPath`
+   mission records collision, drift, goal, and command-deadline evidence.
+   Actual ROS Jazzy/GPU execution remains a required gate.
 7. Record deterministic closed-loop evidence and then add real sensor input.
 
 ## v1.0 Closed-Loop Gate

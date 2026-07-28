@@ -14,6 +14,7 @@ COMMON_PACKAGE = ROOT / "ros2_ws" / "src" / "cuda_robotics_common"
 MAPPING_PACKAGE = ROOT / "ros2_ws" / "src" / "cuda_voxel_mapping"
 ESDF_PACKAGE = ROOT / "ros2_ws" / "src" / "cuda_esdf"
 COSTMAP_PACKAGE = ROOT / "ros2_ws" / "src" / "cuda_voxel_costmap_layer"
+BRINGUP_PACKAGE = ROOT / "ros2_ws" / "src" / "cuda_nav_bringup"
 
 
 def message_fields(path: Path) -> list[str]:
@@ -288,7 +289,7 @@ def main() -> int:
     ).read_text(encoding="utf-8")
     for term in (
         'declareParameter("occupancy_topic"',
-        '"occupancy_topic must be a non-empty relative name"',
+        '"occupancy_topic must be non-empty"',
         "validate_occupancy_grid",
         "sample_occupancy_cost",
         "mapToWorld",
@@ -299,6 +300,76 @@ def main() -> int:
             f"missing voxel costmap contract term: {term}"
         )
     assert 'rclcpp::ParameterValue("/occupancy")' not in costmap_source
+
+    bringup_root = ET.parse(BRINGUP_PACKAGE / "package.xml").getroot()
+    assert bringup_root.findtext("name") == "cuda_nav_bringup"
+    assert bringup_root.findtext("version") == "0.3.0"
+    bringup_dependencies = {
+        element.text
+        for tag in ("buildtool_depend", "exec_depend", "test_depend")
+        for element in bringup_root.findall(tag)
+    }
+    assert {
+        "ament_python",
+        "cuda_esdf",
+        "cuda_kiss_icp",
+        "cuda_mppi_controller",
+        "cuda_voxel_costmap_layer",
+        "cuda_voxel_mapping",
+        "lifecycle_msgs",
+        "nav2_controller",
+        "nav2_msgs",
+        "rclpy",
+        "sensor_msgs",
+    } <= bringup_dependencies
+    bringup_launch = (
+        BRINGUP_PACKAGE / "launch" / "cudanav_closed_loop.launch.py"
+    ).read_text(encoding="utf-8")
+    for term in (
+        'package="cuda_kiss_icp"',
+        'package="cuda_voxel_mapping"',
+        'package="cuda_esdf"',
+        'package="nav2_controller"',
+        'executable="cudanav_loopback_simulator"',
+        'executable="lifecycle_orchestrator"',
+        'executable="follow_path_mission"',
+    ):
+        assert term in bringup_launch
+    simulator_source = (
+        BRINGUP_PACKAGE / "cuda_nav_bringup" / "loopback_simulator.py"
+    ).read_text(encoding="utf-8")
+    for term in (
+        "TwistStamped",
+        "PointCloud2",
+        "ground_truth_topic",
+        "collision_count_topic",
+        "raycast(",
+    ):
+        assert term in simulator_source
+    for forbidden in (
+        "TransformBroadcaster",
+        "Odometry()",
+        "create_publisher(Odometry",
+    ):
+        assert forbidden not in simulator_source
+    orchestrator_source = (
+        BRINGUP_PACKAGE
+        / "cuda_nav_bringup"
+        / "lifecycle_orchestrator.py"
+    ).read_text(encoding="utf-8")
+    assert "ChangeState" in orchestrator_source
+    assert "GetState" in orchestrator_source
+    mission_source = (
+        BRINGUP_PACKAGE / "cuda_nav_bringup" / "follow_path_mission.py"
+    ).read_text(encoding="utf-8")
+    for term in (
+        "FollowPath",
+        '"collision_count"',
+        '"odometry_drift_percent"',
+        '"command_deadline_miss_rate"',
+        '"smoke_pass"',
+    ):
+        assert term in mission_source
 
     architecture = (
         ROOT / "docs" / "cudanav_architecture.md"

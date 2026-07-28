@@ -20,13 +20,12 @@ local_costmap:
         max_map_age_sec: 0.5
 ```
 
-The topic must be relative. The occupancy frame must exactly match the Nav2
+The default topic is relative. The occupancy frame must exactly match the Nav2
 costmap global frame. Map origin yaw is supported; non-planar origins, malformed
 shapes, non-standard occupancy values, and stale maps are rejected. Unknown
 space maps to `NO_INFORMATION` by default and can explicitly map to free space.
-When the Nav2 costmap node is nested below the mapper namespace, remap its
-relative `occupancy` subscription to the mapper's `/cuda_nav/occupancy` topic
-in the stack launch file.
+When the Nav2 child costmap node is nested below the mapper namespace, either
+remap its relative subscription or configure the mapper's fully qualified topic.
 
 `use_maximum: false` makes this layer authoritative inside the received rolling
 map. Set it to `true` when another layer must retain a higher cost.
