@@ -48,6 +48,7 @@ int main() {
     odometry.reset(initial);
     KissIcpFrameResult first = odometry.register_scan(scan);
     if (odometry.frame_count() != 1 || first.map_points == 0 ||
+        odometry.map_point_count() != first.map_points ||
         !near(first.pose.t[0], initial.t[0]) ||
         !near(first.pose.t[1], initial.t[1]) ||
         !near(first.pose.t[2], initial.t[2])) {

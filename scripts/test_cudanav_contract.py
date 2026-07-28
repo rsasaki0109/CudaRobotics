@@ -9,6 +9,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 PACKAGE = ROOT / "ros2_ws" / "src" / "cuda_robotics_msgs"
+ODOMETRY_PACKAGE = ROOT / "ros2_ws" / "src" / "cuda_kiss_icp"
 
 
 def message_fields(path: Path) -> list[str]:
@@ -58,6 +59,80 @@ def main() -> int:
     assert "install(FILES README.md" in cmake
     assert "ament_export_dependencies(rosidl_default_runtime)" in cmake
 
+    odometry_root = ET.parse(ODOMETRY_PACKAGE / "package.xml").getroot()
+    assert odometry_root.findtext("name") == "cuda_kiss_icp"
+    assert odometry_root.findtext("version") == "0.3.0"
+    odometry_dependencies = {
+        element.text
+        for tag in ("buildtool_depend", "depend", "test_depend")
+        for element in odometry_root.findall(tag)
+    }
+    assert {
+        "ament_cmake",
+        "diagnostic_msgs",
+        "lifecycle_msgs",
+        "nav_msgs",
+        "rclcpp_components",
+        "rclcpp_lifecycle",
+        "sensor_msgs",
+        "tf2_ros",
+    } <= odometry_dependencies
+
+    odometry_cmake = (
+        ODOMETRY_PACKAGE / "CMakeLists.txt"
+    ).read_text(encoding="utf-8")
+    for term in (
+        "CUDAROBOTICS_KISS_ICP_CORE_ONLY",
+        "gpu_kiss_icp.cu",
+        "rclcpp_components_register_nodes",
+        "pointcloud_decoder_test",
+        "pointcloud_transform_test",
+        "lifecycle_configuration_test",
+    ):
+        assert term in odometry_cmake
+
+    odometry_source = (
+        ODOMETRY_PACKAGE / "src" / "cuda_kiss_icp_node.cpp"
+    ).read_text(encoding="utf-8")
+    for term in (
+        'declare_parameter("input_topic", "points")',
+        'declare_parameter("odom_topic", "odom")',
+        "decode_xyz(*message)",
+        "transform_to_base",
+        "lookupTransform",
+        "odom.header.stamp = stamp",
+        "transform.header = odom.header",
+        'key_value("deskewed", "false")',
+        "TRANSITION_DEACTIVATE",
+    ):
+        assert term in odometry_source, f"missing odometry contract term: {term}"
+    for forbidden in ('"/points"', '"/odom"', '"/diagnostics"'):
+        assert forbidden not in odometry_source
+
+    decoder_source = (
+        ODOMETRY_PACKAGE / "src" / "pointcloud_decoder.cpp"
+    ).read_text(encoding="utf-8")
+    for term in (
+        'find_field(message, "x")',
+        'find_field(message, "y")',
+        'find_field(message, "z")',
+        "message.row_step",
+        "message.is_bigendian",
+        "std::isfinite",
+    ):
+        assert term in decoder_source
+
+    transform_test = (
+        ODOMETRY_PACKAGE / "test" / "pointcloud_transform_test.cpp"
+    ).read_text(encoding="utf-8")
+    for term in (
+        "AppliesCompleteSe3",
+        "transform.rotation.z",
+        "transform.translation.x",
+        "EXPECT_NEAR",
+    ):
+        assert term in transform_test
+
     architecture = (
         ROOT / "docs" / "cudanav_architecture.md"
     ).read_text(encoding="utf-8")
@@ -71,6 +146,7 @@ def main() -> int:
         "width * height == len(distances)",
         "complete SE(3)",
         "controller commands affect subsequent robot state",
+        "safe inactive state",
     )
     for term in required_contract_terms:
         assert term in architecture, f"missing CudaNav contract term: {term}"
