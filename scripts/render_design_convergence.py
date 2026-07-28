@@ -197,7 +197,9 @@ def main() -> int:
     output_path = Path(args.output).resolve()
     output_path.parent.mkdir(parents=True, exist_ok=True)
     snapshots = load_snapshots(history_dir)
-    output_path.write_text(generate_convergence_markdown(snapshots))
+    output_path.write_text(
+        generate_convergence_markdown(snapshots), encoding="utf-8"
+    )
     print(f"Generated {output_path.relative_to(ROOT)}")
     return 0
 

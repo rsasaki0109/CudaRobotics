@@ -117,7 +117,7 @@ def generate_experiments_markdown(csv_paths: list[Path], reports: list[ProblemRe
     lines.append("## Inputs")
     lines.append("")
     for path in csv_paths:
-        lines.append(f"- `{path.relative_to(ROOT)}`")
+        lines.append(f"- `{path.relative_to(ROOT).as_posix()}`")
     lines.append("")
     lines.append("## Active Problems")
     lines.append("")
@@ -168,8 +168,10 @@ def main() -> int:
     docs_dir = ROOT / args.docs_dir
     docs_dir.mkdir(parents=True, exist_ok=True)
     experiments_md = docs_dir / "experiments.md"
-    experiments_md.write_text(generate_experiments_markdown(csv_paths, reports))
-    print(f"Generated {experiments_md.relative_to(ROOT)}")
+    experiments_md.write_text(
+        generate_experiments_markdown(csv_paths, reports), encoding="utf-8"
+    )
+    print(f"Generated {experiments_md.relative_to(ROOT).as_posix()}")
     return 0
 
 

@@ -49,6 +49,48 @@ def download(url: str, destination: Path) -> None:
     partial.replace(destination)
 
 
+def remote_archive():
+    try:
+        from remotezip import RemoteZip
+    except ImportError as exc:
+        raise SystemExit(
+            "selective remote access requires: python -m pip install remotezip"
+        ) from exc
+    return RemoteZip(DATASET_URL)
+
+
+def list_remote_members() -> list[dict[str, object]]:
+    with remote_archive() as bundle:
+        return [
+            {
+                "name": item.filename,
+                "size": item.file_size,
+                "compressed_size": item.compress_size,
+            }
+            for item in bundle.infolist()
+            if not item.is_dir()
+        ]
+
+
+def extract_remote_member(member: str, destination: Path) -> Path:
+    destination.mkdir(parents=True, exist_ok=True)
+    output = destination / Path(member).name
+    partial = output.with_suffix(output.suffix + ".part")
+    with remote_archive() as bundle:
+        names = {item.filename for item in bundle.infolist()}
+        if member not in names:
+            raise SystemExit(f"remote ZIP member not found: {member}")
+        with bundle.open(member) as source, partial.open("wb") as target:
+            copied = 0
+            while chunk := source.read(8 * 1024 * 1024):
+                target.write(chunk)
+                copied += len(chunk)
+                print(f"\rextracted {copied / 1e9:.2f} GB", end="", flush=True)
+    print()
+    partial.replace(output)
+    return output
+
+
 def topics_from_metadata(path: Path) -> dict[str, str]:
     text = path.read_text(encoding="utf-8", errors="replace")
     names = re.findall(r"^\s*name:\s*['\"]?([^'\"\s]+)", text, re.MULTILINE)
@@ -92,7 +134,25 @@ def main() -> int:
     parser.add_argument("--extract", action="store_true")
     parser.add_argument("--archive", type=Path, help="Use an archive already downloaded elsewhere.")
     parser.add_argument("--report", type=Path)
+    parser.add_argument(
+        "--list-remote",
+        action="store_true",
+        help="List ZIP members using HTTP ranges without downloading the 6 GB archive.",
+    )
+    parser.add_argument(
+        "--remote-member",
+        help="Extract one ZIP member with HTTP ranges instead of downloading the full archive.",
+    )
     args = parser.parse_args()
+
+    if args.list_remote:
+        print(json.dumps({"members": list_remote_members()}, indent=2))
+        return 0
+    if args.remote_member:
+        selected = args.data_dir / "selected" / Path(args.remote_member).parent.name
+        output = extract_remote_member(args.remote_member, selected)
+        print(f"wrote {output}")
+        return 0
 
     archive = args.archive or args.data_dir / ARCHIVE_NAME
     if args.download:

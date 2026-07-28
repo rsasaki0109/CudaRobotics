@@ -665,10 +665,10 @@ public:
       target_view.data<float>(), target_view.dim(0),
       source_view.data<float>(), source_view.dim(0));
 
-    const int num_points = static_cast<int>(result.deformed_xyz.size() / 3);
+    const size_t num_points = result.deformed_xyz.size() / 3;
     auto * storage = new std::vector<float>(std::move(result.deformed_xyz));
     nb::ndarray<nb::numpy, float, nb::shape<-1, 3>, nb::c_contig> deformed(
-      storage->data(), {num_points, 3},
+      storage->data(), {num_points, size_t{3}},
       nb::capsule(storage, [](void * ptr) noexcept {
         delete static_cast<std::vector<float> *>(ptr);
       }));
@@ -689,7 +689,7 @@ private:
 NB_MODULE(_cudarobotics, m)
 {
   m.doc() = "CUDA Robotics Python bindings";
-  m.attr("__version__") = "0.1.0";
+  m.attr("__version__") = "0.2.0";
 
   nb::enum_<cr::MotionModel>(m, "MotionModel")
     .value("DiffDrive", cr::MotionModel::DiffDrive)

@@ -92,3 +92,16 @@ def test_mppi_planner_cuda_dlpack_costmap_smoke():
 )
 def test_registration_constructors(cls):
     assert cls() is not None
+
+
+def test_registration_result_contract():
+    result = registration.RegistrationResult(
+        rotation=np.eye(3, dtype=np.float32),
+        translation=np.zeros(3, dtype=np.float32),
+        info={"iterations": 0},
+    )
+    assert result.rotation.shape == (3, 3)
+    assert result.translation.shape == (3,)
+    assert result.info["iterations"] == 0
+    with pytest.raises(Exception):
+        result.translation = np.ones(3, dtype=np.float32)
