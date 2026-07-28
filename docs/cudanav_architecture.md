@@ -154,6 +154,11 @@ counters.
    mission records collision, drift, goal, and command-deadline evidence.
    Actual ROS Jazzy/GPU execution remains a required gate.
 7. Record deterministic closed-loop evidence and then add real sensor input.
+   The deterministic closed-loop, real-rosbag shadow, and multi-GPU manifest
+   gates are implemented. The real-rosbag gate binds the complete input tree,
+   selected DB3, controller config, CUDA diagnostics, evaluation, commands,
+   commit, and GPU identity without mislabelling replay as closed loop. Actual
+   ROS Jazzy/GPU executions remain required release evidence.
 
 ## v1.0 Closed-Loop Gate
 

@@ -94,7 +94,7 @@ python examples/python/registration_quickstart.py
 | CUDA MPPI ESDF clearance critic | [`docs/results/cuda_mppi_esdf_2026-06-11.md`](docs/results/cuda_mppi_esdf_2026-06-11.md) |
 | Registration external baselines | [`docs/results/registration_external_baselines_2026-06-11.md`](docs/results/registration_external_baselines_2026-06-11.md) |
 | Registration unified benchmark | [`docs/registration_benchmark.md`](docs/registration_benchmark.md) |
-| Real-rosbag MPPI quality report | [`docs/cuda_mppi_bag_eval.md`](docs/cuda_mppi_bag_eval.md) |
+| Reproducible real-rosbag CUDA MPPI shadow gate | [`docs/cuda_mppi_bag_eval.md`](docs/cuda_mppi_bag_eval.md) |
 | Latest registration GPU smoke | [`docs/results/registration_unified_smoke_2026-07-28.md`](docs/results/registration_unified_smoke_2026-07-28.md) |
 | Latest real-rosbag evaluation | [`docs/results/mppi_real_rosbag_erl_prueba2_2026-07-28.md`](docs/results/mppi_real_rosbag_erl_prueba2_2026-07-28.md) |
 | Latest fixed-seed MPPI result | [`docs/results/mppi_zoo_suite_2026-06-10.md`](docs/results/mppi_zoo_suite_2026-06-10.md) |

@@ -1,0 +1,333 @@
+#!/usr/bin/env python3
+"""Evidence schema and gates for reproducible CudaNav rosbag replay."""
+
+from __future__ import annotations
+
+import hashlib
+import json
+import math
+from pathlib import Path
+import re
+from typing import Any
+
+
+PROFILES = {
+    "smoke": {
+        "minimum_duration_sec": 5.0,
+        "minimum_diagnostics_samples": 10,
+        "require_recording": False,
+    },
+    "release": {
+        "minimum_duration_sec": 60.0,
+        "minimum_diagnostics_samples": 100,
+        "require_recording": True,
+    },
+}
+
+
+def sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for block in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(block)
+    return digest.hexdigest()
+
+
+def describe_input(path: Path) -> dict[str, Any]:
+    """Return a deterministic content identity for a bag file or directory."""
+    source = path.resolve()
+    if not source.exists():
+        raise FileNotFoundError(source)
+    if source.is_symlink():
+        raise ValueError("input bag root must not be a symbolic link")
+    descendants = [] if source.is_file() else list(source.rglob("*"))
+    if any(candidate.is_symlink() for candidate in descendants):
+        raise ValueError("input bag must not contain symbolic links")
+    files = [source] if source.is_file() else sorted(
+        candidate for candidate in descendants if candidate.is_file()
+    )
+    if not files:
+        raise ValueError("input bag has no regular files")
+    root = source.parent if source.is_file() else source
+    entries = []
+    tree_digest = hashlib.sha256()
+    for candidate in files:
+        relative = candidate.relative_to(root).as_posix()
+        size = candidate.stat().st_size
+        digest = sha256_file(candidate)
+        encoded = f"{relative}\0{size}\0{digest}\n".encode("utf-8")
+        tree_digest.update(encoded)
+        entries.append({"path": relative, "bytes": size, "sha256": digest})
+    return {
+        "source": str(source),
+        "tree_sha256": tree_digest.hexdigest(),
+        "file_count": len(entries),
+        "total_bytes": sum(entry["bytes"] for entry in entries),
+        "files": entries,
+    }
+
+
+def _artifact(root: Path, relative: Any, *, directory: bool = False) -> Path | None:
+    if not isinstance(relative, str) or not relative:
+        return None
+    candidate = (root / relative).resolve()
+    if not candidate.is_relative_to(root):
+        return None
+    if directory:
+        return candidate if candidate.is_dir() else None
+    return candidate if candidate.is_file() and candidate.stat().st_size > 0 else None
+
+
+def _finite_at_least(value: Any, threshold: float) -> bool:
+    return (
+        isinstance(value, (int, float))
+        and not isinstance(value, bool)
+        and math.isfinite(float(value))
+        and float(value) >= threshold
+    )
+
+
+def evaluate_manifest(
+    manifest: dict[str, Any],
+    run_directory: Path,
+    profile: str,
+    *,
+    verify_source: bool = True,
+) -> dict[str, Any]:
+    if profile not in PROFILES:
+        raise ValueError(f"unknown rosbag evidence profile: {profile}")
+    policy = PROFILES[profile]
+    root = run_directory.resolve()
+    checks: dict[str, bool] = {
+        "manifest_schema": manifest.get("schema_version") == 1,
+        "profile_matches": manifest.get("profile") == profile,
+        "evidence_mode": (
+            manifest.get("evidence_mode")
+            == "shadow_controller_with_recorded_motion"
+        ),
+        "git_commit_recorded": bool(
+            re.fullmatch(r"[0-9a-fA-F]{40,64}", str(manifest.get("git_commit", "")))
+        ),
+        "clean_worktree": manifest.get("git_dirty") is False,
+        "gpu_identity_recorded": (
+            isinstance(manifest.get("gpu"), list)
+            and bool(manifest["gpu"])
+            and all(
+                isinstance(item, dict)
+                and all(
+                    isinstance(item.get(field), str) and item[field]
+                    for field in (
+                        "physical_index",
+                        "name",
+                        "uuid",
+                        "driver_version",
+                        "memory_total_mib",
+                    )
+                )
+                for item in manifest["gpu"]
+            )
+        ),
+        "no_launch_errors": manifest.get("launch_errors") == {},
+    }
+    returncodes = manifest.get("returncodes")
+    expected_stop_codes = {None, 0, -2, 130, -15, 143}
+    checks["process_returncodes"] = (
+        isinstance(returncodes, dict)
+        and returncodes.get("evaluate") == 0
+        and all(
+            returncodes.get(name) in expected_stop_codes
+            for name in ("controller", "record", "play")
+        )
+    )
+    source = manifest.get("input_bag")
+    checks["input_identity_schema"] = (
+        isinstance(source, dict)
+        and bool(re.fullmatch(r"[0-9a-f]{64}", str(source.get("tree_sha256", ""))))
+        and isinstance(source.get("file_count"), int)
+        and source["file_count"] > 0
+        and isinstance(source.get("total_bytes"), int)
+        and source["total_bytes"] > 0
+        and isinstance(source.get("files"), list)
+        and len(source["files"]) == source["file_count"]
+    )
+    checks["input_content_unchanged"] = False
+    if checks["input_identity_schema"]:
+        if not verify_source:
+            checks["input_content_unchanged"] = True
+        else:
+            try:
+                current = describe_input(Path(source["source"]))
+                checks["input_content_unchanged"] = (
+                    current["tree_sha256"] == source["tree_sha256"]
+                    and current["file_count"] == source["file_count"]
+                    and current["total_bytes"] == source["total_bytes"]
+                )
+            except (FileNotFoundError, OSError, TypeError, ValueError):
+                checks["input_content_unchanged"] = False
+
+    artifacts = manifest.get("artifacts")
+    checks["artifact_table"] = isinstance(artifacts, dict)
+    artifacts = artifacts if isinstance(artifacts, dict) else {}
+    evaluation_path = _artifact(root, artifacts.get("evaluation"))
+    diagnostics_path = _artifact(root, artifacts.get("diagnostics"))
+    config_path = _artifact(root, artifacts.get("controller_config"))
+    launch_log = _artifact(root, artifacts.get("controller_log"))
+    play_log = _artifact(root, artifacts.get("play_log"))
+    checks.update(
+        {
+            "artifact_evaluation": evaluation_path is not None,
+            "artifact_diagnostics": diagnostics_path is not None,
+            "artifact_controller_config": config_path is not None,
+            "artifact_controller_log": launch_log is not None,
+            "artifact_play_log": play_log is not None,
+        }
+    )
+    checks["config_sha256_matches"] = (
+        config_path is not None
+        and sha256_file(config_path)
+        == str(manifest.get("controller_config_sha256", "")).lower()
+    )
+    checks["diagnostics_sha256_matches"] = (
+        diagnostics_path is not None
+        and sha256_file(diagnostics_path)
+        == str(manifest.get("diagnostics_sha256", "")).lower()
+    )
+    checks["evaluation_sha256_matches"] = (
+        evaluation_path is not None
+        and sha256_file(evaluation_path)
+        == str(manifest.get("evaluation_sha256", "")).lower()
+    )
+
+    evaluation: dict[str, Any] = {}
+    if evaluation_path is not None:
+        try:
+            evaluation = json.loads(evaluation_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            evaluation = {}
+    diagnostics = evaluation.get("diagnostics")
+    evaluation_database = manifest.get("evaluation_database")
+    database_path: Path | None = None
+    checks["evaluation_database_identity"] = False
+    if isinstance(evaluation_database, dict):
+        try:
+            database_path = Path(evaluation_database["source"]).resolve()
+            expected_entry = next(
+                (
+                    entry
+                    for entry in source.get("files", [])
+                    if isinstance(entry, dict)
+                    and entry.get("path") == evaluation_database.get("relative_path")
+                    and entry.get("sha256") == evaluation_database.get("sha256")
+                ),
+                None,
+            )
+            if verify_source:
+                source_path = Path(source["source"]).resolve()
+                source_root = (
+                    source_path if source_path.is_dir() else source_path.parent
+                )
+                checks["evaluation_database_identity"] = (
+                    database_path.is_file()
+                    and database_path.is_relative_to(source_root)
+                    and expected_entry is not None
+                    and expected_entry.get("bytes") == database_path.stat().st_size
+                    and sha256_file(database_path)
+                    == evaluation_database.get("sha256")
+                )
+            else:
+                checks["evaluation_database_identity"] = expected_entry is not None
+        except (KeyError, OSError, TypeError):
+            checks["evaluation_database_identity"] = False
+    reported_motion_database = (
+        evaluation.get("motion", {}).get("database")
+        if isinstance(evaluation.get("motion"), dict)
+        else None
+    )
+    reported_clearance_database = (
+        evaluation.get("clearance", {}).get("database")
+        if isinstance(evaluation.get("clearance"), dict)
+        else None
+    )
+    reported_diagnostics_source = (
+        diagnostics.get("source") if isinstance(diagnostics, dict) else None
+    )
+    try:
+        checks["evaluation_inputs_bound"] = (
+            database_path is not None
+            and Path(reported_motion_database).resolve() == database_path
+            and Path(reported_clearance_database).resolve() == database_path
+            and diagnostics_path is not None
+            and Path(reported_diagnostics_source).resolve() == diagnostics_path
+        )
+    except (TypeError, OSError):
+        checks["evaluation_inputs_bound"] = False
+    checks.update(
+        {
+            "evaluation_schema": evaluation.get("schema_version") == 1,
+            "evaluation_quality_pass": evaluation.get("quality_pass") is True,
+            "evaluation_mode": (
+                evaluation.get("evidence_mode")
+                == "shadow_controller_with_recorded_motion"
+            ),
+            "minimum_duration": _finite_at_least(
+                evaluation.get("motion", {}).get("duration_s")
+                if isinstance(evaluation.get("motion"), dict)
+                else None,
+                policy["minimum_duration_sec"],
+            ),
+            "diagnostics_coverage": (
+                isinstance(diagnostics, dict)
+                and isinstance(diagnostics.get("samples"), int)
+                and diagnostics["samples"] >= policy["minimum_diagnostics_samples"]
+            ),
+        }
+    )
+
+    recording = _artifact(root, artifacts.get("recording"), directory=True)
+    if policy["require_recording"]:
+        checks["artifact_recording"] = (
+            recording is not None
+            and (recording / "metadata.yaml").is_file()
+            and (recording / "metadata.yaml").stat().st_size > 0
+        )
+    elif artifacts.get("recording"):
+        checks["artifact_recording"] = recording is not None
+
+    commands = manifest.get("commands")
+    checks["commands_recorded"] = (
+        isinstance(commands, dict)
+        and all(
+            isinstance(commands.get(name), list)
+            and commands[name]
+            and all(isinstance(token, str) and token for token in commands[name])
+            for name in ("controller", "play", "evaluate")
+        )
+    )
+    if checks["commands_recorded"]:
+        controller_text = "\0".join(commands["controller"])
+        checks["controller_inputs_bound"] = (
+            config_path is not None
+            and diagnostics_path is not None
+            and str(config_path) in controller_text
+            and str(diagnostics_path) in controller_text
+        )
+        checks["play_input_bound"] = (
+            isinstance(source, dict)
+            and str(Path(source.get("source", "")).resolve()) in commands["play"]
+        )
+        checks["evaluate_inputs_bound"] = (
+            database_path is not None
+            and diagnostics_path is not None
+            and str(database_path) in commands["evaluate"]
+            and str(diagnostics_path) in commands["evaluate"]
+        )
+    else:
+        checks["controller_inputs_bound"] = False
+        checks["play_input_bound"] = False
+        checks["evaluate_inputs_bound"] = False
+    return {
+        "profile": profile,
+        "passed": all(checks.values()),
+        "checks": checks,
+        "thresholds": policy,
+    }

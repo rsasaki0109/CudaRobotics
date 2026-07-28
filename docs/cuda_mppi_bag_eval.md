@@ -1,5 +1,58 @@
 # CUDA MPPI Bag / Real-Data Evaluation Harness
 
+## Reproducible CudaNav Shadow Gate
+
+Use `run_cudanav_rosbag_replay.py` for release evidence. Unlike the older
+exploratory runner described below, it refuses a non-empty output directory and
+fails unless the input bag, selected DB3, controller configuration,
+diagnostics, evaluation, commands, git commit, clean worktree, and physical GPU
+identity are cryptographically bound in one manifest.
+
+```bash
+python3 scripts/run_cudanav_rosbag_replay.py \
+  --bag /data/erl_navigation/Prueba2 \
+  --evaluation-db /data/erl_navigation/Prueba2/rosbag2_2023_11_13-13_09_49_0.db3 \
+  --output-dir build/cudanav_rosbag/erl_prueba2 \
+  --controller-config ros2_ws/src/cuda_nav_bringup/config/controller.yaml \
+  --controller-command \
+    'ros2 launch my_nav shadow_replay.launch.py params_file:={controller_config} diagnostics_csv:={diagnostics_csv}' \
+  --profile release \
+  --use-sim-time
+```
+
+The controller command is parsed directly into an argument vector; shell
+operators are not executed. It must consume both `{controller_config}` and
+`{diagnostics_csv}` or the binding gate fails. `{out_dir}` is also available.
+Use repeated `--bag-play-arg` and `--record-topic` options for platform-specific
+replay and recording settings.
+
+The release profile requires:
+
+- a clean, full git commit and one or more identified NVIDIA GPUs;
+- unchanged source-bag contents and selected DB3 SHA-256;
+- a quality-passing shadow evaluation with at least 60 seconds of recorded
+  motion and 100 CUDA MPPI diagnostic samples;
+- controller config, diagnostics, evaluation, and command-to-input bindings;
+- a retained MCAP output recording with `metadata.yaml`.
+
+Revalidate the directory, including the external source bag:
+
+```bash
+python3 scripts/validate_cudanav_rosbag.py \
+  build/cudanav_rosbag/erl_prueba2 --profile release
+```
+
+`--no-verify-source` exists only for inspecting an archived evidence directory
+after the external dataset has moved. Such a result does not prove that the
+currently available source bag still matches the run.
+
+This gate deliberately labels the result
+`shadow_controller_with_recorded_motion`. Recorded robot motion cannot react to
+replayed CUDA MPPI commands, so even a passing release-profile replay is not
+closed-loop navigation evidence.
+
+## Exploratory Session Runner
+
 `scripts/run_cuda_mppi_bag_eval.py` is a thin orchestration wrapper for moving
 the Nav2 CUDA MPPI controller beyond synthetic maps. It does not assume a
 particular robot launch file; instead, pass the launch and mission commands
@@ -81,7 +134,8 @@ Use the diagnostics plot to inspect:
 - all-colliding and retreat cycles,
 - command saturation or oscillation.
 
-Treat this as an evaluation harness, not a pass/fail benchmark by itself. The
+Treat the exploratory runner as an evaluation harness, not a pass/fail
+benchmark by itself. The
 scenario, map, localization quality, costmap layers, footprint, and waypoint
 policy determine whether the run is comparable across commits.
 
