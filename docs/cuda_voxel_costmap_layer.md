@@ -7,7 +7,9 @@ costmap consumed by `cuda_mppi_controller`.
 ## Contract
 
 - The subscription is reliable, transient-local, depth 1.
-- The configured topic is relative and can be remapped by the stack launch.
+- The default topic is relative and can be remapped by the stack launch.
+  A fully qualified parameter is accepted for Nav2 child costmap nodes whose
+  namespace cannot address a sibling mapper with a relative name.
 - The occupancy frame must exactly match the Nav2 costmap global frame.
 - Width, height, resolution, origin quaternion, data length, and every value in
   `[-1, 100]` are validated before a map becomes current.

@@ -11,6 +11,7 @@ on:
       - ros2_ws/src/cuda_voxel_mapping/**
       - ros2_ws/src/cuda_esdf/**
       - ros2_ws/src/cuda_voxel_costmap_layer/**
+      - ros2_ws/src/cuda_nav_bringup/**
       - ros2_ws/src/cuda_mppi_controller/**
       - include/cudarobotics/kiss_icp_gpu.hpp
       - src/gpu_kiss_icp.cu
@@ -30,6 +31,7 @@ on:
       - ros2_ws/src/cuda_voxel_mapping/**
       - ros2_ws/src/cuda_esdf/**
       - ros2_ws/src/cuda_voxel_costmap_layer/**
+      - ros2_ws/src/cuda_nav_bringup/**
       - ros2_ws/src/cuda_mppi_controller/**
       - include/cudarobotics/kiss_icp_gpu.hpp
       - src/gpu_kiss_icp.cu
@@ -82,7 +84,9 @@ jobs:
             python3-colcon-common-extensions \
             ros-jazzy-ros-base \
             ros-jazzy-nav2-core \
+            ros-jazzy-nav2-controller \
             ros-jazzy-nav2-costmap-2d \
+            ros-jazzy-nav2-msgs \
             ros-jazzy-nav2-util \
             ros-jazzy-nav2-mppi-controller \
             ros-jazzy-ament-cmake-gtest \
@@ -95,7 +99,7 @@ jobs:
           source /opt/ros/jazzy/setup.bash
           cd ros2_ws
           colcon build \
-            --packages-select cuda_robotics_msgs cuda_robotics_common cuda_kiss_icp cuda_voxel_mapping cuda_esdf cuda_voxel_costmap_layer cuda_mppi_controller \
+            --packages-select cuda_robotics_msgs cuda_robotics_common cuda_kiss_icp cuda_voxel_mapping cuda_esdf cuda_voxel_costmap_layer cuda_mppi_controller cuda_nav_bringup \
             --cmake-args \
               -DCMAKE_BUILD_TYPE=Release \
               -DCMAKE_CUDA_ARCHITECTURES=75
@@ -110,6 +114,6 @@ jobs:
           ros2 run cuda_voxel_costmap_layer plugin_load_test
           ros2 run cuda_mppi_controller plugin_load_test
           ros2 run cuda_mppi_controller parameter_validation_test
-          colcon test --packages-select cuda_robotics_common cuda_kiss_icp cuda_voxel_mapping cuda_esdf cuda_voxel_costmap_layer \
+          colcon test --packages-select cuda_robotics_common cuda_kiss_icp cuda_voxel_mapping cuda_esdf cuda_voxel_costmap_layer cuda_nav_bringup \
             --event-handlers console_direct+
           colcon test-result --verbose
