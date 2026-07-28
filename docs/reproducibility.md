@@ -137,6 +137,20 @@ python3 scripts/validate_contact_robustness.py \
 
 See [`contact_diff_mppi_robustness.md`](contact_diff_mppi_robustness.md).
 
+The paper's equal-wall-clock claim uses a separate calibrated deadline
+protocol. It selects the largest zero-miss K for each planner on calibration
+seeds, freezes those budgets, then evaluates 30 held-out seeds:
+
+```bash
+python3 scripts/run_contact_matched_compute.py \
+  --output-dir build/contact_matched_compute_release \
+  --profile release
+python3 scripts/validate_contact_matched_compute.py \
+  build/contact_matched_compute_release --profile release
+```
+
+See [`contact_matched_compute.md`](contact_matched_compute.md).
+
 ## Release Preflight
 
 The benchmark suites above regenerate research results. Release candidates use

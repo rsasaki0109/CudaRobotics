@@ -27,6 +27,7 @@
 #include <sstream>
 #include <string>
 #include <sys/stat.h>
+#include <thread>
 #ifdef _WIN32
 #include <direct.h>
 #endif
@@ -110,6 +111,9 @@ struct EpisodeMetrics {
     int collisions = 0;
     float mean_control_delta = 0.0f, control_roughness = 0.0f;
     float avg_control_ms = 0.0f, total_control_ms = 0.0f, episode_ms = 0.0f;
+    float p95_control_ms = 0.0f, max_control_ms = 0.0f;
+    float control_deadline_ms = 0.0f, avg_control_slot_ms = 0.0f;
+    int deadline_misses = 0, deadline_feasible = 1, real_time_success = 0;
     long long sample_budget = 0;
 };
 
@@ -982,6 +986,10 @@ public:
     bool  true_plant_hard = false;
     float plant_mu = 0.6f;               // Coulomb friction of the hard true plant
     float plant_damping_scale = 1.0f;    // hard-plant linear/angular damping
+    // Optional real-time contract. A positive value gives every planner the same
+    // wall-clock control slot. Early results wait until the slot boundary; overruns
+    // remain visible as deadline misses and invalidate real_time_success.
+    float control_deadline_ms = 0.0f;
 
     EpisodeRunner(const Variant& v, const BoxScenario& sc, int K, int T, int seed)
         : v_(v), sc_(sc), K_(K), T_(T), seed_(seed) {
@@ -1041,6 +1049,9 @@ public:
 
         auto ep0 = chrono::steady_clock::now();
         float ctrl_ms = 0.0f;
+        float control_slot_ms = 0.0f;
+        vector<float> control_times;
+        int deadline_misses = 0;
         float prev_ux = 0.0f, prev_uy = 0.0f;
         bool have_prev_control = false;
         float control_delta_sum = 0.0f;
@@ -1062,7 +1073,18 @@ public:
             auto t0 = chrono::steady_clock::now();
             controller_update();
             auto t1 = chrono::steady_clock::now();
-            ctrl_ms += chrono::duration<float, milli>(t1 - t0).count();
+            float step_control_ms = chrono::duration<float, milli>(t1 - t0).count();
+            ctrl_ms += step_control_ms;
+            control_times.push_back(step_control_ms);
+            if (control_deadline_ms > 0.0f) {
+                if (step_control_ms > control_deadline_ms) deadline_misses++;
+                const auto deadline = t0 + chrono::duration_cast<chrono::steady_clock::duration>(
+                    chrono::duration<float, milli>(control_deadline_ms));
+                if (chrono::steady_clock::now() < deadline)
+                    this_thread::sleep_until(deadline);
+            }
+            control_slot_ms += chrono::duration<float, milli>(
+                chrono::steady_clock::now() - t0).count();
 
             // h_nominal_ still holds the PRE-update mean (the sampler perturbed
             // around it); d_costs_/d_perturbed_ hold this step's K samples. Collect
@@ -1110,6 +1132,19 @@ public:
         m.mean_control_delta = control_delta_count > 0 ? control_delta_sum / control_delta_count : 0.0f;
         m.control_roughness = control_delta_count > 0 ? control_roughness_sum / control_delta_count : 0.0f;
         m.total_control_ms=ctrl_ms; m.avg_control_ms = steps_>0? ctrl_ms/steps_ : 0.0f;
+        if (!control_times.empty()) {
+            vector<float> ordered = control_times;
+            sort(ordered.begin(), ordered.end());
+            size_t p95_index = static_cast<size_t>(
+                ceil(0.95 * static_cast<double>(ordered.size()))) - 1;
+            m.p95_control_ms = ordered[p95_index];
+            m.max_control_ms = ordered.back();
+        }
+        m.control_deadline_ms = control_deadline_ms;
+        m.avg_control_slot_ms = steps_>0 ? control_slot_ms/steps_ : 0.0f;
+        m.deadline_misses = deadline_misses;
+        m.deadline_feasible = deadline_misses == 0 ? 1 : 0;
+        m.real_time_success = (m.success && m.deadline_feasible) ? 1 : 0;
         m.episode_ms = chrono::duration<float, milli>(ep1 - ep0).count();
         m.sample_budget = (long long)steps_ * K_ * T_;
         return m;
@@ -1406,12 +1441,15 @@ static vector<int> parse_int_list(const string& t){ vector<int> v; string tok; s
 static vector<string> parse_string_list(const string& t){ vector<string> v; string tok; stringstream ss(t); while(getline(ss,tok,',')) if(!tok.empty()) v.push_back(tok); sort(v.begin(),v.end()); v.erase(unique(v.begin(),v.end()),v.end()); return v; }
 static void write_csv(const vector<EpisodeMetrics>& rows, const string& path) {
     ofstream out(path);
-    out << "scenario,planner,seed,k_samples,t_horizon,grad_steps,alpha,reached_goal,collision_free,success,steps,final_distance,min_goal_distance,cumulative_cost,collisions,mean_control_delta,control_roughness,avg_control_ms,total_control_ms,episode_ms,sample_budget\n";
+    out << "scenario,planner,seed,k_samples,t_horizon,grad_steps,alpha,reached_goal,collision_free,success,steps,final_distance,min_goal_distance,cumulative_cost,collisions,mean_control_delta,control_roughness,avg_control_ms,total_control_ms,episode_ms,sample_budget,p95_control_ms,max_control_ms,control_deadline_ms,avg_control_slot_ms,deadline_misses,deadline_feasible,real_time_success\n";
     for (const auto& r : rows)
         out << r.scenario<<','<<r.planner<<','<<r.seed<<','<<r.k_samples<<','<<r.t_horizon<<','<<r.grad_steps<<','<<r.alpha<<','
             << r.reached_goal<<','<<r.collision_free<<','<<r.success<<','<<r.steps<<','<<r.final_distance<<','<<r.min_goal_distance<<','
             << r.cumulative_cost<<','<<r.collisions<<','<<r.mean_control_delta<<','<<r.control_roughness<<','
-            << r.avg_control_ms<<','<<r.total_control_ms<<','<<r.episode_ms<<','<<r.sample_budget<<'\n';
+            << r.avg_control_ms<<','<<r.total_control_ms<<','<<r.episode_ms<<','<<r.sample_budget<<','
+            << r.p95_control_ms<<','<<r.max_control_ms<<','<<r.control_deadline_ms<<','
+            << r.avg_control_slot_ms<<','<<r.deadline_misses<<','<<r.deadline_feasible<<','
+            << r.real_time_success<<'\n';
 }
 static void print_summary(const vector<EpisodeMetrics>& rows) {
     map<string, SummaryStats> st;
@@ -1433,9 +1471,11 @@ static void print_summary(const vector<EpisodeMetrics>& rows) {
 int main(int argc, char** argv) {
     bool quick=false; string csv_path="build/benchmark_diff_mppi_pushing_box.csv";
     vector<int> k_values; vector<string> scenario_names, planner_names; int seed_count=-1;
+    int seed_offset=0;
     int horizon=DEFAULT_T; string dump_traj_prefix=""; float plant_gain_scale=1.0f; float plant_size_scale=1.0f;
     float plant_hx_scale=1.0f; float plant_hy_scale=1.0f; float plant_damping_scale=1.0f;
     string diag_prefix=""; bool true_plant_hard=false; float plant_mu=0.6f;
+    float control_deadline_ms=0.0f;
     string grad_agree_prefix="";
     float override_lp_alpha = -1.0f;
     int override_soppi_iters = -1;
@@ -1447,6 +1487,7 @@ int main(int argc, char** argv) {
         else if (a=="--csv"&&i+1<argc) csv_path=argv[++i];
         else if (a=="--k-values"&&i+1<argc) k_values=parse_int_list(argv[++i]);
         else if (a=="--seed-count"&&i+1<argc) seed_count=max(1,atoi(argv[++i]));
+        else if (a=="--seed-offset"&&i+1<argc) seed_offset=atoi(argv[++i]);
         else if (a=="--scenarios"&&i+1<argc) scenario_names=parse_string_list(argv[++i]);
         else if (a=="--planners"&&i+1<argc) planner_names=parse_string_list(argv[++i]);
         else if (a=="--horizon"&&i+1<argc) horizon=max(2,atoi(argv[++i]));
@@ -1480,6 +1521,9 @@ int main(int argc, char** argv) {
         // Coulomb friction of the hard true plant (only used with --true-plant hard).
         else if (a=="--mu"&&i+1<argc) plant_mu=(float)atof(argv[++i]);
         else if (a=="--plant-damping-scale"&&i+1<argc) plant_damping_scale=(float)atof(argv[++i]);
+        // Real-time matched-compute contract: every controller gets the same
+        // wall-clock slot; early completion waits and overruns are counted.
+        else if (a=="--control-deadline-ms"&&i+1<argc) control_deadline_ms=(float)atof(argv[++i]);
         // gradient-agreement capstone: sweep hard-plant friction and log cos(smooth
         // autodiff gradient, true-plant FD sensitivity) at the visited states.
         else if (a=="--grad-agreement"&&i+1<argc) grad_agree_prefix=argv[++i];
@@ -1489,8 +1533,13 @@ int main(int argc, char** argv) {
         !isfinite(plant_hx_scale) || plant_hx_scale <= 0.0f ||
         !isfinite(plant_hy_scale) || plant_hy_scale <= 0.0f ||
         !isfinite(plant_damping_scale) || plant_damping_scale <= 0.0f ||
-        !isfinite(plant_mu) || plant_mu < 0.0f) {
-        fprintf(stderr, "Plant scales must be finite and positive; mu must be finite and non-negative.\n");
+        !isfinite(plant_mu) || plant_mu < 0.0f ||
+        !isfinite(control_deadline_ms) || control_deadline_ms < 0.0f) {
+        fprintf(stderr, "Plant scales must be finite and positive; mu and control deadline must be finite and non-negative.\n");
+        return 1;
+    }
+    if (seed_offset < 0) {
+        fprintf(stderr, "--seed-offset must be non-negative.\n");
         return 1;
     }
     ensure_build_dir();
@@ -1707,7 +1756,8 @@ int main(int argc, char** argv) {
         const int si_seed = scenario_seed_index(sc.name);
         if (si_seed < 0) { fprintf(stderr, "Internal error: scenario %s missing from all_sc\n", sc.name.c_str()); return 1; }
         for (int ks : k_values) for (size_t vi=0; vi<variants.size(); vi++) for (int seed=0; seed<seed_count; seed++) {
-            int run_seed = (int)(6000 + si_seed*100 + seed*7 + ks);
+            int seed_index = seed_offset + seed;
+            int run_seed = (int)(6000 + si_seed*100 + seed_index*7 + ks);
             EpisodeRunner runner(variants[vi], sc, ks, horizon, run_seed);
             runner.plant_gain_scale = plant_gain_scale;
             runner.plant_size_scale = plant_size_scale;
@@ -1716,10 +1766,13 @@ int main(int argc, char** argv) {
             runner.true_plant_hard = true_plant_hard;
             runner.plant_mu = plant_mu;
             runner.plant_damping_scale = plant_damping_scale;
+            runner.control_deadline_ms = control_deadline_ms;
             EpisodeMetrics m = runner.run();
             rows.push_back(m);
-            printf("[%s] %s K=%d seed=%d success=%d steps=%d pos=%.3f ang=%.3f avg_ms=%.3f\n",
-                   sc.name.c_str(), variants[vi].name.c_str(), ks, seed, m.success, m.steps, m.final_distance, m.min_goal_distance, m.avg_control_ms);
+            printf("[%s] %s K=%d seed_index=%d seed=%d success=%d rt_success=%d misses=%d steps=%d pos=%.3f ang=%.3f avg_ms=%.3f p95_ms=%.3f\n",
+                   sc.name.c_str(), variants[vi].name.c_str(), ks, seed_index, run_seed, m.success,
+                   m.real_time_success, m.deadline_misses, m.steps, m.final_distance,
+                   m.min_goal_distance, m.avg_control_ms, m.p95_control_ms);
         }
     }
     write_csv(rows, csv_path);

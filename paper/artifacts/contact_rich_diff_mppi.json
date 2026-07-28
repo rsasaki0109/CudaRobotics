@@ -187,8 +187,14 @@
       "status": "pending",
       "kind": "csv_assertions",
       "generator_command": [
-        "./bin/benchmark_diff_mppi_pushing_box",
-        "--help"
+        "python3",
+        "scripts/run_contact_matched_compute.py",
+        "--output-dir",
+        "build/contact_matched_compute_release",
+        "--binary",
+        "bin/benchmark_diff_mppi_pushing_box",
+        "--profile",
+        "release"
       ]
     },
     {
