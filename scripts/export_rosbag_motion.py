@@ -93,14 +93,19 @@ def write_rows(path: Path, rows: list[dict[str, object]]) -> None:
         writer.writerows(rows)
 
 
-def export_motion(db: Path, output_dir: Path) -> dict[str, object]:
+def export_motion(
+    db: Path,
+    output_dir: Path,
+    command_topic: str = "/mobile_base_controller/cmd_vel",
+    odometry_topic: str = "/mobile_base_controller/odom",
+) -> dict[str, object]:
     connection = sqlite3.connect(f"file:{db.as_posix()}?mode=ro", uri=True)
     try:
         commands = []
-        for recorded_ns, payload in messages(connection, "/mobile_base_controller/cmd_vel"):
+        for recorded_ns, payload in messages(connection, command_topic):
             commands.append({"recorded_ns": recorded_ns, **parse_twist(payload)})
         odometry = []
-        for recorded_ns, payload in messages(connection, "/mobile_base_controller/odom"):
+        for recorded_ns, payload in messages(connection, odometry_topic):
             odometry.append({"recorded_ns": recorded_ns, **parse_odometry(payload)})
     finally:
         connection.close()
@@ -116,7 +121,9 @@ def export_motion(db: Path, output_dir: Path) -> dict[str, object]:
     speeds = [math.hypot(row["linear_x"], row["linear_y"]) for row in odometry]
     command_speeds = [math.hypot(row["linear_x"], row["linear_y"]) for row in commands]
     summary = {
-        "database": str(db), "command_samples": len(commands), "odometry_samples": len(odometry),
+        "database": str(db), "command_topic": command_topic,
+        "odometry_topic": odometry_topic,
+        "command_samples": len(commands), "odometry_samples": len(odometry),
         "duration_s": (odometry[-1]["recorded_ns"] - odometry[0]["recorded_ns"]) / 1e9,
         "path_length_m": distance, "net_displacement_m": displacement,
         "mean_speed_mps": sum(speeds) / len(speeds), "max_speed_mps": max(speeds),
@@ -136,8 +143,19 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("db", type=Path)
     parser.add_argument("--output-dir", type=Path, default=Path("build/rosbag_motion"))
+    parser.add_argument(
+        "--command-topic", default="/mobile_base_controller/cmd_vel"
+    )
+    parser.add_argument(
+        "--odometry-topic", default="/mobile_base_controller/odom"
+    )
     args = parser.parse_args()
-    summary = export_motion(args.db.resolve(), args.output_dir)
+    summary = export_motion(
+        args.db.resolve(),
+        args.output_dir,
+        command_topic=args.command_topic,
+        odometry_topic=args.odometry_topic,
+    )
     print(json.dumps(summary, indent=2))
     print(f"wrote {args.output_dir}")
     return 0

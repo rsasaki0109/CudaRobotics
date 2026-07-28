@@ -50,7 +50,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def load_policy(path: Path) -> dict[str, object]:
-    data = json.loads(path.read_text())
+    data = json.loads(path.read_text(encoding="utf-8"))
     if data.get("schema_version") != 1:
         raise RuntimeError(f"{path.relative_to(ROOT)} must declare schema_version 1")
     thresholds = data.get("thresholds")
@@ -69,7 +69,7 @@ def experiment_variant_files() -> list[Path]:
 
 
 def support_imports(path: Path) -> list[str]:
-    tree = ast.parse(path.read_text())
+    tree = ast.parse(path.read_text(encoding="utf-8"))
     imports: list[str] = []
     for node in ast.walk(tree):
         if isinstance(node, ast.ImportFrom) and node.module == "experiments.support":
@@ -95,7 +95,7 @@ def collect_helper_usage(history_dir: Path) -> list[HelperUsage]:
         if not imports:
             continue
         problem_slug = path.parent.name
-        relative = str(path.relative_to(ROOT))
+        relative = path.relative_to(ROOT).as_posix()
         for helper in imports:
             helper_files.setdefault(helper, set()).add(relative)
             helper_problems.setdefault(helper, set()).add(problem_slug)
@@ -199,7 +199,7 @@ def main() -> int:
     output_path.parent.mkdir(parents=True, exist_ok=True)
     policy = load_policy(policy_path)
     usages = collect_helper_usage(history_dir)
-    output_path.write_text(generate_markdown(usages, policy))
+    output_path.write_text(generate_markdown(usages, policy), encoding="utf-8")
     print(f"Generated {output_path.relative_to(ROOT)}")
     return 0
 

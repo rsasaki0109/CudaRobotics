@@ -13,6 +13,7 @@ from .. import (
     RobustTregParams,
     SinkhornReg,
     SinkhornRegParams,
+    RegistrationResult,
 )
 
 __all__ = [
@@ -28,4 +29,5 @@ __all__ = [
     "RobustTregParams",
     "SinkhornReg",
     "SinkhornRegParams",
+    "RegistrationResult",
 ]

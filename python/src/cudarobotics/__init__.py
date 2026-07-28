@@ -1,3 +1,26 @@
+from dataclasses import dataclass
+import os
+from pathlib import Path
+from typing import Any, Mapping
+
+import numpy as np
+
+
+_dll_directories = []
+if os.name == "nt":
+    # Python 3.8+ no longer searches PATH for extension-module dependencies.
+    # Keep the directory handles alive for the lifetime of this package import.
+    cuda_roots = [
+        value
+        for key, value in os.environ.items()
+        if key == "CUDA_PATH" or key.startswith("CUDA_PATH_V")
+    ]
+    for cuda_root in dict.fromkeys(cuda_roots):
+        cuda_bin = Path(cuda_root) / "bin"
+        if cuda_bin.is_dir():
+            _dll_directories.append(os.add_dll_directory(str(cuda_bin)))
+
+
 from ._cudarobotics import (
     BcpdParams,
     FilterRegParams,
@@ -74,6 +97,32 @@ class MppiPlanner:
         )
 
 
+@dataclass(frozen=True)
+class RegistrationResult:
+    """Normalized rigid-registration result introduced for the v0.2 API."""
+
+    rotation: np.ndarray
+    translation: np.ndarray
+    info: Mapping[str, Any]
+
+
+def _registration_result(result):
+    rotation, translation, info = result
+    return RegistrationResult(
+        rotation=np.asarray(rotation, dtype=np.float32).reshape(3, 3),
+        translation=np.asarray(translation, dtype=np.float32).reshape(3),
+        info=dict(info),
+    )
+
+
+def _registration_init(init_rotation, init_translation):
+    if init_rotation is not None:
+        init_rotation = np.asarray(init_rotation, dtype=np.float32).reshape(9)
+    if init_translation is not None:
+        init_translation = np.asarray(init_translation, dtype=np.float32).reshape(3)
+    return init_rotation, init_translation
+
+
 class FilterReg:
     """GPU FilterReg probabilistic point-cloud registration."""
 
@@ -86,10 +135,20 @@ class FilterReg:
         self._registrar = _FilterReg(self.params)
 
     def register(self, target, source, init_rotation=None, init_translation=None):
+        init_rotation, init_translation = _registration_init(
+            init_rotation, init_translation
+        )
         rotation, translation, info = self._registrar.register_clouds(
             target, source, init_rotation, init_translation
         )
         return rotation, translation, info
+
+    def register_result(
+        self, target, source, init_rotation=None, init_translation=None
+    ):
+        return _registration_result(
+            self.register(target, source, init_rotation, init_translation)
+        )
 
 
 class SinkhornReg:
@@ -104,8 +163,18 @@ class SinkhornReg:
         self._registrar = _SinkhornReg(self.params)
 
     def register(self, target, source, init_rotation=None, init_translation=None):
+        init_rotation, init_translation = _registration_init(
+            init_rotation, init_translation
+        )
         return self._registrar.register_clouds(
             target, source, init_rotation, init_translation
+        )
+
+    def register_result(
+        self, target, source, init_rotation=None, init_translation=None
+    ):
+        return _registration_result(
+            self.register(target, source, init_rotation, init_translation)
         )
 
 
@@ -123,6 +192,9 @@ class Fgr:
     def register(self, target, source):
         return self._registrar.register_clouds(target, source)
 
+    def register_result(self, target, source):
+        return _registration_result(self.register(target, source))
+
 
 class RobustTreg:
     """GPU robust Student's-t point-to-point registration."""
@@ -136,8 +208,18 @@ class RobustTreg:
         self._registrar = _RobustTreg(self.params)
 
     def register(self, target, source, init_rotation=None, init_translation=None):
+        init_rotation, init_translation = _registration_init(
+            init_rotation, init_translation
+        )
         return self._registrar.register_clouds(
             target, source, init_rotation, init_translation
+        )
+
+    def register_result(
+        self, target, source, init_rotation=None, init_translation=None
+    ):
+        return _registration_result(
+            self.register(target, source, init_rotation, init_translation)
         )
 
 
@@ -153,8 +235,18 @@ class RobustP2Plane:
         self._registrar = _RobustP2Plane(self.params)
 
     def register(self, target, source, init_rotation=None, init_translation=None):
+        init_rotation, init_translation = _registration_init(
+            init_rotation, init_translation
+        )
         return self._registrar.register_clouds(
             target, source, init_rotation, init_translation
+        )
+
+    def register_result(
+        self, target, source, init_rotation=None, init_translation=None
+    ):
+        return _registration_result(
+            self.register(target, source, init_rotation, init_translation)
         )
 
 

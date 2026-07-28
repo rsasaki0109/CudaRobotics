@@ -84,7 +84,7 @@ def build_snapshot_payload(csv_paths: list[Path], benchmark_iterations: int, lab
         "snapshot_id": snapshot_id,
         "created_at": timestamp.isoformat(timespec="seconds"),
         "label": label,
-        "inputs": [str(path.relative_to(ROOT)) for path in csv_paths],
+        "inputs": [path.relative_to(ROOT).as_posix() for path in csv_paths],
         "benchmark_iterations": benchmark_iterations,
         "problems": [problem_report_to_dict(report) for report in reports],
     }
@@ -102,7 +102,7 @@ def load_snapshots(history_dir: Path) -> list[dict[str, object]]:
     for path in sorted(history_dir.glob("*.json")):
         if path.name in HISTORY_CONFIG_FILENAMES:
             continue
-        snapshots.append(json.loads(path.read_text()))
+        snapshots.append(json.loads(path.read_text(encoding="utf-8")))
     return snapshots
 
 
@@ -341,11 +341,13 @@ def main() -> int:
             return 1
         snapshot = build_snapshot_payload(csv_paths, args.benchmark_iterations, args.label)
         snapshot_path = history_dir / snapshot_filename(snapshot)
-        snapshot_path.write_text(json.dumps(snapshot, indent=2) + "\n")
+        snapshot_path.write_text(
+            json.dumps(snapshot, indent=2) + "\n", encoding="utf-8"
+        )
         print(f"Wrote {snapshot_path.relative_to(ROOT)}")
 
     snapshots = load_snapshots(history_dir)
-    docs_path.write_text(generate_history_markdown(snapshots))
+    docs_path.write_text(generate_history_markdown(snapshots), encoding="utf-8")
     print(f"Generated {docs_path.relative_to(ROOT)}")
     return 0
 

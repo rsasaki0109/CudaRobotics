@@ -85,6 +85,27 @@ Treat this as an evaluation harness, not a pass/fail benchmark by itself. The
 scenario, map, localization quality, costmap layers, footprint, and waypoint
 policy determine whether the run is comparable across commits.
 
+## Quality-Gated Offline Report
+
+After a run, combine recorded motion, LaserScan clearance, and optional CUDA
+MPPI diagnostics into one machine-readable and human-readable result:
+
+```bash
+python3 scripts/evaluate_mppi_rosbag.py /data/run/topics/run_0.db3 \
+  --diagnostics-csv /data/run/diagnostics.csv \
+  --output-dir build/mppi_rosbag_evaluation/run
+```
+
+Use `--command-topic`, `--odometry-topic`, and `--scan-topic` when the robot
+does not use the ERL-inspired topic names. The command writes
+`evaluation.json`, `evaluation.md`, raw clearance samples, decoded motion CSVs,
+and a per-check CSV. Its default gates cover command pairing, minimum recorded
+clearance, 50 ms solve p95, valid-rollout ratio, and all-colliding cycles.
+
+The report always records its evidence mode. Diagnostics replayed against a
+fixed bag are shadow-controller evidence; they are not labeled as closed-loop
+navigation success.
+
 ## Public ERL-Inspired Dataset
 
 The open [ERL-inspired navigation benchmark dataset](https://doi.org/10.5281/zenodo.10518775)
@@ -104,6 +125,19 @@ before passing a bag to `run_cuda_mppi_bag_eval.py`.
 Recorded motion does not react to newly computed commands. Public bags are
 therefore suitable for sensor/costmap replay and shadow-mode command analysis,
 not by themselves for claims about closed-loop controller success.
+
+To avoid downloading the full 6 GB archive, install `remotezip`, list its
+members, and extract one selected run with HTTP range requests:
+
+```bash
+python3 -m pip install remotezip
+python3 scripts/prepare_erl_navigation_bags.py --list-remote
+python3 scripts/prepare_erl_navigation_bags.py \
+  --remote-member Prueba2/rosbag2_2023_11_13-13_09_49_0.db3
+```
+
+The 2026-07-28 recorded-motion result for this run is documented in
+[`results/mppi_real_rosbag_erl_prueba2_2026-07-28.md`](results/mppi_real_rosbag_erl_prueba2_2026-07-28.md).
 
 ### Offline inspection without ROS
 
