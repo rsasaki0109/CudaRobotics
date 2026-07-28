@@ -100,6 +100,7 @@ python examples/python/registration_quickstart.py
 | Reproducibility suites | [`docs/reproducibility.md`](docs/reproducibility.md) |
 | Diff-MPPI paper material | [`paper/`](paper/) |
 | Contributing a demo or reproduction | [`CONTRIBUTING.md`](CONTRIBUTING.md) |
+| CudaNav end-to-end architecture contract | [`docs/cudanav_architecture.md`](docs/cudanav_architecture.md) |
 | Current roadmap snapshot | [`docs/next_actions.md`](docs/next_actions.md) |
 
 ## Python MPPI Quickstart

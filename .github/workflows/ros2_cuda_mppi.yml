@@ -5,6 +5,7 @@ on:
     branches: [master]
     paths:
       - .github/workflows/ros2_cuda_mppi.yml
+      - ros2_ws/src/cuda_robotics_msgs/**
       - ros2_ws/src/cuda_mppi_controller/**
       - src/mppi_gpu.cu
       - include/cuda_mppi_controller/**
@@ -12,6 +13,7 @@ on:
     branches: [master]
     paths:
       - .github/workflows/ros2_cuda_mppi.yml
+      - ros2_ws/src/cuda_robotics_msgs/**
       - ros2_ws/src/cuda_mppi_controller/**
       - src/mppi_gpu.cu
       - include/cuda_mppi_controller/**
@@ -60,16 +62,17 @@ jobs:
             ros-jazzy-nav2-core \
             ros-jazzy-nav2-costmap-2d \
             ros-jazzy-nav2-util \
-            ros-jazzy-nav2-mppi-controller
+            ros-jazzy-nav2-mppi-controller \
+            ros-jazzy-rosidl-default-generators
 
-      - name: Compile cuda_mppi_controller
+      - name: Compile CudaNav interfaces and cuda_mppi_controller
         shell: bash
         run: |
           set -eo pipefail
           source /opt/ros/jazzy/setup.bash
           cd ros2_ws
           colcon build \
-            --packages-select cuda_mppi_controller \
+            --packages-select cuda_robotics_msgs cuda_mppi_controller \
             --cmake-args \
               -DCMAKE_BUILD_TYPE=Release \
               -DCMAKE_CUDA_ARCHITECTURES=75
