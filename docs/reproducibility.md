@@ -89,3 +89,22 @@ ctest --test-dir build -R check_repro_suite_dry_run --output-on-failure
 ```
 
 The actual benchmark suites remain GPU/runtime checks and should be run on a machine with a working NVIDIA CUDA stack.
+
+## End-to-End CudaNav Evidence
+
+The autonomy-stack evidence has separate gates because closed-loop simulation,
+real recorded data, and multi-GPU reproducibility prove different claims:
+
+| Evidence | Command | Claim |
+|---|---|---|
+| Deterministic closed loop | `scripts/run_cudanav_closed_loop.py` | Commands affect subsequent simulated state |
+| Real rosbag shadow replay | `scripts/run_cudanav_rosbag_replay.py` | Real sensor/motion data passes the GPU controller quality gate |
+| GPU matrix | `scripts/run_cudanav_multi_gpu.py` | The same commit and config reproduce across physical GPU models |
+
+All three runners write self-describing manifests and refuse dirty release
+evidence. The real-rosbag validator re-hashes the external input dataset and
+binds the selected database, diagnostics, controller configuration, evaluation,
+and exact commands. See
+[`cuda_mppi_bag_eval.md`](cuda_mppi_bag_eval.md),
+[`cudanav_closed_loop.md`](cudanav_closed_loop.md), and
+[`cudanav_multi_gpu.md`](cudanav_multi_gpu.md).
