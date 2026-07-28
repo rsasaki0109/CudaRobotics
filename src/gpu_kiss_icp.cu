@@ -65,6 +65,17 @@
 #include <vector>
 
 #include "cuda_check.cuh"
+#ifdef CUDAROBOTICS_KISS_ICP_CORE_ONLY
+#undef CUDA_CHECK
+#define CUDA_CHECK(call)                                                        \
+    do {                                                                        \
+        const cudaError_t cuda_check_error = (call);                            \
+        if (cuda_check_error != cudaSuccess) {                                  \
+            throw std::runtime_error(                                           \
+                std::string("CUDA error: ") + cudaGetErrorString(cuda_check_error)); \
+        }                                                                       \
+    } while (0)
+#endif
 #include "cudarobotics/kiss_icp_gpu.hpp"
 #ifndef CUDAROBOTICS_KISS_ICP_CORE_ONLY
 #include "cuda_video.h"
@@ -437,27 +448,36 @@ struct KissIcpOdometry::Impl {
         const std::string error = validate_kiss_icp_config(config);
         if (!error.empty()) throw std::invalid_argument(error);
         vmap.reserve(config.max_map_points);
-        CUDA_CHECK(cudaMalloc(&dS,config.max_scan_points*3*sizeof(float)));
-        CUDA_CHECK(cudaMalloc(&dPw,config.max_scan_points*3*sizeof(float)));
-        CUDA_CHECK(cudaMalloc(&dQ,config.max_scan_points*3*sizeof(float)));
-        CUDA_CHECK(cudaMalloc(&dNQ,config.max_scan_points*3*sizeof(float)));
-        CUDA_CHECK(cudaMalloc(&dD2,config.max_scan_points*sizeof(float)));
-        CUDA_CHECK(cudaMalloc(&dMap,config.max_map_points*3*sizeof(float)));
-        CUDA_CHECK(cudaMalloc(&dMapN,config.max_map_points*3*sizeof(float)));
-        CUDA_CHECK(cudaMalloc(&dR,9*sizeof(float)));
-        CUDA_CHECK(cudaMalloc(&dt,3*sizeof(float)));
-        CUDA_CHECK(cudaMalloc(&dHg,30*sizeof(float)));
-        CUDA_CHECK(cudaMalloc(&dHashKeys,config.hash_capacity*sizeof(unsigned long long)));
-        CUDA_CHECK(cudaMalloc(&dHashHeads,config.hash_capacity*sizeof(int)));
-        CUDA_CHECK(cudaMalloc(&dPointNext,config.max_map_points*sizeof(int)));
-        CUDA_CHECK(cudaEventCreate(&normal_start));
-        CUDA_CHECK(cudaEventCreate(&normal_stop));
-        CUDA_CHECK(cudaEventCreate(&hash_start));
-        CUDA_CHECK(cudaEventCreate(&hash_stop));
+        try {
+            CUDA_CHECK(cudaMalloc(&dS,config.max_scan_points*3*sizeof(float)));
+            CUDA_CHECK(cudaMalloc(&dPw,config.max_scan_points*3*sizeof(float)));
+            CUDA_CHECK(cudaMalloc(&dQ,config.max_scan_points*3*sizeof(float)));
+            CUDA_CHECK(cudaMalloc(&dNQ,config.max_scan_points*3*sizeof(float)));
+            CUDA_CHECK(cudaMalloc(&dD2,config.max_scan_points*sizeof(float)));
+            CUDA_CHECK(cudaMalloc(&dMap,config.max_map_points*3*sizeof(float)));
+            CUDA_CHECK(cudaMalloc(&dMapN,config.max_map_points*3*sizeof(float)));
+            CUDA_CHECK(cudaMalloc(&dR,9*sizeof(float)));
+            CUDA_CHECK(cudaMalloc(&dt,3*sizeof(float)));
+            CUDA_CHECK(cudaMalloc(&dHg,30*sizeof(float)));
+            CUDA_CHECK(cudaMalloc(&dHashKeys,config.hash_capacity*sizeof(unsigned long long)));
+            CUDA_CHECK(cudaMalloc(&dHashHeads,config.hash_capacity*sizeof(int)));
+            CUDA_CHECK(cudaMalloc(&dPointNext,config.max_map_points*sizeof(int)));
+            CUDA_CHECK(cudaEventCreate(&normal_start));
+            CUDA_CHECK(cudaEventCreate(&normal_stop));
+            CUDA_CHECK(cudaEventCreate(&hash_start));
+            CUDA_CHECK(cudaEventCreate(&hash_stop));
+        } catch (...) {
+            release();
+            throw;
+        }
         reset(KissIcpPose{});
     }
 
     ~Impl() {
+        release();
+    }
+
+    void release() noexcept {
         if(normal_start) cudaEventDestroy(normal_start);
         if(normal_stop) cudaEventDestroy(normal_stop);
         if(hash_start) cudaEventDestroy(hash_start);
@@ -465,6 +485,10 @@ struct KissIcpOdometry::Impl {
         cudaFree(dS); cudaFree(dPw); cudaFree(dQ); cudaFree(dNQ); cudaFree(dD2);
         cudaFree(dMap); cudaFree(dMapN); cudaFree(dR); cudaFree(dt); cudaFree(dHg);
         cudaFree(dHashKeys); cudaFree(dHashHeads); cudaFree(dPointNext);
+        normal_start=normal_stop=hash_start=hash_stop=nullptr;
+        dS=dPw=dQ=dNQ=dD2=dMap=dMapN=dR=dt=dHg=nullptr;
+        dHashKeys=nullptr;
+        dHashHeads=dPointNext=nullptr;
     }
 
     void reset(const Pose& initial) {
@@ -624,6 +648,9 @@ KissIcpFrameResult KissIcpOdometry::register_scan(const std::vector<float>& xyz)
 const KissIcpConfig& KissIcpOdometry::config() const noexcept { return impl_->config; }
 const KissIcpPose& KissIcpOdometry::pose() const noexcept { return impl_->current_pose; }
 std::size_t KissIcpOdometry::frame_count() const noexcept { return impl_->frames; }
+std::size_t KissIcpOdometry::map_point_count() const noexcept {
+    return impl_->localmap.size()/3;
+}
 std::vector<float> KissIcpOdometry::map_snapshot() const { return impl_->localmap; }
 KissIcpTiming KissIcpOdometry::timing() const noexcept { return impl_->accumulated_timing; }
 

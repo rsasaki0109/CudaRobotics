@@ -81,6 +81,7 @@ public:
     const KissIcpConfig& config() const noexcept;
     const KissIcpPose& pose() const noexcept;
     std::size_t frame_count() const noexcept;
+    std::size_t map_point_count() const noexcept;
     std::vector<float> map_snapshot() const;
     KissIcpTiming timing() const noexcept;
 

@@ -109,22 +109,28 @@ unknown in the standard message and must not mean occupied or zero distance.
 
 The production nodes use ROS 2 lifecycle semantics:
 
-1. `configure`: validate parameters and CUDA device capability.
-2. `activate`: allocate GPU buffers and activate publishers.
+1. `configure`: validate parameters and create ROS interfaces.
+2. `activate`: validate the CUDA device, allocate GPU buffers, activate
+   publishers, and start the sensor subscription.
 3. `deactivate`: stop subscriptions and synchronize active CUDA work.
 4. `cleanup`: release GPU memory.
 
-CUDA allocation, launch, and synchronization errors transition the component
-to an error state. Logging an error and continuing with partially updated data
-is not allowed. Capacity overflow, invalid fields, and dropped scans are
-observable counters.
+CUDA allocation errors fail activation through lifecycle error processing.
+CUDA launch/synchronization and core capacity errors during an arbitrary
+subscription callback publish an ERROR diagnostic and force a safe inactive state.
+ROS 2 does not expose a direct active-to-error transition
+for user callbacks. Cleanup and reconfiguration are required before processing
+resumes. Logging an error and continuing with partially updated data is not
+allowed. Capacity overflow, invalid fields, and dropped scans are observable
+counters.
 
 ## Integration Sequence
 
 1. Introduce the typed message and contract tests.
-2. Connect the reusable GPU KISS-ICP core to a ROS 2 lifecycle component. The
-   core API and streaming/reset GPU smoke are now implemented; PointCloud2,
-   TF, timestamp, and lifecycle behavior remain.
+2. Build and exercise the reusable GPU KISS-ICP lifecycle component. The core,
+   schema-aware PointCloud2 decoder, complete sensor-to-base SE(3), sensor-time
+   odometry/TF, lifecycle allocation, and diagnostics are implemented. ROS
+   Jazzy compile and runtime bag evidence remain release gates.
 3. Correct voxel mapping to use full SE(3), field-name lookup, relative topics,
    and explicit unknown-space semantics.
 4. Publish typed ESDF data and add CPU-reference comparison tests.

@@ -102,6 +102,7 @@ python examples/python/registration_quickstart.py
 | Contributing a demo or reproduction | [`CONTRIBUTING.md`](CONTRIBUTING.md) |
 | CudaNav end-to-end architecture contract | [`docs/cudanav_architecture.md`](docs/cudanav_architecture.md) |
 | Reusable GPU KISS-ICP streaming API | [`docs/kiss_icp_gpu_core.md`](docs/kiss_icp_gpu_core.md) |
+| ROS 2 lifecycle GPU KISS-ICP component | [`ros2_ws/src/cuda_kiss_icp/`](ros2_ws/src/cuda_kiss_icp/) |
 | Current roadmap snapshot | [`docs/next_actions.md`](docs/next_actions.md) |
 
 ## Python MPPI Quickstart
