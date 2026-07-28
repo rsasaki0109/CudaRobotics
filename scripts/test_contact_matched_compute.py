@@ -233,6 +233,11 @@ class ContactMatchedComputeTest(unittest.TestCase):
             }
             result = evaluate_manifest(manifest, root, "smoke")
             self.assertTrue(result["passed"], result)
+            round_tripped = json.loads(
+                json.dumps(manifest, sort_keys=True)
+            )
+            result = evaluate_manifest(round_tripped, root, "smoke")
+            self.assertTrue(result["passed"], result)
             (root / "manifest.json").write_text(
                 json.dumps(manifest), encoding="utf-8"
             )
