@@ -29,6 +29,29 @@ The output must be outside the repository or under a git-ignored path. This
 prevents matrix artifacts from making child worktrees dirty and invalidating
 their provenance gate.
 
+## Cross-machine collection
+
+The two GPU models do not need to be installed in the same host. Run the
+closed-loop smoke once on each machine at the identical commit and copy the
+complete evidence directories to the aggregation machine. Then import them:
+
+```bash
+python scripts/run_cudanav_multi_gpu.py \
+  --output-dir build/cudanav_multi_gpu/cross_machine_001 \
+  --import-run imported/gtx_1660_ti/run_00 \
+  --import-run imported/rtx_4070/run_00
+
+python scripts/validate_cudanav_multi_gpu.py \
+  build/cudanav_multi_gpu/cross_machine_001
+```
+
+Every imported directory is independently checked as CudaNav smoke evidence
+before it is copied. The aggregate gate then revalidates all copied runs and
+requires identical commit and controller-config SHA-256 values, distinct
+physical GPU UUIDs, distinct model names, and a complete repetition matrix.
+If multiple repetitions are imported, every physical GPU must contribute the
+same count. `--import-run` cannot be combined with local `--devices`.
+
 For local harness development on a single GPU, explicitly lower both coverage
 requirements:
 
