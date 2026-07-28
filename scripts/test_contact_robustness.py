@@ -90,8 +90,17 @@ class ContactRobustnessTest(unittest.TestCase):
             "--true-plant",
             "--mu",
             "--plant-damping-scale",
+            "--control-deadline-ms",
+            "--seed-offset",
         ):
             self.assertIn(option, source)
+        for field in (
+            "p95_control_ms",
+            "deadline_misses",
+            "deadline_feasible",
+            "real_time_success",
+        ):
+            self.assertIn(field, source)
         ordered_scenarios = ", ".join(
             f"make_{scenario}()" for scenario in (
                 "box_turn",

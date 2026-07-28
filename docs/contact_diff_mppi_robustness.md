@@ -100,3 +100,6 @@ Smoke uses 12 episodes and cannot satisfy the paper robustness claim. A
 episodes were retained; `box_align_contact_loss` gave Diff-MPPI-3 and
 SOPPI-fast 2/2 versus MPPI 0/2, while every method remained 0/2 on
 `box_align_detour`. This is runner validation, not statistical paper evidence.
+
+The complementary equal-wall-clock protocol is documented in
+[`contact_matched_compute.md`](contact_matched_compute.md).
