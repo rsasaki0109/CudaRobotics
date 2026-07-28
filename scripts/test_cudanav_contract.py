@@ -12,6 +12,7 @@ PACKAGE = ROOT / "ros2_ws" / "src" / "cuda_robotics_msgs"
 ODOMETRY_PACKAGE = ROOT / "ros2_ws" / "src" / "cuda_kiss_icp"
 COMMON_PACKAGE = ROOT / "ros2_ws" / "src" / "cuda_robotics_common"
 MAPPING_PACKAGE = ROOT / "ros2_ws" / "src" / "cuda_voxel_mapping"
+ESDF_PACKAGE = ROOT / "ros2_ws" / "src" / "cuda_esdf"
 
 
 def message_fields(path: Path) -> list[str]:
@@ -195,6 +196,60 @@ def main() -> int:
         "atomic_add_clamped",
     ):
         assert term in mapping_core
+
+    esdf_root = ET.parse(ESDF_PACKAGE / "package.xml").getroot()
+    assert esdf_root.findtext("name") == "cuda_esdf"
+    assert esdf_root.findtext("version") == "0.3.0"
+    esdf_dependencies = {
+        element.text
+        for tag in ("buildtool_depend", "depend", "test_depend")
+        for element in esdf_root.findall(tag)
+    }
+    assert {
+        "ament_cmake",
+        "cuda_robotics_msgs",
+        "diagnostic_msgs",
+        "nav_msgs",
+        "rclcpp_components",
+        "rclcpp_lifecycle",
+    } <= esdf_dependencies
+    esdf_cmake = (ESDF_PACKAGE / "CMakeLists.txt").read_text(
+        encoding="utf-8"
+    )
+    for term in (
+        "esdf_2d_gpu.cu",
+        "rclcpp_components_register_nodes",
+        "lifecycle_configuration_test",
+    ):
+        assert term in esdf_cmake
+    esdf_source = (
+        ESDF_PACKAGE / "src" / "cuda_esdf_node.cpp"
+    ).read_text(encoding="utf-8")
+    for term in (
+        'declare_parameter("occupancy_topic", "occupancy")',
+        'declare_parameter("esdf_topic", "esdf")',
+        'declare_parameter("unknown_policy", "occupied")',
+        "cuda_robotics_msgs::msg::DistanceField2D",
+        "output.header = message->header",
+        "output.origin = message->info.origin",
+        "output.distances = result.distances",
+        "occupancy values must lie in [-1, 100]",
+        "TRANSITION_DEACTIVATE",
+    ):
+        assert term in esdf_source, f"missing ESDF contract term: {term}"
+    for forbidden in ('"/occupancy"', '"/esdf"', '"/diagnostics"'):
+        assert forbidden not in esdf_source
+    esdf_core = (ROOT / "src" / "esdf_2d_gpu.cu").read_text(
+        encoding="utf-8"
+    )
+    for term in (
+        "distance_transform_1d",
+        "row_distance_kernel",
+        "column_distance_kernel",
+        "compute_esdf_2d_cpu_reference",
+        "unknown_space_policy_name",
+    ):
+        assert term in esdf_core
 
     architecture = (
         ROOT / "docs" / "cudanav_architecture.md"
