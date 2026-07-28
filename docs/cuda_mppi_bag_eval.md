@@ -26,6 +26,19 @@ operators are not executed. It must consume both `{controller_config}` and
 Use repeated `--bag-play-arg` and `--record-topic` options for platform-specific
 replay and recording settings.
 
+For bags that already contain compatible `sensor_msgs/PointCloud2`, TF, and
+`nav_msgs/Path` streams, the repository provides a native controller command:
+
+```bash
+--controller-command \
+  'ros2 launch cuda_nav_bringup cudanav_recorded_shadow.launch.py params_file:={controller_config} diagnostics_csv:={diagnostics_csv}'
+```
+
+The native launch runs GPU KISS-ICP, voxel mapping, ESDF, the Nav2 CUDA MPPI
+controller, and a recorded-Path action adapter. LaserScan-only bags still need
+an explicit, documented conversion or platform launch; they are not silently
+accepted as PointCloud2 CudaNav evidence.
+
 The release profile requires:
 
 - a clean, full git commit and one or more identified NVIDIA GPUs;

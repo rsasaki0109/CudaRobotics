@@ -37,3 +37,23 @@ and renders the recorded truth/odometry trajectory as a GIF.
 Lifecycle transitions use the standard `change_state` and `get_state` services
 in dependency order. This avoids pretending that the custom lifecycle nodes
 implement Nav2 bond semantics.
+
+## Recorded-data shadow replay
+
+For a rosbag containing compatible `sensor_msgs/PointCloud2`, TF, and
+`nav_msgs/Path` streams:
+
+```bash
+ros2 launch cuda_nav_bringup cudanav_recorded_shadow.launch.py \
+  params_file:=/path/to/controller.yaml \
+  diagnostics_csv:=/tmp/cudanav_diagnostics.csv \
+  points_topic:=/points \
+  path_topic:=/plan \
+  use_sim_time:=true
+```
+
+The launch runs GPU KISS-ICP, voxel mapping, ESDF, the Nav2 CUDA MPPI
+controller, and a small adapter that forwards the newest recorded Path to the
+FollowPath action. The adapter never synthesizes or transforms the recorded
+path. CUDA MPPI commands are shadow outputs and do not modify subsequent bag
+messages, so this launch must not be described as closed-loop success.

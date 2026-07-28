@@ -13,7 +13,13 @@ setup(
             ["resource/" + package_name],
         ),
         ("share/" + package_name, ["package.xml", "README.md"]),
-        ("share/" + package_name + "/launch", ["launch/cudanav_closed_loop.launch.py"]),
+        (
+            "share/" + package_name + "/launch",
+            [
+                "launch/cudanav_closed_loop.launch.py",
+                "launch/cudanav_recorded_shadow.launch.py",
+            ],
+        ),
         ("share/" + package_name + "/config", ["config/controller.yaml"]),
     ],
     install_requires=["setuptools"],
@@ -30,6 +36,8 @@ setup(
             "cuda_nav_bringup.lifecycle_orchestrator:main",
             "follow_path_mission = "
             "cuda_nav_bringup.follow_path_mission:main",
+            "recorded_path_shadow = "
+            "cuda_nav_bringup.recorded_path_shadow:main",
         ],
     },
 )
