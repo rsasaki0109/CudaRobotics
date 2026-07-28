@@ -131,8 +131,11 @@ counters.
    schema-aware PointCloud2 decoder, complete sensor-to-base SE(3), sensor-time
    odometry/TF, lifecycle allocation, and diagnostics are implemented. ROS
    Jazzy compile and runtime bag evidence remain release gates.
-3. Correct voxel mapping to use full SE(3), field-name lookup, relative topics,
-   and explicit unknown-space semantics.
+3. Build and exercise rolling voxel mapping with full SE(3), field-name lookup,
+   relative topics, and explicit unknown-space semantics. The reusable GPU
+   DDA/log-odds core, rolling shift, lifecycle component, standard occupancy
+   projection, and 3D local-map publication are implemented. ROS Jazzy compile
+   and recorded sensor-stream evidence remain release gates.
 4. Publish typed ESDF data and add CPU-reference comparison tests.
 5. Implement `cuda_voxel_costmap_layer`.
 6. Bring up the complete graph in simulation.

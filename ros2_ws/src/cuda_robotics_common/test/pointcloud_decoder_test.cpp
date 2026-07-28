@@ -1,4 +1,4 @@
-#include "cuda_kiss_icp/pointcloud_decoder.hpp"
+#include "cuda_robotics_common/pointcloud_decoder.hpp"
 
 #include <gtest/gtest.h>
 #include <sensor_msgs/msg/point_field.hpp>
@@ -68,7 +68,7 @@ TEST(PointCloudDecoder, HandlesNamedFieldsOrganizedPaddingAndNonFinitePoints)
     write_scalar(message.data, base, points[index][2], false);
   }
 
-  const auto decoded = cuda_kiss_icp::decode_xyz(message);
+  const auto decoded = cuda_robotics_common::decode_xyz(message);
   EXPECT_EQ(decoded.skipped_non_finite, 1u);
   ASSERT_EQ(decoded.xyz.size(), 9u);
   EXPECT_FLOAT_EQ(decoded.xyz[0], 1.0f);
@@ -93,7 +93,7 @@ TEST(PointCloudDecoder, HandlesBigEndianFloat64)
   write_scalar(message.data, 8, -2.5, true);
   write_scalar(message.data, 16, 3.75, true);
 
-  const auto decoded = cuda_kiss_icp::decode_xyz(message);
+  const auto decoded = cuda_robotics_common::decode_xyz(message);
   ASSERT_EQ(decoded.xyz.size(), 3u);
   EXPECT_FLOAT_EQ(decoded.xyz[0], 1.25f);
   EXPECT_FLOAT_EQ(decoded.xyz[1], -2.5f);
@@ -111,8 +111,8 @@ TEST(PointCloudDecoder, RejectsInvalidSchemas)
   message.point_step = 8;
   message.row_step = 8;
   message.data.resize(8);
-  EXPECT_THROW(cuda_kiss_icp::decode_xyz(message), std::invalid_argument);
+  EXPECT_THROW(cuda_robotics_common::decode_xyz(message), std::invalid_argument);
 
   message.fields.push_back(field("z", 8, sensor_msgs::msg::PointField::FLOAT32));
-  EXPECT_THROW(cuda_kiss_icp::decode_xyz(message), std::invalid_argument);
+  EXPECT_THROW(cuda_robotics_common::decode_xyz(message), std::invalid_argument);
 }

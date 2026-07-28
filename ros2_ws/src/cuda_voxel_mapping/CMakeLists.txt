@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.18)
-project(cuda_kiss_icp LANGUAGES CXX CUDA)
+project(cuda_voxel_mapping LANGUAGES CXX CUDA)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -22,8 +22,8 @@ find_package(tf2_ros REQUIRED)
 
 set(REPO_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../../..")
 set(ROS_DEPS
-  diagnostic_msgs
   cuda_robotics_common
+  diagnostic_msgs
   geometry_msgs
   lifecycle_msgs
   nav_msgs
@@ -32,49 +32,44 @@ set(ROS_DEPS
   rclcpp_lifecycle
   sensor_msgs
   tf2
-  tf2_ros
-)
+  tf2_ros)
 
-add_library(cuda_kiss_icp_component SHARED
-  src/cuda_kiss_icp_node.cpp
-  "${REPO_ROOT}/src/gpu_kiss_icp.cu"
-)
-target_compile_definitions(cuda_kiss_icp_component
-  PRIVATE CUDAROBOTICS_KISS_ICP_CORE_ONLY)
-target_include_directories(cuda_kiss_icp_component
+add_library(cuda_voxel_mapping_component SHARED
+  src/cuda_voxel_mapper_node.cpp
+  "${REPO_ROOT}/src/voxel_mapping_gpu.cu")
+target_include_directories(cuda_voxel_mapping_component
   PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     $<BUILD_INTERFACE:${REPO_ROOT}/include>
-    $<INSTALL_INTERFACE:include>
-)
-target_compile_options(cuda_kiss_icp_component PRIVATE
-  $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
-target_link_libraries(cuda_kiss_icp_component CUDA::cudart)
-ament_target_dependencies(cuda_kiss_icp_component ${ROS_DEPS})
-rclcpp_components_register_nodes(cuda_kiss_icp_component
-  "cuda_kiss_icp::CudaKissIcpNode")
+    $<INSTALL_INTERFACE:include>)
+target_link_libraries(cuda_voxel_mapping_component CUDA::cudart)
+ament_target_dependencies(cuda_voxel_mapping_component ${ROS_DEPS})
+rclcpp_components_register_nodes(cuda_voxel_mapping_component
+  "cuda_voxel_mapping::CudaVoxelMapperNode")
 
-add_executable(cuda_kiss_icp_node src/main.cpp)
-target_link_libraries(cuda_kiss_icp_node cuda_kiss_icp_component)
-ament_target_dependencies(cuda_kiss_icp_node rclcpp)
+add_executable(cuda_voxel_mapper_node src/main.cpp)
+target_link_libraries(cuda_voxel_mapper_node cuda_voxel_mapping_component)
+ament_target_dependencies(cuda_voxel_mapper_node rclcpp)
 
-install(TARGETS cuda_kiss_icp_component cuda_kiss_icp_node
+install(TARGETS cuda_voxel_mapping_component cuda_voxel_mapper_node
   ARCHIVE DESTINATION lib
   LIBRARY DESTINATION lib
   RUNTIME DESTINATION lib/${PROJECT_NAME})
 install(DIRECTORY include/ DESTINATION include)
-install(FILES "${REPO_ROOT}/include/cudarobotics/kiss_icp_gpu.hpp"
-  DESTINATION include/cudarobotics)
 install(DIRECTORY launch/ DESTINATION share/${PROJECT_NAME}/launch)
 install(FILES README.md DESTINATION share/${PROJECT_NAME})
+install(FILES "${REPO_ROOT}/include/cudarobotics/voxel_mapping_gpu.hpp"
+  DESTINATION include/cudarobotics)
 
 if(BUILD_TESTING)
   find_package(ament_cmake_gtest REQUIRED)
   ament_add_gtest(lifecycle_configuration_test
     test/lifecycle_configuration_test.cpp)
   if(TARGET lifecycle_configuration_test)
-    target_link_libraries(lifecycle_configuration_test cuda_kiss_icp_component)
-    ament_target_dependencies(lifecycle_configuration_test lifecycle_msgs rclcpp)
+    target_link_libraries(
+      lifecycle_configuration_test cuda_voxel_mapping_component)
+    ament_target_dependencies(
+      lifecycle_configuration_test lifecycle_msgs rclcpp)
   endif()
 endif()
 

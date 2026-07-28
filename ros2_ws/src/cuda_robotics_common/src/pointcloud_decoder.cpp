@@ -1,4 +1,4 @@
-#include "cuda_kiss_icp/pointcloud_decoder.hpp"
+#include "cuda_robotics_common/pointcloud_decoder.hpp"
 
 #include <sensor_msgs/msg/point_field.hpp>
 
@@ -11,7 +11,7 @@
 #include <stdexcept>
 #include <string>
 
-namespace cuda_kiss_icp {
+namespace cuda_robotics_common {
 namespace {
 
 bool host_is_big_endian()
@@ -124,4 +124,4 @@ DecodedPointCloud decode_xyz(const sensor_msgs::msg::PointCloud2 & message)
   return output;
 }
 
-}  // namespace cuda_kiss_icp
+}  // namespace cuda_robotics_common

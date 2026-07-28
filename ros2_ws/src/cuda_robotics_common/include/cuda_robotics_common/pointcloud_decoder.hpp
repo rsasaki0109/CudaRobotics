@@ -5,7 +5,7 @@
 #include <cstddef>
 #include <vector>
 
-namespace cuda_kiss_icp {
+namespace cuda_robotics_common {
 
 struct DecodedPointCloud {
   std::vector<float> xyz;
@@ -16,4 +16,4 @@ struct DecodedPointCloud {
 // row_step, organized-cloud padding, and message endianness.
 DecodedPointCloud decode_xyz(const sensor_msgs::msg::PointCloud2 & message);
 
-}  // namespace cuda_kiss_icp
+}  // namespace cuda_robotics_common

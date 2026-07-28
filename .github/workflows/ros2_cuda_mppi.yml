@@ -6,10 +6,14 @@ on:
     paths:
       - .github/workflows/ros2_cuda_mppi.yml
       - ros2_ws/src/cuda_robotics_msgs/**
+      - ros2_ws/src/cuda_robotics_common/**
       - ros2_ws/src/cuda_kiss_icp/**
+      - ros2_ws/src/cuda_voxel_mapping/**
       - ros2_ws/src/cuda_mppi_controller/**
       - include/cudarobotics/kiss_icp_gpu.hpp
       - src/gpu_kiss_icp.cu
+      - include/cudarobotics/voxel_mapping_gpu.hpp
+      - src/voxel_mapping_gpu.cu
       - src/mppi_gpu.cu
       - include/cuda_mppi_controller/**
   pull_request:
@@ -17,10 +21,14 @@ on:
     paths:
       - .github/workflows/ros2_cuda_mppi.yml
       - ros2_ws/src/cuda_robotics_msgs/**
+      - ros2_ws/src/cuda_robotics_common/**
       - ros2_ws/src/cuda_kiss_icp/**
+      - ros2_ws/src/cuda_voxel_mapping/**
       - ros2_ws/src/cuda_mppi_controller/**
       - include/cudarobotics/kiss_icp_gpu.hpp
       - src/gpu_kiss_icp.cu
+      - include/cudarobotics/voxel_mapping_gpu.hpp
+      - src/voxel_mapping_gpu.cu
       - src/mppi_gpu.cu
       - include/cuda_mppi_controller/**
 
@@ -79,7 +87,7 @@ jobs:
           source /opt/ros/jazzy/setup.bash
           cd ros2_ws
           colcon build \
-            --packages-select cuda_robotics_msgs cuda_kiss_icp cuda_mppi_controller \
+            --packages-select cuda_robotics_msgs cuda_robotics_common cuda_kiss_icp cuda_voxel_mapping cuda_mppi_controller \
             --cmake-args \
               -DCMAKE_BUILD_TYPE=Release \
               -DCMAKE_CUDA_ARCHITECTURES=75
@@ -93,6 +101,6 @@ jobs:
           source install/setup.bash
           ros2 run cuda_mppi_controller plugin_load_test
           ros2 run cuda_mppi_controller parameter_validation_test
-          colcon test --packages-select cuda_kiss_icp \
+          colcon test --packages-select cuda_robotics_common cuda_kiss_icp cuda_voxel_mapping \
             --event-handlers console_direct+
           colcon test-result --verbose
