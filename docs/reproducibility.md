@@ -123,3 +123,16 @@ python3 scripts/validate_paper_artifacts.py --require-ready
 The first command validates the ledger and is suitable for CI while experiments
 are still pending. The second is the submission gate and fails until every
 submission-required systems or contact-rich Diff-MPPI claim is supported.
+
+The contact paper's full robustness matrix has its own resumable GPU runner and
+artifact validator:
+
+```bash
+python3 scripts/run_contact_robustness.py \
+  --output-dir build/contact_robustness_release \
+  --profile release
+python3 scripts/validate_contact_robustness.py \
+  build/contact_robustness_release --profile release
+```
+
+See [`contact_diff_mppi_robustness.md`](contact_diff_mppi_robustness.md).

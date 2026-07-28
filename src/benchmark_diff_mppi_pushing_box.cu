@@ -27,6 +27,9 @@
 #include <sstream>
 #include <string>
 #include <sys/stat.h>
+#ifdef _WIN32
+#include <direct.h>
+#endif
 #include <vector>
 
 #include <cuda_runtime.h>
@@ -966,6 +969,10 @@ public:
     // plant_gain_scale (object SHAPE error vs contact MOBILITY error) and a real
     // sim-to-real concern (exact object dimensions are rarely known).
     float plant_size_scale = 1.0f;
+    // Per-axis geometry mismatch. These multiply plant_size_scale and let the
+    // true object aspect ratio change while the controller keeps nominal hx/hy.
+    float plant_hx_scale = 1.0f;
+    float plant_hy_scale = 1.0f;
     // Sim-to-sim mismatch: when true, the TRUE plant is the hard-contact rigid body
     // (push_step_box_hard_f) -- a structurally different contact model (hard
     // non-penetration + Coulomb stick-slip friction + box momentum) -- while the
@@ -974,6 +981,7 @@ public:
     // Default false => the smooth plant runs and published numbers are byte-identical.
     bool  true_plant_hard = false;
     float plant_mu = 0.6f;               // Coulomb friction of the hard true plant
+    float plant_damping_scale = 1.0f;    // hard-plant linear/angular damping
 
     EpisodeRunner(const Variant& v, const BoxScenario& sc, int K, int T, int seed)
         : v_(v), sc_(sc), K_(K), T_(T), seed_(seed) {
@@ -1010,9 +1018,11 @@ public:
         // true plant (--true-plant hard) and, for the fidelity-arm planner, in rollout.
         hard_p_ = HardParams();
         hard_p_.dt = sc_.params.dt; hard_p_.push_r = sc_.params.push_r;
-        hard_p_.hx = sc_.params.hx * plant_size_scale;
-        hard_p_.hy = sc_.params.hy * plant_size_scale;
+        hard_p_.hx = sc_.params.hx * plant_size_scale * plant_hx_scale;
+        hard_p_.hy = sc_.params.hy * plant_size_scale * plant_hy_scale;
         hard_p_.mu = plant_mu;
+        hard_p_.damp_lin *= plant_damping_scale;
+        hard_p_.damp_ang *= plant_damping_scale;
 
         reset_state();
         fill(h_nominal_.begin(), h_nominal_.end(), 0.0f);
@@ -1025,8 +1035,8 @@ public:
         BoxParams plant_p = sc_.params;
         plant_p.push_gain *= plant_gain_scale;
         plant_p.rot_gain  *= plant_gain_scale;
-        plant_p.hx        *= plant_size_scale;   // true object SHAPE (controller keeps nominal)
-        plant_p.hy        *= plant_size_scale;
+        plant_p.hx        *= plant_size_scale * plant_hx_scale;
+        plant_p.hy        *= plant_size_scale * plant_hy_scale;
         const HardParams& hard_p = hard_p_;
 
         auto ep0 = chrono::steady_clock::now();
@@ -1385,7 +1395,13 @@ static BoxScenario make_box_align_contact_arc() {
 }
 
 // ======================== Utilities ========================
-static void ensure_build_dir() { mkdir("build", 0755); }
+static void ensure_build_dir() {
+#ifdef _WIN32
+    _mkdir("build");
+#else
+    mkdir("build", 0755);
+#endif
+}
 static vector<int> parse_int_list(const string& t){ vector<int> v; string tok; stringstream ss(t); while(getline(ss,tok,',')) if(!tok.empty()) v.push_back(max(1,atoi(tok.c_str()))); sort(v.begin(),v.end()); v.erase(unique(v.begin(),v.end()),v.end()); return v; }
 static vector<string> parse_string_list(const string& t){ vector<string> v; string tok; stringstream ss(t); while(getline(ss,tok,',')) if(!tok.empty()) v.push_back(tok); sort(v.begin(),v.end()); v.erase(unique(v.begin(),v.end()),v.end()); return v; }
 static void write_csv(const vector<EpisodeMetrics>& rows, const string& path) {
@@ -1418,6 +1434,7 @@ int main(int argc, char** argv) {
     bool quick=false; string csv_path="build/benchmark_diff_mppi_pushing_box.csv";
     vector<int> k_values; vector<string> scenario_names, planner_names; int seed_count=-1;
     int horizon=DEFAULT_T; string dump_traj_prefix=""; float plant_gain_scale=1.0f; float plant_size_scale=1.0f;
+    float plant_hx_scale=1.0f; float plant_hy_scale=1.0f; float plant_damping_scale=1.0f;
     string diag_prefix=""; bool true_plant_hard=false; float plant_mu=0.6f;
     string grad_agree_prefix="";
     float override_lp_alpha = -1.0f;
@@ -1447,14 +1464,34 @@ int main(int argc, char** argv) {
         else if (a=="--plant-gain-scale"&&i+1<argc) plant_gain_scale=(float)atof(argv[++i]);
         // true plant box-size scale vs the controller's nominal size (default 1 => no-op).
         else if (a=="--plant-size-scale"&&i+1<argc) plant_size_scale=(float)atof(argv[++i]);
+        // Per-axis true-object geometry mismatch (controller remains nominal).
+        else if (a=="--plant-hx-scale"&&i+1<argc) plant_hx_scale=(float)atof(argv[++i]);
+        else if (a=="--plant-hy-scale"&&i+1<argc) plant_hy_scale=(float)atof(argv[++i]);
         // sim-to-sim: run the STRUCTURALLY different hard-contact rigid-body plant as
         // ground truth (controller keeps the smooth model). Default smooth => byte-identical.
-        else if (a=="--true-plant"&&i+1<argc) true_plant_hard = (string(argv[++i])=="hard");
+        else if (a=="--true-plant"&&i+1<argc) {
+            string value = argv[++i];
+            if (value != "smooth" && value != "hard") {
+                fprintf(stderr, "--true-plant must be smooth or hard.\n");
+                return 1;
+            }
+            true_plant_hard = value == "hard";
+        }
         // Coulomb friction of the hard true plant (only used with --true-plant hard).
         else if (a=="--mu"&&i+1<argc) plant_mu=(float)atof(argv[++i]);
+        else if (a=="--plant-damping-scale"&&i+1<argc) plant_damping_scale=(float)atof(argv[++i]);
         // gradient-agreement capstone: sweep hard-plant friction and log cos(smooth
         // autodiff gradient, true-plant FD sensitivity) at the visited states.
         else if (a=="--grad-agreement"&&i+1<argc) grad_agree_prefix=argv[++i];
+    }
+    if (!isfinite(plant_gain_scale) || plant_gain_scale <= 0.0f ||
+        !isfinite(plant_size_scale) || plant_size_scale <= 0.0f ||
+        !isfinite(plant_hx_scale) || plant_hx_scale <= 0.0f ||
+        !isfinite(plant_hy_scale) || plant_hy_scale <= 0.0f ||
+        !isfinite(plant_damping_scale) || plant_damping_scale <= 0.0f ||
+        !isfinite(plant_mu) || plant_mu < 0.0f) {
+        fprintf(stderr, "Plant scales must be finite and positive; mu must be finite and non-negative.\n");
+        return 1;
     }
     ensure_build_dir();
 
@@ -1674,8 +1711,11 @@ int main(int argc, char** argv) {
             EpisodeRunner runner(variants[vi], sc, ks, horizon, run_seed);
             runner.plant_gain_scale = plant_gain_scale;
             runner.plant_size_scale = plant_size_scale;
+            runner.plant_hx_scale = plant_hx_scale;
+            runner.plant_hy_scale = plant_hy_scale;
             runner.true_plant_hard = true_plant_hard;
             runner.plant_mu = plant_mu;
+            runner.plant_damping_scale = plant_damping_scale;
             EpisodeMetrics m = runner.run();
             rows.push_back(m);
             printf("[%s] %s K=%d seed=%d success=%d steps=%d pos=%.3f ang=%.3f avg_ms=%.3f\n",
