@@ -104,6 +104,7 @@ python examples/python/registration_quickstart.py
 | Diff-MPPI paper material | [`paper/`](paper/) |
 | Paper claim/evidence readiness | [`paper/artifacts/`](paper/artifacts/) |
 | Contact-rich Diff-MPPI robustness suite | [`docs/contact_diff_mppi_robustness.md`](docs/contact_diff_mppi_robustness.md) |
+| Deadline-matched contact control | [`docs/contact_matched_compute.md`](docs/contact_matched_compute.md) |
 | Contributing a demo or reproduction | [`CONTRIBUTING.md`](CONTRIBUTING.md) |
 | CudaNav end-to-end architecture contract | [`docs/cudanav_architecture.md`](docs/cudanav_architecture.md) |
 | Reusable GPU KISS-ICP streaming API | [`docs/kiss_icp_gpu_core.md`](docs/kiss_icp_gpu_core.md) |
