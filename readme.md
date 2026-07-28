@@ -2,7 +2,7 @@
 
 [![GitHub stars](https://img.shields.io/github/stars/rsasaki0109/CudaRobotics?style=social)](https://github.com/rsasaki0109/CudaRobotics/stargazers)
 [![CUDA](https://img.shields.io/badge/CUDA-12.x-76B900)](https://developer.nvidia.com/cuda-toolkit)
-[![Docs](https://img.shields.io/badge/docs-v0.1.0-1f6f64)](https://rsasaki0109.github.io/CudaRobotics/docs/)
+[![Docs](https://img.shields.io/badge/docs-v0.2.0--dev-1f6f64)](https://rsasaki0109.github.io/CudaRobotics/docs/)
 [![Gallery](https://img.shields.io/badge/gallery-animated_demos-blue)](https://rsasaki0109.github.io/CudaRobotics/)
 [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/rsasaki0109/CudaRobotics/blob/master/examples/colab/cudarobotics_quickstart.ipynb)
 
@@ -74,6 +74,10 @@ Full animated gallery: https://rsasaki0109.github.io/CudaRobotics/
 | CUDA MPPI path-angle critic | [`docs/results/cuda_mppi_path_angle_2026-06-12.md`](docs/results/cuda_mppi_path_angle_2026-06-12.md) |
 | CUDA MPPI ESDF clearance critic | [`docs/results/cuda_mppi_esdf_2026-06-11.md`](docs/results/cuda_mppi_esdf_2026-06-11.md) |
 | Registration external baselines | [`docs/results/registration_external_baselines_2026-06-11.md`](docs/results/registration_external_baselines_2026-06-11.md) |
+| Registration unified benchmark | [`docs/registration_benchmark.md`](docs/registration_benchmark.md) |
+| Real-rosbag MPPI quality report | [`docs/cuda_mppi_bag_eval.md`](docs/cuda_mppi_bag_eval.md) |
+| Latest registration GPU smoke | [`docs/results/registration_unified_smoke_2026-07-28.md`](docs/results/registration_unified_smoke_2026-07-28.md) |
+| Latest real-rosbag evaluation | [`docs/results/mppi_real_rosbag_erl_prueba2_2026-07-28.md`](docs/results/mppi_real_rosbag_erl_prueba2_2026-07-28.md) |
 | Latest fixed-seed MPPI result | [`docs/results/mppi_zoo_suite_2026-06-10.md`](docs/results/mppi_zoo_suite_2026-06-10.md) |
 | Quick MPPI smoke result | [`docs/results/mppi_zoo_smoke_2026-06-05.md`](docs/results/mppi_zoo_smoke_2026-06-05.md) |
 | MPPI paper reproduction zoo | [`docs/mppi_reproduction_zoo.md`](docs/mppi_reproduction_zoo.md) |

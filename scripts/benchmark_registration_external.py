@@ -29,6 +29,10 @@ warnings.filterwarnings("ignore", message="Unable to import Axes3D.*")
 
 ALGORITHMS = (
     "cudarobotics_filterreg_gpu",
+    "cudarobotics_fgr_gpu",
+    "cudarobotics_robust_p2plane_gpu",
+    "cudarobotics_robust_treg_gpu",
+    "cudarobotics_sinkhorn_gpu",
     "probreg_filterreg_cpu",
     "probreg_cpd_rigid_cpu",
     "open3d_gicp_cpu",
@@ -78,6 +82,7 @@ CSV_FIELDS = (
     "trials_requested",
     "trials_completed",
     "status",
+    "quality_pass",
     "median_ms",
     "min_ms",
     "max_ms",
@@ -246,6 +251,26 @@ def run_cudarobotics_filterreg(
     ), dict(info)
 
 
+def run_cudarobotics_rigid(
+    algorithm: str,
+    target: np.ndarray,
+    source: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray, dict[str, Any]]:
+    import cudarobotics as cr
+
+    registrars = {
+        "cudarobotics_fgr_gpu": cr.registration.Fgr,
+        "cudarobotics_robust_p2plane_gpu": cr.registration.RobustP2Plane,
+        "cudarobotics_robust_treg_gpu": cr.registration.RobustTreg,
+        "cudarobotics_sinkhorn_gpu": cr.registration.SinkhornReg,
+    }
+    registrar = registrars[algorithm]()
+    rotation, translation, info = registrar.register(target, source)
+    return np.asarray(rotation, dtype=np.float64).reshape(3, 3), np.asarray(
+        translation, dtype=np.float64
+    ), dict(info)
+
+
 def run_probreg_filterreg(
     target: np.ndarray, source: np.ndarray, maxiter: int
 ) -> tuple[np.ndarray, np.ndarray, dict[str, Any]]:
@@ -318,6 +343,13 @@ def run_algorithm(
 ) -> tuple[np.ndarray, np.ndarray, dict[str, Any]]:
     if algorithm == "cudarobotics_filterreg_gpu":
         return run_cudarobotics_filterreg(target, source, maxiter)
+    if algorithm in {
+        "cudarobotics_fgr_gpu",
+        "cudarobotics_robust_p2plane_gpu",
+        "cudarobotics_robust_treg_gpu",
+        "cudarobotics_sinkhorn_gpu",
+    }:
+        return run_cudarobotics_rigid(algorithm, target, source)
     if algorithm == "probreg_filterreg_cpu":
         return run_probreg_filterreg(target, source, maxiter)
     if algorithm == "probreg_cpd_rigid_cpu":
@@ -353,6 +385,7 @@ def run_child(args: argparse.Namespace) -> int:
         "trials_requested": args.trials,
         "trials_completed": 0,
         "status": "error",
+        "quality_pass": "",
         "median_ms": "",
         "min_ms": "",
         "max_ms": "",
@@ -409,6 +442,10 @@ def run_child(args: argparse.Namespace) -> int:
         row["median_rot_err_deg"] = fmt_float(median(rot_errors))
         row["median_trans_err_m"] = fmt_float(median(trans_errors))
         row["median_rmse_m"] = fmt_float(median(rmses))
+        row["quality_pass"] = (
+            median(rot_errors) <= args.max_rot_error_deg
+            and median(trans_errors) <= args.max_trans_error_m
+        )
         row["elapsed_ms_trials"] = joined(elapsed_ms)
         row["rot_err_deg_trials"] = joined(rot_errors)
         row["trans_err_m_trials"] = joined(trans_errors)
@@ -519,6 +556,10 @@ def run_parent(args: argparse.Namespace) -> int:
                     str(args.trials),
                     "--maxiter",
                     str(args.maxiter),
+                    "--max-rot-error-deg",
+                    str(args.max_rot_error_deg),
+                    "--max-trans-error-m",
+                    str(args.max_trans_error_m),
                 ]
                 if args.traceback:
                     cmd.append("--traceback")
@@ -610,6 +651,67 @@ def write_csv(path: Path, rows: list[dict[str, Any]]) -> None:
             writer.writerow({field: row.get(field, "") for field in CSV_FIELDS})
 
 
+def write_markdown(path: Path, csv_path: Path, rows: list[dict[str, Any]]) -> None:
+    successful = [row for row in rows if row.get("status") == "ok"]
+    quality_passes = [
+        row for row in successful
+        if str(row.get("quality_pass", "")).lower() == "true"
+    ]
+    lines = [
+        "# Registration Unified Benchmark",
+        "",
+        "This report compares CudaRobotics GPU registration implementations and "
+        "optional external CPU baselines on identical deterministic point-cloud pairs.",
+        "",
+        f"- Cells completed: {len(successful)}/{len(rows)}",
+        f"- Quality gates passed: {len(quality_passes)}/{len(successful)}",
+        f"- Raw CSV: `{csv_path.name}`",
+        "",
+        "| Scenario | Algorithm | Points | Status | Quality | Median (ms) | "
+        "Rotation error (deg) | Translation error (m) | RMSE (m) |",
+        "|---|---|---:|---|---|---:|---:|---:|---:|",
+    ]
+    for row in rows:
+        quality = row.get("quality_pass", "")
+        quality_text = (
+            "PASS" if str(quality).lower() == "true"
+            else "FAIL" if str(quality).lower() == "false"
+            else "n/a"
+        )
+        lines.append(
+            f"| {row.get('scenario', '')} | `{row.get('algorithm', '')}` | "
+            f"{row.get('size', '')} | {row.get('status', '')} | {quality_text} | "
+            f"{row.get('median_ms', '') or 'n/a'} | "
+            f"{row.get('median_rot_err_deg', '') or 'n/a'} | "
+            f"{row.get('median_trans_err_m', '') or 'n/a'} | "
+            f"{row.get('median_rmse_m', '') or 'n/a'} |"
+        )
+    errors = [row for row in rows if row.get("status") != "ok"]
+    if errors:
+        lines += ["", "## Unavailable or Failed Cells", ""]
+        for row in errors:
+            lines.append(
+                f"- `{row.get('algorithm', '')}` / `{row.get('scenario', '')}` / "
+                f"{row.get('size', '')}: {row.get('error', 'unknown error')}"
+            )
+    lines += [
+        "",
+        "Quality gates use the configured median rotation and translation error "
+        "limits. A missing optional dependency is reported as an unavailable cell, "
+        "not silently removed from the comparison.",
+    ]
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def suite_passed(rows: list[dict[str, Any]]) -> bool:
+    return bool(rows) and all(
+        row.get("status") == "ok"
+        and str(row.get("quality_pass", "")).lower() == "true"
+        for row in rows
+    )
+
+
 def parse_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--sizes", nargs="+", type=int, default=[2000, 8000, 32000])
@@ -625,10 +727,22 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--algorithms", nargs="+", choices=ALGORITHMS, default=list(ALGORITHMS))
     parser.add_argument("--timeout-seconds", type=float, default=300.0)
     parser.add_argument("--maxiter", type=int, default=64)
+    parser.add_argument("--max-rot-error-deg", type=float, default=5.0)
+    parser.add_argument("--max-trans-error-m", type=float, default=0.20)
+    parser.add_argument(
+        "--markdown",
+        type=Path,
+        help="Write a Markdown summary; defaults to the CSV path with .md suffix.",
+    )
     parser.add_argument("--load-gate", type=float, default=0.0)
     parser.add_argument("--load-gate-timeout", type=float, default=900.0)
     parser.add_argument("--load-gate-sleep", type=float, default=15.0)
     parser.add_argument("--traceback", action="store_true")
+    parser.add_argument(
+        "--strict",
+        action="store_true",
+        help="Exit nonzero if any requested cell fails, times out, or misses quality gates.",
+    )
     parser.add_argument("--run-cell", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--scenario", choices=tuple(SCENARIOS), help=argparse.SUPPRESS)
     parser.add_argument("--algorithm", choices=ALGORITHMS, help=argparse.SUPPRESS)
@@ -643,7 +757,14 @@ def main(argv: list[str] | None = None) -> int:
     args = parse_args(sys.argv[1:] if argv is None else argv)
     if args.run_cell:
         return run_child(args)
-    return run_parent(args)
+    result = run_parent(args)
+    csv_path = Path(args.csv)
+    with csv_path.open(newline="", encoding="utf-8") as stream:
+        rows = list(csv.DictReader(stream))
+    write_markdown(args.markdown or csv_path.with_suffix(".md"), csv_path, rows)
+    if args.strict and not suite_passed(rows):
+        return 2
+    return result
 
 
 if __name__ == "__main__":

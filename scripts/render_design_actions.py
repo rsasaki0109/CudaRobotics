@@ -48,7 +48,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def load_policy(path: Path) -> dict[str, object]:
-    data = json.loads(path.read_text())
+    data = json.loads(path.read_text(encoding="utf-8"))
     if data.get("schema_version") != 1:
         raise RuntimeError(f"{path.relative_to(ROOT)} must declare schema_version 1")
     if not isinstance(data.get("defaults"), dict):
@@ -207,7 +207,9 @@ def main() -> int:
     output_path.parent.mkdir(parents=True, exist_ok=True)
     snapshots = load_snapshots(history_dir)
     policy = load_policy(policy_path)
-    output_path.write_text(generate_actions_markdown(snapshots, policy))
+    output_path.write_text(
+        generate_actions_markdown(snapshots, policy), encoding="utf-8"
+    )
     print(f"Generated {output_path.relative_to(ROOT)}")
     return 0
 

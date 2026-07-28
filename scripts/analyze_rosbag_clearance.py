@@ -61,14 +61,19 @@ def proximity_episodes(rows: list[dict[str, object]], threshold_m: float = 0.5,
     return result
 
 
-def analyze(db: Path, output_csv: Path) -> dict[str, object]:
+def analyze(
+    db: Path,
+    output_csv: Path,
+    scan_topic: str = "/scan",
+    command_topic: str = "/mobile_base_controller/cmd_vel",
+) -> dict[str, object]:
     connection = sqlite3.connect(f"file:{db.as_posix()}?mode=ro", uri=True)
     try:
         commands = [(timestamp, parse_twist(payload))
-                    for timestamp, payload in messages(connection, "/mobile_base_controller/cmd_vel")]
+                    for timestamp, payload in messages(connection, command_topic)]
         command_times = [row[0] for row in commands]
         rows = []
-        for recorded_ns, payload in messages(connection, "/scan"):
+        for recorded_ns, payload in messages(connection, scan_topic):
             scan = parse_laser_scan(payload)
             nearest = min(bisect.bisect_left(command_times, recorded_ns), len(commands) - 1)
             if nearest and abs(command_times[nearest - 1] - recorded_ns) < abs(command_times[nearest] - recorded_ns):
@@ -99,7 +104,9 @@ def analyze(db: Path, output_csv: Path) -> dict[str, object]:
     moving = [row for row in paired if row["command_speed_mps"] >= 0.03]
     mean = lambda group, key: sum(row[key] for row in group) / len(group) if group else None
     return {
-        "bag": db.parent.name, "database": str(db), "scan_samples": len(rows),
+        "bag": db.parent.name, "database": str(db),
+        "scan_topic": scan_topic, "command_topic": command_topic,
+        "scan_samples": len(rows),
         "valid_front_samples": len(valid), "paired_command_samples": len(paired),
         "command_pair_ratio": len(paired) / len(valid),
         "mean_paired_command_age_ms": mean(paired, "command_age_ms"),
@@ -126,10 +133,19 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("databases", nargs="+", type=Path)
     parser.add_argument("--output-dir", type=Path, default=Path("build/rosbag_clearance"))
+    parser.add_argument("--scan-topic", default="/scan")
+    parser.add_argument(
+        "--command-topic", default="/mobile_base_controller/cmd_vel"
+    )
     args = parser.parse_args()
     reports = []
     for db in args.databases:
-        report = analyze(db.resolve(), args.output_dir / f"{db.parent.name}_scan_commands.csv")
+        report = analyze(
+            db.resolve(),
+            args.output_dir / f"{db.parent.name}_scan_commands.csv",
+            scan_topic=args.scan_topic,
+            command_topic=args.command_topic,
+        )
         reports.append(report)
         print(f"{report['bag']}: {report['scan_samples']} scans, mean front {report['mean_front_clearance_m']:.2f} m")
     (args.output_dir / "clearance_summary.json").write_text(json.dumps({"bags": reports}, indent=2) + "\n")

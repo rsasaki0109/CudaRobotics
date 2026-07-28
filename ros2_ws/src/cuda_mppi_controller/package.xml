@@ -2,7 +2,7 @@
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
 <package format="3">
   <name>cuda_mppi_controller</name>
-  <version>0.1.0</version>
+  <version>0.2.0</version>
   <description>GPU-accelerated MPPI controller plugin for Nav2 (CUDA, 1 thread = 1 rollout)</description>
   <maintainer email="rsasaki0109@gmail.com">Ryohei Sasaki</maintainer>
   <license>MIT</license>

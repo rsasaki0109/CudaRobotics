@@ -103,7 +103,7 @@ def validate_fixture_manifest() -> None:
     if not FIXTURE_MANIFEST.exists():
         raise RuntimeError(f"Missing fixture manifest: {FIXTURE_MANIFEST.relative_to(ROOT)}")
 
-    data = json.loads(FIXTURE_MANIFEST.read_text())
+    data = json.loads(FIXTURE_MANIFEST.read_text(encoding="utf-8"))
     fixtures = data.get("fixtures")
     if not isinstance(fixtures, list) or not fixtures:
         raise RuntimeError("experiments/data/manifest.json must contain a non-empty fixtures list")
@@ -165,7 +165,7 @@ def validate_history_snapshots() -> None:
     }
 
     for path in snapshots:
-        data = json.loads(path.read_text())
+        data = json.loads(path.read_text(encoding="utf-8"))
         missing = required_snapshot_keys - set(data)
         if missing:
             raise RuntimeError(f"{path.relative_to(ROOT)} is missing snapshot keys: {sorted(missing)}")
@@ -191,7 +191,7 @@ def validate_history_snapshots() -> None:
 def validate_history_policy() -> None:
     if not HISTORY_POLICY.exists():
         raise RuntimeError(f"Missing design history policy: {HISTORY_POLICY.relative_to(ROOT)}")
-    data = json.loads(HISTORY_POLICY.read_text())
+    data = json.loads(HISTORY_POLICY.read_text(encoding="utf-8"))
     if data.get("schema_version") != 1:
         raise RuntimeError("experiments/history/policy.json must declare schema_version 1")
     problems = data.get("problems")
@@ -202,7 +202,7 @@ def validate_history_policy() -> None:
 def validate_actions_policy() -> None:
     if not ACTIONS_POLICY.exists():
         raise RuntimeError(f"Missing design actions policy: {ACTIONS_POLICY.relative_to(ROOT)}")
-    data = json.loads(ACTIONS_POLICY.read_text())
+    data = json.loads(ACTIONS_POLICY.read_text(encoding="utf-8"))
     if data.get("schema_version") != 1:
         raise RuntimeError("experiments/history/actions_policy.json must declare schema_version 1")
     if not isinstance(data.get("defaults"), dict):
@@ -214,7 +214,7 @@ def validate_actions_policy() -> None:
 def validate_helper_policy() -> None:
     if not HELPER_POLICY.exists():
         raise RuntimeError(f"Missing helper promotion policy: {HELPER_POLICY.relative_to(ROOT)}")
-    data = json.loads(HELPER_POLICY.read_text())
+    data = json.loads(HELPER_POLICY.read_text(encoding="utf-8"))
     if data.get("schema_version") != 1:
         raise RuntimeError("experiments/history/helper_policy.json must declare schema_version 1")
     thresholds = data.get("thresholds")
@@ -265,7 +265,7 @@ def validate_generated_experiments(modules: list[str]) -> None:
     generated = out_dir / "experiments.md"
     if not generated.exists():
         raise RuntimeError("run_design_experiments.py did not generate experiments.md in validation output")
-    generated_text = generated.read_text()
+    generated_text = generated.read_text(encoding="utf-8")
     for module_name in modules:
         if module_name not in generated_text:
             raise RuntimeError(f"Generated experiments.md is missing the {module_name} section")
@@ -273,7 +273,9 @@ def validate_generated_experiments(modules: list[str]) -> None:
     checked_in = ROOT / "docs" / "experiments.md"
     if not checked_in.exists():
         raise RuntimeError("docs/experiments.md is missing")
-    if normalize_generated_doc(checked_in.read_text()) != normalize_generated_doc(generated_text):
+    if normalize_generated_doc(
+        checked_in.read_text(encoding="utf-8")
+    ) != normalize_generated_doc(generated_text):
         raise RuntimeError(
             "docs/experiments.md is stale. Run `python3 scripts/run_design_experiments.py` and commit the refreshed doc."
         )
@@ -299,7 +301,9 @@ def validate_generated_history() -> None:
     if not generated.exists():
         raise RuntimeError("snapshot_design_experiments.py did not generate experiments_history.md in validation output")
     checked_in = ROOT / "docs" / "experiments_history.md"
-    if checked_in.read_text() != generated.read_text():
+    if checked_in.read_text(encoding="utf-8") != generated.read_text(
+        encoding="utf-8"
+    ):
         raise RuntimeError(
             "docs/experiments_history.md is stale. "
             "Run `python3 scripts/snapshot_design_experiments.py --render-only` and commit the refreshed doc."
@@ -323,7 +327,9 @@ def validate_generated_convergence() -> None:
     if not generated.exists():
         raise RuntimeError("render_design_convergence.py did not generate convergence.md in validation output")
     checked_in = ROOT / "docs" / "convergence.md"
-    if checked_in.read_text() != generated.read_text():
+    if checked_in.read_text(encoding="utf-8") != generated.read_text(
+        encoding="utf-8"
+    ):
         raise RuntimeError(
             "docs/convergence.md is stale. "
             "Run `python3 scripts/render_design_convergence.py` and commit the refreshed doc."
@@ -347,7 +353,9 @@ def validate_generated_next_actions() -> None:
     if not generated.exists():
         raise RuntimeError("render_design_actions.py did not generate next_actions.md in validation output")
     checked_in = ROOT / "docs" / "next_actions.md"
-    if checked_in.read_text() != generated.read_text():
+    if checked_in.read_text(encoding="utf-8") != generated.read_text(
+        encoding="utf-8"
+    ):
         raise RuntimeError(
             "docs/next_actions.md is stale. "
             "Run `python3 scripts/render_design_actions.py` and commit the refreshed doc."
@@ -371,7 +379,9 @@ def validate_generated_helper_promotion() -> None:
     if not generated.exists():
         raise RuntimeError("render_helper_promotion.py did not generate helper_promotion.md in validation output")
     checked_in = ROOT / "docs" / "helper_promotion.md"
-    if checked_in.read_text() != generated.read_text():
+    if checked_in.read_text(encoding="utf-8") != generated.read_text(
+        encoding="utf-8"
+    ):
         raise RuntimeError(
             "docs/helper_promotion.md is stale. "
             "Run `python3 scripts/render_helper_promotion.py` and commit the refreshed doc."
@@ -399,7 +409,7 @@ def validate_snapshot_compare() -> None:
     )
     if not compare_output.exists():
         raise RuntimeError("compare_design_snapshots.py did not generate its validation output")
-    if "# Snapshot Comparison" not in compare_output.read_text():
+    if "# Snapshot Comparison" not in compare_output.read_text(encoding="utf-8"):
         raise RuntimeError("compare_design_snapshots.py produced an unexpected output format")
 
 
