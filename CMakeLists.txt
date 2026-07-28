@@ -1011,6 +1011,15 @@ add_test(NAME check_contact_matched_compute_release_dry_run
     --profile release
     --dry-run
   WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+add_test(NAME check_contact_external_fidelity_contract
+  COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/test_contact_external_fidelity.py
+  WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+add_test(NAME check_contact_external_fidelity_release_dry_run
+  COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/run_contact_external_fidelity.py
+    --output-dir ${CMAKE_BINARY_DIR}/contact_external_fidelity_release
+    --profile release
+    --dry-run
+  WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 add_test(NAME check_python_core_sync
   COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/test_python_core_sync.py
   WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
@@ -1020,7 +1029,7 @@ add_test(NAME check_python_release_artifacts
 add_test(NAME check_release_preflight
   COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/test_release_preflight.py
   WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/scripts)
-set_tests_properties(validate_design_workflow check_design_regressions check_scaffold check_repro_suite_dry_run check_mppi_zoo_smoke_dry_run check_mppi_zoo_chart_render check_planner_showdown_summary check_planner_showdown_matrix_summary check_planner_falsifier_summary check_erl_navigation_bag_inspector check_offline_rosbag_db3_analyzer check_offline_rosbag_motion_decoder check_offline_rosbag_motion_comparison check_offline_rosbag_clearance_decoder check_cuda_acceleration_auditor check_registration_suite check_mppi_rosbag_evaluation check_version_consistency check_cudanav_contract check_cudanav_autonomy_suite_contract check_cudanav_autonomy_suite_release_dry_run check_paper_artifact_contract check_paper_artifact_manifests check_contact_robustness_contract check_contact_robustness_release_dry_run check_contact_matched_compute_contract check_contact_matched_compute_release_dry_run check_python_core_sync check_python_release_artifacts check_release_preflight
+set_tests_properties(validate_design_workflow check_design_regressions check_scaffold check_repro_suite_dry_run check_mppi_zoo_smoke_dry_run check_mppi_zoo_chart_render check_planner_showdown_summary check_planner_showdown_matrix_summary check_planner_falsifier_summary check_erl_navigation_bag_inspector check_offline_rosbag_db3_analyzer check_offline_rosbag_motion_decoder check_offline_rosbag_motion_comparison check_offline_rosbag_clearance_decoder check_cuda_acceleration_auditor check_registration_suite check_mppi_rosbag_evaluation check_version_consistency check_cudanav_contract check_cudanav_autonomy_suite_contract check_cudanav_autonomy_suite_release_dry_run check_paper_artifact_contract check_paper_artifact_manifests check_contact_robustness_contract check_contact_robustness_release_dry_run check_contact_matched_compute_contract check_contact_matched_compute_release_dry_run check_contact_external_fidelity_contract check_contact_external_fidelity_release_dry_run check_python_core_sync check_python_release_artifacts check_release_preflight
   PROPERTIES
   TIMEOUT 30
   LABELS "python")
@@ -1052,6 +1061,31 @@ if(mujoco_FOUND)
     CUDAROBOTICS_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
   if(DEFINED mujoco_LIBRARY_DIR)
     set_target_properties(benchmark_diff_mppi_mujoco PROPERTIES
+      BUILD_RPATH "${mujoco_LIBRARY_DIR}")
+  endif()
+
+  add_executable(benchmark_diff_mppi_pushing_box_mujoco
+    src/benchmark_diff_mppi_pushing_box_mujoco.cu)
+  target_link_libraries(benchmark_diff_mppi_pushing_box_mujoco
+    mujoco::mujoco)
+  target_compile_options(benchmark_diff_mppi_pushing_box_mujoco PRIVATE
+    $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
+  target_compile_definitions(benchmark_diff_mppi_pushing_box_mujoco PRIVATE
+    CUDAROBOTICS_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
+  set_target_properties(benchmark_diff_mppi_pushing_box_mujoco PROPERTIES
+    CXX_STANDARD 17
+    CUDA_STANDARD 17
+    CXX_STANDARD_REQUIRED YES
+    CUDA_STANDARD_REQUIRED YES
+    CUDA_RUNTIME_LIBRARY Shared
+    CUDA_SEPARABLE_COMPILATION ON)
+  add_custom_command(TARGET benchmark_diff_mppi_pushing_box_mujoco POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+      "$<TARGET_FILE:mujoco::mujoco>"
+      "$<TARGET_FILE_DIR:benchmark_diff_mppi_pushing_box_mujoco>"
+    COMMENT "Staging the MuJoCo runtime beside the contact benchmark")
+  if(DEFINED mujoco_LIBRARY_DIR)
+    set_target_properties(benchmark_diff_mppi_pushing_box_mujoco PROPERTIES
       BUILD_RPATH "${mujoco_LIBRARY_DIR}")
   endif()
 

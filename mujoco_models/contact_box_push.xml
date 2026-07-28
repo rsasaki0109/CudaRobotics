@@ -1,0 +1,37 @@
+<mujoco model="cudarobotics_contact_box_push">
+  <compiler angle="radian"/>
+  <option timestep="0.005" integrator="implicitfast" iterations="100"
+          cone="elliptic" gravity="0 0 -9.81"/>
+  <default>
+    <joint damping="0.15"/>
+    <geom condim="4" friction="0.6 0.01 0.001"
+          solref="0.008 1" solimp="0.95 0.99 0.001"/>
+  </default>
+  <worldbody>
+    <geom name="floor" type="plane" size="8 8 0.1"
+          friction="0.8 0.01 0.001" rgba="0.25 0.25 0.25 1"/>
+    <body name="box" pos="0 0 0.10">
+      <joint name="box_x" type="slide" axis="1 0 0"/>
+      <joint name="box_y" type="slide" axis="0 1 0"/>
+      <joint name="box_yaw" type="hinge" axis="0 0 1"/>
+      <geom name="box_geom" type="box" size="0.35 0.18 0.10"
+            mass="1.0" rgba="0.2 0.55 0.9 1"/>
+    </body>
+    <body name="pusher" pos="0 0 0.10">
+      <joint name="pusher_x" type="slide" axis="1 0 0" damping="0.05"/>
+      <joint name="pusher_y" type="slide" axis="0 1 0" damping="0.05"/>
+      <geom name="pusher_geom" type="cylinder" size="0.08 0.10"
+            mass="0.25" rgba="0.95 0.4 0.15 1"/>
+    </body>
+    <body name="obstacle" pos="100 100 0.10">
+      <geom name="obstacle_geom" type="box" size="0.1 0.1 0.10"
+            friction="0.8 0.01 0.001" rgba="0.75 0.15 0.15 1"/>
+    </body>
+  </worldbody>
+  <actuator>
+    <velocity name="pusher_x_velocity" joint="pusher_x"
+              kv="80" ctrlrange="-2 2" ctrllimited="true"/>
+    <velocity name="pusher_y_velocity" joint="pusher_y"
+              kv="80" ctrlrange="-2 2" ctrllimited="true"/>
+  </actuator>
+</mujoco>

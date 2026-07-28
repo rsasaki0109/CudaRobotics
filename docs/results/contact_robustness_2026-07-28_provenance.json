@@ -1,0 +1,266 @@
+{
+  "evidence_mode": "published_contact_robustness",
+  "published_artifacts": {
+    "comparisons": {
+      "path": "contact_robustness_2026-07-28_comparisons.csv",
+      "sha256": "0205c5b7050406ba560f801ab5c958739f5e1cd37db54c5e75e8944b936f038a"
+    },
+    "report": {
+      "path": "contact_robustness_2026-07-28_report.md",
+      "sha256": "3ab22b46d1d1e32e56260c609a10223f83bfde0035ab424ab6b2958493b0fa5c"
+    },
+    "summary": {
+      "path": "contact_robustness_2026-07-28_summary.csv",
+      "sha256": "3c7b78cb6120b9778ef04b82cc5656f6ebb2a3a27e890d2a42f4db27a21a30cc"
+    }
+  },
+  "result_id": "contact_robustness_2026-07-28",
+  "schema_version": 1,
+  "source": {
+    "artifacts": {
+      "binary": {
+        "sha256": "2b023b34c4bb99a02563f0be3446d74ef51b12676527c904a300f33a70969de0"
+      },
+      "comparisons": {
+        "sha256": "0205c5b7050406ba560f801ab5c958739f5e1cd37db54c5e75e8944b936f038a"
+      },
+      "episodes": {
+        "sha256": "abf028dbcc4757bdec1dc220f2550bc4cbe7e584c9c144e8b9071d0251c1b897"
+      },
+      "plan": {
+        "sha256": "3850fa48e72fb0a5e7760c4c60cd6cca4019d16f1c5bcc8ec33d4cb80ced8c19"
+      },
+      "report": {
+        "sha256": "3ab22b46d1d1e32e56260c609a10223f83bfde0035ab424ab6b2958493b0fa5c"
+      },
+      "state": {
+        "sha256": "3fb465ea483b85cf07de6174f1506d80c5c178099dd7c30bc8b65c8954fc2ef9"
+      },
+      "summary": {
+        "sha256": "3c7b78cb6120b9778ef04b82cc5656f6ebb2a3a27e890d2a42f4db27a21a30cc"
+      }
+    },
+    "experiment": {
+      "binary": "C:\\Users\\rsasa\\Workspace\\CudaRobotics\\build\\contact_robustness_release\\artifacts\\benchmark_diff_mppi_pushing_box.exe",
+      "binary_sha256": "2b023b34c4bb99a02563f0be3446d74ef51b12676527c904a300f33a70969de0",
+      "binary_source": "C:\\Users\\rsasa\\Workspace\\CudaRobotics\\bin\\benchmark_diff_mppi_pushing_box.exe",
+      "bootstrap_resamples": 5000,
+      "comparison_planners": [
+        "diff_mppi_3",
+        "soppi_fast"
+      ],
+      "conditions": [
+        {
+          "mu": 0.6,
+          "name": "nominal",
+          "plant_damping_scale": 1.0,
+          "plant_gain_scale": 1.0,
+          "plant_hx_scale": 1.0,
+          "plant_hy_scale": 1.0,
+          "plant_size_scale": 1.0,
+          "true_plant": "smooth"
+        },
+        {
+          "mu": 0.6,
+          "name": "gain_0p8",
+          "plant_damping_scale": 1.0,
+          "plant_gain_scale": 0.8,
+          "plant_hx_scale": 1.0,
+          "plant_hy_scale": 1.0,
+          "plant_size_scale": 1.0,
+          "true_plant": "smooth"
+        },
+        {
+          "mu": 0.6,
+          "name": "gain_1p2",
+          "plant_damping_scale": 1.0,
+          "plant_gain_scale": 1.2,
+          "plant_hx_scale": 1.0,
+          "plant_hy_scale": 1.0,
+          "plant_size_scale": 1.0,
+          "true_plant": "smooth"
+        },
+        {
+          "mu": 0.6,
+          "name": "size_0p9",
+          "plant_damping_scale": 1.0,
+          "plant_gain_scale": 1.0,
+          "plant_hx_scale": 1.0,
+          "plant_hy_scale": 1.0,
+          "plant_size_scale": 0.9,
+          "true_plant": "smooth"
+        },
+        {
+          "mu": 0.6,
+          "name": "size_1p1",
+          "plant_damping_scale": 1.0,
+          "plant_gain_scale": 1.0,
+          "plant_hx_scale": 1.0,
+          "plant_hy_scale": 1.0,
+          "plant_size_scale": 1.1,
+          "true_plant": "smooth"
+        },
+        {
+          "mu": 0.6,
+          "name": "wide_box",
+          "plant_damping_scale": 1.0,
+          "plant_gain_scale": 1.0,
+          "plant_hx_scale": 1.2,
+          "plant_hy_scale": 0.8,
+          "plant_size_scale": 1.0,
+          "true_plant": "smooth"
+        },
+        {
+          "mu": 0.6,
+          "name": "tall_box",
+          "plant_damping_scale": 1.0,
+          "plant_gain_scale": 1.0,
+          "plant_hx_scale": 0.8,
+          "plant_hy_scale": 1.2,
+          "plant_size_scale": 1.0,
+          "true_plant": "smooth"
+        },
+        {
+          "mu": 0.2,
+          "name": "hard_mu_0p2",
+          "plant_damping_scale": 1.0,
+          "plant_gain_scale": 1.0,
+          "plant_hx_scale": 1.0,
+          "plant_hy_scale": 1.0,
+          "plant_size_scale": 1.0,
+          "true_plant": "hard"
+        },
+        {
+          "mu": 0.6,
+          "name": "hard_mu_0p6",
+          "plant_damping_scale": 1.0,
+          "plant_gain_scale": 1.0,
+          "plant_hx_scale": 1.0,
+          "plant_hy_scale": 1.0,
+          "plant_size_scale": 1.0,
+          "true_plant": "hard"
+        },
+        {
+          "mu": 1.0,
+          "name": "hard_mu_1p0",
+          "plant_damping_scale": 1.0,
+          "plant_gain_scale": 1.0,
+          "plant_hx_scale": 1.0,
+          "plant_hy_scale": 1.0,
+          "plant_size_scale": 1.0,
+          "true_plant": "hard"
+        },
+        {
+          "mu": 0.6,
+          "name": "hard_damping_0p75",
+          "plant_damping_scale": 0.75,
+          "plant_gain_scale": 1.0,
+          "plant_hx_scale": 1.0,
+          "plant_hy_scale": 1.0,
+          "plant_size_scale": 1.0,
+          "true_plant": "hard"
+        },
+        {
+          "mu": 0.6,
+          "name": "hard_damping_1p25",
+          "plant_damping_scale": 1.25,
+          "plant_gain_scale": 1.0,
+          "plant_hx_scale": 1.0,
+          "plant_hy_scale": 1.0,
+          "plant_size_scale": 1.0,
+          "true_plant": "hard"
+        }
+      ],
+      "git_commit": "af4f0542d23ec16c07f83425cf333444e3850dd2",
+      "horizon": 16,
+      "identity_sha256": "16421d658981e900af5631a979b9d1d4a3ae7f6cae50620fe8eef1bee5e224c2",
+      "k_values": [
+        128,
+        256,
+        512
+      ],
+      "planners": [
+        "mppi",
+        "diff_mppi_1",
+        "diff_mppi_3",
+        "soppi",
+        "soppi_fast",
+        "mppi_hardmodel"
+      ],
+      "profile": "release",
+      "scenarios": [
+        "box_swivel",
+        "box_align_strict",
+        "box_align_detour",
+        "box_align_contact_loss",
+        "box_align_contact_arc"
+      ],
+      "schema_version": 1,
+      "seed_count": 30
+    },
+    "finished_at": "2026-07-28T22:53:42.083894+00:00",
+    "git_dirty": false,
+    "gpu": [
+      {
+        "driver_version": "596.36",
+        "memory_total_mib": "6144",
+        "name": "NVIDIA GeForce GTX 1660 Ti",
+        "physical_index": "0",
+        "uuid": "GPU-f635286a-d68f-5039-cbc9-22d7f295b3a3"
+      }
+    ],
+    "integrity_gate": {
+      "all_raw_runs_valid": true,
+      "clean_worktree": true,
+      "complete_matrix": true,
+      "gpu_identified": true
+    },
+    "manifest_sha256": "92ad1693a1fd4ccc0b1738c02ed1117400d491c81b96a0930e8fc142e862c14a",
+    "matrix": {
+      "conditions": 12,
+      "episodes": 32400,
+      "k_values": 3,
+      "planners": 6,
+      "scenarios": 5,
+      "seeds": 30
+    },
+    "outcome": {
+      "comparison_family_size": 360,
+      "holm_significant_negative_success_cells": 6,
+      "holm_significant_positive_success_cells": 33,
+      "hypothesis_is_integrity_gate": false
+    },
+    "profile": "release"
+  },
+  "validation": {
+    "checks": {
+      "artifact_binary": true,
+      "artifact_comparisons": true,
+      "artifact_episodes": true,
+      "artifact_plan": true,
+      "artifact_report": true,
+      "artifact_state": true,
+      "artifact_summary": true,
+      "artifact_table": true,
+      "binary_identity": true,
+      "clean_release": true,
+      "comparison_coverage": true,
+      "episode_matrix": true,
+      "evidence_mode": true,
+      "experiment_identity": true,
+      "experiment_schema": true,
+      "git_commit": true,
+      "gpu_identity": true,
+      "manifest_passed": true,
+      "manifest_schema": true,
+      "matrix_contract": true,
+      "matrix_counts": true,
+      "outcome_not_integrity_gate": true,
+      "plan_matches_experiment": true,
+      "profile": true,
+      "raw_run_provenance": true,
+      "summary_coverage": true
+    },
+    "passed": true
+  }
+}

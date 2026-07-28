@@ -20,12 +20,13 @@
       "id": "contact_suite_robustness",
       "statement": "The contact-rich advantage persists across multiple object shapes, friction/contact parameters, rollout budgets, and at least thirty independently generated seeds.",
       "submission_required": true,
-      "status": "planned",
+      "status": "supported",
       "evidence": [
         "contact_robustness_suite"
       ],
       "limitations": [
-        "The current checked-in suite has four curated seeds, one box geometry, and one rollout budget."
+        "The 32,400-episode release matrix is GPU simulation evidence, not real-robot evidence.",
+        "The advantage is not universal: the preregistered family contains 33 Holm-significant positive cells and 6 Holm-significant negative cells."
       ]
     },
     {
@@ -56,12 +57,12 @@
       "id": "hard_contact_transfer",
       "statement": "The contact-task comparison is repeated under a structurally different momentum-carrying hard-contact plant across friction and damping conditions.",
       "submission_required": true,
-      "status": "planned",
+      "status": "supported",
       "evidence": [
         "contact_robustness_suite"
       ],
       "limitations": [
-        "This is sim-to-sim transfer and does not replace the external-fidelity or real-robot experiment."
+        "This is sim-to-sim transfer and does not replace the MuJoCo external-fidelity or real-robot experiment."
       ]
     },
     {
@@ -169,7 +170,7 @@
     },
     {
       "id": "contact_robustness_suite",
-      "status": "pending",
+      "status": "complete",
       "kind": "json_assertions",
       "generator_command": [
         "python3",
@@ -180,6 +181,50 @@
         "bin/benchmark_diff_mppi_pushing_box",
         "--profile",
         "release"
+      ],
+      "artifacts": [
+        {
+          "path": "docs/results/contact_robustness_2026-07-28_provenance.json",
+          "normalization": "text_lf",
+          "sha256": "b66c3a502c280b67a9cc154b4b7bf2c9dc4f8073d27144c58dc6a50308741f90"
+        }
+      ],
+      "assertions": [
+        {
+          "json_path": "validation.passed",
+          "op": "eq",
+          "value": true
+        },
+        {
+          "json_path": "source.matrix.episodes",
+          "op": "eq",
+          "value": 32400
+        },
+        {
+          "json_path": "source.matrix.conditions",
+          "op": "eq",
+          "value": 12
+        },
+        {
+          "json_path": "source.matrix.seeds",
+          "op": "eq",
+          "value": 30
+        },
+        {
+          "json_path": "source.outcome.holm_significant_positive_success_cells",
+          "op": "eq",
+          "value": 33
+        },
+        {
+          "json_path": "source.outcome.holm_significant_negative_success_cells",
+          "op": "eq",
+          "value": 6
+        },
+        {
+          "json_path": "source.experiment.git_commit",
+          "op": "eq",
+          "value": "af4f0542d23ec16c07f83425cf333444e3850dd2"
+        }
       ]
     },
     {
@@ -204,7 +249,14 @@
       "generator_command": [
         "python3",
         "scripts/run_contact_external_fidelity.py",
-        "--help"
+        "--output-dir",
+        "build/contact_external_fidelity_release",
+        "--binary",
+        "bin/benchmark_diff_mppi_pushing_box_mujoco",
+        "--model",
+        "mujoco_models/contact_box_push.xml",
+        "--profile",
+        "release"
       ]
     }
   ]
