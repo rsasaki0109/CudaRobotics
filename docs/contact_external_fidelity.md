@@ -67,3 +67,19 @@ used as evidence-integrity gates.
 
 Use `--profile smoke` for a four-episode pipeline check. Smoke evidence cannot
 satisfy the paper's external-fidelity claim.
+
+## Release result
+
+The 2026-07-28 UTC release run completed all 3,150 episodes on a GTX 1660 Ti
+with MuJoCo 3.11.0. Diff-MPPI-3 reached 0.46 aggregate success, SOPPI-fast
+0.34, and MPPI 0.29 across the fixed matrix. The full 70-cell paired comparison
+family contained three Holm-significant positive Diff-MPPI-3 cells and no
+Holm-significant negative cells.
+
+The significant cells were `box_align_strict` at friction 0.3 and mass scale
+0.75 (success delta +0.50 in each), plus `box_align_contact_arc` at mass scale
+1.25 (+0.40). No individual sensing-noise cell survived full-family Holm
+correction, and difficult zero/near-zero-success scenarios remain in the
+tables. See
+[`contact_external_fidelity_2026-07-28_report.md`](results/contact_external_fidelity_2026-07-28_report.md)
+and the adjacent provenance JSON.

@@ -1,0 +1,195 @@
+{
+  "evidence_mode": "published_contact_external_fidelity",
+  "published_artifacts": {
+    "comparisons": {
+      "path": "contact_external_fidelity_2026-07-28_comparisons.csv",
+      "sha256": "d8311d115b905c330fbd235befabddbcce9f3caae36c6bad4a48b4e320ecc7af"
+    },
+    "report": {
+      "path": "contact_external_fidelity_2026-07-28_report.md",
+      "sha256": "fcdc793c307fc5cd3b32ce14a793ef5be6e15adef729d56921f4fce1990a36db"
+    },
+    "summary": {
+      "path": "contact_external_fidelity_2026-07-28_summary.csv",
+      "sha256": "d9420d1e9b2712f6a0853371d12b8d9517fa55e5812f0c49bcd406dcc6eeadc1"
+    }
+  },
+  "result_id": "contact_external_fidelity_2026-07-28",
+  "schema_version": 1,
+  "source": {
+    "engine": {
+      "engine": "MuJoCo",
+      "header_version_number": 3011000,
+      "version": "3.11.0",
+      "version_number": 3011000
+    },
+    "experiment": {
+      "binary": "C:\\Users\\rsasa\\Workspace\\CudaRobotics\\build\\v0_2_integration_worktree\\build\\contact_external_fidelity_release\\artifacts\\benchmark_diff_mppi_pushing_box_mujoco.exe",
+      "binary_sha256": "77fef4516cdc07c0870c855a4cce6cfee7be9b01b280f720edae0701ed08db91",
+      "binary_source": "C:\\Users\\rsasa\\Workspace\\CudaRobotics\\build\\v0_2_integration_worktree\\bin\\benchmark_diff_mppi_pushing_box_mujoco.exe",
+      "bootstrap_resamples": 5000,
+      "comparison_planners": [
+        "diff_mppi_3",
+        "soppi_fast"
+      ],
+      "conditions": [
+        {
+          "box_mass_scale": 1.0,
+          "friction": 0.6,
+          "name": "nominal",
+          "observation_angle_std": 0.0,
+          "observation_position_std": 0.0
+        },
+        {
+          "box_mass_scale": 1.0,
+          "friction": 0.3,
+          "name": "friction_0p3",
+          "observation_angle_std": 0.0,
+          "observation_position_std": 0.0
+        },
+        {
+          "box_mass_scale": 1.0,
+          "friction": 0.9,
+          "name": "friction_0p9",
+          "observation_angle_std": 0.0,
+          "observation_position_std": 0.0
+        },
+        {
+          "box_mass_scale": 0.75,
+          "friction": 0.6,
+          "name": "mass_0p75",
+          "observation_angle_std": 0.0,
+          "observation_position_std": 0.0
+        },
+        {
+          "box_mass_scale": 1.25,
+          "friction": 0.6,
+          "name": "mass_1p25",
+          "observation_angle_std": 0.0,
+          "observation_position_std": 0.0
+        },
+        {
+          "box_mass_scale": 1.0,
+          "friction": 0.6,
+          "name": "sensor_noise_nominal",
+          "observation_angle_std": 0.02,
+          "observation_position_std": 0.01
+        },
+        {
+          "box_mass_scale": 1.0,
+          "friction": 0.6,
+          "name": "sensor_noise_high",
+          "observation_angle_std": 0.04,
+          "observation_position_std": 0.02
+        }
+      ],
+      "engine": {
+        "engine": "MuJoCo",
+        "header_version_number": 3011000,
+        "version": "3.11.0",
+        "version_number": 3011000
+      },
+      "frame_skip": 10,
+      "git_commit": "61b9f518ab099bd1acc22268470f027f1d0f391f",
+      "horizon": 16,
+      "identity_sha256": "824d04870dd2f0cba0252f124badc99dd62c93b0c6aeca9895136a9d1555d654",
+      "k_values": [
+        256
+      ],
+      "model": "C:\\Users\\rsasa\\Workspace\\CudaRobotics\\build\\v0_2_integration_worktree\\build\\contact_external_fidelity_release\\artifacts\\contact_box_push.xml",
+      "model_sha256": "c2834848ff96f191d9408bbb9b1e72c1b5bf85184507207c570385000c332bbc",
+      "model_source": "C:\\Users\\rsasa\\Workspace\\CudaRobotics\\build\\v0_2_integration_worktree\\mujoco_models\\contact_box_push.xml",
+      "planners": [
+        "mppi",
+        "diff_mppi_3",
+        "soppi_fast"
+      ],
+      "profile": "release",
+      "runtime_library": "C:\\Users\\rsasa\\Workspace\\CudaRobotics\\build\\v0_2_integration_worktree\\build\\contact_external_fidelity_release\\artifacts\\mujoco.dll",
+      "runtime_library_sha256": "5e3b65d00992c0e169a1191dbc85140c47f7cb19ddc0f15011bcad03cc779e29",
+      "runtime_library_source": "C:\\Users\\rsasa\\Workspace\\CudaRobotics\\build\\v0_2_integration_worktree\\bin\\mujoco.dll",
+      "scenarios": [
+        "box_swivel",
+        "box_align_strict",
+        "box_align_detour",
+        "box_align_contact_loss",
+        "box_align_contact_arc"
+      ],
+      "schema_version": 1,
+      "seed_count": 30,
+      "seed_offset": 0
+    },
+    "finished_at": "2026-07-28T23:17:54.326687+00:00",
+    "git_dirty": false,
+    "gpu": [
+      {
+        "driver_version": "596.36",
+        "memory_total_mib": "6144",
+        "name": "NVIDIA GeForce GTX 1660 Ti",
+        "physical_index": "0",
+        "uuid": "GPU-f635286a-d68f-5039-cbc9-22d7f295b3a3"
+      }
+    ],
+    "integrity_gate": {
+      "all_raw_runs_valid": true,
+      "clean_worktree": true,
+      "complete_matrix": true,
+      "gpu_identified": true,
+      "mujoco_identified": true
+    },
+    "matrix": {
+      "conditions": 7,
+      "episodes": 3150,
+      "k_values": 1,
+      "planners": 3,
+      "scenarios": 5,
+      "seeds": 30
+    },
+    "outcome": {
+      "comparison_family_size": 70,
+      "holm_significant_negative_success_cells": 0,
+      "holm_significant_positive_success_cells": 3,
+      "hypothesis_is_integrity_gate": false
+    },
+    "profile": "release"
+  },
+  "source_manifest_sha256": "8471924b08642c26d4149575eb918595e5d9ee9afa4cf16ac23a634e49f6eef6",
+  "validation": {
+    "checks": {
+      "artifact_binary": true,
+      "artifact_comparisons": true,
+      "artifact_episodes": true,
+      "artifact_model": true,
+      "artifact_plan": true,
+      "artifact_report": true,
+      "artifact_runtime_library": true,
+      "artifact_state": true,
+      "artifact_summary": true,
+      "artifact_table": true,
+      "binary_identity": true,
+      "clean_release": true,
+      "comparison_coverage": true,
+      "engine_header_match": true,
+      "engine_identity": true,
+      "episode_matrix": true,
+      "evidence_mode": true,
+      "experiment_identity": true,
+      "experiment_schema": true,
+      "git_commit": true,
+      "gpu_identity": true,
+      "integrity_gate": true,
+      "manifest_passed": true,
+      "manifest_schema": true,
+      "matrix_contract": true,
+      "matrix_counts": true,
+      "model_identity": true,
+      "outcome_not_integrity_gate": true,
+      "plan_matches_experiment": true,
+      "profile": true,
+      "raw_run_provenance": true,
+      "runtime_identity": true,
+      "summary_coverage": true
+    },
+    "passed": true
+  }
+}

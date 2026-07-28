@@ -43,14 +43,15 @@
     },
     {
       "id": "contact_model_fidelity",
-      "statement": "The reported benefit survives a higher-fidelity contact simulator or real-robot manipulation evaluation with declared dynamics and sensing uncertainty.",
+      "statement": "In closed-loop MuJoCo contact transfer across declared friction, mass, and sensing variations, Diff-MPPI-3 reaches 0.46 aggregate success versus MPPI at 0.29, with three positive and zero negative Holm-significant cells.",
       "submission_required": true,
-      "status": "planned",
+      "status": "supported",
       "evidence": [
         "contact_external_fidelity"
       ],
       "limitations": [
-        "Current evidence uses the repository's lightweight box-pushing dynamics."
+        "This is a custom planar MuJoCo MJCF and closed-loop sim-to-sim transfer, not a standard manipulator suite or real-robot evidence.",
+        "No individual observation-noise cell survives full-family Holm correction; sensing-noise results are descriptive."
       ]
     },
     {
@@ -244,7 +245,7 @@
     },
     {
       "id": "contact_external_fidelity",
-      "status": "pending",
+      "status": "complete",
       "kind": "json_assertions",
       "generator_command": [
         "python3",
@@ -257,6 +258,55 @@
         "mujoco_models/contact_box_push.xml",
         "--profile",
         "release"
+      ],
+      "artifacts": [
+        {
+          "path": "docs/results/contact_external_fidelity_2026-07-28_provenance.json",
+          "normalization": "text_lf",
+          "sha256": "e7b0e86e14dc92ef645064f532342fc7069f22ea9905f4639ad861a3b52fad52"
+        }
+      ],
+      "assertions": [
+        {
+          "json_path": "validation.passed",
+          "op": "eq",
+          "value": true
+        },
+        {
+          "json_path": "source.matrix.episodes",
+          "op": "eq",
+          "value": 3150
+        },
+        {
+          "json_path": "source.matrix.conditions",
+          "op": "eq",
+          "value": 7
+        },
+        {
+          "json_path": "source.matrix.seeds",
+          "op": "eq",
+          "value": 30
+        },
+        {
+          "json_path": "source.outcome.holm_significant_positive_success_cells",
+          "op": "eq",
+          "value": 3
+        },
+        {
+          "json_path": "source.outcome.holm_significant_negative_success_cells",
+          "op": "eq",
+          "value": 0
+        },
+        {
+          "json_path": "source.engine.version",
+          "op": "eq",
+          "value": "3.11.0"
+        },
+        {
+          "json_path": "source.experiment.git_commit",
+          "op": "eq",
+          "value": "61b9f518ab099bd1acc22268470f027f1d0f391f"
+        }
       ]
     }
   ]
