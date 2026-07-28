@@ -258,7 +258,22 @@ def evaluate_manifest(
             )
         ),
         "gpu_identity_recorded": (
-            isinstance(manifest.get("gpu"), list) and bool(manifest["gpu"])
+            isinstance(manifest.get("gpu"), list)
+            and bool(manifest["gpu"])
+            and all(
+                isinstance(gpu, dict)
+                and all(
+                    isinstance(gpu.get(field), str) and gpu[field]
+                    for field in (
+                        "physical_index",
+                        "name",
+                        "uuid",
+                        "driver_version",
+                        "memory_total_mib",
+                    )
+                )
+                for gpu in manifest["gpu"]
+            )
         ),
     }
     artifacts = manifest.get("artifacts")
