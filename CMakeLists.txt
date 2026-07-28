@@ -699,6 +699,16 @@ set_target_properties(cudarobotics_voxel_mapping_gpu PROPERTIES
 add_executable(voxel_mapping_gpu_smoke tests/voxel_mapping_gpu_smoke.cu)
 target_link_libraries(voxel_mapping_gpu_smoke cudarobotics_voxel_mapping_gpu)
 
+add_library(cudarobotics_esdf_2d_gpu STATIC src/esdf_2d_gpu.cu)
+add_library(CudaRobotics::esdf_2d_gpu ALIAS cudarobotics_esdf_2d_gpu)
+target_include_directories(cudarobotics_esdf_2d_gpu
+  PUBLIC ${CMAKE_SOURCE_DIR}/include)
+set_target_properties(cudarobotics_esdf_2d_gpu PROPERTIES
+  POSITION_INDEPENDENT_CODE ON)
+
+add_executable(esdf_2d_gpu_smoke tests/esdf_2d_gpu_smoke.cu)
+target_link_libraries(esdf_2d_gpu_smoke cudarobotics_esdf_2d_gpu)
+
 add_executable(gpu_mpc_qp src/gpu_mpc_qp.cu)
 target_link_libraries(gpu_mpc_qp ${OpenCV_LIBS})
 target_compile_options(gpu_mpc_qp PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
@@ -861,6 +871,12 @@ add_test(NAME voxel_mapping_gpu_smoke
 set_tests_properties(voxel_mapping_gpu_smoke PROPERTIES
   TIMEOUT 60
   LABELS "gpu;mapping;api")
+
+add_test(NAME esdf_2d_gpu_smoke
+  COMMAND $<TARGET_FILE:esdf_2d_gpu_smoke>)
+set_tests_properties(esdf_2d_gpu_smoke PROPERTIES
+  TIMEOUT 60
+  LABELS "gpu;mapping;esdf;reference")
 
 add_test(NAME gpu_planner_showdown_gate
   COMMAND ${PROJECT_SOURCE_DIR}/bin/gpu_planner_showdown_benchmark

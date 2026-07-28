@@ -136,7 +136,11 @@ counters.
    DDA/log-odds core, rolling shift, lifecycle component, standard occupancy
    projection, and 3D local-map publication are implemented. ROS Jazzy compile
    and recorded sensor-stream evidence remain release gates.
-4. Publish typed ESDF data and add CPU-reference comparison tests.
+4. Build and exercise typed ESDF publication with exact CPU-reference
+   comparison. The separable exact GPU EDT, both explicit unknown policies,
+   lifecycle component, schema/range validation, and `DistanceField2D`
+   publication are implemented. ROS Jazzy compile and stream-level latency
+   evidence remain release gates.
 5. Implement `cuda_voxel_costmap_layer`.
 6. Bring up the complete graph in simulation.
 7. Record deterministic closed-loop evidence and then add real sensor input.
