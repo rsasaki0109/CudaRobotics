@@ -31,6 +31,8 @@ The short automatic mission writes:
 - ground-truth travel and final goal distance;
 - final KISS-ICP position error and drift percentage;
 - command interval count, deadline misses, and miss rate;
+- diagnostic component coverage, ERROR count, and every observed
+  failure/dropped counter;
 - a conservative `smoke_pass` boolean.
 
 For a retained run directory, use:
@@ -52,8 +54,29 @@ constrained to the run directory when revalidated.
 
 The `release` profile is intentionally stricter: at least 600 seconds,
 collision count zero, drift below 1%, command deadline misses below 1%, and
-retained rosbag and video artifacts. The current short mission cannot pass that
-profile; this prevents smoke evidence from being relabelled as the v1.0 gate.
+retained rosbag and video artifacts. It defaults to 30 alternating S-course
+traversals, a 1,200-second mission timeout, full MCAP recording, and a rendered
+truth-vs-odometry trajectory GIF:
+
+```bash
+python scripts/run_cudanav_closed_loop.py \
+  --output-dir build/cudanav_runs/release_001 \
+  --profile release
+```
+
+The renderer uses Pillow (`python3-pil` on Ubuntu). The bag contains sensor,
+odometry/TF, occupancy, typed ESDF, commands, ground truth, collision state,
+and per-component diagnostics. A missing MCAP metadata file or GIF keeps the
+release manifest red; smoke evidence cannot be relabelled as the v1.0 gate.
+Both profiles also require diagnostics from odometry, mapping, and ESDF, zero
+ERROR status, and zero reported transform/schema/capacity/dropped counters.
+
+Ubuntu/Jazzy artifact dependencies:
+
+```bash
+sudo apt install python3-pil ros-jazzy-ros2bag \
+  ros-jazzy-rosbag2-storage-mcap
+```
 
 The S-course geometry and path clearance have a no-ROS deterministic unit test.
 The ROS Jazzy workflow compiles the complete stack, loads both plugins, and runs

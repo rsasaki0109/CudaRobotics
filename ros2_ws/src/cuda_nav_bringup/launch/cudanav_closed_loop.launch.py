@@ -5,11 +5,14 @@ from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import LifecycleNode, Node
+from launch_ros.parameter_descriptions import ParameterValue
 
 
 def generate_launch_description():
     namespace = "cuda_nav"
     output_path = LaunchConfiguration("output_path")
+    traversal_count = LaunchConfiguration("traversal_count")
+    mission_timeout_sec = LaunchConfiguration("mission_timeout_sec")
     controller_config = str(
         Path(get_package_share_directory("cuda_nav_bringup"))
         / "config"
@@ -97,6 +100,10 @@ def generate_launch_description():
                 "output_path",
                 default_value="/tmp/cudanav_closed_loop.json",
             ),
+            DeclareLaunchArgument("traversal_count", default_value="1"),
+            DeclareLaunchArgument(
+                "mission_timeout_sec", default_value="90.0"
+            ),
             Node(
                 package="cuda_nav_bringup",
                 executable="cudanav_loopback_simulator",
@@ -118,7 +125,17 @@ def generate_launch_description():
                 name="cudanav_follow_path_mission",
                 namespace=namespace,
                 output="screen",
-                parameters=[{"output_path": output_path}],
+                parameters=[
+                    {
+                        "output_path": output_path,
+                        "traversal_count": ParameterValue(
+                            traversal_count, value_type=int
+                        ),
+                        "mission_timeout_sec": ParameterValue(
+                            mission_timeout_sec, value_type=float
+                        ),
+                    }
+                ],
             ),
         ]
     )

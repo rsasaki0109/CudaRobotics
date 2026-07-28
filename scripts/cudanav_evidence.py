@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import csv
 from dataclasses import dataclass
 import hashlib
 import math
@@ -60,6 +61,14 @@ REQUIRED_SUMMARY_FIELDS = {
     "command_intervals",
     "command_deadline_misses",
     "command_deadline_miss_rate",
+    "traversals_requested",
+    "traversals_completed",
+    "trajectory_csv",
+    "diagnostic_error_count",
+    "diagnostic_warn_count",
+    "diagnostic_status_samples",
+    "diagnostic_components",
+    "failure_counters",
 }
 
 
@@ -97,6 +106,11 @@ def validate_summary(summary: dict[str, Any]) -> list[str]:
         "collision_count",
         "command_intervals",
         "command_deadline_misses",
+        "traversals_requested",
+        "traversals_completed",
+        "diagnostic_error_count",
+        "diagnostic_warn_count",
+        "diagnostic_status_samples",
     ):
         value = summary[field]
         if not isinstance(value, int) or isinstance(value, bool) or value < 0:
@@ -121,6 +135,44 @@ def validate_summary(summary: dict[str, Any]) -> list[str]:
         and summary["command_deadline_misses"] > summary["command_intervals"]
     ):
         errors.append("command_deadline_misses cannot exceed command_intervals")
+    if (
+        isinstance(summary["traversals_requested"], int)
+        and summary["traversals_requested"] <= 0
+    ):
+        errors.append("traversals_requested must be positive")
+    if (
+        isinstance(summary["traversals_completed"], int)
+        and isinstance(summary["traversals_requested"], int)
+        and summary["traversals_completed"] > summary["traversals_requested"]
+    ):
+        errors.append("traversals_completed cannot exceed traversals_requested")
+    if (
+        not isinstance(summary["trajectory_csv"], str)
+        or not summary["trajectory_csv"]
+    ):
+        errors.append("trajectory_csv must be a non-empty string")
+    components = summary["diagnostic_components"]
+    if (
+        not isinstance(components, list)
+        or not all(isinstance(item, str) and item for item in components)
+    ):
+        errors.append("diagnostic_components must be a list of names")
+    counters = summary["failure_counters"]
+    if not isinstance(counters, dict):
+        errors.append("failure_counters must be an object")
+    else:
+        for key, value in counters.items():
+            if (
+                not isinstance(key, str)
+                or not key
+                or not isinstance(value, int)
+                or isinstance(value, bool)
+                or value < 0
+            ):
+                errors.append(
+                    "failure_counters must map names to non-negative integers"
+                )
+                break
     return errors
 
 
@@ -158,6 +210,19 @@ def evaluate_summary(
             summary["command_deadline_miss_rate"]
             < policy.max_deadline_miss_rate
         ),
+        "all_traversals_completed": (
+            summary["traversals_completed"]
+            == summary["traversals_requested"]
+        ),
+        "diagnostic_errors": summary["diagnostic_error_count"] == 0,
+        "diagnostic_coverage": (
+            summary["diagnostic_status_samples"] >= 3
+            and len(summary["diagnostic_components"]) >= 3
+        ),
+        "failure_counters": all(
+            value == 0 for value in summary["failure_counters"].values()
+        ),
+        "failure_counter_coverage": len(summary["failure_counters"]) >= 3,
     }
     return {
         "profile": profile,
@@ -211,11 +276,59 @@ def evaluate_manifest(
         candidate = (root / relative).resolve()
         if not candidate.is_relative_to(root):
             return False
-        return candidate.is_file() if require_file else candidate.exists()
+        if require_file:
+            return candidate.is_file() and candidate.stat().st_size > 0
+        return candidate.exists()
 
-    for artifact in ("summary", "launch_log", "controller_config"):
+    for artifact in (
+        "summary",
+        "trajectory",
+        "launch_log",
+        "controller_config",
+    ):
         relative = artifacts.get(artifact)
         checks[f"artifact_{artifact}"] = artifact_exists(relative, True)
+    trajectory_relative = artifacts.get("trajectory")
+    checks["trajectory_schema"] = False
+    if checks["artifact_trajectory"]:
+        trajectory_path = (root / str(trajectory_relative)).resolve()
+        try:
+            with trajectory_path.open(newline="", encoding="utf-8") as handle:
+                rows = list(csv.DictReader(handle))
+            required = {
+                "elapsed_sec",
+                "truth_x",
+                "truth_y",
+                "odom_x",
+                "odom_y",
+            }
+            header_ok = bool(rows) and required <= set(rows[0])
+            previous_time = -math.inf
+            row_ok = True
+            odom_samples = 0
+            for row in rows:
+                elapsed = float(row["elapsed_sec"])
+                truth_x = float(row["truth_x"])
+                truth_y = float(row["truth_y"])
+                if (
+                    not all(math.isfinite(v) for v in (elapsed, truth_x, truth_y))
+                    or elapsed < previous_time
+                ):
+                    row_ok = False
+                    break
+                previous_time = elapsed
+                if row["odom_x"] or row["odom_y"]:
+                    odom_x = float(row["odom_x"])
+                    odom_y = float(row["odom_y"])
+                    if not all(math.isfinite(v) for v in (odom_x, odom_y)):
+                        row_ok = False
+                        break
+                    odom_samples += 1
+            checks["trajectory_schema"] = (
+                header_ok and row_ok and len(rows) >= 2 and odom_samples > 0
+            )
+        except (KeyError, OSError, TypeError, ValueError):
+            checks["trajectory_schema"] = False
     config_relative = artifacts.get("controller_config")
     if checks["artifact_controller_config"]:
         config_path = (root / str(config_relative)).resolve()
@@ -226,12 +339,29 @@ def evaluate_manifest(
         )
     else:
         checks["config_sha256_matches"] = False
-    if policy.require_bag:
+    if policy.require_bag or bool(manifest.get("bag_command")):
         relative = artifacts.get("rosbag")
-        checks["artifact_rosbag"] = artifact_exists(relative, False)
-    if policy.require_video:
+        if artifact_exists(relative, False):
+            bag_root = (root / str(relative)).resolve()
+            metadata = bag_root / "metadata.yaml"
+            checks["artifact_rosbag"] = (
+                bag_root.is_dir()
+                and metadata.is_file()
+                and metadata.stat().st_size > 0
+            )
+        else:
+            checks["artifact_rosbag"] = False
+    if policy.require_video or bool(manifest.get("render_command")):
         relative = artifacts.get("video")
         checks["artifact_video"] = artifact_exists(relative, True)
+        if checks["artifact_video"]:
+            video_path = (root / str(relative)).resolve()
+            with video_path.open("rb") as handle:
+                checks["video_format"] = (
+                    handle.read(6) in (b"GIF87a", b"GIF89a")
+                )
+        else:
+            checks["video_format"] = False
     return {
         "profile": profile,
         "passed": all(checks.values()),

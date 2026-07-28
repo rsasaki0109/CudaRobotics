@@ -38,9 +38,19 @@ def main() -> int:
             manifest, run_directory, args.profile
         ),
     }
+    result["artifact_binding"] = {
+        "trajectory_matches_summary": (
+            artifacts.get("trajectory") == summary.get("trajectory_csv")
+        ),
+        "traversal_count_matches": (
+            manifest.get("traversal_count")
+            == summary.get("traversals_requested")
+        ),
+    }
     result["passed"] = (
         result["summary_gate"]["passed"]
         and result["manifest_gate"]["passed"]
+        and all(result["artifact_binding"].values())
     )
     print(json.dumps(result, indent=2, sort_keys=True))
     return 0 if result["passed"] else 1

@@ -42,3 +42,12 @@ def test_mission_polyline_is_dense_and_finite():
 def test_invalid_polyline_rejected():
     with pytest.raises(ValueError):
         interpolate_polyline([(0.0, 0.0)], 0.1)
+
+
+def test_release_traversals_exceed_ten_minute_theoretical_floor():
+    waypoints = mission_waypoints()
+    traversal_distance = sum(
+        math.dist(start, end)
+        for start, end in zip(waypoints, waypoints[1:])
+    )
+    assert 30 * traversal_distance / 0.55 > 600.0
