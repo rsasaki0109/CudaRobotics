@@ -59,6 +59,22 @@ candidate pose, graph node, rollout, voxel, feature, or grid cell.
 
 Full animated gallery: https://rsasaki0109.github.io/CudaRobotics/
 
+## Quickstart
+
+[Open in Colab](https://colab.research.google.com/github/rsasaki0109/CudaRobotics/blob/master/examples/colab/cudarobotics_quickstart.ipynb)
+· [Documentation](https://rsasaki0109.github.io/CudaRobotics/docs/)
+· [Nav2 CUDA MPPI](ros2_ws/src/cuda_mppi_controller/)
+· [Full animated gallery](https://rsasaki0109.github.io/CudaRobotics/)
+
+```bash
+pip install -e python/
+python examples/python/mppi_quickstart.py
+python examples/python/registration_quickstart.py
+```
+
+<details>
+<summary>More setup, benchmark, and research details</summary>
+
 ## Start Here
 
 | Want to see | Open |
@@ -289,6 +305,8 @@ does not, and what would be required for a paper-faithful reproduction.
 | <img src="gif/gpu_multi_robot_place_graph_slam.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_gaussian_splatting_slam.gif" width="400"/> |
 | <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_mppi_racing.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_sgm_stereo.gif" width="400"/> |
 | <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_frontier_exploration.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_diff_contact_push.gif" width="400"/> |
+
+</details>
 
 ## Gallery
 
