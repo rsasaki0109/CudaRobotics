@@ -86,6 +86,7 @@ python examples/python/registration_quickstart.py
 | **CudaNav voxel mapping, typed ESDF, and Nav2 bridge** | [`docs/cudanav_architecture.md`](docs/cudanav_architecture.md), [`docs/cuda_voxel_costmap_layer.md`](docs/cuda_voxel_costmap_layer.md) |
 | **CudaNav deterministic closed-loop bringup** | [`docs/cudanav_closed_loop.md`](docs/cudanav_closed_loop.md) |
 | **CudaNav multi-GPU reproducibility matrix** | [`docs/cudanav_multi_gpu.md`](docs/cudanav_multi_gpu.md) |
+| **CudaNav complete autonomy evidence suite** | [`docs/cudanav_autonomy_suite.md`](docs/cudanav_autonomy_suite.md) |
 | Nav2 CPU vs CUDA MPPI head-to-head | [`docs/results/cuda_mppi_vs_nav2_2026-06-10.md`](docs/results/cuda_mppi_vs_nav2_2026-06-10.md) |
 | CUDA MPPI extended controller scenarios | [`docs/results/cuda_mppi_extended_scenarios_2026-06-12.md`](docs/results/cuda_mppi_extended_scenarios_2026-06-12.md) |
 | CUDA MPPI bag / real-data evaluation harness | [`docs/cuda_mppi_bag_eval.md`](docs/cuda_mppi_bag_eval.md) |

@@ -973,6 +973,20 @@ add_test(NAME check_version_consistency
 add_test(NAME check_cudanav_contract
   COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/test_cudanav_contract.py
   WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+add_test(NAME check_cudanav_autonomy_suite_contract
+  COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/test_cudanav_autonomy_suite.py
+  WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+add_test(NAME check_cudanav_autonomy_suite_release_dry_run
+  COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/run_autonomy_suite.py
+    --output-dir ${CMAKE_BINARY_DIR}/cudanav_autonomy_release
+    --profile release
+    --bag ${CMAKE_BINARY_DIR}/fixture_bag
+    --evaluation-db ${CMAKE_BINARY_DIR}/fixture_bag/run.db3
+    --controller-config ${CMAKE_SOURCE_DIR}/ros2_ws/src/cuda_nav_bringup/config/controller.yaml
+    --controller-command "ros2 launch cuda_nav_bringup cudanav_closed_loop.launch.py"
+    --multi-gpu-run ${CMAKE_BINARY_DIR}/fixture_other_gpu
+    --dry-run
+  WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 add_test(NAME check_paper_artifact_contract
   COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/test_paper_artifact_contract.py
   WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
@@ -1006,7 +1020,7 @@ add_test(NAME check_python_release_artifacts
 add_test(NAME check_release_preflight
   COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/test_release_preflight.py
   WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/scripts)
-set_tests_properties(validate_design_workflow check_design_regressions check_scaffold check_repro_suite_dry_run check_mppi_zoo_smoke_dry_run check_mppi_zoo_chart_render check_planner_showdown_summary check_planner_showdown_matrix_summary check_planner_falsifier_summary check_erl_navigation_bag_inspector check_offline_rosbag_db3_analyzer check_offline_rosbag_motion_decoder check_offline_rosbag_motion_comparison check_offline_rosbag_clearance_decoder check_cuda_acceleration_auditor check_registration_suite check_mppi_rosbag_evaluation check_version_consistency check_cudanav_contract check_paper_artifact_contract check_paper_artifact_manifests check_contact_robustness_contract check_contact_robustness_release_dry_run check_contact_matched_compute_contract check_contact_matched_compute_release_dry_run check_python_core_sync check_python_release_artifacts check_release_preflight
+set_tests_properties(validate_design_workflow check_design_regressions check_scaffold check_repro_suite_dry_run check_mppi_zoo_smoke_dry_run check_mppi_zoo_chart_render check_planner_showdown_summary check_planner_showdown_matrix_summary check_planner_falsifier_summary check_erl_navigation_bag_inspector check_offline_rosbag_db3_analyzer check_offline_rosbag_motion_decoder check_offline_rosbag_motion_comparison check_offline_rosbag_clearance_decoder check_cuda_acceleration_auditor check_registration_suite check_mppi_rosbag_evaluation check_version_consistency check_cudanav_contract check_cudanav_autonomy_suite_contract check_cudanav_autonomy_suite_release_dry_run check_paper_artifact_contract check_paper_artifact_manifests check_contact_robustness_contract check_contact_robustness_release_dry_run check_contact_matched_compute_contract check_contact_matched_compute_release_dry_run check_python_core_sync check_python_release_artifacts check_release_preflight
   PROPERTIES
   TIMEOUT 30
   LABELS "python")

@@ -139,6 +139,8 @@ Objective: regenerate the project-level evidence with one entry point.
 Current evidence entry points:
 
 ```bash
+python3 scripts/run_autonomy_suite.py \
+  --profile release --output-dir build/cudanav_autonomy_release ...
 python3 scripts/run_cudanav_closed_loop.py \
   --profile release --output-dir build/cudanav_closed_loop
 python3 scripts/run_cudanav_rosbag_replay.py \
@@ -147,9 +149,10 @@ python3 scripts/run_cudanav_multi_gpu.py \
   --output-dir build/cudanav_multi_gpu ...
 ```
 
-A future `run_autonomy_suite.py` may orchestrate these three commands, but it
-must preserve their separate evidence modes and must not collapse shadow replay
-into a closed-loop claim.
+`run_autonomy_suite.py` orchestrates these three commands while preserving
+their separate evidence modes. Its aggregate validator refuses to collapse
+shadow replay into a closed-loop claim and requires one commit and controller
+configuration across the complete release suite.
 
 Each run must produce:
 

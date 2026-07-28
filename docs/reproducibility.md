@@ -100,6 +100,7 @@ real recorded data, and multi-GPU reproducibility prove different claims:
 | Deterministic closed loop | `scripts/run_cudanav_closed_loop.py` | Commands affect subsequent simulated state |
 | Real rosbag shadow replay | `scripts/run_cudanav_rosbag_replay.py` | Real sensor/motion data passes the GPU controller quality gate |
 | GPU matrix | `scripts/run_cudanav_multi_gpu.py` | The same commit and config reproduce across physical GPU models |
+| Full autonomy suite | `scripts/run_autonomy_suite.py` | Closed-loop, recorded/shadow, and multi-GPU gates from one content-bound release entry point |
 
 All three runners write self-describing manifests and refuse dirty release
 evidence. The real-rosbag validator re-hashes the external input dataset and
@@ -108,6 +109,8 @@ and exact commands. See
 [`cuda_mppi_bag_eval.md`](cuda_mppi_bag_eval.md),
 [`cudanav_closed_loop.md`](cudanav_closed_loop.md), and
 [`cudanav_multi_gpu.md`](cudanav_multi_gpu.md).
+The aggregate release workflow is documented in
+[`cudanav_autonomy_suite.md`](cudanav_autonomy_suite.md).
 
 ## Paper Claim Gates
 
