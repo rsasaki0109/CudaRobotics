@@ -122,7 +122,9 @@ observable counters.
 ## Integration Sequence
 
 1. Introduce the typed message and contract tests.
-2. Port GPU KISS-ICP into a reusable core and ROS 2 lifecycle component.
+2. Connect the reusable GPU KISS-ICP core to a ROS 2 lifecycle component. The
+   core API and streaming/reset GPU smoke are now implemented; PointCloud2,
+   TF, timestamp, and lifecycle behavior remain.
 3. Correct voxel mapping to use full SE(3), field-name lookup, relative topics,
    and explicit unknown-space semantics.
 4. Publish typed ESDF data and add CPU-reference comparison tests.
