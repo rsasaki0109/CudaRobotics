@@ -64,6 +64,20 @@ python3 scripts/validate_contact_matched_compute.py \
   build/contact_matched_compute_release --profile release
 ```
 
+Publish the compact checked-in evidence bundle only after validation:
+
+```bash
+python3 scripts/publish_contact_matched_compute.py \
+  build/contact_matched_compute_release \
+  --output-dir docs/results \
+  --profile release
+```
+
+The publication contains calibration, summary, comparisons, report, and a
+provenance document. The provenance binds the larger calibration/evaluation
+episode tables, raw attempts, staged binary, commit, GPU, and statistical
+outputs by SHA-256 without copying those large runtime artifacts into Git.
+
 The validator regenerates the selected budgets, summary, comparisons, and
 report from the bound episode tables. It also checks the clean commit, staged
 binary, GPU identity, raw attempt hashes, complete matrices, disjoint seed
