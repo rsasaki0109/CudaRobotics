@@ -364,12 +364,39 @@ def main() -> int:
     ).read_text(encoding="utf-8")
     for term in (
         "FollowPath",
+        '"schema_version": 1',
         '"collision_count"',
         '"odometry_drift_percent"',
         '"command_deadline_miss_rate"',
         '"smoke_pass"',
     ):
         assert term in mission_source
+    evidence_source = (ROOT / "scripts" / "cudanav_evidence.py").read_text(
+        encoding="utf-8"
+    )
+    for term in (
+        '"smoke": GatePolicy',
+        '"release": GatePolicy',
+        "min_elapsed_sec=600.0",
+        "max_drift_percent=1.0",
+        "max_deadline_miss_rate=0.01",
+        "require_bag=True",
+        "require_video=True",
+        "is_relative_to(root)",
+    ):
+        assert term in evidence_source
+    harness_source = (
+        ROOT / "scripts" / "run_cudanav_closed_loop.py"
+    ).read_text(encoding="utf-8")
+    for term in (
+        '"git_commit"',
+        '"git_dirty"',
+        '"config_sha256"',
+        '"gpu"',
+        '"launch_log"',
+        "refusing non-empty output directory",
+    ):
+        assert term in harness_source
 
     architecture = (
         ROOT / "docs" / "cudanav_architecture.md"

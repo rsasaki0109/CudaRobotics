@@ -187,6 +187,7 @@ class FollowPathMission(Node):
             and deadline_miss_rate < 0.05
         )
         summary = {
+            "schema_version": 1,
             "success": bool(success),
             "smoke_pass": smoke_pass,
             "reason": reason,
@@ -204,10 +205,16 @@ class FollowPathMission(Node):
             "command_deadline_miss_rate": deadline_miss_rate,
         }
         self._output_path.parent.mkdir(parents=True, exist_ok=True)
-        self._output_path.write_text(
-            json.dumps(summary, indent=2, sort_keys=True) + "\n",
+        temporary_path = self._output_path.with_suffix(
+            self._output_path.suffix + ".tmp"
+        )
+        temporary_path.write_text(
+            json.dumps(
+                summary, indent=2, sort_keys=True, allow_nan=False
+            ) + "\n",
             encoding="utf-8",
         )
+        temporary_path.replace(self._output_path)
         self.get_logger().info(
             f"mission complete: {reason}; evidence={self._output_path}"
         )
