@@ -101,6 +101,7 @@ python examples/python/registration_quickstart.py
 | Diff-MPPI paper material | [`paper/`](paper/) |
 | Contributing a demo or reproduction | [`CONTRIBUTING.md`](CONTRIBUTING.md) |
 | CudaNav end-to-end architecture contract | [`docs/cudanav_architecture.md`](docs/cudanav_architecture.md) |
+| Reusable GPU KISS-ICP streaming API | [`docs/kiss_icp_gpu_core.md`](docs/kiss_icp_gpu_core.md) |
 | Current roadmap snapshot | [`docs/next_actions.md`](docs/next_actions.md) |
 
 ## Python MPPI Quickstart
@@ -299,7 +300,7 @@ does not, and what would be required for a paper-faithful reproduction.
 | `gpu_frontier_exploration` | GPU frontier exploration with parallel ray casting over an occupancy grid. |
 | `gpu_diff_contact_push` | Differentiable contact pushing with GPU rollout scoring. |
 | `gpu_constrained_mpc` | Constrained nonlinear MPC (AL-iLQR) for multi-robot obstacle avoidance. |
-| [`gpu_kiss_icp`](docs/gpu_kiss_icp.md) | KISS-ICP-style LiDAR odometry with exact GPU voxel-hash correspondences, accuracy gates, and JSON metrics. |
+| [`gpu_kiss_icp`](docs/gpu_kiss_icp.md) | KISS-ICP-style LiDAR odometry using the [reusable GPU streaming core](docs/kiss_icp_gpu_core.md), exact voxel-hash correspondences, accuracy gates, and JSON metrics. |
 
 | | |
 |---|---|

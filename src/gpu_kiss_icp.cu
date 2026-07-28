@@ -37,34 +37,44 @@
 //
 // We build a synthetic structured world (ground + buildings + poles), fly a known
 // loop trajectory through it, and generate range-limited noisy scans.  The
-// odometry NEVER sees the world or the true poses -- only the scans -- and we
-// score the recovered trajectory against ground truth (ATE / final drift).
+// odometry sees only the scans plus an explicit initial coordinate-system
+// anchor. It never uses later true poses; those are retained only to score the
+// recovered trajectory (ATE / final drift).
 //
 // Build: CMakeLists, --expt-relaxed-constexpr.
 
 #include <cuda_runtime.h>
+#ifndef CUDAROBOTICS_KISS_ICP_CORE_ONLY
 #include <opencv2/opencv.hpp>
+#endif
 
 #include <algorithm>
+#include <array>
 #include <chrono>
+#include <climits>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <cstdint>
 #include <fstream>
 #include <random>
+#include <stdexcept>
 #include <string>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 #include "cuda_check.cuh"
+#include "cudarobotics/kiss_icp_gpu.hpp"
+#ifndef CUDAROBOTICS_KISS_ICP_CORE_ONLY
 #include "cuda_video.h"
+#endif
 
-namespace cudabot {
+namespace cudarobotics {
 
 // ============================ SE(3)/SO(3) helpers (host) ============================
-struct Mat3 { float m[9]; };
-struct Pose { Mat3 R; float t[3]; };
+using Mat3 = KissIcpMat3;
+using Pose = KissIcpPose;
 static inline void mat3_vec(const Mat3& R, const float* v, float* o){
     o[0]=R.m[0]*v[0]+R.m[1]*v[1]+R.m[2]*v[2]; o[1]=R.m[3]*v[0]+R.m[4]*v[1]+R.m[5]*v[2]; o[2]=R.m[6]*v[0]+R.m[7]*v[1]+R.m[8]*v[2]; }
 static inline void pose_apply(const Pose& T,const float* y,float* p){ mat3_vec(T.R,y,p); p[0]+=T.t[0];p[1]+=T.t[1];p[2]+=T.t[2]; }
@@ -99,6 +109,7 @@ static inline void pose_delta_mag(const Pose& A,const Pose& B,float& dtrans,floa
 // ============================ synthetic structured world ============================
 // Ground + axis-aligned building boxes (walls only) + thin poles.  Distinctive,
 // asymmetric structure so x/y/yaw are well constrained; the ground constrains z.
+#ifndef CUDAROBOTICS_KISS_ICP_CORE_ONLY
 static std::vector<float> make_world(unsigned seed){
     std::mt19937 rng(seed); std::uniform_real_distribution<float> u01(0,1);
     std::vector<float> P;
@@ -123,6 +134,7 @@ static std::vector<float> make_world(unsigned seed){
     for(auto&p:px) for(float z=0.1f;z<=4.5f;z+=0.22f){ add(p[0],p[1],z); }
     return P;
 }
+#endif
 
 // host voxel downsample: keep the centroid of points falling in each voxel.
 static std::vector<float> voxel_downsample(const std::vector<float>& P, float vs){
@@ -328,20 +340,14 @@ static bool solve6(const float* Hut,const float* g,float* d){
     return true; }
 
 // ============================ odometry ============================
-enum class NnBackend { Voxel, Brute };
+using NnBackend = KissIcpNnBackend;
+using AlignmentStats = KissIcpAlignmentStats;
 
-static const char* nn_backend_name(NnBackend backend) {
+const char* kiss_icp_backend_name(NnBackend backend) {
     return backend == NnBackend::Voxel ? "voxel" : "brute";
 }
 
-struct AlignmentStats {
-    int iterations = 0;
-    int inliers = 0;
-    float rmse = 0.0f;
-    float nn_ms = 0.0f;
-    float threshold = 0.0f;
-};
-
+#ifndef CUDAROBOTICS_KISS_ICP_CORE_ONLY
 struct OdomOut {
     std::vector<Pose> est;
     std::vector<float> map;
@@ -351,6 +357,7 @@ struct OdomOut {
     double map_upload_ms = 0.0;
     double map_normal_ms = 0.0;
 };
+#endif
 
 // One ICP alignment of a scan (sensor frame) to the local map (world frame),
 // starting from T_init.  tau is the adaptive correspondence threshold.
@@ -400,126 +407,248 @@ static Pose icp_to_map(const std::vector<float>& scan, float* dMap,float* dMapN,
     return T;
 }
 
-static OdomOut run_odometry(const std::vector<std::vector<float>>& scans,
-                            const std::vector<Pose>& gt, float map_voxel, float scan_voxel,
-                            NnBackend backend){
-    OdomOut out;
-    out.nn_backend = backend;
-    // GPU scratch sized to the largest scan and a generous map cap.
-    int maxn=0; for(auto&s:scans) maxn=std::max(maxn,(int)(s.size()/3));
-    const int MAPCAP=200000;
-    const int HASH_CAPACITY=1<<19;
-    const float TAU_MIN=1.0f, TAU_MAX=3.0f;
-    const float INDEX_CELL_SIZE=TAU_MAX;
-    float *dS,*dPw,*dQ,*dNQ,*dD2,*dMap,*dMapN,*dR,*dt,*dHg;
-    unsigned long long* dHashKeys;
-    int *dHashHeads,*dPointNext;
-    CUDA_CHECK(cudaMalloc(&dS,maxn*3*sizeof(float)));CUDA_CHECK(cudaMalloc(&dPw,maxn*3*sizeof(float)));
-    CUDA_CHECK(cudaMalloc(&dQ,maxn*3*sizeof(float)));CUDA_CHECK(cudaMalloc(&dNQ,maxn*3*sizeof(float)));CUDA_CHECK(cudaMalloc(&dD2,maxn*sizeof(float)));
-    CUDA_CHECK(cudaMalloc(&dMap,MAPCAP*3*sizeof(float)));
-    CUDA_CHECK(cudaMalloc(&dMapN,MAPCAP*3*sizeof(float)));
-    CUDA_CHECK(cudaMalloc(&dR,9*sizeof(float)));CUDA_CHECK(cudaMalloc(&dt,3*sizeof(float)));CUDA_CHECK(cudaMalloc(&dHg,30*sizeof(float)));
-    CUDA_CHECK(cudaMalloc(&dHashKeys,HASH_CAPACITY*sizeof(unsigned long long)));
-    CUDA_CHECK(cudaMalloc(&dHashHeads,HASH_CAPACITY*sizeof(int)));
-    CUDA_CHECK(cudaMalloc(&dPointNext,MAPCAP*sizeof(int)));
-    cudaEvent_t normal_start, normal_stop, hash_start, hash_stop;
-    CUDA_CHECK(cudaEventCreate(&normal_start));
-    CUDA_CHECK(cudaEventCreate(&normal_stop));
-    CUDA_CHECK(cudaEventCreate(&hash_start));
-    CUDA_CHECK(cudaEventCreate(&hash_stop));
+std::string validate_kiss_icp_config(const KissIcpConfig& c) {
+    if (!(c.map_voxel_size > 0.0f)) return "map_voxel_size must be positive";
+    if (!(c.scan_voxel_size > 0.0f)) return "scan_voxel_size must be positive";
+    if (!(c.map_radius > 0.0f)) return "map_radius must be positive";
+    if (!(c.threshold_min > 0.0f)) return "threshold_min must be positive";
+    if (!(c.threshold_max >= c.threshold_min))
+        return "threshold_max must be greater than or equal to threshold_min";
+    if (c.max_icp_iterations <= 0) return "max_icp_iterations must be positive";
+    if (c.normal_neighbors < 1 || c.normal_neighbors > 20)
+        return "normal_neighbors must be in [1, 20]";
+    if (c.max_scan_points == 0) return "max_scan_points must be positive";
+    if (c.max_map_points == 0) return "max_map_points must be positive";
+    if (c.max_scan_points > static_cast<std::size_t>(INT_MAX))
+        return "max_scan_points exceeds the CUDA kernel index range";
+    if (c.max_map_points > static_cast<std::size_t>(INT_MAX))
+        return "max_map_points exceeds the CUDA kernel index range";
+    if (c.hash_capacity < 2 || (c.hash_capacity & (c.hash_capacity - 1)) != 0)
+        return "hash_capacity must be a power of two";
+    if (c.hash_capacity > static_cast<std::size_t>(INT_MAX))
+        return "hash_capacity exceeds the CUDA kernel index range";
+    if (c.nn_backend == NnBackend::Voxel && c.hash_capacity < c.max_map_points)
+        return "hash_capacity must be at least max_map_points for voxel NN";
+    return {};
+}
 
-    // persistent voxel-hash map: ONE point per voxel, kept from when the voxel was
-    // FIRST observed (earliest pose = most accurate).  Never re-averaged -- that is
-    // what stops the map from smearing into a thick slab as small pose errors
-    // accumulate, which (via degraded normals) otherwise starves the z constraint
-    // and runs away.  This is the KISS-ICP voxel-hash map discipline.
-    std::unordered_map<int64_t,std::array<float,3>> vmap; vmap.reserve(200000);
-    float ivs=1.f/map_voxel;
-    auto vkey=[&](float x,float y,float z)->int64_t{
-        int64_t ix=(int64_t)std::floor(x*ivs),iy=(int64_t)std::floor(y*ivs),iz=(int64_t)std::floor(z*ivs);
-        return ((ix&0x1FFFFF)<<42) ^ ((iy&0x1FFFFF)<<21) ^ (iz&0x1FFFFF); };
-    std::vector<float> localmap;
-    auto map_insert=[&](const std::vector<float>& pts_world,const float* center){
-        for(size_t i=0;i<pts_world.size()/3;++i){ float x=pts_world[i*3],y=pts_world[i*3+1],z=pts_world[i*3+2];
-            int64_t k=vkey(x,y,z); auto it=vmap.find(k); if(it==vmap.end()) vmap[k]={x,y,z}; }
-        // window: drop voxels far from the current sensor centre
-        const float Rwin=40.f, Rwin2=Rwin*Rwin;
-        for(auto it=vmap.begin();it!=vmap.end();){ float dx=it->second[0]-center[0],dy=it->second[1]-center[1],dz=it->second[2]-center[2];
-            if(dx*dx+dy*dy+dz*dz>Rwin2) it=vmap.erase(it); else ++it; }
+struct KissIcpOdometry::Impl {
+    explicit Impl(const KissIcpConfig& value) : config(value) {
+        const std::string error = validate_kiss_icp_config(config);
+        if (!error.empty()) throw std::invalid_argument(error);
+        vmap.reserve(config.max_map_points);
+        CUDA_CHECK(cudaMalloc(&dS,config.max_scan_points*3*sizeof(float)));
+        CUDA_CHECK(cudaMalloc(&dPw,config.max_scan_points*3*sizeof(float)));
+        CUDA_CHECK(cudaMalloc(&dQ,config.max_scan_points*3*sizeof(float)));
+        CUDA_CHECK(cudaMalloc(&dNQ,config.max_scan_points*3*sizeof(float)));
+        CUDA_CHECK(cudaMalloc(&dD2,config.max_scan_points*sizeof(float)));
+        CUDA_CHECK(cudaMalloc(&dMap,config.max_map_points*3*sizeof(float)));
+        CUDA_CHECK(cudaMalloc(&dMapN,config.max_map_points*3*sizeof(float)));
+        CUDA_CHECK(cudaMalloc(&dR,9*sizeof(float)));
+        CUDA_CHECK(cudaMalloc(&dt,3*sizeof(float)));
+        CUDA_CHECK(cudaMalloc(&dHg,30*sizeof(float)));
+        CUDA_CHECK(cudaMalloc(&dHashKeys,config.hash_capacity*sizeof(unsigned long long)));
+        CUDA_CHECK(cudaMalloc(&dHashHeads,config.hash_capacity*sizeof(int)));
+        CUDA_CHECK(cudaMalloc(&dPointNext,config.max_map_points*sizeof(int)));
+        CUDA_CHECK(cudaEventCreate(&normal_start));
+        CUDA_CHECK(cudaEventCreate(&normal_stop));
+        CUDA_CHECK(cudaEventCreate(&hash_start));
+        CUDA_CHECK(cudaEventCreate(&hash_stop));
+        reset(KissIcpPose{});
+    }
+
+    ~Impl() {
+        if(normal_start) cudaEventDestroy(normal_start);
+        if(normal_stop) cudaEventDestroy(normal_stop);
+        if(hash_start) cudaEventDestroy(hash_start);
+        if(hash_stop) cudaEventDestroy(hash_stop);
+        cudaFree(dS); cudaFree(dPw); cudaFree(dQ); cudaFree(dNQ); cudaFree(dD2);
+        cudaFree(dMap); cudaFree(dMapN); cudaFree(dR); cudaFree(dt); cudaFree(dHg);
+        cudaFree(dHashKeys); cudaFree(dHashHeads); cudaFree(dPointNext);
+    }
+
+    void reset(const Pose& initial) {
+        current_pose = initial;
+        frames = 0;
+        deviation_ema = 0.0;
+        deviation_initialized = false;
+        vmap.clear();
+        localmap.clear();
+        accumulated_timing = {};
+    }
+
+    int64_t voxel_key(float x,float y,float z) const {
+        const float inv = 1.0f / config.map_voxel_size;
+        int64_t ix=(int64_t)std::floor(x*inv),iy=(int64_t)std::floor(y*inv),iz=(int64_t)std::floor(z*inv);
+        return ((ix&0x1FFFFF)<<42) ^ ((iy&0x1FFFFF)<<21) ^ (iz&0x1FFFFF);
+    }
+
+    std::vector<float> to_world(const std::vector<float>& scan,const Pose& pose) const {
+        std::vector<float> world(scan.size());
+        for(size_t i=0;i<scan.size()/3;++i){
+            float source[3]={scan[i*3],scan[i*3+1],scan[i*3+2]}, point[3];
+            pose_apply(pose,source,point);
+            world[i*3]=point[0];world[i*3+1]=point[1];world[i*3+2]=point[2];
+        }
+        return world;
+    }
+
+    void insert_map(const std::vector<float>& world,const float* center) {
+        const float radius2=config.map_radius*config.map_radius;
+        for(auto it=vmap.begin();it!=vmap.end();){
+            float dx=it->second[0]-center[0],dy=it->second[1]-center[1],dz=it->second[2]-center[2];
+            if(dx*dx+dy*dy+dz*dz>radius2) it=vmap.erase(it); else ++it;
+        }
+        for(size_t i=0;i<world.size()/3;++i){
+            float x=world[i*3],y=world[i*3+1],z=world[i*3+2];
+            float dx=x-center[0],dy=y-center[1],dz=z-center[2];
+            if(dx*dx+dy*dy+dz*dz>radius2) continue;
+            int64_t key=voxel_key(x,y,z);
+            if(vmap.find(key)==vmap.end()){
+                if(vmap.size()>=config.max_map_points)
+                    throw std::runtime_error("KISS-ICP local map capacity exceeded");
+                vmap[key]={x,y,z};
+            }
+        }
         localmap.clear(); localmap.reserve(vmap.size()*3);
-        for(auto& kv:vmap){ localmap.push_back(kv.second[0]);localmap.push_back(kv.second[1]);localmap.push_back(kv.second[2]); }
-    };
-    auto to_world=[&](const std::vector<float>& scan,const Pose& T){ std::vector<float> w(scan.size());
-        for(size_t i=0;i<scan.size()/3;++i){ float s[3]={scan[i*3],scan[i*3+1],scan[i*3+2]},p[3]; pose_apply(T,s,p); w[i*3]=p[0];w[i*3+1]=p[1];w[i*3+2]=p[2]; } return w; };
+        for(const auto& item:vmap){
+            localmap.push_back(item.second[0]);
+            localmap.push_back(item.second[1]);
+            localmap.push_back(item.second[2]);
+        }
+    }
 
-    int K=scans.size();
-    // adaptive threshold state: EMA of the constant-velocity model's SQUARED
-    // deviation.  An EMA (not an all-time mean) keeps tau responsive -- an
-    // all-time mean is dominated by the tiny early deviations and pins tau at the
-    // floor, so a later curve whose prediction error exceeds the floor loses all
-    // correspondences.  The floor also covers sensor noise + voxel spacing.
-    double dev_ema=0; bool dev_init=false;
-    for(int k=0;k<K;++k){
-        // 1) spatial subsample of the incoming scan
-        std::vector<float> scan=voxel_downsample(scans[k],scan_voxel);
-        Pose Test; float tau=TAU_MAX; Pose pred; AlignmentStats alignment;
-        if(k==0){ Test=gt[0]; pred=gt[0]; }              // anchor odometry at the known start
-        else {
-            // 2) previous-pose (zero-velocity) prediction -- see header note.
-            pred=out.est[k-1];
-            // 3) adaptive threshold from recent model deviation (KISS): tau = 3*sigma
-            if(!dev_init) tau=TAU_MAX;
-            else { float sigma=(float)std::sqrt(dev_ema); tau=std::min(TAU_MAX,std::max(TAU_MIN,3.f*sigma)); }
-            // 4) point-to-plane ICP to the local map (upload + estimate normals once)
-            int mapN=std::min((int)(localmap.size()/3),MAPCAP);
-            auto upload_start = std::chrono::high_resolution_clock::now();
-            CUDA_CHECK(cudaMemcpy(
-                dMap,localmap.data(),mapN*3*sizeof(float),cudaMemcpyHostToDevice));
-            auto upload_stop = std::chrono::high_resolution_clock::now();
-            out.map_upload_ms +=
+    KissIcpFrameResult register_scan(const float* xyz,std::size_t point_count) {
+        if(!xyz) throw std::invalid_argument("scan pointer must not be null");
+        if(point_count==0) throw std::invalid_argument("scan must contain at least one point");
+        if(point_count>config.max_scan_points)
+            throw std::length_error("scan exceeds configured max_scan_points");
+        std::vector<float> raw(xyz,xyz+point_count*3);
+        for(float value:raw)
+            if(!std::isfinite(value)) throw std::invalid_argument("scan contains a non-finite coordinate");
+        std::vector<float> scan=voxel_downsample(raw,config.scan_voxel_size);
+        if(scan.size()/3>config.max_scan_points)
+            throw std::length_error("downsampled scan exceeds configured max_scan_points");
+
+        AlignmentStats alignment;
+        Pose estimate=current_pose;
+        if(frames>0){
+            if(localmap.size()/3<10)
+                throw std::runtime_error("KISS-ICP local map has too few points for registration");
+            float tau=config.threshold_max;
+            if(deviation_initialized){
+                float sigma=(float)std::sqrt(deviation_ema);
+                tau=std::min(config.threshold_max,std::max(config.threshold_min,3.f*sigma));
+            }
+            int map_count=static_cast<int>(localmap.size()/3);
+            auto upload_start=std::chrono::high_resolution_clock::now();
+            CUDA_CHECK(cudaMemcpy(dMap,localmap.data(),map_count*3*sizeof(float),cudaMemcpyHostToDevice));
+            auto upload_stop=std::chrono::high_resolution_clock::now();
+            accumulated_timing.map_upload_ms+=
                 std::chrono::duration<double,std::milli>(upload_stop-upload_start).count();
             CUDA_CHECK(cudaEventRecord(normal_start));
-            map_normal_kernel<<<(mapN+127)/128,128>>>(dMap,mapN,12,dMapN);
+            map_normal_kernel<<<(map_count+127)/128,128>>>(
+                dMap,map_count,config.normal_neighbors,dMapN);
             CUDA_CHECK(cudaEventRecord(normal_stop));
             CUDA_CHECK(cudaEventSynchronize(normal_stop));
-            float normal_ms = 0.0f;
+            float normal_ms=0.0f;
             CUDA_CHECK(cudaEventElapsedTime(&normal_ms,normal_start,normal_stop));
-            out.map_normal_ms += normal_ms;
-            if (backend == NnBackend::Voxel) {
+            accumulated_timing.map_normal_ms+=normal_ms;
+            const float inv_cell=1.0f/config.threshold_max;
+            if(config.nn_backend==NnBackend::Voxel){
                 CUDA_CHECK(cudaEventRecord(hash_start));
-                CUDA_CHECK(cudaMemset(
-                    dHashKeys,0xff,HASH_CAPACITY*sizeof(unsigned long long)));
-                CUDA_CHECK(cudaMemset(dHashHeads,0xff,HASH_CAPACITY*sizeof(int)));
-                build_voxel_hash_kernel<<<(mapN+255)/256,256>>>(
-                    dMap,mapN,1.0f/INDEX_CELL_SIZE,
-                    dHashKeys,dHashHeads,dPointNext,HASH_CAPACITY);
+                CUDA_CHECK(cudaMemset(dHashKeys,0xff,config.hash_capacity*sizeof(unsigned long long)));
+                CUDA_CHECK(cudaMemset(dHashHeads,0xff,config.hash_capacity*sizeof(int)));
+                build_voxel_hash_kernel<<<(map_count+255)/256,256>>>(
+                    dMap,map_count,inv_cell,dHashKeys,dHashHeads,dPointNext,
+                    static_cast<int>(config.hash_capacity));
                 CUDA_CHECK(cudaEventRecord(hash_stop));
                 CUDA_CHECK(cudaEventSynchronize(hash_stop));
-                float hash_ms = 0.0f;
+                float hash_ms=0.0f;
                 CUDA_CHECK(cudaEventElapsedTime(&hash_ms,hash_start,hash_stop));
-                out.index_build_ms += hash_ms;
+                accumulated_timing.index_build_ms+=hash_ms;
             }
-            Test=icp_to_map(
-                scan,dMap,dMapN,mapN,dHashKeys,dHashHeads,dPointNext,
-                HASH_CAPACITY,1.0f/INDEX_CELL_SIZE,backend,pred,tau,12,
+            const Pose predicted=current_pose;
+            estimate=icp_to_map(
+                scan,dMap,dMapN,map_count,dHashKeys,dHashHeads,dPointNext,
+                static_cast<int>(config.hash_capacity),inv_cell,config.nn_backend,
+                predicted,tau,config.max_icp_iterations,
                 dS,dPw,dQ,dNQ,dD2,dR,dt,dHg,&alignment);
-            // update adaptive-threshold statistic with how wrong the prediction was
-            float dtr,dro; pose_delta_mag(pred,Test,dtr,dro);
-            float dsq=dtr*dtr; if(!dev_init){dev_ema=dsq;dev_init=true;} else dev_ema=0.7*dev_ema+0.3*dsq;
+            float translation_delta,rotation_delta;
+            pose_delta_mag(predicted,estimate,translation_delta,rotation_delta);
+            float squared=translation_delta*translation_delta;
+            if(!deviation_initialized){deviation_ema=squared;deviation_initialized=true;}
+            else deviation_ema=0.7*deviation_ema+0.3*squared;
         }
-        out.est.push_back(Test);
-        out.alignments.push_back(alignment);
-        // 5) insert the registered scan into the local map
-        std::vector<float> sw=to_world(scan,Test);
-        map_insert(sw,Test.t);
+        current_pose=estimate;
+        insert_map(to_world(scan,current_pose),current_pose.t);
+        ++frames;
+        KissIcpFrameResult result;
+        result.pose=current_pose;
+        result.alignment=alignment;
+        result.input_points=point_count;
+        result.sampled_points=scan.size()/3;
+        result.map_points=localmap.size()/3;
+        result.map_initialized=true;
+        return result;
     }
-    out.map=localmap;
-    CUDA_CHECK(cudaEventDestroy(normal_start));
-    CUDA_CHECK(cudaEventDestroy(normal_stop));
-    CUDA_CHECK(cudaEventDestroy(hash_start));
-    CUDA_CHECK(cudaEventDestroy(hash_stop));
-    cudaFree(dS);cudaFree(dPw);cudaFree(dQ);cudaFree(dNQ);cudaFree(dD2);cudaFree(dMap);cudaFree(dMapN);cudaFree(dR);cudaFree(dt);cudaFree(dHg);
-    cudaFree(dHashKeys);cudaFree(dHashHeads);cudaFree(dPointNext);
+
+    KissIcpConfig config;
+    Pose current_pose;
+    std::size_t frames=0;
+    double deviation_ema=0.0;
+    bool deviation_initialized=false;
+    std::unordered_map<int64_t,std::array<float,3>> vmap;
+    std::vector<float> localmap;
+    KissIcpTiming accumulated_timing;
+    float *dS=nullptr,*dPw=nullptr,*dQ=nullptr,*dNQ=nullptr,*dD2=nullptr;
+    float *dMap=nullptr,*dMapN=nullptr,*dR=nullptr,*dt=nullptr,*dHg=nullptr;
+    unsigned long long* dHashKeys=nullptr;
+    int *dHashHeads=nullptr,*dPointNext=nullptr;
+    cudaEvent_t normal_start=nullptr,normal_stop=nullptr,hash_start=nullptr,hash_stop=nullptr;
+};
+
+KissIcpOdometry::KissIcpOdometry(const KissIcpConfig& config)
+    : impl_(new Impl(config)) {}
+KissIcpOdometry::~KissIcpOdometry() = default;
+KissIcpOdometry::KissIcpOdometry(KissIcpOdometry&&) noexcept = default;
+KissIcpOdometry& KissIcpOdometry::operator=(KissIcpOdometry&&) noexcept = default;
+void KissIcpOdometry::reset(const KissIcpPose& pose) { impl_->reset(pose); }
+KissIcpFrameResult KissIcpOdometry::register_scan(const float* xyz,std::size_t count) {
+    return impl_->register_scan(xyz,count);
+}
+KissIcpFrameResult KissIcpOdometry::register_scan(const std::vector<float>& xyz) {
+    if(xyz.size()%3!=0) throw std::invalid_argument("xyz vector size must be divisible by three");
+    return register_scan(xyz.data(),xyz.size()/3);
+}
+const KissIcpConfig& KissIcpOdometry::config() const noexcept { return impl_->config; }
+const KissIcpPose& KissIcpOdometry::pose() const noexcept { return impl_->current_pose; }
+std::size_t KissIcpOdometry::frame_count() const noexcept { return impl_->frames; }
+std::vector<float> KissIcpOdometry::map_snapshot() const { return impl_->localmap; }
+KissIcpTiming KissIcpOdometry::timing() const noexcept { return impl_->accumulated_timing; }
+
+#ifndef CUDAROBOTICS_KISS_ICP_CORE_ONLY
+static OdomOut run_odometry(const std::vector<std::vector<float>>& scans,
+                            const Pose& initial_pose,float map_voxel,float scan_voxel,
+                            NnBackend backend){
+    KissIcpConfig config;
+    config.map_voxel_size=map_voxel;
+    config.scan_voxel_size=scan_voxel;
+    config.nn_backend=backend;
+    KissIcpOdometry odometry(config);
+    odometry.reset(initial_pose);
+    OdomOut out;
+    out.nn_backend=backend;
+    for(const auto& scan:scans){
+        KissIcpFrameResult frame=odometry.register_scan(scan);
+        out.est.push_back(frame.pose);
+        out.alignments.push_back(frame.alignment);
+    }
+    out.map=odometry.map_snapshot();
+    KissIcpTiming timing=odometry.timing();
+    out.index_build_ms=timing.index_build_ms;
+    out.map_upload_ms=timing.map_upload_ms;
+    out.map_normal_ms=timing.map_normal_ms;
     return out;
 }
 
@@ -622,7 +751,7 @@ static int parse_options(int argc, char** argv, Options& opts) {
         } else if (arg == "--nn" && i + 1 < argc) {
             std::string backend = argv[++i];
             if (backend == "voxel") opts.nn_backend = NnBackend::Voxel;
-            else if (backend == "brute") opts.nn_backend = NnBackend::Brute;
+            else if (backend == "brute") opts.nn_backend = NnBackend::BruteForce;
             else {
                 std::fprintf(stderr, "--nn must be voxel or brute\n");
                 return 2;
@@ -711,7 +840,7 @@ static bool write_json(const std::string& path, const Metrics& metrics) {
     }
     out << "{\n"
         << "  \"frames\": " << metrics.frames << ",\n"
-        << "  \"nn_backend\": \"" << nn_backend_name(metrics.nn_backend) << "\",\n"
+        << "  \"nn_backend\": \"" << kiss_icp_backend_name(metrics.nn_backend) << "\",\n"
         << "  \"map_points\": " << metrics.map_points << ",\n"
         << "  \"trajectory_length_m\": " << metrics.trajectory_length_m << ",\n"
         << "  \"ate_m\": " << metrics.ate_m << ",\n"
@@ -735,10 +864,12 @@ static bool write_json(const std::string& path, const Metrics& metrics) {
     return true;
 }
 
-}  // namespace cudabot
+#endif  // CUDAROBOTICS_KISS_ICP_CORE_ONLY
+}  // namespace cudarobotics
 
+#ifndef CUDAROBOTICS_KISS_ICP_CORE_ONLY
 int main(int argc, char** argv){
-    using namespace cudabot;
+    using namespace cudarobotics;
     Options opts;
     int parse_result = parse_options(argc, argv, opts);
     if (parse_result == 1) return 0;
@@ -773,7 +904,7 @@ int main(int argc, char** argv){
     CUDA_CHECK(cudaFree(nullptr));
     auto t0=std::chrono::high_resolution_clock::now();
     OdomOut od=run_odometry(
-        scans, gt, /*map_voxel=*/0.5f, /*scan_voxel=*/0.5f, opts.nn_backend);
+        scans, gt.front(), /*map_voxel=*/0.5f, /*scan_voxel=*/0.5f, opts.nn_backend);
     auto t1=std::chrono::high_resolution_clock::now();
     double ms=std::chrono::duration<double,std::milli>(t1-t0).count();
 
@@ -782,7 +913,7 @@ int main(int argc, char** argv){
                 metrics.trajectory_length_m, metrics.ate_m, metrics.max_error_m,
                 metrics.final_drift_m, metrics.final_drift_percent);
     std::printf("NN backend=%s   wall=%.1f ms  (%.1f ms/scan)   GPU NN=%.1f ms total (%.3f ms/registered scan)\n",
-                nn_backend_name(metrics.nn_backend),
+                kiss_icp_backend_name(metrics.nn_backend),
                 metrics.wall_ms, metrics.mean_ms_per_scan, metrics.gpu_nn_ms,
                 metrics.mean_gpu_nn_ms_per_scan);
     if (metrics.nn_backend == NnBackend::Voxel) {
@@ -805,3 +936,4 @@ int main(int argc, char** argv){
     if (opts.check && !metrics.passed) return 1;
     return 0;
 }
+#endif

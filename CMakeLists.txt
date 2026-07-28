@@ -669,9 +669,25 @@ add_executable(gpu_robust_treg src/gpu_robust_treg.cu)
 target_link_libraries(gpu_robust_treg ${OpenCV_LIBS})
 target_compile_options(gpu_robust_treg PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
 
+add_library(cudarobotics_kiss_icp_gpu STATIC src/gpu_kiss_icp.cu)
+add_library(CudaRobotics::kiss_icp_gpu ALIAS cudarobotics_kiss_icp_gpu)
+target_compile_definitions(cudarobotics_kiss_icp_gpu
+  PRIVATE CUDAROBOTICS_KISS_ICP_CORE_ONLY)
+target_include_directories(cudarobotics_kiss_icp_gpu
+  PUBLIC ${CMAKE_SOURCE_DIR}/include)
+target_compile_options(cudarobotics_kiss_icp_gpu PRIVATE
+  $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
+set_target_properties(cudarobotics_kiss_icp_gpu PROPERTIES
+  POSITION_INDEPENDENT_CODE ON)
+
 add_executable(gpu_kiss_icp src/gpu_kiss_icp.cu)
 target_link_libraries(gpu_kiss_icp ${OpenCV_LIBS})
 target_compile_options(gpu_kiss_icp PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
+
+add_executable(kiss_icp_gpu_streaming_smoke tests/kiss_icp_gpu_streaming_smoke.cu)
+target_link_libraries(kiss_icp_gpu_streaming_smoke cudarobotics_kiss_icp_gpu)
+target_compile_options(kiss_icp_gpu_streaming_smoke PRIVATE
+  $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
 
 add_executable(gpu_mpc_qp src/gpu_mpc_qp.cu)
 target_link_libraries(gpu_mpc_qp ${OpenCV_LIBS})
@@ -823,6 +839,12 @@ add_test(NAME gpu_kiss_icp_gate
 set_tests_properties(gpu_kiss_icp_gate PROPERTIES
   TIMEOUT 120
   LABELS "gpu;odometry;benchmark")
+
+add_test(NAME kiss_icp_gpu_streaming_smoke
+  COMMAND $<TARGET_FILE:kiss_icp_gpu_streaming_smoke>)
+set_tests_properties(kiss_icp_gpu_streaming_smoke PROPERTIES
+  TIMEOUT 60
+  LABELS "gpu;odometry;api")
 
 add_test(NAME gpu_planner_showdown_gate
   COMMAND ${PROJECT_SOURCE_DIR}/bin/gpu_planner_showdown_benchmark
