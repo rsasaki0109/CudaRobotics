@@ -30,6 +30,22 @@ The project is not complete when the components merely run independently. A
 v1.0 release requires a versioned launch path, reproducible evidence, and
 explicit failure reporting across the complete loop.
 
+## Status Snapshot (2026-07-29)
+
+| Area | Implemented | Evidence still required |
+|---|---|---|
+| v0.2 closure | Release preflight, artifact verifier, synchronized Python CUDA core, release notes/site | Green final-commit Build, Python manylinux, and ROS 2 workflows; tag/release |
+| GPU odometry | Reusable voxel-hash KISS-ICP core and lifecycle ROS component | ROS 2 Jazzy compile plus recorded-stream runtime evidence |
+| Mapping | Rolling voxel map, exact typed ESDF, lifecycle nodes | ROS 2 Jazzy stream latency/correctness evidence |
+| Nav2 integration | Voxel costmap plugin, CUDA MPPI, deterministic closed-loop bringup | Plugin-load CI and release-profile 10-minute GPU run |
+| Reproducibility | Closed-loop, real-rosbag shadow, and multi-GPU manifest gates | One release run, one real bag run, and two physical GPU models |
+| Contact paper | 32,400-episode robustness protocol, statistics, validator | Complete GPU matrix, exact matched-compute, and external-fidelity experiment |
+| Papers | Machine-checked claim/evidence ledgers | Every submission-required claim must reach `supported` |
+
+Implementation status is not evidence status. The machine-readable paper
+ledgers under `paper/artifacts/` remain `ready: false` until the rightmost
+column is satisfied.
+
 ## Program Rules
 
 - Integrate and harden existing work before adding more isolated demos.
@@ -90,11 +106,12 @@ KISS-ICP gates:
 Objective: connect perception, mapping, and control into a supported ROS 2
 navigation path.
 
-Planned packages or components:
+Implemented packages or components:
 
 - `cuda_kiss_icp_odometry`;
 - `cuda_voxel_mapping`;
-- `cuda_esdf_layer`;
+- `cuda_esdf` with typed `DistanceField2D`;
+- `cuda_voxel_costmap_layer`;
 - the existing `cuda_mppi_controller`;
 - shared launch, configuration, diagnostics, and bag-replay tools.
 
@@ -119,14 +136,20 @@ Closed-loop exit gate:
 
 Objective: regenerate the project-level evidence with one entry point.
 
-Target interface:
+Current evidence entry points:
 
 ```bash
-python3 scripts/run_autonomy_suite.py \
-  --suite release \
-  --device auto \
-  --output-dir build/autonomy_suite
+python3 scripts/run_cudanav_closed_loop.py \
+  --profile release --output-dir build/cudanav_closed_loop
+python3 scripts/run_cudanav_rosbag_replay.py \
+  --profile release --output-dir build/cudanav_rosbag ...
+python3 scripts/run_cudanav_multi_gpu.py \
+  --output-dir build/cudanav_multi_gpu ...
 ```
+
+A future `run_autonomy_suite.py` may orchestrate these three commands, but it
+must preserve their separate evidence modes and must not collapse shadow replay
+into a closed-loop claim.
 
 Each run must produce:
 
