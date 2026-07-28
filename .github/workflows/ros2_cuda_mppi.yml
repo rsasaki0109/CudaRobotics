@@ -13,6 +13,10 @@ on:
       - ros2_ws/src/cuda_voxel_costmap_layer/**
       - ros2_ws/src/cuda_nav_bringup/**
       - ros2_ws/src/cuda_mppi_controller/**
+      - scripts/cudanav_evidence.py
+      - scripts/run_cudanav_closed_loop.py
+      - scripts/test_cudanav_evidence.py
+      - scripts/validate_cudanav_closed_loop.py
       - include/cudarobotics/kiss_icp_gpu.hpp
       - src/gpu_kiss_icp.cu
       - include/cudarobotics/voxel_mapping_gpu.hpp
@@ -33,6 +37,10 @@ on:
       - ros2_ws/src/cuda_voxel_costmap_layer/**
       - ros2_ws/src/cuda_nav_bringup/**
       - ros2_ws/src/cuda_mppi_controller/**
+      - scripts/cudanav_evidence.py
+      - scripts/run_cudanav_closed_loop.py
+      - scripts/test_cudanav_evidence.py
+      - scripts/validate_cudanav_closed_loop.py
       - include/cudarobotics/kiss_icp_gpu.hpp
       - src/gpu_kiss_icp.cu
       - include/cudarobotics/voxel_mapping_gpu.hpp
@@ -111,6 +119,7 @@ jobs:
           source /opt/ros/jazzy/setup.bash
           cd ros2_ws
           source install/setup.bash
+          python ../scripts/test_cudanav_evidence.py
           ros2 run cuda_voxel_costmap_layer plugin_load_test
           ros2 run cuda_mppi_controller plugin_load_test
           ros2 run cuda_mppi_controller parameter_validation_test

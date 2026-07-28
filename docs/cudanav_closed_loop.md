@@ -33,6 +33,28 @@ The short automatic mission writes:
 - command interval count, deadline misses, and miss rate;
 - a conservative `smoke_pass` boolean.
 
+For a retained run directory, use:
+
+```bash
+python scripts/run_cudanav_closed_loop.py \
+  --output-dir build/cudanav_runs/smoke_001 \
+  --profile smoke
+python scripts/validate_cudanav_closed_loop.py \
+  build/cudanav_runs/smoke_001 --profile smoke
+```
+
+The harness refuses a non-empty output directory and records the full git
+commit, dirty-worktree state, controller-config SHA-256, GPU UUID/driver,
+selected environment, exact launch command, launch log, mission summary, and
+machine-readable gate results. A passing manifest requires a clean worktree and
+the retained config bytes must match the recorded hash. Artifact paths are
+constrained to the run directory when revalidated.
+
+The `release` profile is intentionally stricter: at least 600 seconds,
+collision count zero, drift below 1%, command deadline misses below 1%, and
+retained rosbag and video artifacts. The current short mission cannot pass that
+profile; this prevents smoke evidence from being relabelled as the v1.0 gate.
+
 The S-course geometry and path clearance have a no-ROS deterministic unit test.
 The ROS Jazzy workflow compiles the complete stack, loads both plugins, and runs
 all no-GPU tests. A real GPU run of this launch is still required before its

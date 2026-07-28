@@ -27,6 +27,11 @@ distance, odometry position error/drift percentage, and command deadline-miss
 rate. This short mission is an integration smoke, not the v1.0 10-minute
 release gate.
 
+Use `scripts/run_cudanav_closed_loop.py` from the repository root to retain the
+summary together with the exact commit, configuration hash, GPU identity, and
+launch log. `scripts/validate_cudanav_closed_loop.py` rechecks either the
+`smoke` or strict `release` policy without rerunning the stack.
+
 Lifecycle transitions use the standard `change_state` and `get_state` services
 in dependency order. This avoids pretending that the custom lifecycle nodes
 implement Nav2 bond semantics.
