@@ -21,7 +21,13 @@ CUDA_SOURCES = (
 
 def assert_same(source: Path, bundled: Path) -> None:
     assert bundled.is_file(), f"bundled Python core file is missing: {bundled}"
-    assert source.read_bytes() == bundled.read_bytes(), (
+    source_bytes = source.read_bytes().replace(b"\r\n", b"\n").replace(
+        b"\r", b"\n"
+    )
+    bundled_bytes = bundled.read_bytes().replace(b"\r\n", b"\n").replace(
+        b"\r", b"\n"
+    )
+    assert source_bytes == bundled_bytes, (
         f"bundled Python core is stale: {bundled} differs from {source}; "
         "run ./scripts/sync_python_core.sh"
     )
