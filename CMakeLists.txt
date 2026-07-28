@@ -817,6 +817,7 @@ add_test(NAME gpu_kiss_icp_gate
     --check
     --no-video
     --frames 64
+    --nn voxel
     --json ${CMAKE_BINARY_DIR}/gpu_kiss_icp_check.json
   WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 set_tests_properties(gpu_kiss_icp_gate PROPERTIES

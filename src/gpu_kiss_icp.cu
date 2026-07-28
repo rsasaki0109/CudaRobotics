@@ -29,11 +29,11 @@
 //      kNN-PCA): on the dominant ground plane it removes the voxel-grid mismatch
 //      that the soft-mean/planar-bias demo (gpu_filterreg_p2plane) quantifies.
 //
-// All the heavy lifting is on the GPU: per-scan correspondence is a brute-force
-// nearest-neighbour against the local map (one thread per scan point), and the
-// 6x6 twist normal equations are accumulated with atomics, exactly as in the
-// FilterReg / Sinkhorn demos -- the same se(3) Gauss-Newton machinery, now driven
-// by hard nearest-neighbour correspondences instead of a soft GMM.
+// All the heavy lifting is on the GPU: the local map is indexed into an
+// open-addressed voxel hash, one thread performs the exact radius-gated nearest
+// neighbour query for each scan point, and the 6x6 twist normal equations are
+// accumulated with atomics. A brute-force backend remains as a correctness and
+// performance reference.
 //
 // We build a synthetic structured world (ground + buildings + poles), fly a known
 // loop trajectory through it, and generate range-limited noisy scans.  The
@@ -174,11 +174,20 @@ __global__ void transform_kernel(const float* __restrict__ S,int n,const float* 
     float x=S[i*3],y=S[i*3+1],z=S[i*3+2];
     W[i*3]=R[0]*x+R[1]*y+R[2]*z+t[0]; W[i*3+1]=R[3]*x+R[4]*y+R[5]*z+t[1]; W[i*3+2]=R[6]*x+R[7]*y+R[8]*z+t[2]; }
 
-// brute-force nearest map point for each (world-transformed) scan point.
-// outputs matched map point Q[i], its normal NQ[i], and squared distance D2[i].
-__global__ void nn_kernel(const float* __restrict__ Pw,int n,const float* __restrict__ Map,
-                          const float* __restrict__ NMap,int m,
-                          float tau2,float* __restrict__ Q,float* __restrict__ NQ,float* __restrict__ D2){
+// Signed 21-bit coordinates packed into a non-negative 63-bit key. The local
+// map window is tiny compared with the representable range.
+__host__ __device__ static inline int64_t spatial_key(int ix, int iy, int iz) {
+    const int64_t mask = 0x1FFFFF;
+    return ((static_cast<int64_t>(ix) & mask) << 42) |
+           ((static_cast<int64_t>(iy) & mask) << 21) |
+           (static_cast<int64_t>(iz) & mask);
+}
+
+// Brute-force reference: nearest map point for each world-frame scan point.
+// Outputs matched map point Q[i], its normal NQ[i], and squared distance D2[i].
+__global__ void nn_brute_kernel(const float* __restrict__ Pw,int n,const float* __restrict__ Map,
+                                const float* __restrict__ NMap,int m,
+                                float tau2,float* __restrict__ Q,float* __restrict__ NQ,float* __restrict__ D2){
     int i=blockIdx.x*blockDim.x+threadIdx.x; if(i>=n)return;
     float x=Pw[i*3],y=Pw[i*3+1],z=Pw[i*3+2]; float best=tau2; int bj=-1;
     for(int j=0;j<m;++j){ float dx=Map[j*3]-x,dy=Map[j*3+1]-y,dz=Map[j*3+2]-z; float d=dx*dx+dy*dy+dz*dz;
@@ -186,6 +195,106 @@ __global__ void nn_kernel(const float* __restrict__ Pw,int n,const float* __rest
     if(bj>=0){ Q[i*3]=Map[bj*3];Q[i*3+1]=Map[bj*3+1];Q[i*3+2]=Map[bj*3+2];
         NQ[i*3]=NMap[bj*3];NQ[i*3+1]=NMap[bj*3+1];NQ[i*3+2]=NMap[bj*3+2]; D2[i]=best; }
     else { D2[i]=1e30f; }
+}
+
+__host__ __device__ static inline uint64_t mix_key(uint64_t value) {
+    value ^= value >> 30;
+    value *= 0xbf58476d1ce4e5b9ULL;
+    value ^= value >> 27;
+    value *= 0x94d049bb133111ebULL;
+    return value ^ (value >> 31);
+}
+
+static constexpr uint64_t EMPTY_HASH_KEY = 0xffffffffffffffffULL;
+
+__global__ void build_voxel_hash_kernel(
+        const float* __restrict__ Map, int m, float inv_cell,
+        unsigned long long* __restrict__ hash_keys,
+        int* __restrict__ hash_heads,
+        int* __restrict__ point_next,
+        int hash_capacity) {
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i >= m) return;
+    int ix = static_cast<int>(floorf(Map[i * 3] * inv_cell));
+    int iy = static_cast<int>(floorf(Map[i * 3 + 1] * inv_cell));
+    int iz = static_cast<int>(floorf(Map[i * 3 + 2] * inv_cell));
+    uint64_t key = static_cast<uint64_t>(spatial_key(ix, iy, iz));
+    int slot = static_cast<int>(mix_key(key) & (hash_capacity - 1));
+    for (int probe = 0; probe < hash_capacity; ++probe) {
+        unsigned long long previous = atomicCAS(
+            &hash_keys[slot], EMPTY_HASH_KEY, static_cast<unsigned long long>(key));
+        if (previous == EMPTY_HASH_KEY || previous == key) {
+            int old_head = atomicExch(&hash_heads[slot], i);
+            point_next[i] = old_head;
+            return;
+        }
+        slot = (slot + 1) & (hash_capacity - 1);
+    }
+    point_next[i] = -1;
+}
+
+__device__ static int find_hash_slot(
+        const unsigned long long* keys, int capacity, uint64_t key) {
+    int slot = static_cast<int>(mix_key(key) & (capacity - 1));
+    for (int probe = 0; probe < capacity; ++probe) {
+        uint64_t candidate = keys[slot];
+        if (candidate == key) return slot;
+        if (candidate == EMPTY_HASH_KEY) return -1;
+        slot = (slot + 1) & (capacity - 1);
+    }
+    return -1;
+}
+
+// Exact radius-gated nearest neighbour over a GPU-built voxel hash. The search
+// radius expands with the adaptive correspondence gate.
+__global__ void nn_voxel_kernel(
+        const float* __restrict__ Pw, int n,
+        const float* __restrict__ Map, const float* __restrict__ NMap,
+        const unsigned long long* __restrict__ hash_keys,
+        const int* __restrict__ hash_heads,
+        const int* __restrict__ point_next,
+        int hash_capacity, float inv_cell, float tau2,
+        float* __restrict__ Q, float* __restrict__ NQ, float* __restrict__ D2) {
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i >= n) return;
+    float x = Pw[i * 3], y = Pw[i * 3 + 1], z = Pw[i * 3 + 2];
+    int qx = static_cast<int>(floorf(x * inv_cell));
+    int qy = static_cast<int>(floorf(y * inv_cell));
+    int qz = static_cast<int>(floorf(z * inv_cell));
+    int cell_radius = static_cast<int>(ceilf(sqrtf(tau2) * inv_cell));
+    float best = tau2;
+    int best_index = -1;
+    for (int dz = -cell_radius; dz <= cell_radius; ++dz) {
+        for (int dy = -cell_radius; dy <= cell_radius; ++dy) {
+            for (int dx = -cell_radius; dx <= cell_radius; ++dx) {
+                uint64_t key = static_cast<uint64_t>(
+                    spatial_key(qx + dx, qy + dy, qz + dz));
+                int slot = find_hash_slot(hash_keys, hash_capacity, key);
+                if (slot < 0) continue;
+                for (int j = hash_heads[slot]; j >= 0; j = point_next[j]) {
+                    float ex = Map[j * 3] - x;
+                    float ey = Map[j * 3 + 1] - y;
+                    float ez = Map[j * 3 + 2] - z;
+                    float distance2 = ex * ex + ey * ey + ez * ez;
+                    if (distance2 < best) {
+                        best = distance2;
+                        best_index = j;
+                    }
+                }
+            }
+        }
+    }
+    if (best_index >= 0) {
+        Q[i * 3] = Map[best_index * 3];
+        Q[i * 3 + 1] = Map[best_index * 3 + 1];
+        Q[i * 3 + 2] = Map[best_index * 3 + 2];
+        NQ[i * 3] = NMap[best_index * 3];
+        NQ[i * 3 + 1] = NMap[best_index * 3 + 1];
+        NQ[i * 3 + 2] = NMap[best_index * 3 + 2];
+        D2[i] = best;
+    } else {
+        D2[i] = 1e30f;
+    }
 }
 
 // robust point-to-PLANE twist GN.  Residual is the signed distance to the map
@@ -219,6 +328,12 @@ static bool solve6(const float* Hut,const float* g,float* d){
     return true; }
 
 // ============================ odometry ============================
+enum class NnBackend { Voxel, Brute };
+
+static const char* nn_backend_name(NnBackend backend) {
+    return backend == NnBackend::Voxel ? "voxel" : "brute";
+}
+
 struct AlignmentStats {
     int iterations = 0;
     int inliers = 0;
@@ -231,11 +346,17 @@ struct OdomOut {
     std::vector<Pose> est;
     std::vector<float> map;
     std::vector<AlignmentStats> alignments;
+    NnBackend nn_backend = NnBackend::Voxel;
+    double index_build_ms = 0.0;
+    double map_upload_ms = 0.0;
+    double map_normal_ms = 0.0;
 };
 
 // One ICP alignment of a scan (sensor frame) to the local map (world frame),
 // starting from T_init.  tau is the adaptive correspondence threshold.
 static Pose icp_to_map(const std::vector<float>& scan, float* dMap,float* dMapN,int mapN,
+                       const unsigned long long* dHashKeys,const int* dHashHeads,
+                       const int* dPointNext,int hashCapacity,float invCell,NnBackend backend,
                        Pose Tinit, float tau, int max_it,
                        float* dS,float* dPw,float* dQ,float* dNQ,float* dD2,float* dR,float* dt,float* dHg,
                        AlignmentStats* stats){
@@ -251,15 +372,21 @@ static Pose icp_to_map(const std::vector<float>& scan, float* dMap,float* dMapN,
         CUDA_CHECK(cudaMemcpy(dt,T.t,3*sizeof(float),cudaMemcpyHostToDevice));
         transform_kernel<<<(n+255)/256,256>>>(dS,n,dR,dt,dPw);
         CUDA_CHECK(cudaEventRecord(nn_start));
-        nn_kernel<<<(n+255)/256,256>>>(dPw,n,dMap,dMapN,mapN,tau2,dQ,dNQ,dD2);
+        if (backend == NnBackend::Voxel) {
+            nn_voxel_kernel<<<(n+255)/256,256>>>(
+                dPw,n,dMap,dMapN,dHashKeys,dHashHeads,dPointNext,
+                hashCapacity,invCell,tau2,dQ,dNQ,dD2);
+        } else {
+            nn_brute_kernel<<<(n+255)/256,256>>>(
+                dPw,n,dMap,dMapN,mapN,tau2,dQ,dNQ,dD2);
+        }
         CUDA_CHECK(cudaEventRecord(nn_stop));
-        CUDA_CHECK(cudaEventSynchronize(nn_stop));
-        float iteration_nn_ms = 0.0f;
-        CUDA_CHECK(cudaEventElapsedTime(&iteration_nn_ms, nn_start, nn_stop));
-        stats->nn_ms += iteration_nn_ms;
         CUDA_CHECK(cudaMemset(dHg,0,30*sizeof(float)));
         gn_kernel<<<(n+255)/256,256>>>(dPw,dQ,dNQ,dD2,n,k2,dHg);   // point-to-plane
         float Hg[30]; CUDA_CHECK(cudaMemcpy(Hg,dHg,30*sizeof(float),cudaMemcpyDeviceToHost));
+        float iteration_nn_ms = 0.0f;
+        CUDA_CHECK(cudaEventElapsedTime(&iteration_nn_ms, nn_start, nn_stop));
+        stats->nn_ms += iteration_nn_ms;
         stats->iterations = it + 1;
         stats->inliers = static_cast<int>(Hg[29]);
         stats->rmse = Hg[28] > 0.0f ? std::sqrt(Hg[27] / Hg[28]) : 0.0f;
@@ -274,16 +401,32 @@ static Pose icp_to_map(const std::vector<float>& scan, float* dMap,float* dMapN,
 }
 
 static OdomOut run_odometry(const std::vector<std::vector<float>>& scans,
-                            const std::vector<Pose>& gt, float map_voxel, float scan_voxel){
+                            const std::vector<Pose>& gt, float map_voxel, float scan_voxel,
+                            NnBackend backend){
     OdomOut out;
+    out.nn_backend = backend;
     // GPU scratch sized to the largest scan and a generous map cap.
     int maxn=0; for(auto&s:scans) maxn=std::max(maxn,(int)(s.size()/3));
     const int MAPCAP=200000;
+    const int HASH_CAPACITY=1<<19;
+    const float TAU_MIN=1.0f, TAU_MAX=3.0f;
+    const float INDEX_CELL_SIZE=TAU_MAX;
     float *dS,*dPw,*dQ,*dNQ,*dD2,*dMap,*dMapN,*dR,*dt,*dHg;
+    unsigned long long* dHashKeys;
+    int *dHashHeads,*dPointNext;
     CUDA_CHECK(cudaMalloc(&dS,maxn*3*sizeof(float)));CUDA_CHECK(cudaMalloc(&dPw,maxn*3*sizeof(float)));
     CUDA_CHECK(cudaMalloc(&dQ,maxn*3*sizeof(float)));CUDA_CHECK(cudaMalloc(&dNQ,maxn*3*sizeof(float)));CUDA_CHECK(cudaMalloc(&dD2,maxn*sizeof(float)));
-    CUDA_CHECK(cudaMalloc(&dMap,MAPCAP*3*sizeof(float)));CUDA_CHECK(cudaMalloc(&dMapN,MAPCAP*3*sizeof(float)));
+    CUDA_CHECK(cudaMalloc(&dMap,MAPCAP*3*sizeof(float)));
+    CUDA_CHECK(cudaMalloc(&dMapN,MAPCAP*3*sizeof(float)));
     CUDA_CHECK(cudaMalloc(&dR,9*sizeof(float)));CUDA_CHECK(cudaMalloc(&dt,3*sizeof(float)));CUDA_CHECK(cudaMalloc(&dHg,30*sizeof(float)));
+    CUDA_CHECK(cudaMalloc(&dHashKeys,HASH_CAPACITY*sizeof(unsigned long long)));
+    CUDA_CHECK(cudaMalloc(&dHashHeads,HASH_CAPACITY*sizeof(int)));
+    CUDA_CHECK(cudaMalloc(&dPointNext,MAPCAP*sizeof(int)));
+    cudaEvent_t normal_start, normal_stop, hash_start, hash_stop;
+    CUDA_CHECK(cudaEventCreate(&normal_start));
+    CUDA_CHECK(cudaEventCreate(&normal_stop));
+    CUDA_CHECK(cudaEventCreate(&hash_start));
+    CUDA_CHECK(cudaEventCreate(&hash_stop));
 
     // persistent voxel-hash map: ONE point per voxel, kept from when the voxel was
     // FIRST observed (earliest pose = most accurate).  Never re-averaged -- that is
@@ -315,7 +458,7 @@ static OdomOut run_odometry(const std::vector<std::vector<float>>& scans,
     // all-time mean is dominated by the tiny early deviations and pins tau at the
     // floor, so a later curve whose prediction error exceeds the floor loses all
     // correspondences.  The floor also covers sensor noise + voxel spacing.
-    double dev_ema=0; bool dev_init=false; const float TAU_MIN=1.0f, TAU_MAX=3.0f;
+    double dev_ema=0; bool dev_init=false;
     for(int k=0;k<K;++k){
         // 1) spatial subsample of the incoming scan
         std::vector<float> scan=voxel_downsample(scans[k],scan_voxel);
@@ -329,9 +472,37 @@ static OdomOut run_odometry(const std::vector<std::vector<float>>& scans,
             else { float sigma=(float)std::sqrt(dev_ema); tau=std::min(TAU_MAX,std::max(TAU_MIN,3.f*sigma)); }
             // 4) point-to-plane ICP to the local map (upload + estimate normals once)
             int mapN=std::min((int)(localmap.size()/3),MAPCAP);
-            CUDA_CHECK(cudaMemcpy(dMap,localmap.data(),mapN*3*sizeof(float),cudaMemcpyHostToDevice));
+            auto upload_start = std::chrono::high_resolution_clock::now();
+            CUDA_CHECK(cudaMemcpy(
+                dMap,localmap.data(),mapN*3*sizeof(float),cudaMemcpyHostToDevice));
+            auto upload_stop = std::chrono::high_resolution_clock::now();
+            out.map_upload_ms +=
+                std::chrono::duration<double,std::milli>(upload_stop-upload_start).count();
+            CUDA_CHECK(cudaEventRecord(normal_start));
             map_normal_kernel<<<(mapN+127)/128,128>>>(dMap,mapN,12,dMapN);
-            Test=icp_to_map(scan,dMap,dMapN,mapN,pred,tau,12,dS,dPw,dQ,dNQ,dD2,dR,dt,dHg,&alignment);
+            CUDA_CHECK(cudaEventRecord(normal_stop));
+            CUDA_CHECK(cudaEventSynchronize(normal_stop));
+            float normal_ms = 0.0f;
+            CUDA_CHECK(cudaEventElapsedTime(&normal_ms,normal_start,normal_stop));
+            out.map_normal_ms += normal_ms;
+            if (backend == NnBackend::Voxel) {
+                CUDA_CHECK(cudaEventRecord(hash_start));
+                CUDA_CHECK(cudaMemset(
+                    dHashKeys,0xff,HASH_CAPACITY*sizeof(unsigned long long)));
+                CUDA_CHECK(cudaMemset(dHashHeads,0xff,HASH_CAPACITY*sizeof(int)));
+                build_voxel_hash_kernel<<<(mapN+255)/256,256>>>(
+                    dMap,mapN,1.0f/INDEX_CELL_SIZE,
+                    dHashKeys,dHashHeads,dPointNext,HASH_CAPACITY);
+                CUDA_CHECK(cudaEventRecord(hash_stop));
+                CUDA_CHECK(cudaEventSynchronize(hash_stop));
+                float hash_ms = 0.0f;
+                CUDA_CHECK(cudaEventElapsedTime(&hash_ms,hash_start,hash_stop));
+                out.index_build_ms += hash_ms;
+            }
+            Test=icp_to_map(
+                scan,dMap,dMapN,mapN,dHashKeys,dHashHeads,dPointNext,
+                HASH_CAPACITY,1.0f/INDEX_CELL_SIZE,backend,pred,tau,12,
+                dS,dPw,dQ,dNQ,dD2,dR,dt,dHg,&alignment);
             // update adaptive-threshold statistic with how wrong the prediction was
             float dtr,dro; pose_delta_mag(pred,Test,dtr,dro);
             float dsq=dtr*dtr; if(!dev_init){dev_ema=dsq;dev_init=true;} else dev_ema=0.7*dev_ema+0.3*dsq;
@@ -343,7 +514,12 @@ static OdomOut run_odometry(const std::vector<std::vector<float>>& scans,
         map_insert(sw,Test.t);
     }
     out.map=localmap;
+    CUDA_CHECK(cudaEventDestroy(normal_start));
+    CUDA_CHECK(cudaEventDestroy(normal_stop));
+    CUDA_CHECK(cudaEventDestroy(hash_start));
+    CUDA_CHECK(cudaEventDestroy(hash_stop));
     cudaFree(dS);cudaFree(dPw);cudaFree(dQ);cudaFree(dNQ);cudaFree(dD2);cudaFree(dMap);cudaFree(dMapN);cudaFree(dR);cudaFree(dt);cudaFree(dHg);
+    cudaFree(dHashKeys);cudaFree(dHashHeads);cudaFree(dPointNext);
     return out;
 }
 
@@ -394,6 +570,7 @@ struct Options {
     bool no_video = false;
     int frames = 280;
     std::string json_path;
+    NnBackend nn_backend = NnBackend::Voxel;
 };
 
 struct Metrics {
@@ -411,14 +588,20 @@ struct Metrics {
     double mean_inliers = 0.0;
     double mean_icp_iterations = 0.0;
     double mean_icp_rmse_m = 0.0;
+    NnBackend nn_backend = NnBackend::Voxel;
+    double index_build_ms = 0.0;
+    double mean_index_build_ms_per_scan = 0.0;
+    double map_upload_ms = 0.0;
+    double map_normal_ms = 0.0;
     bool passed = false;
 };
 
 static void print_usage(const char* argv0) {
-    std::printf("Usage: %s [--check] [--no-video] [--frames N] [--json PATH]\n", argv0);
+    std::printf("Usage: %s [--check] [--no-video] [--frames N] [--nn voxel|brute] [--json PATH]\n", argv0);
     std::printf("  --check       return non-zero when odometry accuracy/correspondence gates fail\n");
     std::printf("  --no-video    skip AVI/GIF rendering\n");
     std::printf("  --frames N    synthetic trajectory scan count (12..2000, default 280)\n");
+    std::printf("  --nn NAME     GPU correspondence backend: voxel (default) or brute\n");
     std::printf("  --json PATH   write machine-readable odometry and GPU NN metrics\n");
 }
 
@@ -434,6 +617,14 @@ static int parse_options(int argc, char** argv, Options& opts) {
             opts.frames = std::atoi(argv[++i]);
             if (opts.frames < 12 || opts.frames > 2000) {
                 std::fprintf(stderr, "--frames must be in [12, 2000]\n");
+                return 2;
+            }
+        } else if (arg == "--nn" && i + 1 < argc) {
+            std::string backend = argv[++i];
+            if (backend == "voxel") opts.nn_backend = NnBackend::Voxel;
+            else if (backend == "brute") opts.nn_backend = NnBackend::Brute;
+            else {
+                std::fprintf(stderr, "--nn must be voxel or brute\n");
                 return 2;
             }
         } else if (arg == "--json" && i + 1 < argc) {
@@ -456,6 +647,12 @@ static Metrics evaluate(const std::vector<Pose>& gt, const OdomOut& od, double w
     metrics.map_points = static_cast<int>(od.map.size() / 3);
     metrics.wall_ms = wall_ms;
     metrics.mean_ms_per_scan = wall_ms / std::max(1, metrics.frames);
+    metrics.nn_backend = od.nn_backend;
+    metrics.index_build_ms = od.index_build_ms;
+    metrics.mean_index_build_ms_per_scan =
+        od.index_build_ms / std::max(1, metrics.frames - 1);
+    metrics.map_upload_ms = od.map_upload_ms;
+    metrics.map_normal_ms = od.map_normal_ms;
 
     double squared_error = 0.0;
     for (int k = 0; k < metrics.frames; ++k) {
@@ -514,6 +711,7 @@ static bool write_json(const std::string& path, const Metrics& metrics) {
     }
     out << "{\n"
         << "  \"frames\": " << metrics.frames << ",\n"
+        << "  \"nn_backend\": \"" << nn_backend_name(metrics.nn_backend) << "\",\n"
         << "  \"map_points\": " << metrics.map_points << ",\n"
         << "  \"trajectory_length_m\": " << metrics.trajectory_length_m << ",\n"
         << "  \"ate_m\": " << metrics.ate_m << ",\n"
@@ -524,6 +722,11 @@ static bool write_json(const std::string& path, const Metrics& metrics) {
         << "  \"mean_ms_per_scan\": " << metrics.mean_ms_per_scan << ",\n"
         << "  \"gpu_nn_ms\": " << metrics.gpu_nn_ms << ",\n"
         << "  \"mean_gpu_nn_ms_per_scan\": " << metrics.mean_gpu_nn_ms_per_scan << ",\n"
+        << "  \"index_build_ms\": " << metrics.index_build_ms << ",\n"
+        << "  \"mean_index_build_ms_per_scan\": "
+        << metrics.mean_index_build_ms_per_scan << ",\n"
+        << "  \"map_upload_ms\": " << metrics.map_upload_ms << ",\n"
+        << "  \"map_normal_ms\": " << metrics.map_normal_ms << ",\n"
         << "  \"mean_inliers\": " << metrics.mean_inliers << ",\n"
         << "  \"mean_icp_iterations\": " << metrics.mean_icp_iterations << ",\n"
         << "  \"mean_icp_rmse_m\": " << metrics.mean_icp_rmse_m << ",\n"
@@ -566,8 +769,11 @@ int main(int argc, char** argv){
         scans.push_back(sc); }
     std::printf("scans=%d  (range<=%.0fm, sigma noise 0.03)\n", K, Rmax);
 
+    // Keep one-time driver/context initialization outside the benchmark timer.
+    CUDA_CHECK(cudaFree(nullptr));
     auto t0=std::chrono::high_resolution_clock::now();
-    OdomOut od=run_odometry(scans, gt, /*map_voxel=*/0.5f, /*scan_voxel=*/0.5f);
+    OdomOut od=run_odometry(
+        scans, gt, /*map_voxel=*/0.5f, /*scan_voxel=*/0.5f, opts.nn_backend);
     auto t1=std::chrono::high_resolution_clock::now();
     double ms=std::chrono::duration<double,std::milli>(t1-t0).count();
 
@@ -575,9 +781,16 @@ int main(int argc, char** argv){
     std::printf("trajectory length=%.1f m   ATE(trans)=%.3f m   max err=%.3f m   final drift=%.3f m (%.2f%% of path)\n",
                 metrics.trajectory_length_m, metrics.ate_m, metrics.max_error_m,
                 metrics.final_drift_m, metrics.final_drift_percent);
-    std::printf("wall=%.1f ms  (%.1f ms/scan)   GPU NN=%.1f ms total (%.3f ms/registered scan)\n",
+    std::printf("NN backend=%s   wall=%.1f ms  (%.1f ms/scan)   GPU NN=%.1f ms total (%.3f ms/registered scan)\n",
+                nn_backend_name(metrics.nn_backend),
                 metrics.wall_ms, metrics.mean_ms_per_scan, metrics.gpu_nn_ms,
                 metrics.mean_gpu_nn_ms_per_scan);
+    if (metrics.nn_backend == NnBackend::Voxel) {
+        std::printf("voxel index build=%.1f ms total (%.3f ms/registered scan)\n",
+                    metrics.index_build_ms, metrics.mean_index_build_ms_per_scan);
+    }
+    std::printf("map upload=%.1f ms total   GPU map normals=%.1f ms total\n",
+                metrics.map_upload_ms,metrics.map_normal_ms);
     std::printf("ICP mean: %.1f iterations, %.1f inliers, %.4f m robust RMSE\n",
                 metrics.mean_icp_iterations, metrics.mean_inliers, metrics.mean_icp_rmse_m);
     if(metrics.passed) std::printf("RESULT: PASS -- recovered the trajectory from scans alone with low drift.\n");

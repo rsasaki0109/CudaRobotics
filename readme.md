@@ -298,7 +298,7 @@ does not, and what would be required for a paper-faithful reproduction.
 | `gpu_frontier_exploration` | GPU frontier exploration with parallel ray casting over an occupancy grid. |
 | `gpu_diff_contact_push` | Differentiable contact pushing with GPU rollout scoring. |
 | `gpu_constrained_mpc` | Constrained nonlinear MPC (AL-iLQR) for multi-robot obstacle avoidance. |
-| [`gpu_kiss_icp`](docs/gpu_kiss_icp.md) | KISS-ICP-style LiDAR odometry with GPU nearest-neighbour correspondences, accuracy gates, and JSON metrics. |
+| [`gpu_kiss_icp`](docs/gpu_kiss_icp.md) | KISS-ICP-style LiDAR odometry with exact GPU voxel-hash correspondences, accuracy gates, and JSON metrics. |
 
 | | |
 |---|---|
