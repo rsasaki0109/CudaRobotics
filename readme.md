@@ -83,6 +83,7 @@ python examples/python/registration_quickstart.py
 | **Try it in your browser (free Colab GPU)** | [Colab quickstart notebook](https://colab.research.google.com/github/rsasaki0109/CudaRobotics/blob/master/examples/colab/cudarobotics_quickstart.ipynb) |
 | Visual demos | [Full animated gallery](https://rsasaki0109.github.io/CudaRobotics/) |
 | **GPU MPPI controller plugin for Nav2** | [`ros2_ws/src/cuda_mppi_controller/`](ros2_ws/src/cuda_mppi_controller/) |
+| **CudaNav voxel mapping, typed ESDF, and Nav2 bridge** | [`docs/cudanav_architecture.md`](docs/cudanav_architecture.md), [`docs/cuda_voxel_costmap_layer.md`](docs/cuda_voxel_costmap_layer.md) |
 | Nav2 CPU vs CUDA MPPI head-to-head | [`docs/results/cuda_mppi_vs_nav2_2026-06-10.md`](docs/results/cuda_mppi_vs_nav2_2026-06-10.md) |
 | CUDA MPPI extended controller scenarios | [`docs/results/cuda_mppi_extended_scenarios_2026-06-12.md`](docs/results/cuda_mppi_extended_scenarios_2026-06-12.md) |
 | CUDA MPPI bag / real-data evaluation harness | [`docs/cuda_mppi_bag_eval.md`](docs/cuda_mppi_bag_eval.md) |

@@ -1,0 +1,10 @@
+<library path="cuda_voxel_costmap_layer">
+  <class
+    name="cuda_voxel_costmap_layer::CudaVoxelCostmapLayer"
+    type="cuda_voxel_costmap_layer::CudaVoxelCostmapLayer"
+    base_class_type="nav2_costmap_2d::Layer">
+    <description>
+      Projects CudaNav rolling OccupancyGrid cells into a Nav2 layered costmap.
+    </description>
+  </class>
+</library>

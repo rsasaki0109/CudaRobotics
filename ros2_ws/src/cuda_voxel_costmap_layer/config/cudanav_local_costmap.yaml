@@ -1,0 +1,18 @@
+local_costmap:
+  local_costmap:
+    ros__parameters:
+      global_frame: odom
+      robot_base_frame: base_link
+      rolling_window: true
+      track_unknown_space: true
+      plugins: [cuda_voxel, inflation_layer]
+      cuda_voxel:
+        plugin: "cuda_voxel_costmap_layer::CudaVoxelCostmapLayer"
+        enabled: true
+        occupancy_topic: occupancy
+        lethal_threshold: 50
+        unknown_is_free: false
+        use_maximum: false
+        max_map_age_sec: 0.5
+      inflation_layer:
+        plugin: "nav2_costmap_2d::InflationLayer"

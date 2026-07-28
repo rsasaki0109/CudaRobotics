@@ -13,6 +13,7 @@ ODOMETRY_PACKAGE = ROOT / "ros2_ws" / "src" / "cuda_kiss_icp"
 COMMON_PACKAGE = ROOT / "ros2_ws" / "src" / "cuda_robotics_common"
 MAPPING_PACKAGE = ROOT / "ros2_ws" / "src" / "cuda_voxel_mapping"
 ESDF_PACKAGE = ROOT / "ros2_ws" / "src" / "cuda_esdf"
+COSTMAP_PACKAGE = ROOT / "ros2_ws" / "src" / "cuda_voxel_costmap_layer"
 
 
 def message_fields(path: Path) -> list[str]:
@@ -250,6 +251,54 @@ def main() -> int:
         "unknown_space_policy_name",
     ):
         assert term in esdf_core
+
+    costmap_root = ET.parse(COSTMAP_PACKAGE / "package.xml").getroot()
+    assert costmap_root.findtext("name") == "cuda_voxel_costmap_layer"
+    assert costmap_root.findtext("version") == "0.3.0"
+    costmap_dependencies = {
+        element.text
+        for tag in ("buildtool_depend", "depend", "test_depend")
+        for element in costmap_root.findall(tag)
+    }
+    assert {
+        "ament_cmake",
+        "geometry_msgs",
+        "nav2_costmap_2d",
+        "nav_msgs",
+        "pluginlib",
+        "rclcpp",
+    } <= costmap_dependencies
+    costmap_cmake = (COSTMAP_PACKAGE / "CMakeLists.txt").read_text(
+        encoding="utf-8"
+    )
+    for term in (
+        "pluginlib_export_plugin_description_file",
+        "occupancy_bridge_test",
+        "plugin_load_test",
+    ):
+        assert term in costmap_cmake
+    costmap_plugin = ET.parse(
+        COSTMAP_PACKAGE / "cuda_voxel_costmap_plugin.xml"
+    ).getroot()
+    assert costmap_plugin.find("class").get("base_class_type") == (
+        "nav2_costmap_2d::Layer"
+    )
+    costmap_source = (
+        COSTMAP_PACKAGE / "src" / "cuda_voxel_costmap_layer.cpp"
+    ).read_text(encoding="utf-8")
+    for term in (
+        'declareParameter("occupancy_topic"',
+        '"occupancy_topic must be a non-empty relative name"',
+        "validate_occupancy_grid",
+        "sample_occupancy_cost",
+        "mapToWorld",
+        "NO_INFORMATION",
+        "PLUGINLIB_EXPORT_CLASS",
+    ):
+        assert term in costmap_source, (
+            f"missing voxel costmap contract term: {term}"
+        )
+    assert 'rclcpp::ParameterValue("/occupancy")' not in costmap_source
 
     architecture = (
         ROOT / "docs" / "cudanav_architecture.md"

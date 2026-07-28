@@ -141,7 +141,11 @@ counters.
    lifecycle component, schema/range validation, and `DistanceField2D`
    publication are implemented. ROS Jazzy compile and stream-level latency
    evidence remain release gates.
-5. Implement `cuda_voxel_costmap_layer`.
+5. Implement `cuda_voxel_costmap_layer`. The plugin subscribes with the map QoS
+   contract, validates the standard occupancy schema and exact global frame,
+   supports planar map-origin rotation, preserves unknown space as
+   `NO_INFORMATION` by default, and projects cell centers into rolling Nav2
+   master grids. ROS Jazzy plugin-load and numerical tests remain CI gates.
 6. Bring up the complete graph in simulation.
 7. Record deterministic closed-loop evidence and then add real sensor input.
 
