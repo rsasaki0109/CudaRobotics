@@ -1,0 +1,188 @@
+{
+  "schema_version": 1,
+  "paper_id": "contact-rich-diff-mppi",
+  "title": "Contact-Rich Diff-MPPI: Hybrid Sampling and Gradient Refinement for GPU Manipulation",
+  "claims": [
+    {
+      "id": "fixed_seed_contact_signal",
+      "statement": "At K=256 on four fixed seeds of box_align_contact_loss, Diff-MPPI-3 and SOPPI-fast each solve 4/4 runs while vanilla MPPI solves 0/4.",
+      "submission_required": true,
+      "status": "supported",
+      "evidence": [
+        "box_pushing_fixed_seed"
+      ],
+      "limitations": [
+        "This is a fixed-seed signal from one contact-loss scenario, not a broad statistical or paper-level superiority claim.",
+        "SOPPI-fast includes one nominal gradient step and must not be described as pure SVGD."
+      ]
+    },
+    {
+      "id": "contact_suite_robustness",
+      "statement": "The contact-rich advantage persists across multiple object shapes, friction/contact parameters, rollout budgets, and at least thirty independently generated seeds.",
+      "submission_required": true,
+      "status": "planned",
+      "evidence": [
+        "contact_robustness_suite"
+      ],
+      "limitations": [
+        "The current checked-in suite has four curated seeds, one box geometry, and one rollout budget."
+      ]
+    },
+    {
+      "id": "matched_compute_contact",
+      "statement": "Hybrid refinement improves contact-task success against sampling-only baselines under an exact matched wall-clock controller budget.",
+      "submission_required": true,
+      "status": "planned",
+      "evidence": [
+        "contact_matched_compute"
+      ],
+      "limitations": [
+        "Current contact tables compare fixed K and report latency but do not enforce exact matched time."
+      ]
+    },
+    {
+      "id": "contact_model_fidelity",
+      "statement": "The reported benefit survives a higher-fidelity contact simulator or real-robot manipulation evaluation with declared dynamics and sensing uncertainty.",
+      "submission_required": true,
+      "status": "planned",
+      "evidence": [
+        "contact_external_fidelity"
+      ],
+      "limitations": [
+        "Current evidence uses the repository's lightweight box-pushing dynamics."
+      ]
+    },
+    {
+      "id": "negative_result_detour",
+      "statement": "On box_align_detour at K=256, the checked-in four-seed suite remains difficult: MPPI solves 0/4 and Diff-MPPI-3 solves only 1/4.",
+      "submission_required": false,
+      "status": "supported",
+      "evidence": [
+        "box_pushing_fixed_seed"
+      ],
+      "limitations": [
+        "This negative result should remain visible and constrains any universal-success wording."
+      ]
+    }
+  ],
+  "evidence": [
+    {
+      "id": "box_pushing_fixed_seed",
+      "status": "complete",
+      "kind": "csv_assertions",
+      "generator_command": [
+        "./bin/benchmark_diff_mppi_pushing_box",
+        "--quick",
+        "--planners",
+        "mppi,diff_mppi_1,diff_mppi_3,soppi,soppi_fast",
+        "--k-values",
+        "256",
+        "--seed-count",
+        "4",
+        "--csv",
+        "docs/results/soppi_box_pushing_2026-06-14.csv"
+      ],
+      "artifacts": [
+        {
+          "path": "docs/results/soppi_box_pushing_2026-06-14.csv",
+          "normalization": "text_lf",
+          "sha256": "8a9d009a34e20073fea1b74996f20ce669a10150140c7a11dd3db384e09713cb"
+        }
+      ],
+      "assertions": [
+        {
+          "filters": {
+            "scenario": "box_align_contact_loss",
+            "planner": "diff_mppi_3",
+            "k_samples": "256"
+          },
+          "field": "success",
+          "aggregate": "mean",
+          "min_rows": 4,
+          "op": "approx",
+          "value": 1.0,
+          "tolerance": 1e-09
+        },
+        {
+          "filters": {
+            "scenario": "box_align_contact_loss",
+            "planner": "soppi_fast",
+            "k_samples": "256"
+          },
+          "field": "success",
+          "aggregate": "mean",
+          "min_rows": 4,
+          "op": "approx",
+          "value": 1.0,
+          "tolerance": 1e-09
+        },
+        {
+          "filters": {
+            "scenario": "box_align_contact_loss",
+            "planner": "mppi",
+            "k_samples": "256"
+          },
+          "field": "success",
+          "aggregate": "mean",
+          "min_rows": 4,
+          "op": "eq",
+          "value": 0.0
+        },
+        {
+          "filters": {
+            "scenario": "box_align_detour",
+            "planner": "diff_mppi_3",
+            "k_samples": "256"
+          },
+          "field": "success",
+          "aggregate": "mean",
+          "min_rows": 4,
+          "op": "approx",
+          "value": 0.25,
+          "tolerance": 1e-09
+        },
+        {
+          "filters": {
+            "scenario": "box_align_detour",
+            "planner": "mppi",
+            "k_samples": "256"
+          },
+          "field": "success",
+          "aggregate": "mean",
+          "min_rows": 4,
+          "op": "eq",
+          "value": 0.0
+        }
+      ]
+    },
+    {
+      "id": "contact_robustness_suite",
+      "status": "pending",
+      "kind": "csv_assertions",
+      "generator_command": [
+        "./bin/benchmark_diff_mppi_pushing_box",
+        "--seed-count",
+        "30"
+      ]
+    },
+    {
+      "id": "contact_matched_compute",
+      "status": "pending",
+      "kind": "csv_assertions",
+      "generator_command": [
+        "./bin/benchmark_diff_mppi_pushing_box",
+        "--help"
+      ]
+    },
+    {
+      "id": "contact_external_fidelity",
+      "status": "pending",
+      "kind": "json_assertions",
+      "generator_command": [
+        "python3",
+        "scripts/run_contact_external_fidelity.py",
+        "--help"
+      ]
+    }
+  ]
+}

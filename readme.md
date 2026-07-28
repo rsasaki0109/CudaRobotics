@@ -102,6 +102,7 @@ python examples/python/registration_quickstart.py
 | MPPI paper reproduction zoo | [`docs/mppi_reproduction_zoo.md`](docs/mppi_reproduction_zoo.md) |
 | Reproducibility suites | [`docs/reproducibility.md`](docs/reproducibility.md) |
 | Diff-MPPI paper material | [`paper/`](paper/) |
+| Paper claim/evidence readiness | [`paper/artifacts/`](paper/artifacts/) |
 | Contributing a demo or reproduction | [`CONTRIBUTING.md`](CONTRIBUTING.md) |
 | CudaNav end-to-end architecture contract | [`docs/cudanav_architecture.md`](docs/cudanav_architecture.md) |
 | Reusable GPU KISS-ICP streaming API | [`docs/kiss_icp_gpu_core.md`](docs/kiss_icp_gpu_core.md) |
