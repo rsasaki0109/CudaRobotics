@@ -53,6 +53,18 @@
       ]
     },
     {
+      "id": "hard_contact_transfer",
+      "statement": "The contact-task comparison is repeated under a structurally different momentum-carrying hard-contact plant across friction and damping conditions.",
+      "submission_required": true,
+      "status": "planned",
+      "evidence": [
+        "contact_robustness_suite"
+      ],
+      "limitations": [
+        "This is sim-to-sim transfer and does not replace the external-fidelity or real-robot experiment."
+      ]
+    },
+    {
       "id": "negative_result_detour",
       "statement": "On box_align_detour at K=256, the checked-in four-seed suite remains difficult: MPPI solves 0/4 and Diff-MPPI-3 solves only 1/4.",
       "submission_required": false,
@@ -158,11 +170,16 @@
     {
       "id": "contact_robustness_suite",
       "status": "pending",
-      "kind": "csv_assertions",
+      "kind": "json_assertions",
       "generator_command": [
-        "./bin/benchmark_diff_mppi_pushing_box",
-        "--seed-count",
-        "30"
+        "python3",
+        "scripts/run_contact_robustness.py",
+        "--output-dir",
+        "build/contact_robustness_release",
+        "--binary",
+        "bin/benchmark_diff_mppi_pushing_box",
+        "--profile",
+        "release"
       ]
     },
     {

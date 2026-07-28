@@ -19,7 +19,7 @@ artifact validator. They are not enough for a paper-level robustness claim.
 1. Contact robustness
    - at least 30 independently generated seeds;
    - multiple rollout budgets;
-   - multiple object shapes, friction values, contact stiffness/damping, and
+   - multiple object shapes, friction values, contact mobility/damping, and
      observation/control perturbations;
    - fixed seed lists and all failed cells retained.
 2. Exact matched compute
@@ -44,3 +44,19 @@ SOPPI-fast contains a nominal gradient step, so it must not be called pure
 SVGD. The detour failure must remain visible. Until the three pending evidence
 blocks pass, the paper may describe a promising fixed-seed contact signal but
 not broad superiority, exact-time dominance, or external contact fidelity.
+
+## Frozen Robustness Command
+
+The first experiment block is now implemented as a resumable, content-addressed
+32,400-episode protocol:
+
+```bash
+python3 scripts/run_contact_robustness.py \
+  --output-dir build/contact_robustness_release \
+  --binary bin/benchmark_diff_mppi_pushing_box \
+  --profile release
+```
+
+See [`../docs/contact_diff_mppi_robustness.md`](../docs/contact_diff_mppi_robustness.md).
+The runner and validator are complete; the clean-commit release GPU run is
+still pending and the claim remains `planned`.
