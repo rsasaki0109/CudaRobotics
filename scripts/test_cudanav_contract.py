@@ -338,6 +338,33 @@ def main() -> int:
         'executable="follow_path_mission"',
     ):
         assert term in bringup_launch
+    shadow_launch = (
+        BRINGUP_PACKAGE / "launch" / "cudanav_recorded_shadow.launch.py"
+    ).read_text(encoding="utf-8")
+    for term in (
+        'package="cuda_kiss_icp"',
+        'package="cuda_voxel_mapping"',
+        'package="cuda_esdf"',
+        'package="nav2_controller"',
+        '"FollowPath.diagnostics_csv_path"',
+        'executable="recorded_path_shadow"',
+        'DeclareLaunchArgument("points_topic"',
+        'DeclareLaunchArgument("path_topic"',
+        'DeclareLaunchArgument("use_sim_time"',
+    ):
+        assert term in shadow_launch
+    shadow_source = (
+        BRINGUP_PACKAGE
+        / "cuda_nav_bringup"
+        / "recorded_path_shadow.py"
+    ).read_text(encoding="utf-8")
+    for term in (
+        "FollowPath",
+        "Path",
+        "minimum_path_poses",
+        "commands do not alter",
+    ):
+        assert term in shadow_source
     simulator_source = (
         BRINGUP_PACKAGE / "cuda_nav_bringup" / "loopback_simulator.py"
     ).read_text(encoding="utf-8")

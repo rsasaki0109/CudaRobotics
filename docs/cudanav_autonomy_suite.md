@@ -19,15 +19,20 @@ full git commit and controller-config SHA-256 values across all three modes.
 python3 scripts/run_autonomy_suite.py \
   --output-dir build/cudanav_autonomy_release \
   --profile release \
-  --bag /data/erl_prueba2 \
-  --evaluation-db /data/erl_prueba2/rosbag2_0.db3 \
+  --bag /data/pointcloud_nav_run \
+  --evaluation-db /data/pointcloud_nav_run/rosbag2_0.db3 \
   --controller-config ros2_ws/src/cuda_nav_bringup/config/controller.yaml \
   --controller-command \
-    "ros2 launch my_nav shadow_replay.launch.py \
+    "ros2 launch cuda_nav_bringup cudanav_recorded_shadow.launch.py \
      params_file:={controller_config} \
      diagnostics_csv:={diagnostics_csv}" \
   --multi-gpu-run /evidence/other_gpu/cudanav_smoke
 ```
+
+The native recorded-shadow launch expects compatible PointCloud2, TF, and Path
+streams. LaserScan-only datasets require an explicitly recorded conversion or
+a platform-specific launch; the suite does not silently reinterpret LaserScan
+as the KISS-ICP input.
 
 The local release closed-loop directory is automatically included in the
 cross-machine GPU aggregate. Repeat `--multi-gpu-run` for more imported
