@@ -10,6 +10,7 @@ import unittest
 
 from cudanav_multi_gpu import evaluate_multi_gpu_suite
 from run_cudanav_closed_loop import parse_gpu_identity
+from run_cudanav_multi_gpu import import_suite
 
 
 def summary() -> dict:
@@ -203,6 +204,44 @@ class MultiGpuEvidenceTest(unittest.TestCase):
             gate = evaluate_multi_gpu_suite(suite, root)
             self.assertFalse(gate["passed"])
             self.assertIn("escapes suite", gate["runs"][0]["error"])
+
+    def test_cross_machine_import_accepts_same_commit_and_config(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source_a = root / "source_a"
+            source_b = root / "source_b"
+            output = root / "suite"
+            output.mkdir()
+            write_run(root, "source_a", "GPU A", "GPU-a", "0")
+            write_run(root, "source_b", "GPU B", "GPU-b", "0")
+            suite = import_suite(
+                [source_a, source_b],
+                output,
+                minimum_gpu_devices=2,
+                minimum_gpu_models=2,
+            )
+            self.assertEqual(suite["collection_mode"], "cross_machine_import")
+            self.assertEqual(len(suite["devices"]), 2)
+            gate = evaluate_multi_gpu_suite(suite, output)
+            self.assertTrue(gate["passed"], gate)
+
+    def test_cross_machine_import_rejects_invalid_source(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "source"
+            output = root / "suite"
+            output.mkdir()
+            write_run(root, "source", "GPU A", "GPU-a", "0")
+            (source / "controller.yaml").write_text(
+                "controller: tampered\n", encoding="utf-8"
+            )
+            with self.assertRaisesRegex(ValueError, "failed smoke validation"):
+                import_suite(
+                    [source],
+                    output,
+                    minimum_gpu_devices=1,
+                    minimum_gpu_models=1,
+                )
 
 
 if __name__ == "__main__":
