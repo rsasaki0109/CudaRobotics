@@ -257,3 +257,13 @@ independently reruns both local preflight gates, all three remote CI gates,
 Python archive structure/hash checks, exact-commit checks, and the explicit
 real-rosbag negative-result contract. A successful child report by itself does
 not authorize tagging; the aggregate must emit `status: ready`.
+
+After that decision passes, `scripts/assemble_v0_2_release_bundle.py` copies
+the complete declared evidence set into one portable directory and recomputes
+the aggregate gate against those copies. The bundle contains an exact
+SHA-256/size inventory of every file other than its own top-level manifest.
+`scripts/validate_v0_2_release_bundle.py` independently reruns the release
+decision, verifies all source bindings and categories, requires an exact
+inventory, and rejects missing, extra, path-escaping, or modified evidence.
+The resulting directory can therefore be moved intact and attached to the
+release without depending on the machine that assembled it.
