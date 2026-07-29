@@ -143,6 +143,29 @@ The first command validates the ledger and is suitable for CI while experiments
 are still pending. The second is the submission gate and fails until every
 submission-required systems or contact-rich Diff-MPPI claim is supported.
 
+The ready contact-rich ledger can also be packaged as a portable anonymous
+submission artifact. Its three final plots are regenerated from the published
+CSV files rather than source-coded numbers, and their input hashes plus plotted
+semantic rows are retained:
+
+```bash
+python3 scripts/render_contact_submission_figures.py \
+  --output-dir build/contact_submission_figures
+python3 scripts/assemble_contact_submission_bundle.py \
+  --output-dir build/contact_submission_bundle \
+  --venue VENUE \
+  --artifact-url https://ANONYMOUS_ARTIFACT_URL
+python3 scripts/validate_contact_submission_bundle.py \
+  build/contact_submission_bundle/submission_manifest.json \
+  --commit "$(git rev-parse HEAD)" --require-ready
+```
+
+The bundle gate rejects file edits, broken figure-source hashes, a non-ready
+anonymous ledger, identity tokens, a dirty source commit, an unselected venue,
+or a missing/non-HTTPS artifact entry point. Absolute build-machine paths in
+the provenance JSON are redacted and content-rehashed before the ledger is
+revalidated inside the bundle.
+
 The contact paper's full robustness matrix has its own resumable GPU runner and
 artifact validator:
 

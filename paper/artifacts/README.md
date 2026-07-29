@@ -33,3 +33,19 @@ Never change a claim from `planned` or `partial` to `supported` merely because
 the implementation exists. First attach the generated artifact, freeze its
 SHA-256, and add assertions that test the exact metric used in the prose.
 Negative results should remain declared evidence rather than being removed.
+
+For the ready contact-rich ledger, the submission bundle has a second,
+portable validation layer:
+
+```bash
+python3 scripts/assemble_contact_submission_bundle.py \
+  --output-dir build/contact_submission_bundle \
+  --venue VENUE --artifact-url https://ANONYMOUS_ARTIFACT_URL
+python3 scripts/validate_contact_submission_bundle.py \
+  build/contact_submission_bundle/submission_manifest.json \
+  --commit "$(git rev-parse HEAD)" --require-ready
+```
+
+This does not replace the source ledger. It produces an anonymous copy whose
+machine-specific absolute paths are redacted and rehashed, then reruns the same
+claim assertions against the copied evidence.
