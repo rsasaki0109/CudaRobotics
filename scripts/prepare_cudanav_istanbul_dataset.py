@@ -69,6 +69,17 @@ def probe_acquisition(acquisition: dict[str, Any]) -> dict[str, Any]:
     return result
 
 
+def download_command(file_id: str, output: Path) -> list[str]:
+    return [
+        sys.executable,
+        "-m",
+        "gdown",
+        file_id,
+        "-O",
+        str(output),
+    ]
+
+
 def database_topics(database: Path) -> dict[str, dict[str, Any]]:
     connection = sqlite3.connect(
         f"file:{database.resolve().as_posix()}?mode=ro", uri=True
@@ -184,15 +195,7 @@ def main() -> int:
             ),
         ):
             subprocess.run(
-                [
-                    sys.executable,
-                    "-m",
-                    "gdown",
-                    "--id",
-                    file_id,
-                    "-O",
-                    str(output / filename),
-                ],
+                download_command(file_id, output / filename),
                 check=True,
             )
     database = find_database(output, acquisition["expected_database"])

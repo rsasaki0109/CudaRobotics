@@ -9,10 +9,21 @@ import unittest
 from unittest.mock import patch
 
 from cudanav_real_dataset import DEFAULT_SPEC, read_json
-from prepare_cudanav_istanbul_dataset import inspect, probe_acquisition
+from prepare_cudanav_istanbul_dataset import (
+    download_command,
+    inspect,
+    probe_acquisition,
+)
 
 
 class PrepareCudaNavIstanbulDatasetTest(unittest.TestCase):
+    def test_gdown_v6_uses_positional_file_id(self) -> None:
+        output = Path("dataset.db3")
+        command = download_command("drive-id", output)
+        self.assertEqual(command[3], "drive-id")
+        self.assertNotIn("--id", command)
+        self.assertEqual(command[-2:], ["-O", str(output)])
+
     def test_remote_probe_freezes_current_official_folder_files(self) -> None:
         acquisition = read_json(DEFAULT_SPEC)["acquisition"]
 

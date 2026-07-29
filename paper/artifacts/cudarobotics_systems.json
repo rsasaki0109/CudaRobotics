@@ -149,7 +149,7 @@
         {
           "path": "scripts/prepare_cudanav_istanbul_dataset.py",
           "normalization": "text_lf",
-          "sha256": "3c7d408a91432a892f786b7f848a9f8182831b2acf4d7780e96f00911af18274"
+          "sha256": "6ef9e5d7092f7a902fe9c089175aa36be595dfb15063eabe93d361ce5d616d22"
         },
         {
           "path": "scripts/run_cudanav_real_dataset_pipeline.py",
