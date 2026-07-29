@@ -1147,6 +1147,9 @@ add_test(NAME check_pointcloud2_clearance_decoder
 add_test(NAME check_pointcloud2_timing_admission
   COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/test_inspect_pointcloud2_timing.py
     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/scripts)
+add_test(NAME check_mcd_timed_rosbag_materializer
+  COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/test_materialize_mcd_timed_rosbag.py
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/scripts)
 add_test(NAME check_cudanav_istanbul_dataset_preparer
   COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/test_prepare_cudanav_istanbul_dataset.py
     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/scripts)

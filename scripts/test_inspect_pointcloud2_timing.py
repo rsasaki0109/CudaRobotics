@@ -3,15 +3,50 @@
 from __future__ import annotations
 
 from pathlib import Path
+import struct
 import tempfile
 import unittest
 
-from inspect_pointcloud2_timing import inspect_timing
+from inspect_pointcloud2_timing import inspect_timing, point_field_statistics
 from run_cudanav_kiss_icp_real import timing_admission_matches
 from test_cudanav_kiss_icp_real import sequence_database
 
 
 class PointCloud2TimingAdmissionTest(unittest.TestCase):
+    def test_numpy_statistics_match_dependency_free_fallback_with_row_padding(
+        self,
+    ) -> None:
+        payload = bytearray(56)
+        times = [0.0, 0.1, 0.05, 0.02, 0.08, 0.1]
+        rings = [0, 1, 2, 3, 4, 5]
+        for index, (stamp, ring) in enumerate(zip(times, rings)):
+            row, column = divmod(index, 3)
+            offset = row * 28 + column * 8
+            struct.pack_into("<fH", payload, offset, stamp, ring)
+        cloud = {
+            "height": 2,
+            "width": 3,
+            "row_step": 28,
+            "point_step": 8,
+            "is_bigendian": False,
+            "data": bytes(payload),
+            "fields": {
+                "time": {"offset": 0, "datatype": 7, "count": 1},
+                "ring": {"offset": 4, "datatype": 4, "count": 1},
+            },
+        }
+        for field, unique in (("time", False), ("ring", True)):
+            accelerated = point_field_statistics(
+                cloud, field, collect_unique=unique
+            )
+            fallback = point_field_statistics(
+                cloud,
+                field,
+                collect_unique=unique,
+                numpy_acceleration=False,
+            )
+            self.assertEqual(accelerated, fallback)
+
     def inspect(
         self,
         database: Path,

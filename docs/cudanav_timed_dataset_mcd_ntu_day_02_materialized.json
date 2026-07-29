@@ -1,0 +1,147 @@
+{
+  "schema_version": 1,
+  "dataset_id": "mcd_ntu_day_02_os1_128_ros2_timed_120s",
+  "artifact_id": "mcd_ntu_day_02_os1_128_ros2_timed_120s",
+  "status": "timing_admitted_pending_gpu_release_benchmarks",
+  "acquisition": {
+    "method": "deterministic_ros1_to_ros2_materialization",
+    "expected_database": "mcd_ntu_day_02_timed_0.db3",
+    "expected_database_bytes": 7559663616,
+    "expected_database_sha256": "69595af33297924ef36f1cdd0507d4e868d784337bd1249a41e4d4131c30614c",
+    "redistribution_authorized": false
+  },
+  "recorded_inputs": {
+    "pointcloud": {
+      "topic": "/os_cloud_node/points",
+      "type": "sensor_msgs/msg/PointCloud2",
+      "point_time": {
+        "field": "t",
+        "datatype": 6,
+        "unit": "nanoseconds",
+        "minimum_scan_span_s": 0.09,
+        "maximum_scan_span_s": 0.11,
+        "require_unambiguous_unit": true
+      },
+      "ring": {
+        "field": "ring",
+        "datatype": 2,
+        "required": true
+      },
+      "deskew_capable": true
+    },
+    "odometry": {
+      "topic": "/mcd/ground_truth/os_sensor_pose",
+      "type": "geometry_msgs/msg/PoseStamped",
+      "pose_semantics": "world_T_os_sensor"
+    }
+  },
+  "source_contract": {
+    "path": "docs/cudanav_timed_dataset_mcd_ntu_day_02.json",
+    "sha256": "32a1a352e8789ea08b0428ae3c76f83799dd0cccfc6e2a7abcb39a29133a203f"
+  },
+  "materializer": {
+    "path": "scripts/materialize_mcd_timed_rosbag.py",
+    "sha256_at_materialization": "b4e833c8d9a2e6947be4085f4047d685fa2ed3ea68ae43dd65ccc5cb8ccc4585",
+    "requirements": "scripts/requirements-mcd-materialization.txt",
+    "requirements_sha256": "6ccdf696114d42bc0b8dc00c00ac6c39d62d72d2f68101c5a8b59af0940f9e9d",
+    "elapsed_s": 452.719000000041
+  },
+  "selection": {
+    "mapping": "pose_inW num N -> zero-based LiDAR index N-1",
+    "first_ground_truth_num": 11,
+    "last_ground_truth_num": 1210,
+    "first_lidar_index": 10,
+    "last_lidar_index": 1209,
+    "frames": 1200,
+    "first_stamp_ns": 1644824097448537144,
+    "last_stamp_ns": 1644824217351002643,
+    "duration_s": 119.902465499,
+    "pairing_error_ms": {
+      "minimum": -6.090196,
+      "median": 0.218216,
+      "maximum": 5.737834,
+      "maximum_absolute": 6.090196
+    }
+  },
+  "ros2_bag": {
+    "format": "rosbag2_sqlite3_cdr",
+    "database_filename": "mcd_ntu_day_02_timed_0.db3",
+    "database_bytes": 7559663616,
+    "database_sha256": "69595af33297924ef36f1cdd0507d4e868d784337bd1249a41e4d4131c30614c",
+    "metadata_filename": "metadata.yaml",
+    "metadata_bytes": 964,
+    "metadata_sha256": "0d1c8b6c30b2cbc8ac863f27342c6ca09ec02a92e6a4189006fb4ec0c9cb8393",
+    "topics": {
+      "/os_cloud_node/points": {
+        "type": "sensor_msgs/msg/PointCloud2",
+        "messages": 1200,
+        "frame_id": "os_sensor"
+      },
+      "/mcd/ground_truth/os_sensor_pose": {
+        "type": "geometry_msgs/msg/PoseStamped",
+        "messages": 1200,
+        "frame_id": "world",
+        "pose_semantics": "world_T_os_sensor"
+      }
+    }
+  },
+  "timing_admission": {
+    "algorithm": "cudarobotics.pointcloud2_timing_admission.v1",
+    "inspector": "scripts/inspect_pointcloud2_timing.py",
+    "inspector_sha256": "c65498eae0b95b88d9c28bb926abc533d2e543ca4019652d3026fe7764b60c92",
+    "frames": 1200,
+    "valid": true,
+    "all_checks_passed": true,
+    "point_time": {
+      "field": "t",
+      "datatype": 6,
+      "unit": "nanoseconds",
+      "plausible_units": [
+        "nanoseconds"
+      ],
+      "minimum_span_s": 0.09938044,
+      "median_span_s": 0.09988604000000001,
+      "maximum_span_s": 0.10052179
+    },
+    "ring": {
+      "field": "ring",
+      "datatype": 2,
+      "minimum": 0,
+      "maximum": 127,
+      "distinct_values": 128
+    }
+  },
+  "independent_checks": {
+    "sqlite_integrity_check": "ok",
+    "pointcloud_messages": 1200,
+    "pose_messages": 1200,
+    "source_to_ros2_point_data_sha256_matches": [
+      {
+        "lidar_index": 10,
+        "sha256": "2037a9920f0d6b3e88109f1142a99b80ae2369186bf35eb0563c25f531d838c2"
+      },
+      {
+        "lidar_index": 610,
+        "sha256": "668b9153a69e97e8fdb52509a9f7728ffec2825886827f3d70edd3279f47c493"
+      },
+      {
+        "lidar_index": 1209,
+        "sha256": "2593d9471b09b68ea89a7525209674b36991d7d7d40d45fea5704d6cfb62f0b0"
+      }
+    ]
+  },
+  "readiness": {
+    "source_identity_verified": true,
+    "ros1_to_ros2_adapter_validated": true,
+    "point_data_preservation_sampled": true,
+    "timing_admission_passed_all_frames": true,
+    "gpu_kiss_icp_release_passed": false,
+    "all_gpu_stack_release_passed": false,
+    "ready": false
+  },
+  "redistribution": {
+    "included_in_repository": false,
+    "license": "CC-BY-NC-SA-4.0",
+    "commercial_use": false
+  }
+}
