@@ -5,7 +5,8 @@
 > CudaNav end-to-end stack and must be regenerated before reuse. The
 > authoritative current claim ledger is
 > [`artifacts/cudarobotics_systems.json`](artifacts/cudarobotics_systems.json);
-> it now includes a passing native all-GPU S-course closed loop, but
+> it now includes a passing 30-traversal, 1059.4-second native all-GPU
+> S-course closed loop, but
 > intentionally reports the paper as not ready until ROS 2 Jazzy,
 > release-profile closed-loop, real-rosbag, and physical multi-GPU evidence is
 > attached. The target paper title is now “CudaNav: A Reproducible End-to-End
