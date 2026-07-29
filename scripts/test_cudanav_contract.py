@@ -436,6 +436,10 @@ def main() -> int:
         "require_video=True",
         "is_relative_to(root)",
         '"all_traversals_completed"',
+        "REQUIRED_CLOSED_LOOP_BAG_TOPICS",
+        '"rosbag_content_unchanged"',
+        '"required_bag_topic_messages"',
+        '"bag_command_bound"',
     ):
         assert term in evidence_source
     rosbag_evidence_source = (
@@ -461,6 +465,8 @@ def main() -> int:
         '"gpu"',
         '"launch_log"',
         '"rosbag"',
+        '"rosbag_identity"',
+        "REQUIRED_CLOSED_LOOP_BAG_TOPICS",
         '"video"',
         '"traversal_count"',
         "refusing non-empty output directory",

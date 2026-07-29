@@ -78,7 +78,7 @@
         {
           "path": "scripts/cudanav_evidence.py",
           "normalization": "text_lf",
-          "sha256": "168f72fbd3ee0685f3e2b7d49ae867a189253006f714e89bdcefc8e77f720b6b"
+          "sha256": "efeedd4b09f07c000003fa8cb1db47cdde1367b5db596dc0665275eea341b451"
         },
         {
           "path": "scripts/cudanav_multi_gpu.py",

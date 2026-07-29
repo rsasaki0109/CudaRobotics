@@ -85,6 +85,8 @@ simulation and recorded-motion shadow evaluation.
 The release suite passes only when:
 
 - the 10-minute closed-loop release policy passes with retained bag and video;
+- the closed-loop MCAP is content-addressed and has positive message counts
+  for every required sensor, state, control, collision, and diagnostic topic;
 - the content-addressed real rosbag release policy passes and remains labelled
   `shadow_controller_with_recorded_motion`;
 - the shadow output MCAP contains positive message counts for CudaNav commands,

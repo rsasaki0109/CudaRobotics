@@ -15,7 +15,12 @@ import subprocess
 import time
 from typing import Any
 
-from cudanav_evidence import evaluate_manifest, evaluate_summary
+from cudanav_evidence import (
+    REQUIRED_CLOSED_LOOP_BAG_TOPICS,
+    evaluate_manifest,
+    evaluate_summary,
+)
+from cudanav_rosbag_evidence import describe_input
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -224,17 +229,7 @@ def main() -> int:
         "mcap",
         "--output",
         str(bag_path),
-        "/cuda_nav/points",
-        "/cuda_nav/odom",
-        "/cuda_nav/occupancy",
-        "/cuda_nav/esdf",
-        "/cuda_nav/cmd_vel",
-        "/cuda_nav/ground_truth",
-        "/cuda_nav/collision",
-        "/cuda_nav/collision_count",
-        "/cuda_nav/odometry_diagnostics",
-        "/cuda_nav/mapping_diagnostics",
-        "/cuda_nav/esdf_diagnostics",
+        *REQUIRED_CLOSED_LOOP_BAG_TOPICS,
         "/tf",
         "/tf_static",
     ]
@@ -361,6 +356,13 @@ def main() -> int:
         "git_commit": commit,
         "git_dirty": dirty,
         "config_sha256": sha256(config_copy),
+        "bag_topics": list(REQUIRED_CLOSED_LOOP_BAG_TOPICS)
+        + ["/tf", "/tf_static"],
+        "rosbag_identity": (
+            describe_input(bag_path)
+            if record_bag and (bag_path / "metadata.yaml").is_file()
+            else None
+        ),
         "gpu": gpu_identity(),
         "environment": {
             key: os.environ.get(key, "")

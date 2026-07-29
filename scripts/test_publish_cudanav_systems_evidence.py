@@ -40,6 +40,14 @@ class PublishCudaNavSystemsEvidenceTest(unittest.TestCase):
             self.assertEqual(summary["status"], "passed")
             self.assertEqual(summary["closed_loop"]["elapsed_sec"], 650.0)
             self.assertEqual(
+                set(
+                    summary["closed_loop"][
+                        "required_topic_messages"
+                    ].values()
+                ),
+                {10},
+            )
+            self.assertEqual(
                 summary["real_rosbag_shadow"]["evidence_mode"],
                 "shadow_controller_with_recorded_motion",
             )

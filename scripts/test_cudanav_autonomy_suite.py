@@ -9,6 +9,7 @@ import tempfile
 import unittest
 
 from cudanav_autonomy_suite import evaluate_suite, sha256_file
+from cudanav_evidence import REQUIRED_CLOSED_LOOP_BAG_TOPICS
 from cudanav_rosbag_evidence import (
     REQUIRED_CUDANAV_OUTPUT_TOPICS,
     describe_input,
@@ -75,7 +76,21 @@ def write_closed(
     (run / "controller.yaml").write_bytes(CONFIG.encode("utf-8"))
     bag = run / "rosbag"
     bag.mkdir()
-    (bag / "metadata.yaml").write_text("storage_identifier: mcap\n")
+    (bag / "metadata.yaml").write_text(
+        "rosbag2_bagfile_information:\n"
+        "  storage_identifier: mcap\n"
+        "  topics_with_message_count:\n"
+        + "".join(
+            "    - topic_metadata:\n"
+            f"        name: {topic}\n"
+            "        type: test_msgs/msg/Test\n"
+            "      message_count: 10\n"
+            for topic in REQUIRED_CLOSED_LOOP_BAG_TOPICS
+        )
+    )
+    (bag / "closed_loop_0.mcap").write_bytes(
+        b"representative closed-loop bytes"
+    )
     (run / "replay.gif").write_bytes(b"GIF89a" + b"\0" * 16)
     manifest = {
         "schema_version": 1,
@@ -110,7 +125,16 @@ def write_closed(
             }
         ],
         "traversal_count": 10,
-        "bag_command": ["ros2", "bag", "record"],
+        "bag_topics": list(REQUIRED_CLOSED_LOOP_BAG_TOPICS),
+        "rosbag_identity": describe_input(bag),
+        "bag_command": [
+            "ros2",
+            "bag",
+            "record",
+            "--output",
+            str(bag.resolve()),
+            *REQUIRED_CLOSED_LOOP_BAG_TOPICS,
+        ],
         "render_command": ["python", "render.py"],
         "artifacts": {
             "summary": "mission_summary.json",
@@ -341,6 +365,35 @@ class CudaNavAutonomySuiteTest(unittest.TestCase):
             suite["modes"]["real_rosbag_shadow"]["manifest_sha256"] = "0" * 64
             result = evaluate_suite(suite, root)
             self.assertFalse(result["modes"]["real_rosbag_shadow"]["passed"])
+            self.assertFalse(result["passed"])
+
+    def test_closed_loop_bag_requires_messages_on_every_evidence_topic(self):
+        with tempfile.TemporaryDirectory() as directory:
+            suite, root = self.make_suite(Path(directory))
+            run = root / "closed_loop"
+            metadata = run / "rosbag" / "metadata.yaml"
+            metadata.write_text(
+                metadata.read_text(encoding="utf-8").replace(
+                    "      message_count: 10\n",
+                    "      message_count: 0\n",
+                    1,
+                ),
+                encoding="utf-8",
+            )
+            manifest_path = run / "manifest.json"
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            manifest["rosbag_identity"] = describe_input(run / "rosbag")
+            manifest_path.write_text(
+                json.dumps(manifest) + "\n", encoding="utf-8"
+            )
+            suite["modes"]["closed_loop"]["manifest_sha256"] = sha256_file(
+                manifest_path
+            )
+
+            result = evaluate_suite(suite, root)
+            gate = result["modes"]["closed_loop"]["manifest_gate"]
+            self.assertTrue(gate["checks"]["rosbag_content_unchanged"])
+            self.assertFalse(gate["checks"]["required_bag_topic_messages"])
             self.assertFalse(result["passed"])
 
     def test_release_cannot_shrink_required_modes(self):

@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from cudanav_autonomy_suite import evaluate_suite, sha256_file
+from cudanav_evidence import REQUIRED_CLOSED_LOOP_BAG_TOPICS
 from cudanav_multi_gpu import evaluate_multi_gpu_suite
 from cudanav_ros_ci_evidence import evaluate as evaluate_ros_ci
 from cudanav_rosbag_evidence import rosbag_topic_counts
@@ -75,6 +76,17 @@ def build_artifacts(
         closed_root, closed_manifest["artifacts"]["summary"]
     )
     closed_summary = read_json(closed_summary_path)
+    closed_bag_root = (
+        closed_root / closed_manifest["artifacts"]["rosbag"]
+    ).resolve()
+    if (
+        not closed_bag_root.is_relative_to(closed_root)
+        or not closed_bag_root.is_dir()
+    ):
+        raise ValueError("closed-loop rosbag is missing")
+    closed_topic_counts = rosbag_topic_counts(
+        closed_bag_root / "metadata.yaml"
+    )
 
     rosbag_manifest_path = rosbag_root / "manifest.json"
     rosbag_manifest = read_json(rosbag_manifest_path)
@@ -131,6 +143,13 @@ def build_artifacts(
             "traversals_completed": closed_summary[
                 "traversals_completed"
             ],
+            "rosbag_tree_sha256": closed_manifest["rosbag_identity"][
+                "tree_sha256"
+            ],
+            "required_topic_messages": {
+                topic: closed_topic_counts[topic]
+                for topic in REQUIRED_CLOSED_LOOP_BAG_TOPICS
+            },
         },
         "real_rosbag_shadow": {
             "evidence_mode": "shadow_controller_with_recorded_motion",
@@ -193,6 +212,18 @@ def build_artifacts(
             "closed_loop_gpu": closed_manifest["gpu"],
             "multi_gpu_models": gpu_models,
             "multi_gpu_uuids": gpu_uuids,
+        },
+        "closed_loop_recording": {
+            "tree_sha256": closed_manifest["rosbag_identity"][
+                "tree_sha256"
+            ],
+            "file_count": closed_manifest["rosbag_identity"]["file_count"],
+            "total_bytes": closed_manifest["rosbag_identity"][
+                "total_bytes"
+            ],
+            "required_topic_messages": summary["closed_loop"][
+                "required_topic_messages"
+            ],
         },
         "input_bag": {
             "tree_sha256": rosbag_manifest["input_bag"]["tree_sha256"],
@@ -264,6 +295,7 @@ def render_report(summary: dict[str, Any]) -> str:
         "## Closed-loop release gates",
         "",
         f"- Odometry drift: {closed['odometry_drift_percent']:.3f}%",
+        f"- Closed-loop bag SHA-256: `{closed['rosbag_tree_sha256']}`",
         (
             "- Controller deadline-miss rate: "
             f"{closed['command_deadline_miss_rate'] * 100.0:.3f}%"

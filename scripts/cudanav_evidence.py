@@ -11,6 +11,8 @@ from pathlib import Path
 import re
 from typing import Any
 
+from cudanav_rosbag_evidence import describe_input, rosbag_topic_counts
+
 
 @dataclass(frozen=True)
 class GatePolicy:
@@ -46,6 +48,20 @@ POLICIES = {
         require_video=True,
     ),
 }
+
+REQUIRED_CLOSED_LOOP_BAG_TOPICS = (
+    "/cuda_nav/points",
+    "/cuda_nav/odom",
+    "/cuda_nav/occupancy",
+    "/cuda_nav/esdf",
+    "/cuda_nav/cmd_vel",
+    "/cuda_nav/ground_truth",
+    "/cuda_nav/collision",
+    "/cuda_nav/collision_count",
+    "/cuda_nav/odometry_diagnostics",
+    "/cuda_nav/mapping_diagnostics",
+    "/cuda_nav/esdf_diagnostics",
+)
 
 
 REQUIRED_SUMMARY_FIELDS = {
@@ -425,6 +441,59 @@ def evaluate_manifest(
             )
         else:
             checks["artifact_rosbag"] = False
+    if policy.require_bag:
+        bag_topics = manifest.get("bag_topics")
+        checks["bag_topics_declared"] = (
+            isinstance(bag_topics, list)
+            and len(bag_topics) == len(set(bag_topics))
+            and set(REQUIRED_CLOSED_LOOP_BAG_TOPICS) <= set(bag_topics)
+        )
+        rosbag_identity = manifest.get("rosbag_identity")
+        checks["rosbag_identity_schema"] = (
+            isinstance(rosbag_identity, dict)
+            and bool(
+                re.fullmatch(
+                    r"[0-9a-f]{64}",
+                    str(rosbag_identity.get("tree_sha256", "")),
+                )
+            )
+            and isinstance(rosbag_identity.get("file_count"), int)
+            and rosbag_identity["file_count"] >= 2
+            and isinstance(rosbag_identity.get("total_bytes"), int)
+            and rosbag_identity["total_bytes"] > 0
+        )
+        checks["rosbag_content_unchanged"] = False
+        checks["required_bag_topic_messages"] = False
+        if checks.get("artifact_rosbag"):
+            try:
+                bag_root = (root / str(artifacts["rosbag"])).resolve()
+                current_bag = describe_input(bag_root)
+                checks["rosbag_content_unchanged"] = (
+                    checks["rosbag_identity_schema"]
+                    and current_bag["tree_sha256"]
+                    == rosbag_identity["tree_sha256"]
+                    and current_bag["file_count"]
+                    == rosbag_identity["file_count"]
+                    and current_bag["total_bytes"]
+                    == rosbag_identity["total_bytes"]
+                )
+                topic_counts = rosbag_topic_counts(
+                    bag_root / "metadata.yaml"
+                )
+                checks["required_bag_topic_messages"] = all(
+                    topic_counts.get(topic, 0) > 0
+                    for topic in REQUIRED_CLOSED_LOOP_BAG_TOPICS
+                )
+            except (OSError, TypeError, ValueError):
+                pass
+        bag_command = manifest.get("bag_command")
+        checks["bag_command_bound"] = (
+            isinstance(bag_command, list)
+            and checks["bag_topics_declared"]
+            and str((root / str(artifacts.get("rosbag"))).resolve())
+            in bag_command
+            and set(bag_topics) <= set(bag_command)
+        )
     if policy.require_video or bool(manifest.get("render_command")):
         relative = artifacts.get("video")
         checks["artifact_video"] = artifact_exists(relative, True)
