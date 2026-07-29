@@ -1,0 +1,34 @@
+{
+  "claim_boundary": {
+    "native_gpu_core_closed_loop": true,
+    "real_data": false,
+    "ros2_runtime": false
+  },
+  "evidence_mode": "cudanav_native_release_visual",
+  "renderer": {
+    "normalization": "text_lf",
+    "path": "scripts/render_cudanav_gpu_closed_loop.py",
+    "sha256": "11f6f17abc743ddfc983e75b87b807b8f8ad69ca34912adabc6ddd8055466242"
+  },
+  "schema_version": 1,
+  "source_evidence": {
+    "normalization": "text_lf",
+    "path": "cudanav_gpu_closed_loop_release_2026-07-29.json",
+    "sha256": "d183566cf8f15979ddebfffff0287f974f4dc7d3d1125c5e9c02a911c7766919"
+  },
+  "trajectory": {
+    "path": "trajectory.csv",
+    "rows": 10594,
+    "sha256": "5afa119a9656c4e5d8390be4bb8d85f28b6eaf1aeb71d664a030ad5a59232db8"
+  },
+  "visual": {
+    "bytes": 3163035,
+    "format": "gif",
+    "frames": 180,
+    "height": 540,
+    "path": "cudanav_gpu_closed_loop_release.gif",
+    "sampled_source_steps_sha256": "cb3fe82393bd30bff0d97f9321058ed34c8f8784bdbe37b2f69d682658c9fdcf",
+    "sha256": "6fa7ff1f76d5d50721e945025445316e873125da052f24679e832c6fef8c42b9",
+    "width": 960
+  }
+}

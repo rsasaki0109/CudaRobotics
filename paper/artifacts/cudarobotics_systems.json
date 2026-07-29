@@ -67,7 +67,9 @@
         "native_gpu_closed_loop_smoke",
         "native_gpu_closed_loop_report",
         "native_gpu_closed_loop_release",
-        "native_gpu_closed_loop_release_report"
+        "native_gpu_closed_loop_release_report",
+        "native_gpu_closed_loop_visual_manifest",
+        "native_gpu_closed_loop_visual_asset"
       ],
       "limitations": [
         "This is a continuous native simulation on one GPU model, not a ROS 2 runtime or multi-GPU result.",
@@ -766,7 +768,91 @@
         {
           "path": "docs/results/cudanav_gpu_closed_loop_release_2026-07-29.md",
           "normalization": "text_lf",
-          "sha256": "07c9959fa364718eec66d6943ed44277d686aa289b9939be08fecc44a8730f53"
+          "sha256": "638286d6e90c2c7abbe2658af3f0e390200f08147302232ebfd30e8b18a653a5"
+        }
+      ]
+    },
+    {
+      "id": "native_gpu_closed_loop_visual_manifest",
+      "status": "complete",
+      "kind": "json_assertions",
+      "generator_command": [
+        "python3",
+        "scripts/render_cudanav_gpu_closed_loop.py",
+        "--evidence",
+        "docs/results/cudanav_gpu_closed_loop_release_2026-07-29.json",
+        "--trajectory",
+        "build/cudanav_gpu_closed_loop_release_b2c4907/trajectory.csv",
+        "--output",
+        "gif/cudanav_gpu_closed_loop_release.gif",
+        "--manifest",
+        "gif/cudanav_gpu_closed_loop_release.json"
+      ],
+      "artifacts": [
+        {
+          "path": "gif/cudanav_gpu_closed_loop_release.json",
+          "normalization": "text_lf",
+          "sha256": "c4a7df687bf58cdf6c65bedc0db665ad4c2a3ad09f9ae0edb862cbb2e5d29f5a"
+        }
+      ],
+      "assertions": [
+        {
+          "json_path": "claim_boundary.native_gpu_core_closed_loop",
+          "op": "eq",
+          "value": true
+        },
+        {
+          "json_path": "claim_boundary.ros2_runtime",
+          "op": "eq",
+          "value": false
+        },
+        {
+          "json_path": "claim_boundary.real_data",
+          "op": "eq",
+          "value": false
+        },
+        {
+          "json_path": "trajectory.rows",
+          "op": "eq",
+          "value": 10594
+        },
+        {
+          "json_path": "trajectory.sha256",
+          "op": "eq",
+          "value": "5afa119a9656c4e5d8390be4bb8d85f28b6eaf1aeb71d664a030ad5a59232db8"
+        },
+        {
+          "json_path": "visual.frames",
+          "op": "ge",
+          "value": 60
+        },
+        {
+          "json_path": "visual.sha256",
+          "op": "eq",
+          "value": "6fa7ff1f76d5d50721e945025445316e873125da052f24679e832c6fef8c42b9"
+        }
+      ]
+    },
+    {
+      "id": "native_gpu_closed_loop_visual_asset",
+      "status": "complete",
+      "kind": "file_set",
+      "generator_command": [
+        "python3",
+        "scripts/render_cudanav_gpu_closed_loop.py",
+        "--evidence",
+        "docs/results/cudanav_gpu_closed_loop_release_2026-07-29.json",
+        "--trajectory",
+        "build/cudanav_gpu_closed_loop_release_b2c4907/trajectory.csv",
+        "--output",
+        "gif/cudanav_gpu_closed_loop_release.gif",
+        "--manifest",
+        "gif/cudanav_gpu_closed_loop_release.json"
+      ],
+      "artifacts": [
+        {
+          "path": "gif/cudanav_gpu_closed_loop_release.gif",
+          "sha256": "6fa7ff1f76d5d50721e945025445316e873125da052f24679e832c6fef8c42b9"
         }
       ]
     },
