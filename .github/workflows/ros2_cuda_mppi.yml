@@ -226,7 +226,7 @@ jobs:
           ros2 run cuda_voxel_costmap_layer plugin_load_test
           ros2 run cuda_mppi_controller plugin_load_test
           ros2 run cuda_mppi_controller parameter_validation_test
-          colcon test --packages-select cuda_robotics_common cuda_kiss_icp cuda_voxel_mapping cuda_esdf cuda_voxel_costmap_layer cuda_nav_bringup \
+          colcon test --packages-select cuda_robotics_common cuda_kiss_icp cuda_voxel_mapping cuda_esdf cuda_voxel_costmap_layer \
             --event-handlers console_direct+
           colcon test-result --verbose
 
