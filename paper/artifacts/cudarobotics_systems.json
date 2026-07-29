@@ -99,7 +99,7 @@
         {
           "path": "scripts/validate_cudanav_real_dataset.py",
           "normalization": "text_lf",
-          "sha256": "f9cf768bab2fd0a4cd0c80ddd901397971cd10653b0f05a87fa989daf2f26f09"
+          "sha256": "6d26db6cc49e3fc7995529bd7ae3b318dee664a1ee2792042010f70b41f550dd"
         },
         {
           "path": "scripts/derive_cudanav_path_sidecar.py",

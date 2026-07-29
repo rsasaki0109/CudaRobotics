@@ -5,12 +5,15 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 from pathlib import Path
 import re
+import sqlite3
 from typing import Any
 
 from cudanav_real_dataset import DEFAULT_SPEC, read_json
 from cudanav_rosbag_evidence import describe_input, sha256_file
+from export_rosbag_motion import CdrReader
 
 
 SHA256 = re.compile(r"[0-9a-f]{64}")
@@ -237,6 +240,144 @@ def _remote_probe_bound(
     )
 
 
+def _decode_path(payload: bytes) -> dict[str, Any]:
+    reader = CdrReader(payload)
+
+    def stamp() -> int:
+        seconds = reader.int32()
+        nanoseconds = reader.uint32()
+        if nanoseconds >= 1_000_000_000:
+            raise ValueError("invalid ROS timestamp")
+        return seconds * 1_000_000_000 + nanoseconds
+
+    header_stamp = stamp()
+    header_frame = reader.string()
+    count = reader.uint32()
+    if count < 2 or count > len(payload) // 64:
+        raise ValueError("implausible Path pose count")
+    poses = []
+    for _ in range(count):
+        pose_stamp = stamp()
+        frame_id = reader.string()
+        values = reader.doubles(7)
+        poses.append(
+            {
+                "stamp_ns": pose_stamp,
+                "frame_id": frame_id,
+                "position": values[:3],
+                "quaternion": values[3:],
+            }
+        )
+    if reader.offset != len(payload):
+        raise ValueError("trailing Path CDR bytes")
+    return {
+        "header_stamp_ns": header_stamp,
+        "header_frame_id": header_frame,
+        "poses": poses,
+    }
+
+
+def _sqlite_path_semantics(
+    identity: Any,
+    contract: dict[str, Any],
+    generator: dict[str, Any],
+) -> bool:
+    if generator.get("storage_id") != "sqlite3":
+        return generator.get("storage_id") == "mcap"
+    if not identity_schema(identity):
+        return False
+    try:
+        root = Path(identity["source"]).resolve()
+        databases = [
+            (root / entry["path"]).resolve()
+            for entry in identity["files"]
+            if isinstance(entry, dict)
+            and isinstance(entry.get("path"), str)
+            and entry["path"].endswith(".db3")
+        ]
+        if len(databases) != 1 or not databases[0].is_relative_to(root):
+            return False
+        connection = sqlite3.connect(
+            f"file:{databases[0].as_posix()}?mode=ro", uri=True
+        )
+        try:
+            topic = connection.execute(
+                "SELECT id, type, serialization_format FROM topics "
+                "WHERE name = ?",
+                (contract["output_topic"],),
+            ).fetchone()
+            if topic is None or topic[1:] != (
+                contract["output_type"],
+                "cdr",
+            ):
+                return False
+            messages = connection.execute(
+                "SELECT timestamp, data FROM messages WHERE topic_id = ? "
+                "ORDER BY timestamp",
+                (topic[0],),
+            ).fetchall()
+        finally:
+            connection.close()
+        if len(messages) != 1:
+            return False
+        decoded = _decode_path(bytes(messages[0][1]))
+        poses = decoded["poses"]
+        stamps = [pose["stamp_ns"] for pose in poses]
+        frame_id = generator.get("frame_id")
+        finite = all(
+            math.isfinite(value)
+            for pose in poses
+            for values in (pose["position"], pose["quaternion"])
+            for value in values
+        )
+        unit_quaternions = all(
+            abs(
+                math.sqrt(sum(value * value for value in pose["quaternion"]))
+                - 1.0
+            )
+            <= 1e-5
+            for pose in poses
+        )
+        first = poses[0]
+        normalized_origin = all(
+            abs(value) <= 1e-6
+            for value in (
+                *first["position"],
+                *first["quaternion"][:3],
+                first["quaternion"][3] - 1.0,
+            )
+        )
+        maximum_duration_s = contract["parameters"].get(
+            "maximum_duration_s"
+        )
+        duration_bounded = (
+            maximum_duration_s is None
+            or stamps[-1] - stamps[0]
+            <= round(float(maximum_duration_s) * 1e9)
+        )
+        return (
+            len(poses) == generator.get("output_poses")
+            and stamps[0] == generator.get("first_stamp_ns")
+            and stamps[-1] == generator.get("last_stamp_ns")
+            and decoded["header_stamp_ns"] == stamps[0]
+            and decoded["header_frame_id"] == frame_id
+            and all(pose["frame_id"] == frame_id for pose in poses)
+            and all(left < right for left, right in zip(stamps, stamps[1:]))
+            and finite
+            and unit_quaternions
+            and normalized_origin
+            and duration_bounded
+        )
+    except (
+        KeyError,
+        OSError,
+        sqlite3.Error,
+        TypeError,
+        ValueError,
+    ):
+        return False
+
+
 def evaluate_materialization(
     spec: dict[str, Any],
     spec_path: Path,
@@ -317,8 +458,12 @@ def evaluate_materialization(
             and isinstance(output_poses, int)
             and input_samples >= output_poses >= 2
             and generator.get("frame_id") == "odom"
+            and generator.get("storage_id") in {"mcap", "sqlite3"}
             and generator.get("recorded_path") is False
             and generator.get("closed_loop") is False
+        ),
+        "derived_sqlite_path_semantics": _sqlite_path_semantics(
+            derived, path, generator
         ),
         "generator_report_content": False,
         "acquisition_inspection_bound": False,
