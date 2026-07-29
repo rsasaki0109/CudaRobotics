@@ -75,8 +75,14 @@ python scripts/run_cudanav_closed_loop.py \
 
 The renderer uses Pillow (`python3-pil` on Ubuntu). The bag contains sensor,
 odometry/TF, occupancy, typed ESDF, commands, ground truth, collision state,
-and per-component diagnostics. A missing MCAP metadata file or GIF keeps the
-release manifest red; smoke evidence cannot be relabelled as the v1.0 gate.
+and per-component diagnostics. The manifest content-addresses both the MCAP
+storage file and metadata. Release validation also requires positive message
+counts for points, odometry, occupancy, ESDF, commands, ground truth,
+collision state/count, and all three component diagnostics, and verifies that
+the recorder command names those topics. `/tf` and `/tf_static` are retained
+for replay but are not positive-count release gates. A missing or modified
+MCAP file, metadata file, required topic stream, or GIF keeps the release
+manifest red; smoke evidence cannot be relabelled as the v1.0 gate.
 Both profiles also require diagnostics from odometry, mapping, and ESDF, zero
 ERROR status, and zero reported transform/schema/capacity/dropped counters.
 
