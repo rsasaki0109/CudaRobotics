@@ -252,6 +252,12 @@ Publication split:
    tasks as negative controls, and retains CDF-MPPI and matched-time
    comparisons.
 
+Both publication paths now end in canonical ZIP/checksum artifacts. The
+contact-rich path can package a clean ready anonymous ledger after venue/URL
+selection. The systems path additionally requires every submission claim,
+the final status table, local manuscript links, and every ledger artifact to
+pass before its assembler will produce any bundle.
+
 Algorithm counts, benchmark tables, and hardware claims in the paper should be
 generated from repository manifests rather than maintained by hand.
 

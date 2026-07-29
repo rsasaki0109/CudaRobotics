@@ -332,6 +332,27 @@ python3 scripts/validate_paper_artifacts.py \
   paper/artifacts/cudarobotics_systems.json
 ```
 
+Once that command passes with `--require-ready` and this draft no longer
+contains its non-ready markers, create the content-complete paper artifact:
+
+```bash
+python3 scripts/assemble_systems_paper_bundle.py \
+  --output-dir build/cudarobotics_systems_paper_bundle \
+  --commit "$(git rev-parse HEAD)"
+python3 scripts/archive_systems_paper_bundle.py \
+  build/cudarobotics_systems_paper_bundle/submission_manifest.json \
+  --output build/cudarobotics-systems-paper-artifact.zip \
+  --commit "$(git rev-parse HEAD)"
+python3 scripts/validate_systems_paper_archive.py \
+  build/cudarobotics-systems-paper-artifact.zip \
+  --checksum build/cudarobotics-systems-paper-artifact.zip.sha256 \
+  --commit "$(git rev-parse HEAD)"
+```
+
+The assembler is fail-closed while any submission-required ledger claim is
+partial, so these commands do not turn the current draft into a nominally
+ready artifact.
+
 The complete command and threshold documentation is in
 [`docs/cudanav_autonomy_suite.md`](../docs/cudanav_autonomy_suite.md),
 [`docs/cudanav_real_dataset.md`](../docs/cudanav_real_dataset.md), and
