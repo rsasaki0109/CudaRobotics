@@ -83,3 +83,7 @@ evaluations rather than silently removing them.
 The 120-second release profile requires at least 100 MPPI evaluations, tightens
 ATE and drift gates to 3 m and 5%, and permits at most six bounded safety
 interventions. A smoke PASS is not a release-profile claim.
+
+The checked-in smoke result is
+[`results/cudanav_real_gpu_stack_2026-07-29.md`](results/cudanav_real_gpu_stack_2026-07-29.md);
+its adjacent JSON is the machine-verifiable source.
