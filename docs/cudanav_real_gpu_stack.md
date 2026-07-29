@@ -26,11 +26,15 @@ points to voxel mapping. The report binds the sequence version, number of
 deskewed frames, point-time-span p95, and deskew GPU time.
 
 Release mode requires a dataset specification with a real scalar per-point
-time field and unit, valid timing on every selected frame, version-2 export,
-and deskew on every processed frame. The current localization-only Istanbul
-smoke PointCloud2 is XYZ-only, so it remains valid smoke evidence but is an
-intentional negative input for the release timing gate. No timestamp is
-inferred from point ordering.
+time field and unit, independently justified physical scan-span bounds, and
+`require_unambiguous_unit: true`. A pre-export admission artifact tests all
+four supported units, stable schema/frame identity, finite spans, frame
+ordering, and an optional required integer ring field. The admission database
+digest, selection, field, unit, and frame count must match the export. Release
+then requires version-2 export and deskew on every processed frame. The
+current localization-only Istanbul smoke PointCloud2 is XYZ-only, so it
+remains valid smoke evidence but is an intentional negative input for the
+release timing gate. No timestamp is inferred from point ordering.
 
 ## Run
 
