@@ -95,14 +95,44 @@ def write_source_bag(root: Path) -> Path:
     return database
 
 
+def acquisition_probe(spec: dict) -> dict:
+    acquisition = spec["acquisition"]
+    return {
+        "schema_version": 1,
+        "database": {
+            "file_id": acquisition["file_id"],
+            "filename": acquisition["expected_database"],
+            "bytes": acquisition["expected_database_bytes"],
+        },
+        "metadata": {
+            "file_id": acquisition["metadata_file_id"],
+            "filename": acquisition["expected_metadata"],
+            "bytes": acquisition["expected_metadata_bytes"],
+        },
+        "checks": {
+            "database_filename": True,
+            "database_bytes": True,
+            "metadata_filename": True,
+            "metadata_bytes": True,
+        },
+        "passed": True,
+    }
+
+
 def main() -> int:
     with tempfile.TemporaryDirectory() as directory:
         root = Path(directory)
         source = root / "source"
         database = write_source_bag(source)
+        spec = read_json(DEFAULT_SPEC)
         acquisition_report = source / "inspection.json"
         acquisition_report.write_text(
-            json.dumps(inspect(source), indent=2, sort_keys=True) + "\n"
+            json.dumps(
+                inspect(source, remote_probe=acquisition_probe(spec)),
+                indent=2,
+                sort_keys=True,
+            )
+            + "\n"
         )
         sidecar = root / "sidecar"
         report = root / "generator.json"
