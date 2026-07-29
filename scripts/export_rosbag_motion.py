@@ -71,6 +71,7 @@ def parse_odometry(data: bytes) -> dict[str, object]:
         "stamp_ns": stamp_sec * 1_000_000_000 + stamp_nanosec,
         "frame_id": frame_id, "child_frame_id": child_frame_id,
         "x": position[0], "y": position[1], "z": position[2], "yaw": yaw,
+        "qx": qx, "qy": qy, "qz": qz, "qw": qw,
         "linear_x": twist[0], "linear_y": twist[1], "linear_z": twist[2],
         "angular_x": twist[3], "angular_y": twist[4], "angular_z": twist[5],
     }

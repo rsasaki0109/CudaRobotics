@@ -20,12 +20,18 @@ python3 scripts/run_autonomy_suite.py \
   --output-dir build/cudanav_autonomy_release \
   --profile release \
   --bag /data/pointcloud_nav_run \
+  --derived-path-bag build/cudanav_real_dataset/path_sidecar \
+  --dataset-materialization \
+    build/cudanav_real_dataset/materialization.json \
   --evaluation-db /data/pointcloud_nav_run/rosbag2_0.db3 \
   --controller-config ros2_ws/src/cuda_nav_bringup/config/controller.yaml \
   --controller-command \
     "ros2 launch cuda_nav_bringup cudanav_recorded_shadow.launch.py \
      params_file:={controller_config} \
-     diagnostics_csv:={diagnostics_csv}" \
+     diagnostics_csv:={diagnostics_csv} \
+     points_topic:=/pandar_points \
+     path_topic:=/cuda_nav/derived_plan \
+     sensor_frame:=" \
   --multi-gpu-run /evidence/other_gpu/cudanav_smoke
 ```
 
@@ -36,11 +42,18 @@ as the KISS-ICP input.
 
 The selected real-sensor source and its stricter derived-Path provenance
 contract are documented in
-[`cudanav_real_dataset.md`](cudanav_real_dataset.md). Until its sidecar Path
-generator and replay integration are complete, that selection remains
-`valid: true, ready: false`. A derived Path must use the distinct
+[`cudanav_real_dataset.md`](cudanav_real_dataset.md). The sidecar generator and
+rosbag2 multi-input replay integration are implemented; the checked-in
+selection remains `valid: true, ready: false` until the public bag is
+downloaded and materialized. A derived Path always uses the distinct
 `real_sensor_shadow_with_derived_path` label; it cannot be relabelled as a
 recorded Path or closed-loop execution.
+
+The existing offline quality evaluator consumes Twist, Odometry, and
+LaserScan from a DB3. The selected PointCloud2 dataset therefore still needs a
+PointCloud2/ESDF clearance evaluator before its release-profile run can pass;
+the sidecar and multi-input replay contract do not conceal that remaining
+gate.
 
 The local release closed-loop directory is automatically included in the
 cross-machine GPU aggregate. Repeat `--multi-gpu-run` for more imported

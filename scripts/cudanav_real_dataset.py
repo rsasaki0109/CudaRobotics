@@ -65,7 +65,10 @@ def rosbag_topics(metadata: Path) -> dict[str, dict[str, Any]]:
 
 
 def make_materialization(
-    spec_path: Path, source_bag: Path, derived_path_bag: Path
+    spec_path: Path,
+    source_bag: Path,
+    derived_path_bag: Path,
+    generator_report: Path | None = None,
 ) -> dict[str, Any]:
     spec_path = spec_path.resolve()
     spec = read_json(spec_path)
@@ -76,7 +79,7 @@ def make_materialization(
     source_identity = describe_input(source_bag)
     derived_identity = describe_input(derived_path_bag)
     path_contract = spec["path_derivation"]
-    return {
+    payload = {
         "schema_version": 1,
         "evidence_mode": "real_sensor_shadow_with_derived_path",
         "created_at": datetime.now(timezone.utc).isoformat(),
@@ -111,6 +114,15 @@ def make_materialization(
             "closed_loop": False,
         },
     }
+    if generator_report is not None:
+        report_path = generator_report.resolve()
+        report = read_json(report_path)
+        payload["generator_report"] = {
+            **report,
+            "source": str(report_path),
+            "sha256": sha256_file(report_path),
+        }
+    return payload
 
 
 def main() -> int:
@@ -118,10 +130,14 @@ def main() -> int:
     parser.add_argument("--spec", type=Path, default=DEFAULT_SPEC)
     parser.add_argument("--source-bag", type=Path, required=True)
     parser.add_argument("--derived-path-bag", type=Path, required=True)
+    parser.add_argument("--generator-report", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
     payload = make_materialization(
-        args.spec, args.source_bag, args.derived_path_bag
+        args.spec,
+        args.source_bag,
+        args.derived_path_bag,
+        args.generator_report,
     )
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(

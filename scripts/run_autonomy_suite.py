@@ -31,6 +31,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--profile", choices=("smoke", "release"), default="smoke")
     parser.add_argument("--bag", type=Path)
+    parser.add_argument("--derived-path-bag", type=Path)
+    parser.add_argument("--dataset-materialization", type=Path)
     parser.add_argument("--evaluation-db", type=Path)
     parser.add_argument("--controller-config", type=Path)
     parser.add_argument("--controller-command")
@@ -103,6 +105,17 @@ def rosbag_command(directory: Path, args: argparse.Namespace) -> list[str]:
     ]
     if args.rosbag_duration_sec > 0.0:
         command.extend(["--duration-sec", str(args.rosbag_duration_sec)])
+    if args.derived_path_bag is not None:
+        command.extend(
+            ["--derived-path-bag", str(args.derived_path_bag.resolve())]
+        )
+    if args.dataset_materialization is not None:
+        command.extend(
+            [
+                "--dataset-materialization",
+                str(args.dataset_materialization.resolve()),
+            ]
+        )
     return command
 
 
@@ -251,6 +264,13 @@ def validate_arguments(args: argparse.Namespace) -> list[str]:
         )
     if args.profile == "release" and bag_count != len(bag_values):
         errors.append("release suite requires real-rosbag inputs")
+    if (args.derived_path_bag is None) != (
+        args.dataset_materialization is None
+    ):
+        errors.append(
+            "--derived-path-bag and --dataset-materialization "
+            "must be supplied together"
+        )
     if args.multi_gpu_run and args.multi_gpu_devices:
         errors.append("--multi-gpu-run and --multi-gpu-devices are exclusive")
     if args.profile == "release" and not (
@@ -286,6 +306,16 @@ def main() -> int:
         "git_commit": commit,
         "required_modes": required_modes,
         "bag": str(args.bag.resolve()) if args.bag else None,
+        "derived_path_bag": (
+            str(args.derived_path_bag.resolve())
+            if args.derived_path_bag
+            else None
+        ),
+        "dataset_materialization": (
+            str(args.dataset_materialization.resolve())
+            if args.dataset_materialization
+            else None
+        ),
         "evaluation_db": (
             str(args.evaluation_db.resolve()) if args.evaluation_db else None
         ),

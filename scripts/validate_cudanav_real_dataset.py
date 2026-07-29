@@ -125,8 +125,11 @@ def evaluate_materialization(
     source_meta = evidence.get("source_metadata", {})
     derived_meta = evidence.get("derived_path_metadata", {})
     provenance = evidence.get("provenance", {})
+    generator = evidence.get("generator_report", {})
     recorded = spec["recorded_inputs"]
     path = spec["path_derivation"]
+    input_samples = generator.get("input_samples")
+    output_poses = generator.get("output_poses")
     checks = {
         "materialization_schema": evidence.get("schema_version") == 1,
         "materialization_mode": evidence.get("evidence_mode") == EVIDENCE_MODE,
@@ -175,7 +178,34 @@ def evaluate_materialization(
             and provenance.get("recorded_path") is False
             and provenance.get("closed_loop") is False
         ),
+        "generator_report_bound": (
+            isinstance(generator, dict)
+            and bool(SHA256.fullmatch(str(generator.get("sha256", ""))))
+            and generator.get("schema_version") == 1
+            and generator.get("algorithm") == path["algorithm"]
+            and generator.get("source_topic") == path["source_topic"]
+            and generator.get("output_topic") == path["output_topic"]
+            and generator.get("parameters") == path["parameters"]
+            and isinstance(input_samples, int)
+            and isinstance(output_poses, int)
+            and input_samples >= output_poses >= 2
+            and generator.get("frame_id") == "odom"
+            and generator.get("recorded_path") is False
+            and generator.get("closed_loop") is False
+        ),
+        "generator_report_content": False,
     }
+    try:
+        report_path = Path(generator["source"]).resolve()
+        report_payload = read_json(report_path)
+        checks["generator_report_content"] = (
+            report_path.is_file()
+            and sha256_file(report_path) == generator["sha256"]
+            and all(generator.get(key) == value for key, value in report_payload.items())
+            and set(generator) == set(report_payload) | {"source", "sha256"}
+        )
+    except (KeyError, OSError, TypeError):
+        pass
     if verify_source:
         for label, identity in (("source", source), ("derived", derived)):
             try:
