@@ -130,6 +130,21 @@
           "path": "docs/cudanav_real_dataset.json",
           "normalization": "text_lf",
           "sha256": "016f18dcd552097567749ca84c6feb788eaa68951caead1bd6f5ce6bed48ccb6"
+        },
+        {
+          "path": ".github/workflows/ros2_cuda_mppi.yml",
+          "normalization": "text_lf",
+          "sha256": "3ef2eaf8a7e025a8295f04aeda2d0f4a4d0799a1b79e94d5b8ebcdc900339160"
+        },
+        {
+          "path": "scripts/cudanav_ros_ci_evidence.py",
+          "normalization": "text_lf",
+          "sha256": "c061d3a5364a706e81e52f378e2fd4fb780eba5d574452be2197eb399cf9b4f9"
+        },
+        {
+          "path": "scripts/test_derive_cudanav_path_sidecar_ros.py",
+          "normalization": "text_lf",
+          "sha256": "a9b3aead03604f46e4ddaf4eeb1c9310aa40fb6428d56e510e2121c3f1e25ef6"
         }
       ]
     },

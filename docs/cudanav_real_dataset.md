@@ -57,3 +57,8 @@ Cloud header timestamps are paired to the nearest real CUDA MPPI diagnostics
 command within 200 ms; at least 90% of valid clouds must pair. This replaces
 the LaserScan-only evaluator for this dataset without claiming that commands
 altered the recorded vehicle motion.
+
+The ROS 2 Jazzy workflow also builds an actual MCAP Path sidecar from a
+synthetic DB3, reopens it with `ros2 bag info`, and reruns the materialization
+validator. Its attestation cannot pass unless the
+`derived_path_sidecar_roundtrip` check ran successfully.
