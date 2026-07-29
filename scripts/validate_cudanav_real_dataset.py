@@ -151,12 +151,13 @@ def evaluate_materialization(
     derived_meta = evidence.get("derived_path_metadata", {})
     provenance = evidence.get("provenance", {})
     generator = evidence.get("generator_report", {})
+    inspection = evidence.get("acquisition_inspection", {})
     recorded = spec["recorded_inputs"]
     path = spec["path_derivation"]
     input_samples = generator.get("input_samples")
     output_poses = generator.get("output_poses")
     checks = {
-        "materialization_schema": evidence.get("schema_version") == 1,
+        "materialization_schema": evidence.get("schema_version") == 2,
         "materialization_mode": evidence.get("evidence_mode") == EVIDENCE_MODE,
         "dataset_id_matches": evidence.get("dataset_id") == spec["dataset_id"],
         "spec_content_bound": (
@@ -219,6 +220,8 @@ def evaluate_materialization(
             and generator.get("closed_loop") is False
         ),
         "generator_report_content": False,
+        "acquisition_inspection_bound": False,
+        "acquisition_inspection_content": False,
     }
     try:
         report_path = Path(generator["source"]).resolve()
@@ -230,6 +233,60 @@ def evaluate_materialization(
             and set(generator) == set(report_payload) | {"source", "sha256"}
         )
     except (KeyError, OSError, TypeError):
+        pass
+    try:
+        inspection_path = Path(inspection["source"]).resolve()
+        inspection_payload = read_json(inspection_path)
+        database = inspection["database"]
+        database_path = Path(database["source"]).resolve()
+        source_root = Path(source["source"]).resolve()
+        database_relative = database_path.relative_to(source_root).as_posix()
+        required_checks = inspection["required_topic_checks"]
+        acquisition = inspection["acquisition"]
+        inspection_topics = inspection["topics"]
+        checks["acquisition_inspection_bound"] = (
+            inspection.get("schema_version") == 1
+            and inspection.get("dataset_id") == spec["dataset_id"]
+            and inspection.get("dataset_spec", {}).get("sha256")
+            == sha256_file(spec_path)
+            and acquisition.get("method") == spec["acquisition"]["method"]
+            and acquisition.get("file_id") == spec["acquisition"]["file_id"]
+            and acquisition.get("expected_database")
+            == spec["acquisition"]["expected_database"]
+            and database_path.name == spec["acquisition"]["expected_database"]
+            and isinstance(database.get("bytes"), int)
+            and database["bytes"] > 0
+            and bool(SHA256.fullmatch(str(database.get("sha256", ""))))
+            and any(
+                entry.get("path") == database_relative
+                and entry.get("sha256") == database["sha256"]
+                and entry.get("bytes") == database["bytes"]
+                for entry in source["files"]
+                if isinstance(entry, dict)
+            )
+            and isinstance(required_checks, dict)
+            and set(required_checks) == set(spec["recorded_inputs"])
+            and all(value is True for value in required_checks.values())
+            and all(
+                _topic_matches(
+                    inspection_topics,
+                    contract["topic"],
+                    contract["type"],
+                )
+                for contract in spec["recorded_inputs"].values()
+            )
+            and inspection.get("passed") is True
+        )
+        checks["acquisition_inspection_content"] = (
+            inspection_path.is_file()
+            and sha256_file(inspection_path) == inspection["sha256"]
+            and all(
+                inspection.get(key) == value
+                for key, value in inspection_payload.items()
+            )
+            and set(inspection) == set(inspection_payload) | {"source", "sha256"}
+        )
+    except (KeyError, OSError, TypeError, ValueError):
         pass
     if verify_source:
         for label, identity in (("source", source), ("derived", derived)):

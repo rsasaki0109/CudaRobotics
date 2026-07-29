@@ -54,6 +54,7 @@ python3 scripts/derive_cudanav_path_sidecar.py \
     build/datasets/cudanav_istanbul/rosbag2_2024_09_11-17_53_54_0.db3 \
   --output-bag build/cudanav_real_dataset/path_sidecar \
   --report build/cudanav_real_dataset/path_generator.json \
+  --acquisition-report build/datasets/cudanav_istanbul/inspection.json \
   --materialization build/cudanav_real_dataset/materialization.json
 
 python3 scripts/validate_cudanav_real_dataset.py \
@@ -61,10 +62,12 @@ python3 scripts/validate_cudanav_real_dataset.py \
 ```
 
 The materialization gate requires positive message counts for every selected
-recorded input and for the derived Path. It rehashes both local bag trees and
-the generator report by default. The actual public-bag GPU shadow replay
-remains outstanding; the selection alone is intentionally
-`valid: true, ready: false`.
+recorded input and for the derived Path. It rehashes both local bag trees, the
+generator report, and the acquisition inspection by default. The inspection
+binds the selected Drive file ID, exact DB name/size/SHA-256, required-topic
+checks, and dataset-spec digest to the source-bag identity. The actual
+public-bag GPU shadow replay remains outstanding; the selection alone is
+intentionally `valid: true, ready: false`.
 
 For the quality gate, the dependency-free decoder reads PointCloud2 fields by
 name and datatype. It measures horizontal clearance inside the declared

@@ -9,11 +9,16 @@ import tempfile
 import unittest
 
 from cudanav_real_dataset import DEFAULT_SPEC, make_materialization, read_json
+from cudanav_rosbag_evidence import sha256_file
 from run_cudanav_rosbag_replay import play_argv
 from validate_cudanav_real_dataset import evaluate, evaluate_materialization
 
 
-def write_bag(root: Path, topics: list[tuple[str, str, int]]) -> Path:
+def write_bag(
+    root: Path,
+    topics: list[tuple[str, str, int]],
+    database_name: str = "data.db3",
+) -> Path:
     root.mkdir(parents=True)
     lines = ["rosbag2_bagfile_information:", "  topics_with_message_count:"]
     for name, message_type, count in topics:
@@ -26,7 +31,7 @@ def write_bag(root: Path, topics: list[tuple[str, str, int]]) -> Path:
             ]
         )
     (root / "metadata.yaml").write_text("\n".join(lines) + "\n")
-    (root / "data.db3").write_bytes(b"fixture rosbag content")
+    (root / database_name).write_bytes(b"fixture rosbag content")
     return root
 
 
@@ -48,6 +53,47 @@ def write_report(root: Path, spec: dict, input_samples: int = 5) -> Path:
                 "frame_id": "odom",
                 "recorded_path": False,
                 "closed_loop": False,
+            }
+        )
+        + "\n"
+    )
+    return path
+
+
+def write_inspection(source: Path, spec: dict) -> Path:
+    database = source / spec["acquisition"]["expected_database"]
+    topics = {
+        contract["topic"]: {"type": contract["type"], "count": 5}
+        for contract in spec["recorded_inputs"].values()
+    }
+    path = source / "inspection.json"
+    path.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "dataset_id": spec["dataset_id"],
+                "inspected_at": "2026-07-29T00:00:00+00:00",
+                "dataset_spec": {
+                    "path": str(DEFAULT_SPEC.resolve()),
+                    "sha256": sha256_file(DEFAULT_SPEC),
+                },
+                "acquisition": {
+                    "method": spec["acquisition"]["method"],
+                    "file_id": spec["acquisition"]["file_id"],
+                    "expected_database": spec["acquisition"][
+                        "expected_database"
+                    ],
+                },
+                "database": {
+                    "source": str(database.resolve()),
+                    "bytes": database.stat().st_size,
+                    "sha256": sha256_file(database),
+                },
+                "topics": topics,
+                "required_topic_checks": {
+                    name: True for name in spec["recorded_inputs"]
+                },
+                "passed": True,
             }
         )
         + "\n"
@@ -95,6 +141,7 @@ class CudaNavRealDatasetTest(unittest.TestCase):
                     (entry["topic"], entry["type"], 5)
                     for entry in spec["recorded_inputs"].values()
                 ],
+                spec["acquisition"]["expected_database"],
             )
             path = spec["path_derivation"]
             derived = write_bag(
@@ -105,7 +152,11 @@ class CudaNavRealDatasetTest(unittest.TestCase):
             evidence_path.write_text(
                 json.dumps(
                     make_materialization(
-                        DEFAULT_SPEC, source, derived, write_report(root, spec)
+                        DEFAULT_SPEC,
+                        source,
+                        derived,
+                        write_report(root, spec),
+                        write_inspection(source, spec),
                     ),
                     indent=2,
                 )
@@ -125,6 +176,7 @@ class CudaNavRealDatasetTest(unittest.TestCase):
                     (entry["topic"], entry["type"], 5)
                     for entry in spec["recorded_inputs"].values()
                 ],
+                spec["acquisition"]["expected_database"],
             )
             path = spec["path_derivation"]
             derived = write_bag(
@@ -132,7 +184,11 @@ class CudaNavRealDatasetTest(unittest.TestCase):
                 [(path["output_topic"], path["output_type"], 0)],
             )
             evidence = make_materialization(
-                DEFAULT_SPEC, source, derived, write_report(root, spec)
+                DEFAULT_SPEC,
+                source,
+                derived,
+                write_report(root, spec),
+                write_inspection(source, spec),
             )
             evidence["provenance"]["closed_loop"] = True
             checks = evaluate_materialization(
@@ -151,6 +207,7 @@ class CudaNavRealDatasetTest(unittest.TestCase):
                     (entry["topic"], entry["type"], 5)
                     for entry in spec["recorded_inputs"].values()
                 ],
+                spec["acquisition"]["expected_database"],
             )
             path = spec["path_derivation"]
             derived = write_bag(
@@ -158,7 +215,11 @@ class CudaNavRealDatasetTest(unittest.TestCase):
                 [(path["output_topic"], path["output_type"], 2)],
             )
             evidence = make_materialization(
-                DEFAULT_SPEC, source, derived, write_report(root, spec)
+                DEFAULT_SPEC,
+                source,
+                derived,
+                write_report(root, spec),
+                write_inspection(source, spec),
             )
             evidence["source_metadata"]["sha256"] = "0" * 64
             checks = evaluate_materialization(
@@ -176,6 +237,7 @@ class CudaNavRealDatasetTest(unittest.TestCase):
                     (entry["topic"], entry["type"], 5)
                     for entry in spec["recorded_inputs"].values()
                 ],
+                spec["acquisition"]["expected_database"],
             )
             path = spec["path_derivation"]
             derived = write_bag(
@@ -183,13 +245,48 @@ class CudaNavRealDatasetTest(unittest.TestCase):
                 [(path["output_topic"], path["output_type"], 2)],
             )
             evidence = make_materialization(
-                DEFAULT_SPEC, source, derived, write_report(root, spec)
+                DEFAULT_SPEC,
+                source,
+                derived,
+                write_report(root, spec),
+                write_inspection(source, spec),
             )
             evidence["generator_report"]["output_poses"] = 3
             checks = evaluate_materialization(
                 spec, DEFAULT_SPEC.resolve(), evidence
             )
             self.assertFalse(checks["generator_report_content"])
+
+    def test_acquisition_database_digest_cannot_be_relabelled(self) -> None:
+        spec = read_json(DEFAULT_SPEC)
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = write_bag(
+                root / "source",
+                [
+                    (entry["topic"], entry["type"], 5)
+                    for entry in spec["recorded_inputs"].values()
+                ],
+                spec["acquisition"]["expected_database"],
+            )
+            path = spec["path_derivation"]
+            derived = write_bag(
+                root / "derived",
+                [(path["output_topic"], path["output_type"], 2)],
+            )
+            evidence = make_materialization(
+                DEFAULT_SPEC,
+                source,
+                derived,
+                write_report(root, spec),
+                write_inspection(source, spec),
+            )
+            evidence["acquisition_inspection"]["database"]["sha256"] = "0" * 64
+            checks = evaluate_materialization(
+                spec, DEFAULT_SPEC.resolve(), evidence
+            )
+            self.assertFalse(checks["acquisition_inspection_bound"])
+            self.assertFalse(checks["acquisition_inspection_content"])
 
     def test_spec_cannot_call_derived_path_recorded(self) -> None:
         spec = deepcopy(read_json(DEFAULT_SPEC))
