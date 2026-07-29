@@ -1,6 +1,7 @@
 name: Python package
 
 on:
+  workflow_dispatch:
   push:
     branches: [master]
     paths:
@@ -11,6 +12,9 @@ on:
       - "include/cuda_mppi_controller/**"
       - "include/cuda_check.cuh"
       - ".github/workflows/python-package.yml"
+      - "scripts/release_ci_evidence.py"
+      - "scripts/validate_release_ci.py"
+      - "scripts/test_release_ci_evidence.py"
   pull_request:
     branches: [master]
     paths:
@@ -21,6 +25,9 @@ on:
       - "include/cuda_mppi_controller/**"
       - "include/cuda_check.cuh"
       - ".github/workflows/python-package.yml"
+      - "scripts/release_ci_evidence.py"
+      - "scripts/validate_release_ci.py"
+      - "scripts/test_release_ci_evidence.py"
 
 jobs:
   build-and-test:
@@ -67,7 +74,9 @@ jobs:
           path: python/dist/*
 
   cibuildwheel:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'push' && github.ref == 'refs/heads/master')
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
@@ -97,3 +106,46 @@ jobs:
         with:
           name: cudarobotics-manylinux-wheels
           path: wheelhouse/*
+
+  release-evidence:
+    if: >-
+      always() &&
+      (github.event_name == 'workflow_dispatch' ||
+       (github.event_name == 'push' && github.ref == 'refs/heads/master'))
+    needs: [build-and-test, cibuildwheel]
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Require every package job
+        env:
+          BUILD_TEST_RESULT: ${{ needs.build-and-test.result }}
+          CIBUILDWHEEL_RESULT: ${{ needs.cibuildwheel.result }}
+        run: |
+          test "$BUILD_TEST_RESULT" = success
+          test "$CIBUILDWHEEL_RESULT" = success
+
+      - uses: actions/checkout@v4
+
+      - name: Create commit-bound Python package evidence
+        run: |
+          test -z "$(git status --porcelain)"
+          python scripts/release_ci_evidence.py \
+            --output python_package_ci_evidence.json \
+            --gate python_manylinux_wheels \
+            --workflow "$GITHUB_WORKFLOW" \
+            --check python_3_10_3_12_build_test \
+            --check sdist_and_native_wheel \
+            --check manylinux_cp310_cp312 \
+            --check artifacts_uploaded \
+            --artifact cudarobotics-wheels \
+            --artifact cudarobotics-manylinux-wheels
+          python scripts/validate_release_ci.py \
+            python_package_ci_evidence.json \
+            --gate python_manylinux_wheels \
+            --commit "$GITHUB_SHA"
+
+      - name: Upload commit-bound Python package evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-package-ci-evidence-${{ github.sha }}
+          path: python_package_ci_evidence.json
+          if-no-files-found: error
