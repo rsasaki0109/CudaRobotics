@@ -15,6 +15,7 @@ import sys
 
 from cudanav_multi_gpu import evaluate_multi_gpu_suite
 from cudanav_evidence import evaluate_manifest, evaluate_summary
+from run_cudanav_gpu_closed_loop import evaluate_result as evaluate_native_result
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -23,6 +24,11 @@ ROOT = Path(__file__).resolve().parents[1]
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--output-dir", type=Path, required=True)
+    parser.add_argument(
+        "--evidence-kind",
+        choices=("ros2-smoke", "native-release"),
+        default="ros2-smoke",
+    )
     parser.add_argument(
         "--devices",
         default="all",
@@ -89,12 +95,61 @@ def output_is_ignored(path: Path) -> bool:
     return result.returncode == 0
 
 
-def load_import(path: Path) -> tuple[dict, dict[str, str]]:
+def load_import(
+    path: Path, evidence_kind: str
+) -> tuple[dict, dict[str, str]]:
     source = path.resolve()
     manifest_path = source / "manifest.json"
     if not manifest_path.is_file():
         raise ValueError(f"missing imported manifest: {manifest_path}")
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    if evidence_kind == "native-release":
+        artifacts = manifest.get("artifacts", {})
+        result_entry = artifacts.get("result", {})
+        result_path = source / str(result_entry.get("path", ""))
+        try:
+            result = json.loads(result_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as error:
+            raise ValueError(f"invalid imported native result: {source}") from error
+        checks = manifest.get("checks")
+        native_checks = evaluate_native_result(result, "release")
+        result_binding = (
+            result_path.is_file()
+            and result_path.resolve().is_relative_to(source)
+            and result_entry.get("bytes") == result_path.stat().st_size
+            and result_entry.get("sha256")
+            == hashlib.sha256(result_path.read_bytes()).hexdigest()
+        )
+        valid = (
+            manifest.get("profile") == "release"
+            and manifest.get("git_dirty") is False
+            and isinstance(checks, dict)
+            and bool(checks)
+            and all(checks.values())
+            and all(native_checks.values())
+            and result_binding
+        )
+        if not valid:
+            raise ValueError(
+                f"imported run failed native release validation ({source})"
+            )
+        gpu = manifest.get("gpu_identity")
+        required = ("physical_index", "name", "uuid")
+        if not isinstance(gpu, dict) or not all(
+            isinstance(gpu.get(field), str) and gpu[field]
+            for field in required
+        ):
+            raise ValueError(
+                f"imported run has incomplete GPU identity: {source}"
+            )
+        if result.get("gpu", {}).get("name") != gpu["name"]:
+            raise ValueError(f"imported run GPU identity mismatch: {source}")
+        return manifest, {
+            "index": gpu["physical_index"],
+            "name": gpu["name"],
+            "uuid": gpu["uuid"],
+            "driver_version": str(gpu.get("driver_version", "")),
+        }
     manifest_gate = evaluate_manifest(manifest, source, "smoke")
     artifacts = manifest.get("artifacts", {})
     summary_path = (source / str(artifacts.get("summary", ""))).resolve()
@@ -153,8 +208,12 @@ def import_suite(
     *,
     minimum_gpu_devices: int,
     minimum_gpu_models: int,
+    evidence_kind: str = "ros2-smoke",
 ) -> dict:
-    loaded = [(source.resolve(), *load_import(source)) for source in sources]
+    loaded = [
+        (source.resolve(), *load_import(source, evidence_kind))
+        for source in sources
+    ]
     by_uuid: dict[str, list[tuple[Path, dict, dict[str, str]]]] = {}
     for item in loaded:
         by_uuid.setdefault(item[2]["uuid"], []).append(item)
@@ -167,7 +226,8 @@ def import_suite(
     devices = [items[0][2] for _, items in sorted(by_uuid.items())]
     suite = {
         "schema_version": 1,
-        "profile": "smoke",
+        "profile": "release" if evidence_kind == "native-release" else "smoke",
+        "evidence_kind": evidence_kind.replace("-", "_"),
         "started_at": datetime.now(timezone.utc).isoformat(),
         "collection_mode": "cross_machine_import",
         "devices": devices,
@@ -192,8 +252,16 @@ def import_suite(
                     "driver_log": None,
                     "command": ["import", str(source)],
                     "returncode": 0,
-                    "source_git_commit": manifest.get("git_commit"),
-                    "source_config_sha256": manifest.get("config_sha256"),
+                    "source_git_commit": manifest.get(
+                        "source_commit"
+                        if evidence_kind == "native-release"
+                        else "git_commit"
+                    ),
+                    "source_config_sha256": manifest.get(
+                        "source_digest"
+                        if evidence_kind == "native-release"
+                        else "config_sha256"
+                    ),
                     "manifest_sha256": hashlib.sha256(
                         copied_manifest.read_bytes()
                     ).hexdigest(),
@@ -230,6 +298,7 @@ def main() -> int:
                 output_dir,
                 minimum_gpu_devices=args.minimum_gpu_devices,
                 minimum_gpu_models=args.minimum_gpu_models,
+                evidence_kind=args.evidence_kind,
             )
         except (OSError, ValueError, json.JSONDecodeError) as error:
             raise SystemExit(str(error)) from error
@@ -258,7 +327,10 @@ def main() -> int:
         raise SystemExit("no NVIDIA devices selected")
     suite = {
         "schema_version": 1,
-        "profile": "smoke",
+        "profile": (
+            "release" if args.evidence_kind == "native-release" else "smoke"
+        ),
+        "evidence_kind": args.evidence_kind.replace("-", "_"),
         "started_at": datetime.now(timezone.utc).isoformat(),
         "devices": selected,
         "repetitions": args.repetitions,
@@ -271,28 +343,46 @@ def main() -> int:
             relative = Path(f"gpu_{gpu['index']}") / f"run_{repetition:02d}"
             run_directory = output_dir / relative
             driver_log = output_dir / f"gpu_{gpu['index']}_run_{repetition:02d}.log"
-            command = [
-                sys.executable,
-                str(ROOT / "scripts" / "run_cudanav_closed_loop.py"),
-                "--output-dir",
-                str(run_directory),
-                "--profile",
-                "smoke",
-                "--timeout-sec",
-                str(args.timeout_sec),
-            ]
+            if args.evidence_kind == "native-release":
+                command = [
+                    sys.executable,
+                    str(ROOT / "scripts" / "run_cudanav_gpu_closed_loop.py"),
+                    "--output-dir",
+                    str(run_directory),
+                    "--profile",
+                    "release",
+                ]
+            else:
+                command = [
+                    sys.executable,
+                    str(ROOT / "scripts" / "run_cudanav_closed_loop.py"),
+                    "--output-dir",
+                    str(run_directory),
+                    "--profile",
+                    "smoke",
+                    "--timeout-sec",
+                    str(args.timeout_sec),
+                ]
             environment = os.environ.copy()
             environment["CUDA_VISIBLE_DEVICES"] = gpu["index"]
             with driver_log.open("w", encoding="utf-8") as log:
-                result = subprocess.run(
-                    command,
-                    cwd=ROOT,
-                    env=environment,
-                    stdout=log,
-                    stderr=subprocess.STDOUT,
-                    text=True,
-                    check=False,
-                )
+                try:
+                    result = subprocess.run(
+                        command,
+                        cwd=ROOT,
+                        env=environment,
+                        stdout=log,
+                        stderr=subprocess.STDOUT,
+                        text=True,
+                        check=False,
+                        timeout=args.timeout_sec,
+                    )
+                    returncode = result.returncode
+                except subprocess.TimeoutExpired:
+                    log.write(
+                        f"\nchild exceeded timeout {args.timeout_sec} sec\n"
+                    )
+                    returncode = 124
             suite["runs"].append(
                 {
                     "device": gpu,
@@ -300,7 +390,7 @@ def main() -> int:
                     "directory": relative.as_posix(),
                     "driver_log": driver_log.name,
                     "command": command,
-                    "returncode": result.returncode,
+                    "returncode": returncode,
                     "manifest_sha256": (
                         hashlib.sha256(
                             (run_directory / "manifest.json").read_bytes()

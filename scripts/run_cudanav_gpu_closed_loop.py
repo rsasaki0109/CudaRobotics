@@ -94,6 +94,51 @@ def git_commit() -> str:
     ).strip()
 
 
+def active_gpu_identity() -> dict[str, str]:
+    completed = subprocess.run(
+        [
+            "nvidia-smi",
+            "--query-gpu=index,name,uuid,driver_version",
+            "--format=csv,noheader,nounits",
+        ],
+        text=True,
+        capture_output=True,
+        check=False,
+        timeout=15.0,
+    )
+    if completed.returncode:
+        raise RuntimeError(f"nvidia-smi failed: {completed.stderr.strip()}")
+    devices = []
+    for line in completed.stdout.splitlines():
+        fields = [field.strip() for field in line.split(",")]
+        if len(fields) == 4:
+            devices.append(
+                {
+                    "physical_index": fields[0],
+                    "name": fields[1],
+                    "uuid": fields[2],
+                    "driver_version": fields[3],
+                }
+            )
+    if not devices:
+        raise RuntimeError("nvidia-smi returned no physical GPUs")
+    visible = os.environ.get("CUDA_VISIBLE_DEVICES", "").strip()
+    selector = visible.split(",", 1)[0].strip() if visible else "0"
+    selected = next(
+        (
+            device
+            for device in devices
+            if selector in {device["physical_index"], device["uuid"]}
+        ),
+        None,
+    )
+    if selected is None:
+        raise RuntimeError(
+            f"CUDA_VISIBLE_DEVICES selector {selector!r} has no nvidia-smi match"
+        )
+    return selected
+
+
 def source_digest() -> str:
     digest = hashlib.sha256()
     for relative in CONTRACT_SOURCES:
@@ -198,6 +243,7 @@ def portable_evidence(manifest: dict[str, Any]) -> dict[str, Any]:
         "scenario": SCENARIO,
         "stages": STAGES,
         "claims": CLAIMS,
+        "gpu_identity": manifest["gpu_identity"],
         "profile": manifest["profile"],
         "thresholds": manifest["thresholds"],
         "metrics": manifest["result"],
@@ -273,6 +319,11 @@ def main() -> int:
     args = parser.parse_args()
     output = args.output_dir.resolve()
     output.mkdir(parents=True, exist_ok=True)
+    git_dirty = bool(
+        subprocess.check_output(
+            ["git", "status", "--porcelain"], cwd=ROOT, text=True
+        ).strip()
+    )
     runner = args.runner.resolve()
     if not runner.is_file():
         raise SystemExit(f"runner does not exist: {runner}")
@@ -305,7 +356,10 @@ def main() -> int:
             f"closed-loop runner failed ({completed.returncode}); see {log_path}"
         )
     result = json.loads(result_path.read_text(encoding="utf-8"))
+    gpu_identity = active_gpu_identity()
     checks = evaluate_result(result, args.profile, traversals)
+    checks["gpu_binding"] = result.get("gpu", {}).get("name") == gpu_identity["name"]
+    checks["clean_checkout"] = args.profile != "release" or not git_dirty
     checks["trajectory_rows"] = trajectory_rows(trajectory_path) == result["frames"]
     checks["source_commit"] = len(git_commit()) == 40
     artifacts = {
@@ -323,7 +377,9 @@ def main() -> int:
         "schema_version": 1,
         "profile": args.profile,
         "source_commit": git_commit(),
+        "git_dirty": git_dirty,
         "source_digest": source_digest(),
+        "gpu_identity": gpu_identity,
         "scenario": SCENARIO,
         "thresholds": thresholds,
         "result": result,
