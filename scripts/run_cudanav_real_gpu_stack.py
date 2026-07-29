@@ -18,7 +18,9 @@ from cudanav_rosbag_evidence import sha256_file
 from run_cudanav_kiss_icp_real import (
     admitted_database_matches,
     build_timing_admission_command,
+    dataset_contract_path,
     git_identity,
+    repository_relative,
     resolve_pointcloud_auxiliary_fields,
     sha256_text_lf,
     timing_admission_matches,
@@ -55,6 +57,7 @@ PROFILES = {
         "maximum_duration_s": 30.0,
         "maximum_frames": 300,
         "control_stride": 10,
+        "mppi_iteration_count": 2,
         "maximum_ate_rmse_m": 5.0,
         "maximum_final_drift_percent": 10.0,
         "minimum_inliers": 30,
@@ -72,6 +75,7 @@ PROFILES = {
         "maximum_duration_s": 120.0,
         "maximum_frames": 1200,
         "control_stride": 10,
+        "mppi_iteration_count": 2,
         "maximum_ate_rmse_m": 3.0,
         "maximum_final_drift_percent": 5.0,
         "minimum_inliers": 100,
@@ -102,6 +106,16 @@ CONTRACT_SOURCES = (
 )
 SHA256 = re.compile(r"[0-9a-f]{64}")
 COMMIT = re.compile(r"[0-9a-f]{40}")
+
+
+def portable_contract_sources(payload: dict[str, Any]) -> tuple[str, ...]:
+    base = (dataset_contract_path(payload), *CONTRACT_SOURCES[1:])
+    if payload.get("sequence_contract", {}).get("sequence_version") == 2:
+        return base + (
+            "scripts/inspect_pointcloud2_timing.py",
+            "scripts/run_cudanav_kiss_icp_real.py",
+        )
+    return base
 
 
 def artifact(path: Path, root: Path) -> dict[str, Any]:
@@ -165,6 +179,7 @@ def metrics_contract(result: dict[str, Any]) -> dict[str, Any]:
             "odometry_config",
             "mapping",
             "esdf",
+            "mppi_config",
             "mppi",
             "thresholds",
             "quality_pass",
@@ -260,6 +275,9 @@ def make_manifest(
             and result.get("esdf", {}).get("gpu_ms_p95", -1.0) >= 0.0
         ),
         "mppi": (
+            result.get("mppi_config", {}).get("iteration_count")
+            == expected["mppi_iteration_count"]
+            and
             result.get("mppi", {}).get("evaluations", 0)
             >= expected["minimum_control_evaluations"]
             and result.get("mppi", {}).get(
@@ -301,6 +319,7 @@ def make_manifest(
         "git_commit": git_commit,
         "git_dirty": False,
         "dataset_id": spec["dataset_id"],
+        "dataset_spec_path": repository_relative(spec_path),
         "dataset_spec_sha256": sha256_file(spec_path),
         "database": {
             "filename": database.name,
@@ -426,6 +445,7 @@ def make_portable_evidence(
     if not validation["valid"]:
         raise ValueError(json.dumps(validation, sort_keys=True))
     manifest = read_json(manifest_path)
+    contract_paths = portable_contract_sources(manifest)
     return {
         "schema_version": 1,
         "result_id": result_id,
@@ -434,6 +454,7 @@ def make_portable_evidence(
         "source_commit": manifest["git_commit"],
         "publisher_commit": publisher_commit,
         "dataset_id": manifest["dataset_id"],
+        "dataset_spec_path": contract_paths[0],
         "dataset_spec_sha256": manifest["dataset_spec_sha256"],
         "database": manifest["database"],
         "sequence_contract": manifest["sequence_contract"],
@@ -456,20 +477,7 @@ def make_portable_evidence(
                 "normalization": "text_lf",
                 "sha256": sha256_text_lf(ROOT / relative),
             }
-            for relative in (
-                CONTRACT_SOURCES
-                + (
-                    (
-                        "scripts/inspect_pointcloud2_timing.py",
-                        "scripts/run_cudanav_kiss_icp_real.py",
-                    )
-                    if manifest["sequence_contract"].get(
-                        "sequence_version"
-                    )
-                    == 2
-                    else ()
-                )
-            )
+            for relative in contract_paths
         ],
     }
 
@@ -483,14 +491,7 @@ def evaluate_portable_evidence(
     sources = payload.get("contract_sources")
     artifacts = payload.get("retained_artifacts")
     metrics = payload.get("metrics", {})
-    expected_contract_sources = CONTRACT_SOURCES + (
-        (
-            "scripts/inspect_pointcloud2_timing.py",
-            "scripts/run_cudanav_kiss_icp_real.py",
-        )
-        if payload.get("sequence_contract", {}).get("sequence_version") == 2
-        else ()
-    )
+    expected_contract_sources = portable_contract_sources(payload)
     timed_sequence = (
         payload.get("sequence_contract", {}).get("sequence_version") == 2
     )
@@ -549,6 +550,10 @@ def evaluate_portable_evidence(
             and metrics.get("esdf", {}).get("gpu_ms_p95", -1.0) >= 0.0
             and metrics.get("mppi", {}).get("evaluations", 0) > 0
             and metrics.get("mppi", {}).get("invalid_commands", 1) == 0
+            and metrics.get("mppi_config", {}).get("iteration_count")
+            == PROFILES.get(payload.get("profile"), {}).get(
+                "mppi_iteration_count"
+            )
         ),
         "timing_admission": (
             not timed_sequence

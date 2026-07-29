@@ -401,6 +401,11 @@ int main(int argc, char** argv) {
         mppi_params.batch_size = 2048;
         mppi_params.time_steps = 56;
         mppi_params.model_dt = 0.05f;
+        // A second iteration lets the nominal sequence adapt within the same
+        // control evaluation when the real reference path turns sharply.
+        // This keeps the release valid-rollout gate meaningful without
+        // lowering it for a single difficult map/path transition.
+        mppi_params.iteration_count = 2;
         mppi_params.v_max = 1.5f;
         mppi_params.v_min = 0.0f;
         mppi_params.costmap_weight = 5.0f;
@@ -721,6 +726,15 @@ int main(int argc, char** argv) {
              << "    \"footprint_clearing_radius_m\": 0.30,\n"
              << "    \"max_distance_m\": 2.0,\n"
              << "    \"gpu_ms_p95\": " << percentile(esdf_ms, 0.95) << "\n"
+             << "  },\n"
+             << "  \"mppi_config\": {\n"
+             << "    \"batch_size\": " << mppi_params.batch_size << ",\n"
+             << "    \"time_steps\": " << mppi_params.time_steps << ",\n"
+             << "    \"model_dt_s\": " << mppi_params.model_dt << ",\n"
+             << "    \"iteration_count\": " << mppi_params.iteration_count << ",\n"
+             << "    \"v_min_mps\": " << mppi_params.v_min << ",\n"
+             << "    \"v_max_mps\": " << mppi_params.v_max << ",\n"
+             << "    \"w_max_radps\": " << mppi_params.w_max << "\n"
              << "  },\n"
              << "  \"mppi\": {\n"
              << "    \"control_stride\": " << options.control_stride << ",\n"

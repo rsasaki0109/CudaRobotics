@@ -128,6 +128,15 @@ class CudaNavRealGpuStackTest(unittest.TestCase):
                 "max_distance_m": 2.0,
                 "gpu_ms_p95": 0.1,
             },
+            "mppi_config": {
+                "batch_size": 2048,
+                "time_steps": 56,
+                "model_dt_s": 0.05,
+                "iteration_count": 2,
+                "v_min_mps": 0.0,
+                "v_max_mps": 1.5,
+                "w_max_radps": 1.9,
+            },
             "mppi": {
                 "control_stride": 10,
                 "evaluations": 20,
