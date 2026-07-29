@@ -171,6 +171,16 @@ Path derivation, and content-addressed materialization. It does not by itself
 prove a GPU controller run; that requires `--run-autonomy` in a sourced ROS 2
 CUDA environment.
 
+The bag's only PointCloud2 topic is the already-downsampled
+`/localization/util/downsample/pointcloud`. Its schema contains scalar `x`,
+`y`, and `z` only; it has neither a per-point timestamp nor a ring field.
+Consequently this contract is deliberately `deskew_capable: false`. It may
+drive the version-1 GPU smoke harnesses, but it cannot satisfy the timed
+version-2 KISS-ICP or all-GPU-stack release gates. Release evidence must use a
+separately content-addressed raw PointCloud2 source whose dataset contract
+declares the actual time field and unit. The exporter validates every frame's
+field schema and timing span and never synthesizes timing from array order.
+
 The checked-in portable result is
 [`results/cudanav_istanbul_materialization_2026-07-29.md`](results/cudanav_istanbul_materialization_2026-07-29.md);
 its adjacent JSON is the machine-verifiable source.

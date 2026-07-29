@@ -17,7 +17,11 @@
   "recorded_inputs": {
     "pointcloud": {
       "topic": "/localization/util/downsample/pointcloud",
-      "type": "sensor_msgs/msg/PointCloud2"
+      "type": "sensor_msgs/msg/PointCloud2",
+      "point_time": null,
+      "ring": null,
+      "deskew_capable": false,
+      "field_note": "Recorded schema contains x/y/z only; release-profile deskew evidence requires a different raw PointCloud2 dataset with declared per-point time."
     },
     "odometry": {
       "topic": "/sensing/gnss/pose",

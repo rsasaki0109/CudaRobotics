@@ -49,6 +49,9 @@ struct Frame {
     std::uint64_t stamp_ns = 0;
     float reference[4]{};
     std::vector<float> xyz;
+    std::vector<float> point_times;
+    float scan_start_time_s = 0.0f;
+    float scan_end_time_s = 0.0f;
 };
 
 template <typename T>
@@ -59,7 +62,9 @@ T read_value(std::ifstream& stream) {
     return value;
 }
 
-std::vector<Frame> read_sequence(const std::string& path) {
+std::vector<Frame> read_sequence(
+    const std::string& path,
+    std::uint32_t& sequence_version) {
     std::ifstream input(path, std::ios::binary);
     if (!input) throw std::runtime_error("cannot open sequence");
     char magic[8]{};
@@ -69,8 +74,10 @@ std::vector<Frame> read_sequence(const std::string& path) {
         throw std::runtime_error("sequence magic mismatch");
     }
     const auto version = read_value<std::uint32_t>(input);
+    sequence_version = version;
     const auto frame_count = read_value<std::uint32_t>(input);
-    if (version != 1 || frame_count < 2 || frame_count > 100000) {
+    if ((version != 1 && version != 2) ||
+        frame_count < 2 || frame_count > 100000) {
         throw std::runtime_error("unsupported sequence header");
     }
     std::vector<Frame> frames;
@@ -86,9 +93,21 @@ std::vector<Frame> read_sequence(const std::string& path) {
             throw std::runtime_error("invalid sequence point count");
         }
         frame.xyz.resize(static_cast<std::size_t>(point_count) * 3u);
-        input.read(
-            reinterpret_cast<char*>(frame.xyz.data()),
-            static_cast<std::streamsize>(frame.xyz.size() * sizeof(float)));
+        if (version == 2) {
+            frame.scan_start_time_s = read_value<float>(input);
+            frame.scan_end_time_s = read_value<float>(input);
+            frame.point_times.resize(point_count);
+            for (std::uint32_t index = 0; index < point_count; ++index) {
+                frame.xyz[index * 3] = read_value<float>(input);
+                frame.xyz[index * 3 + 1] = read_value<float>(input);
+                frame.xyz[index * 3 + 2] = read_value<float>(input);
+                frame.point_times[index] = read_value<float>(input);
+            }
+        } else {
+            input.read(
+                reinterpret_cast<char*>(frame.xyz.data()),
+                static_cast<std::streamsize>(frame.xyz.size() * sizeof(float)));
+        }
         if (!input) throw std::runtime_error("truncated sequence point payload");
         frames.push_back(std::move(frame));
     }
@@ -336,7 +355,9 @@ Options parse_options(int argc, char** argv) {
 int main(int argc, char** argv) {
     try {
         const Options options = parse_options(argc, argv);
-        const std::vector<Frame> frames = read_sequence(options.sequence);
+        std::uint32_t sequence_version = 0;
+        const std::vector<Frame> frames =
+            read_sequence(options.sequence, sequence_version);
 
         int device = 0;
         int driver_version = 0;
@@ -421,6 +442,8 @@ int main(int argc, char** argv) {
         double final_error = 0.0;
         double maximum_abs_estimated_sensor_height = 0.0;
         std::size_t frames_with_integrated_rays = 0;
+        std::size_t deskewed_frames = 0;
+        std::vector<double> point_time_spans;
         float previous_estimated_x = 0.0f;
         float previous_estimated_y = 0.0f;
 
@@ -428,7 +451,19 @@ int main(int argc, char** argv) {
         for (std::size_t frame_index = 0; frame_index < frames.size(); ++frame_index) {
             const auto frame_start = std::chrono::steady_clock::now();
             const Frame& frame = frames[frame_index];
-            const auto odometry_result = odometry.register_scan(frame.xyz);
+            const auto odometry_result = frame.point_times.empty()
+                ? odometry.register_scan(frame.xyz)
+                : odometry.register_scan(
+                      frame.xyz.data(),
+                      frame.xyz.size() / 3,
+                      frame.point_times.data(),
+                      frame.scan_start_time_s,
+                      frame.scan_end_time_s);
+            if (odometry_result.deskewed) {
+                ++deskewed_frames;
+                point_time_spans.push_back(
+                    odometry_result.point_time_span_s);
+            }
             const auto& pose = odometry_result.pose;
             const double dx = pose.t[0] - frame.reference[0];
             const double dy = pose.t[1] - frame.reference[1];
@@ -453,8 +488,12 @@ int main(int argc, char** argv) {
                 maximum_abs_estimated_sensor_height,
                 std::fabs(static_cast<double>(pose.t[2])));
 
+            const std::vector<float>& mapping_scan =
+                odometry_result.deskewed_xyz.empty()
+                    ? frame.xyz
+                    : odometry_result.deskewed_xyz;
             const std::vector<float> world =
-                transform_scan_navigation_height_frame(frame.xyz, pose);
+                transform_scan_navigation_height_frame(mapping_scan, pose);
             const float sensor_origin[3] = {pose.t[0], pose.t[1], 0.0f};
             const auto mapping = mapper.integrate_scan(world, sensor_origin);
             if (mapping.integrated_rays > 0) ++frames_with_integrated_rays;
@@ -619,7 +658,7 @@ int main(int argc, char** argv) {
         json << std::setprecision(10)
              << "{\n"
              << "  \"schema_version\": 1,\n"
-             << "  \"algorithm\": \"cudarobotics.real_gpu_stack_sequence.v1\",\n"
+             << "  \"algorithm\": \"cudarobotics.real_gpu_stack_sequence.v2\",\n"
              << "  \"sequence\": " << json_string(options.sequence) << ",\n"
              << "  \"trajectory_csv\": " << json_string(options.csv) << ",\n"
              << "  \"gpu\": {\n"
@@ -633,6 +672,13 @@ int main(int argc, char** argv) {
              << "  },\n"
              << "  \"stages\": [\"gpu_kiss_icp\", \"gpu_voxel_mapping\", "
                 "\"gpu_esdf\", \"cuda_mppi\"],\n"
+             << "  \"sequence_version\": " << sequence_version << ",\n"
+             << "  \"deskew\": {\n"
+             << "    \"frames\": " << deskewed_frames << ",\n"
+             << "    \"point_time_span_s_p95\": "
+             << percentile(point_time_spans, 0.95) << ",\n"
+             << "    \"gpu_ms\": " << odometry.timing().deskew_ms << "\n"
+             << "  },\n"
              << "  \"odometry_config\": {\n"
              << "    \"map_voxel_size_m\": " << kiss_config.map_voxel_size << ",\n"
              << "    \"scan_voxel_size_m\": " << kiss_config.scan_voxel_size << ",\n"

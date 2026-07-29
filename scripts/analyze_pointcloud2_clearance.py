@@ -17,6 +17,16 @@ import render_cuda_mppi_diagnostics
 
 FLOAT32 = 7
 FLOAT64 = 8
+POINT_FIELD_FORMATS = {
+    1: ("b", 1),
+    2: ("B", 1),
+    3: ("h", 2),
+    4: ("H", 2),
+    5: ("i", 4),
+    6: ("I", 4),
+    FLOAT32: ("f", 4),
+    FLOAT64: ("d", 8),
+}
 
 
 def uint8(reader: CdrReader) -> int:
@@ -75,27 +85,36 @@ def parse_pointcloud2(data: bytes) -> dict[str, Any]:
     }
 
 
-def xyz_points(cloud: dict[str, Any]):
+def point_field_values(
+    cloud: dict[str, Any],
+    field_names: tuple[str, ...],
+):
     endian = ">" if cloud["is_bigendian"] else "<"
-    formats = {
-        axis: ("f" if cloud["fields"][axis]["datatype"] == FLOAT32 else "d")
-        for axis in ("x", "y", "z")
-    }
+    layouts = []
+    for name in field_names:
+        field = cloud["fields"].get(name)
+        if field is None or field["count"] != 1:
+            raise ValueError(f"PointCloud2 requires scalar field: {name}")
+        layout = POINT_FIELD_FORMATS.get(field["datatype"])
+        if layout is None:
+            raise ValueError(f"PointCloud2 field has unsupported datatype: {name}")
+        fmt, size = layout
+        if field["offset"] + size > cloud["point_step"]:
+            raise ValueError(f"PointCloud2 field exceeds point_step: {name}")
+        layouts.append((field["offset"], fmt))
     for row in range(cloud["height"]):
         for column in range(cloud["width"]):
             base = row * cloud["row_step"] + column * cloud["point_step"]
-            values = []
-            for axis in ("x", "y", "z"):
-                field = cloud["fields"][axis]
-                values.append(
-                    struct.unpack_from(
-                        endian + formats[axis],
-                        cloud["data"],
-                        base + field["offset"],
-                    )[0]
-                )
-            if all(math.isfinite(value) for value in values):
-                yield tuple(values)
+            yield tuple(
+                struct.unpack_from(endian + fmt, cloud["data"], base + offset)[0]
+                for offset, fmt in layouts
+            )
+
+
+def xyz_points(cloud: dict[str, Any]):
+    for values in point_field_values(cloud, ("x", "y", "z")):
+        if all(math.isfinite(value) for value in values):
+            yield values
 
 
 def front_clearance(

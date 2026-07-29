@@ -15,7 +15,11 @@ from typing import Any
 
 from cudanav_real_dataset import read_json
 from cudanav_rosbag_evidence import sha256_file
-from run_cudanav_kiss_icp_real import git_identity, sha256_text_lf
+from run_cudanav_kiss_icp_real import (
+    git_identity,
+    resolve_pointcloud_auxiliary_fields,
+    sha256_text_lf,
+)
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -42,6 +46,7 @@ CLAIMS = {
 }
 PROFILES = {
     "smoke": {
+        "require_point_time": False,
         "start_offset_s": 1.0,
         "maximum_duration_s": 30.0,
         "maximum_frames": 300,
@@ -57,6 +62,7 @@ PROFILES = {
         "maximum_safety_stop_speed": 0.05,
     },
     "release": {
+        "require_point_time": True,
         "start_offset_s": 1.0,
         "maximum_duration_s": 120.0,
         "maximum_frames": 1200,
@@ -124,6 +130,10 @@ def sequence_contract(export_report: dict[str, Any]) -> dict[str, Any]:
             "mean_points",
             "maximum_points",
             "reference_path_length_m",
+            "sequence_version",
+            "point_fields",
+            "point_time",
+            "ring",
         )
     }
 
@@ -145,6 +155,8 @@ def metrics_contract(result: dict[str, Any]) -> dict[str, Any]:
             "yaw_error_p95_rad",
             "inliers_min",
             "nn_ms_p95",
+            "sequence_version",
+            "deskew",
             "odometry_config",
             "mapping",
             "esdf",
@@ -186,6 +198,20 @@ def make_manifest(
         "start_offset": export_report["start_offset_s"]
         == expected["start_offset_s"],
         "frames": result.get("frames") == export_report.get("frames"),
+        "point_time_contract": (
+            not expected["require_point_time"]
+            or (
+                export_report.get("sequence_version") == 2
+                and export_report.get("point_time", {}).get("present") is True
+                and export_report.get("point_time", {}).get(
+                    "frames_with_valid_span"
+                )
+                == result.get("frames")
+                and result.get("sequence_version") == 2
+                and result.get("deskew", {}).get("frames")
+                == result.get("frames")
+            )
+        ),
         "stages": result.get("stages") == STAGES,
         "gpu_identity": (
             isinstance(result.get("gpu"), dict)
@@ -622,9 +648,15 @@ def main() -> int:
     runner = args.runner.resolve()
     if not runner.is_file():
         raise SystemExit(f"GPU runner not found: {runner}")
-    output.mkdir(parents=True)
     spec = read_json(args.spec)
     profile = PROFILES[args.profile]
+    try:
+        point_time_contract, ring_contract = (
+            resolve_pointcloud_auxiliary_fields(spec, profile)
+        )
+    except ValueError as error:
+        raise SystemExit(str(error)) from error
+    output.mkdir(parents=True)
     sequence = output / "sequence.bin"
     export_json = output / "export.json"
     result_json = output / "result.json"
@@ -652,6 +684,21 @@ def main() -> int:
         "--maximum-frames",
         str(profile["maximum_frames"]),
     ]
+    if isinstance(point_time_contract, dict):
+        export_command.extend(
+            [
+                "--point-time-field",
+                point_time_contract["field"],
+                "--point-time-unit",
+                point_time_contract["unit"],
+            ]
+        )
+        if profile["require_point_time"]:
+            export_command.append("--require-point-time")
+    if isinstance(ring_contract, dict):
+        export_command.extend(["--ring-field", ring_contract["field"]])
+        if ring_contract.get("required", False):
+            export_command.append("--require-ring")
     subprocess.run(export_command, cwd=ROOT, check=True)
     runner_command = [
         str(runner),

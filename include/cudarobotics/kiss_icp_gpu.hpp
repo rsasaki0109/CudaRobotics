@@ -46,6 +46,7 @@ struct KissIcpAlignmentStats {
 };
 
 struct KissIcpTiming {
+    double deskew_ms = 0.0;
     double index_build_ms = 0.0;
     double map_upload_ms = 0.0;
     double map_normal_ms = 0.0;
@@ -58,6 +59,9 @@ struct KissIcpFrameResult {
     std::size_t sampled_points = 0;
     std::size_t map_points = 0;
     bool map_initialized = false;
+    bool deskewed = false;
+    float point_time_span_s = 0.0f;
+    std::vector<float> deskewed_xyz;
 };
 
 // Returns an empty string when the configuration is valid.
@@ -76,7 +80,20 @@ public:
 
     void reset(const KissIcpPose& initial_pose = KissIcpPose{});
     KissIcpFrameResult register_scan(const float* xyz, std::size_t point_count);
+    KissIcpFrameResult register_scan(
+        const float* xyz,
+        std::size_t point_count,
+        const float* point_times_seconds);
+    KissIcpFrameResult register_scan(
+        const float* xyz,
+        std::size_t point_count,
+        const float* point_times_seconds,
+        float scan_start_time_seconds,
+        float scan_end_time_seconds);
     KissIcpFrameResult register_scan(const std::vector<float>& xyz);
+    KissIcpFrameResult register_scan(
+        const std::vector<float>& xyz,
+        const std::vector<float>& point_times_seconds);
 
     const KissIcpConfig& config() const noexcept;
     const KissIcpPose& pose() const noexcept;

@@ -68,6 +68,21 @@ class CudaNavRealGpuStackTest(unittest.TestCase):
             "mean_points": 40.0,
             "maximum_points": 40,
             "reference_path_length_m": 1.0,
+            "sequence_version": 1,
+            "point_fields": {
+                "x": {"offset": 0, "datatype": 7, "count": 1},
+                "y": {"offset": 4, "datatype": 7, "count": 1},
+                "z": {"offset": 8, "datatype": 7, "count": 1},
+            },
+            "point_time": {
+                "present": False,
+                "field": None,
+                "unit": None,
+                "frames_with_valid_span": 0,
+                "minimum_span_s": None,
+                "p95_span_s": None,
+            },
+            "ring": {"present": False, "field": None},
         }
         result = {
             "frames": 2,
@@ -83,6 +98,12 @@ class CudaNavRealGpuStackTest(unittest.TestCase):
             "yaw_error_p95_rad": 0.01,
             "inliers_min": 100,
             "nn_ms_p95": 0.1,
+            "sequence_version": 1,
+            "deskew": {
+                "frames": 0,
+                "point_time_span_s_p95": 0.0,
+                "gpu_ms": 0.0,
+            },
             "odometry_config": {
                 "map_voxel_size_m": 0.35,
                 "scan_voxel_size_m": 0.22,

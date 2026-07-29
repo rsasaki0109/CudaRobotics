@@ -1,7 +1,7 @@
 {
   "algorithm": "sha256-text-lf",
   "schema_version": 1,
-  "source_digest": "4c56949ba56ad33f01512323175faf9b96929ddec3e9068d1010f0006248e6c9",
+  "source_digest": "4313bb4fbea274933fb710bd4e56138f531a5c03c636687f5760f18ee2292d02",
   "sources": {
     "CMakeLists.txt": "d661f49cf50e486b338f2f1b01f121189295824d722dd76e4f852044494ba1b0",
     "README.md": "82585990094db47a5f8733645dd63e87376e1d6fbb48bdcadee1cc69cbcf42ec",
@@ -11,7 +11,7 @@
     "core/include/cudarobotics/esdf_2d_gpu.hpp": "325ed5c8afd23a87eac668d80d70374af099d8ba472c566bf5bf5ca0ee97e782",
     "core/include/cudarobotics/fgr_gpu.hpp": "3216716f6d27d21f071b39db9002bad0afea21339575b9fef97660f5ebe42816",
     "core/include/cudarobotics/filterreg_gpu.hpp": "2d36917f9c9f433cde22944172b7cf106fa7a76583b0e4c9d72db863c069e78f",
-    "core/include/cudarobotics/kiss_icp_gpu.hpp": "d7abdc921536ff6283ee7fef0dee020aa6f28fdd69a305865e000df1332ee0f4",
+    "core/include/cudarobotics/kiss_icp_gpu.hpp": "cb5d094334c5050a01207c21a2ff16ca10de77d94d9730fcf31a19e2153d6575",
     "core/include/cudarobotics/robust_p2plane_gpu.hpp": "74af2a8c8b94866140ce68797a4c8aed64f78874e92fdae0e99bc79caab5e7c4",
     "core/include/cudarobotics/robust_treg_gpu.hpp": "78f1c434344f6281ca8b9cbb74544d14ee4d215ba9b4eb309b354cf58438aa60",
     "core/include/cudarobotics/sinkhorn_reg_gpu.hpp": "f384450bdc8878bc04478d78df97b5ac954e6f172294ede0ced8c142e0a8ffc8",
