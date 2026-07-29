@@ -116,14 +116,16 @@
     },
     {
       "id": "multi_gpu_reproduction",
-      "statement": "The closed-loop smoke gate reproduces from the same commit and configuration on at least two distinct physical GPU models.",
+      "statement": "The native 30-traversal closed-loop release reproduces from the same commit and source digest on at least two distinct physical GPU UUIDs and model names.",
       "submission_required": true,
-      "status": "planned",
+      "status": "partial",
       "evidence": [
+        "native_gpu_matrix_gtx1660ti_node",
+        "native_gpu_matrix_gtx1660ti_report",
         "multi_gpu_release"
       ],
       "limitations": [
-        "No two-model physical GPU matrix is currently attached."
+        "The NVIDIA GeForce GTX 1660 Ti node is complete and UUID-bound; a second distinct physical GPU model at the identical commit and source digest is still required."
       ]
     }
   ],
@@ -145,7 +147,7 @@
         {
           "path": "scripts/cudanav_multi_gpu.py",
           "normalization": "text_lf",
-          "sha256": "bec82f7b84f444e91e42d49bbcfc59fa4b0a1abc6182732a6d8ae652d58a04b3"
+          "sha256": "393cf042b199bf48fa5db5cc7e10e76a2d619fcfffecf58574c641886f14163d"
         },
         {
           "path": "scripts/cudanav_rosbag_evidence.py",
@@ -845,6 +847,104 @@
         "ros2_cuda_mppi.yml",
         "--ref",
         "PAPER_COMMIT"
+      ]
+    },
+    {
+      "id": "native_gpu_matrix_gtx1660ti_node",
+      "status": "complete",
+      "kind": "json_assertions",
+      "generator_command": [
+        "python3",
+        "scripts/run_cudanav_gpu_closed_loop.py",
+        "--profile",
+        "release",
+        "--output-dir",
+        "build/cudanav_multi_gpu/native_nodes/gtx1660ti_5bc4446",
+        "--publish-json",
+        "docs/results/cudanav_gpu_closed_loop_release_gtx1660ti_2026-07-29.json",
+        "--publish-markdown",
+        "docs/results/cudanav_gpu_closed_loop_release_gtx1660ti_2026-07-29.md"
+      ],
+      "artifacts": [
+        {
+          "path": "docs/results/cudanav_gpu_closed_loop_release_gtx1660ti_2026-07-29.json",
+          "normalization": "text_lf",
+          "sha256": "b2829b377e55bb41f611da23e90dd16d275f72e7661dbe344c4bdbbc9b1e58d8"
+        }
+      ],
+      "assertions": [
+        {
+          "json_path": "source_commit",
+          "op": "eq",
+          "value": "5bc4446a812097118dca830ae74c421d9fd24b13"
+        },
+        {
+          "json_path": "source_digest",
+          "op": "eq",
+          "value": "384ed3fa6419eb3b2ae9f84ad98cfc5237d047f7d03fedc98b731ce3362c8d0b"
+        },
+        {
+          "json_path": "gpu_identity.name",
+          "op": "eq",
+          "value": "NVIDIA GeForce GTX 1660 Ti"
+        },
+        {
+          "json_path": "gpu_identity.uuid",
+          "op": "eq",
+          "value": "GPU-f635286a-d68f-5039-cbc9-22d7f295b3a3"
+        },
+        {
+          "json_path": "checks.gpu_binding",
+          "op": "eq",
+          "value": true
+        },
+        {
+          "json_path": "checks.clean_checkout",
+          "op": "eq",
+          "value": true
+        },
+        {
+          "json_path": "metrics.traversals_completed",
+          "op": "eq",
+          "value": 30
+        },
+        {
+          "json_path": "metrics.simulated_duration_s",
+          "op": "ge",
+          "value": 600.0
+        },
+        {
+          "json_path": "metrics.collision_count",
+          "op": "eq",
+          "value": 0
+        },
+        {
+          "json_path": "metrics.quality_pass",
+          "op": "eq",
+          "value": true
+        }
+      ]
+    },
+    {
+      "id": "native_gpu_matrix_gtx1660ti_report",
+      "status": "complete",
+      "kind": "file_set",
+      "generator_command": [
+        "python3",
+        "scripts/run_cudanav_gpu_closed_loop.py",
+        "--profile",
+        "release",
+        "--output-dir",
+        "build/cudanav_multi_gpu/native_nodes/gtx1660ti_5bc4446",
+        "--publish-markdown",
+        "docs/results/cudanav_gpu_closed_loop_release_gtx1660ti_2026-07-29.md"
+      ],
+      "artifacts": [
+        {
+          "path": "docs/results/cudanav_gpu_closed_loop_release_gtx1660ti_2026-07-29.md",
+          "normalization": "text_lf",
+          "sha256": "e64b13298e5f38e29d47700fe1bfcd5a9fdb876a8a089fa2d7336446766ca6e0"
+        }
       ]
     },
     {
