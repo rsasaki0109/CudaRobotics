@@ -21,6 +21,7 @@ from export_cudanav_kiss_icp_sequence import (
 from run_cudanav_kiss_icp_real import (
     PROFILES,
     build_timing_admission_command,
+    dataset_contract_path,
     evaluate_manifest,
     evaluate_portable_evidence,
     make_manifest,
@@ -97,6 +98,29 @@ def sequence_database(path: Path, *, timed: bool = False) -> None:
 
 
 class CudaNavKissIcpRealTest(unittest.TestCase):
+    def test_dataset_contract_source_resolves_by_content(self) -> None:
+        contract = (
+            ROOT
+            / "docs"
+            / "cudanav_timed_dataset_mcd_ntu_day_02_materialized.json"
+        )
+        relative = contract.relative_to(ROOT).as_posix()
+        self.assertEqual(
+            dataset_contract_path(
+                {"dataset_spec_sha256": sha256_file(contract)}
+            ),
+            relative,
+        )
+        self.assertEqual(
+            dataset_contract_path(
+                {
+                    "dataset_spec_path": relative,
+                    "dataset_spec_sha256": sha256_file(contract),
+                }
+            ),
+            relative,
+        )
+
     def test_release_rejects_xyz_only_dataset_contract(self) -> None:
         spec = read_json(SMOKE_SPEC)
         with self.assertRaisesRegex(

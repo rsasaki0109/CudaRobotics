@@ -62,6 +62,43 @@ CONTRACT_SOURCES = (
 POINT_TIME_UNITS = {"seconds", "milliseconds", "microseconds", "nanoseconds"}
 
 
+def repository_relative(path: Path) -> str | None:
+    try:
+        return path.resolve().relative_to(ROOT.resolve()).as_posix()
+    except ValueError:
+        return None
+
+
+def dataset_contract_path(payload: dict[str, Any]) -> str:
+    declared = payload.get("dataset_spec_path")
+    expected_sha = str(payload.get("dataset_spec_sha256", ""))
+    if isinstance(declared, str) and declared:
+        candidate = ROOT / declared
+        if (
+            candidate.is_file()
+            and repository_relative(candidate) == declared
+            and sha256_file(candidate) == expected_sha
+        ):
+            return declared
+    matches = [
+        path
+        for path in (ROOT / "docs").rglob("*.json")
+        if sha256_file(path) == expected_sha
+    ]
+    if len(matches) == 1:
+        relative = repository_relative(matches[0])
+        assert relative is not None
+        return relative
+    return CONTRACT_SOURCES[0]
+
+
+def portable_contract_sources(payload: dict[str, Any]) -> tuple[str, ...]:
+    base = (dataset_contract_path(payload), *CONTRACT_SOURCES[1:])
+    if payload.get("sequence_contract", {}).get("sequence_version") == 2:
+        return base + ("scripts/inspect_pointcloud2_timing.py",)
+    return base
+
+
 def resolve_pointcloud_auxiliary_fields(
     spec: dict[str, Any], profile: dict[str, Any]
 ) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
@@ -391,6 +428,7 @@ def make_manifest(
         "git_commit": git_commit,
         "git_dirty": False,
         "dataset_id": spec["dataset_id"],
+        "dataset_spec_path": repository_relative(spec_path),
         "dataset_spec_sha256": sha256_file(spec_path),
         "database": {
             "filename": database.name,
@@ -583,6 +621,7 @@ def make_portable_evidence(
             + json.dumps(validation["checks"], sort_keys=True)
         )
     manifest = read_json(manifest_path)
+    contract_paths = portable_contract_sources(manifest)
     retained = {
         name: {
             "bytes": descriptor["bytes"],
@@ -601,6 +640,7 @@ def make_portable_evidence(
         "source_commit": manifest["git_commit"],
         "publisher_commit": publisher_commit,
         "dataset_id": manifest["dataset_id"],
+        "dataset_spec_path": contract_paths[0],
         "dataset_spec_sha256": manifest["dataset_spec_sha256"],
         "database": manifest["database"],
         "sequence_contract": manifest["sequence_contract"],
@@ -616,17 +656,7 @@ def make_portable_evidence(
                 "normalization": "text_lf",
                 "sha256": sha256_text_lf(ROOT / relative),
             }
-            for relative in (
-                CONTRACT_SOURCES
-                + (
-                    ("scripts/inspect_pointcloud2_timing.py",)
-                    if manifest["sequence_contract"].get(
-                        "sequence_version"
-                    )
-                    == 2
-                    else ()
-                )
-            )
+            for relative in contract_paths
         ],
     }
 
@@ -639,11 +669,7 @@ def evaluate_portable_evidence(
 ) -> dict[str, Any]:
     artifacts = payload.get("retained_artifacts")
     sources = payload.get("contract_sources")
-    expected_contract_sources = CONTRACT_SOURCES + (
-        ("scripts/inspect_pointcloud2_timing.py",)
-        if payload.get("sequence_contract", {}).get("sequence_version") == 2
-        else ()
-    )
+    expected_contract_sources = portable_contract_sources(payload)
     timed_sequence = (
         payload.get("sequence_contract", {}).get("sequence_version") == 2
     )
