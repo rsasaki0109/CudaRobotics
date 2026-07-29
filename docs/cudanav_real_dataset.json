@@ -4,10 +4,13 @@
   "status": "selected_unmaterialized",
   "canonical_documentation": "https://autowarefoundation.github.io/autoware-documentation/main/datasets/#istanbul-open-dataset",
   "acquisition": {
-    "method": "manual_google_drive",
-    "uri": "https://drive.google.com/drive/folders/17zXiBeYlM90gQ5hV6EAWaoBTnNFoVPML?usp=drive_link",
+    "method": "gdown_file",
+    "file_id": "1uta5Xr_ftV4jERxPNVqooDvWerK0dn89",
+    "uri": "https://drive.google.com/uc?id=1uta5Xr_ftV4jERxPNVqooDvWerK0dn89",
+    "collection_uri": "https://drive.google.com/drive/folders/17zXiBeYlM90gQ5hV6EAWaoBTnNFoVPML?usp=drive_link",
+    "expected_database": "rosbag2_2024_09_11-17_53_54_0.db3",
     "redistribution_authorized": false,
-    "note": "Download one ROS 2 bag from the official folder. Do not mirror it in release artifacts without separate permission."
+    "note": "Download the raw urban-evaluation ROS 2 bag. Do not mirror it in release artifacts without separate permission."
   },
   "recorded_inputs": {
     "pointcloud": {
