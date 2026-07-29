@@ -219,6 +219,12 @@ class CudaNavRealDatasetTest(unittest.TestCase):
             read_json(SMOKE_SPEC)["dataset_id"],
             "autoware_istanbul_localization_smoke",
         )
+        self.assertEqual(
+            read_json(SMOKE_SPEC)["acquisition"][
+                "expected_database_sha256"
+            ],
+            "eb80d649a41fd557ff3af5df4424051191fb696d0ebecbeb36b385702d2b4c8d",
+        )
 
     def test_materialization_binds_real_inputs_and_derived_path(self) -> None:
         spec = read_json(DEFAULT_SPEC)
@@ -312,6 +318,7 @@ class CudaNavRealDatasetTest(unittest.TestCase):
                 spec, SMOKE_SPEC.resolve(), evidence
             )
             self.assertTrue(checks["derived_sqlite_path_semantics"], checks)
+            self.assertFalse(checks["source_database_contract"])
 
             database = derived / "path_sidecar_0.db3"
             connection = sqlite3.connect(database)

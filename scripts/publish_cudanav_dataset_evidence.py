@@ -36,6 +36,7 @@ REQUIRED_VALIDATION_CHECKS = {
     "generator_report_content",
     "provenance_bound",
     "source_content_unchanged",
+    "source_database_contract",
     "source_identity",
     "spec_content_bound",
 }
@@ -78,12 +79,17 @@ def make_portable_evidence(
     *,
     result_id: str,
     git_commit: str,
+    verify_source: bool = True,
 ) -> dict[str, Any]:
     spec_path = spec_path.resolve()
     materialization_path = materialization_path.resolve()
     spec = read_json(spec_path)
     materialization = read_json(materialization_path)
-    validation = evaluate(spec_path, materialization_path)
+    validation = evaluate(
+        spec_path,
+        materialization_path,
+        verify_source=verify_source,
+    )
     if not validation["ready"]:
         raise ValueError(
             "dataset materialization is not ready: "

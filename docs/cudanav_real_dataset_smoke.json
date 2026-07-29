@@ -10,6 +10,7 @@
     "uri": "https://drive.google.com/uc?id=1yEB5j74gPLLbkkf87cuCxUgHXTkgSZbn",
     "expected_database": "rosbag2_2024_09_12-14_59_58_0.db3",
     "expected_database_bytes": 1009799168,
+    "expected_database_sha256": "eb80d649a41fd557ff3af5df4424051191fb696d0ebecbeb36b385702d2b4c8d",
     "redistribution_authorized": false,
     "note": "Localization-only Istanbul evaluation bag. This is a smaller real-data smoke input and is not the current full raw mapping-kit bag."
   },
