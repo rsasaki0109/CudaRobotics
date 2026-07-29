@@ -145,8 +145,10 @@ jobs:
           set -eo pipefail
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends wget ca-certificates gnupg
-          wget -q https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2404/x86_64/cuda-keyring_1.1-1_all.deb
-          sudo dpkg -i cuda-keyring_1.1-1_all.deb
+          CUDA_KEYRING_DEB=/tmp/cudarobotics-cuda-keyring_1.1-1_all.deb
+          wget -q https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2404/x86_64/cuda-keyring_1.1-1_all.deb \
+            -O "$CUDA_KEYRING_DEB"
+          sudo dpkg -i "$CUDA_KEYRING_DEB"
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             cuda-nvcc-12-6 \
@@ -235,9 +237,8 @@ jobs:
         shell: bash
         run: |
           set -eo pipefail
-          git status --short
-          test -z "$(git status --porcelain --untracked-files=no)"
-          CUDA_COMPILER=$(/usr/local/cuda-12.6/bin/nvcc --version | tail -n 1)
+          test -z "$(git status --porcelain)"
+          CUDA_COMPILER=$(/usr/local/cuda-12.6/bin/nvcc --version | grep -m1 release)
           python scripts/cudanav_ros_ci_evidence.py \
             --output build/ros_jazzy_ci_evidence.json \
             --runner-image ubuntu-24.04 \
