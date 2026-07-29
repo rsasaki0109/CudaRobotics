@@ -23,6 +23,40 @@ def read_json(path: Path) -> dict[str, Any]:
     return value
 
 
+def resolve_materialization_spec(
+    evidence: dict[str, Any],
+) -> tuple[Path, dict[str, Any]]:
+    descriptor = evidence.get("dataset_spec", {})
+    expected_sha = descriptor.get("sha256")
+    dataset_id = evidence.get("dataset_id")
+    candidates: list[Path] = []
+    source = descriptor.get("path")
+    if isinstance(source, str) and source:
+        candidates.append(Path(source).resolve())
+    candidates.extend(
+        path.resolve()
+        for path in sorted((ROOT / "docs").glob("cudanav_real_dataset*.json"))
+    )
+    seen: set[Path] = set()
+    for path in candidates:
+        if path in seen or not path.is_file():
+            continue
+        seen.add(path)
+        try:
+            payload = read_json(path)
+        except (OSError, ValueError, json.JSONDecodeError):
+            continue
+        if (
+            payload.get("dataset_id") == dataset_id
+            and sha256_file(path) == expected_sha
+        ):
+            return path, payload
+    raise ValueError(
+        f"cannot resolve content-bound dataset spec for {dataset_id}: "
+        f"{expected_sha}"
+    )
+
+
 def metadata_path(bag: Path) -> Path:
     root = bag.resolve()
     candidates = [root / "metadata.yaml"] if root.is_dir() else []
@@ -106,6 +140,7 @@ def make_materialization(
         "provenance": {
             "source_tree_sha256": source_identity["tree_sha256"],
             "source_topic": path_contract["source_topic"],
+            "source_type": path_contract["source_type"],
             "output_topic": path_contract["output_topic"],
             "output_type": path_contract["output_type"],
             "algorithm": path_contract["algorithm"],

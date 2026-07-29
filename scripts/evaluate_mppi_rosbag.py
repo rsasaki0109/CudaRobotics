@@ -208,8 +208,12 @@ def recorded_sensor_motion(
 ) -> dict[str, object]:
     connection = sqlite3.connect(f"file:{db.as_posix()}?mode=ro", uri=True)
     try:
+        message_type = export_rosbag_motion.topic_type(
+            connection, odometry_topic
+        )
+        parser = export_rosbag_motion.pose_parser(message_type)
         odometry = [
-            export_rosbag_motion.parse_odometry(payload)
+            parser(payload)
             for _, payload in export_rosbag_motion.messages(
                 connection, odometry_topic
             )
@@ -226,16 +230,34 @@ def recorded_sensor_motion(
         math.hypot(float(b["x"]) - float(a["x"]), float(b["y"]) - float(a["y"]))
         for a, b in zip(odometry, odometry[1:])
     )
-    speeds = [
-        math.hypot(float(row["linear_x"]), float(row["linear_y"]))
-        for row in odometry
-    ]
+    if all("linear_x" in row and "linear_y" in row for row in odometry):
+        speeds = [
+            math.hypot(float(row["linear_x"]), float(row["linear_y"]))
+            for row in odometry
+        ]
+    else:
+        speeds = []
+        for first, second in zip(odometry, odometry[1:]):
+            elapsed = (
+                int(second["stamp_ns"]) - int(first["stamp_ns"])
+            ) / 1e9
+            if elapsed > 0.0:
+                speeds.append(
+                    math.hypot(
+                        float(second["x"]) - float(first["x"]),
+                        float(second["y"]) - float(first["y"]),
+                    )
+                    / elapsed
+                )
+        if not speeds:
+            raise ValueError("recorded pose stamps do not advance")
     command_speeds = [
         math.hypot(row["cmd_v"], row["cmd_vy"]) for row in commands
     ]
     return {
         "database": str(db),
         "odometry_topic": odometry_topic,
+        "odometry_type": message_type,
         "command_topic": "cuda_mppi_diagnostics_csv",
         "command_samples": len(commands),
         "odometry_samples": len(odometry),

@@ -89,27 +89,27 @@
         {
           "path": "scripts/cudanav_rosbag_evidence.py",
           "normalization": "text_lf",
-          "sha256": "f80c605a31c6d0678d3412d8450565448c94d2bc4084d0bb1ebd7fa8a514d9ec"
+          "sha256": "fdea1d9792f6fa4b1cf36d76862f92b0d3873af3bebb36803bb605b0592fbd82"
         },
         {
           "path": "scripts/cudanav_real_dataset.py",
           "normalization": "text_lf",
-          "sha256": "d2d521ee438e1437ac67144a50e4512e1755127bc04d7c8bc981523153ecf39d"
+          "sha256": "95008afe79666e2a139f2ce44411c48e2c383bc957740e16105e07cbfcd75d2f"
         },
         {
           "path": "scripts/validate_cudanav_real_dataset.py",
           "normalization": "text_lf",
-          "sha256": "03d85f2e04242a2f1ac06a6bc50acb1944761a4a3205a4f4eaf75e88abb16e0d"
+          "sha256": "f9cf768bab2fd0a4cd0c80ddd901397971cd10653b0f05a87fa989daf2f26f09"
         },
         {
           "path": "scripts/derive_cudanav_path_sidecar.py",
           "normalization": "text_lf",
-          "sha256": "d1d607013541ad59bd1f9829d5ef2e6c89087592932ff5d63c3ae5648a101506"
+          "sha256": "f0590f3cf8f430ac60674dc8fdd08800e13e7538ad6e147432619e34a41bb754"
         },
         {
           "path": "scripts/run_cudanav_rosbag_replay.py",
           "normalization": "text_lf",
-          "sha256": "a92addc40d8739daed601d2d3b34316bc8d292309d56ee27826a73aae82f8726"
+          "sha256": "aad02a13909adc0b16db04322e204b70741192974020b37e6dd010c173e386c0"
         },
         {
           "path": "scripts/analyze_pointcloud2_clearance.py",
@@ -119,7 +119,7 @@
         {
           "path": "scripts/evaluate_mppi_rosbag.py",
           "normalization": "text_lf",
-          "sha256": "8c7fa0def93b2d5f02f72998c5662e5ccc9f51734a2bcd67d80d87f4a8247d5e"
+          "sha256": "3d336b97993837f3e9c3a2ffc71ed63e695540fda8eda4dace6b8c747b4df451"
         },
         {
           "path": "scripts/run_autonomy_suite.py",
@@ -129,12 +129,17 @@
         {
           "path": "docs/cudanav_real_dataset.json",
           "normalization": "text_lf",
-          "sha256": "71469e169173f69061482d2a32203a20082023edeb94c07c90ba122769111e8e"
+          "sha256": "8f8b0a8f8bb25490ec38fc9f5750b42ec08f95de6887c289721659f830540234"
+        },
+        {
+          "path": "docs/cudanav_real_dataset_smoke.json",
+          "normalization": "text_lf",
+          "sha256": "d1637ebc56445935acc18de4701cf067449ab78534690e97aa209bfb0e897248"
         },
         {
           "path": ".github/workflows/ros2_cuda_mppi.yml",
           "normalization": "text_lf",
-          "sha256": "5e2d3933c5e4761e15446baef2b240646e712b02f9d20661ceb9fc4c0db47399"
+          "sha256": "a17b19eddd47b9d48a0b4917fe0146c75bee307324f7be2207989b74e64698db"
         },
         {
           "path": "scripts/cudanav_ros_ci_evidence.py",
@@ -149,12 +154,17 @@
         {
           "path": "scripts/prepare_cudanav_istanbul_dataset.py",
           "normalization": "text_lf",
-          "sha256": "6ef9e5d7092f7a902fe9c089175aa36be595dfb15063eabe93d361ce5d616d22"
+          "sha256": "67e824a359e9c7993eb6d7ce1243fce542638d88b6e6e3e9d2b9c10826d2f6cd"
         },
         {
           "path": "scripts/run_cudanav_real_dataset_pipeline.py",
           "normalization": "text_lf",
-          "sha256": "67afe2469c8126e146389a2699b0c979aac8d4835eb0d4b1a97984b058b479f6"
+          "sha256": "250f49634630f538e554047f0166c8ea5d297e86ce7e93430e1a48809eea7cf1"
+        },
+        {
+          "path": "scripts/export_rosbag_motion.py",
+          "normalization": "text_lf",
+          "sha256": "c4657e64720f0197c741a8732e4c11aa0625f5b06c2a95dc62269ca6ee7e48bf"
         }
       ]
     },

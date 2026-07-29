@@ -490,6 +490,7 @@ class CudaNavAutonomySuiteTest(unittest.TestCase):
                         "schema_version": 1,
                         "algorithm": contract["algorithm"],
                         "source_topic": contract["source_topic"],
+                        "source_type": contract["source_type"],
                         "output_topic": contract["output_topic"],
                         "parameters": contract["parameters"],
                         "input_samples": 5,

@@ -8,10 +8,18 @@ from pathlib import Path
 import tempfile
 import unittest
 
-from cudanav_real_dataset import DEFAULT_SPEC, make_materialization, read_json
+from cudanav_real_dataset import (
+    DEFAULT_SPEC,
+    make_materialization,
+    read_json,
+    resolve_materialization_spec,
+)
 from cudanav_rosbag_evidence import sha256_file
 from run_cudanav_rosbag_replay import play_argv
 from validate_cudanav_real_dataset import evaluate, evaluate_materialization
+
+
+SMOKE_SPEC = DEFAULT_SPEC.with_name("cudanav_real_dataset_smoke.json")
 
 
 def write_bag(
@@ -44,6 +52,7 @@ def write_report(root: Path, spec: dict, input_samples: int = 5) -> Path:
                 "schema_version": 1,
                 "algorithm": contract["algorithm"],
                 "source_topic": contract["source_topic"],
+                "source_type": contract["source_type"],
                 "output_topic": contract["output_topic"],
                 "parameters": contract["parameters"],
                 "input_samples": input_samples,
@@ -163,6 +172,15 @@ class CudaNavRealDatasetTest(unittest.TestCase):
         self.assertTrue(result["valid"], result)
         self.assertFalse(result["ready"])
         self.assertEqual(result["status"], "selected_unmaterialized")
+
+    def test_smaller_localization_smoke_spec_is_distinct_and_valid(self) -> None:
+        result = evaluate(SMOKE_SPEC)
+        self.assertTrue(result["valid"], result)
+        self.assertFalse(result["ready"])
+        self.assertEqual(
+            read_json(SMOKE_SPEC)["dataset_id"],
+            "autoware_istanbul_localization_smoke",
+        )
 
     def test_materialization_binds_real_inputs_and_derived_path(self) -> None:
         spec = read_json(DEFAULT_SPEC)
@@ -330,6 +348,19 @@ class CudaNavRealDatasetTest(unittest.TestCase):
             result = evaluate(path)
             self.assertFalse(result["valid"])
             self.assertFalse(result["checks"]["claims_are_shadow_only"])
+
+    def test_content_hash_resolves_checked_in_spec_after_path_moves(self) -> None:
+        spec = read_json(DEFAULT_SPEC)
+        evidence = {
+            "dataset_id": spec["dataset_id"],
+            "dataset_spec": {
+                "path": "/unavailable/original/checkout/spec.json",
+                "sha256": sha256_file(DEFAULT_SPEC),
+            },
+        }
+        path, payload = resolve_materialization_spec(evidence)
+        self.assertEqual(path, DEFAULT_SPEC.resolve())
+        self.assertEqual(payload["dataset_id"], spec["dataset_id"])
 
 
 if __name__ == "__main__":
