@@ -5,7 +5,11 @@ from __future__ import annotations
 from copy import deepcopy
 import unittest
 
-from v1_support_matrix import evaluate, load
+from v1_support_matrix import (
+    attestations_share_release_commit,
+    evaluate,
+    load,
+)
 
 
 class V1SupportMatrixTest(unittest.TestCase):
@@ -42,6 +46,38 @@ class V1SupportMatrixTest(unittest.TestCase):
     def test_current_colab_master_link_is_not_release_ready(self) -> None:
         result = evaluate(load())
         self.assertFalse(result["readiness"]["colab_target_ref"])
+
+    def test_legacy_inline_readiness_self_report_is_rejected(self) -> None:
+        matrix = deepcopy(load())
+        matrix["release_readiness"]["quickstart_15_minute_evidence"] = {
+            "status": "passed",
+            "version": "1.0.0",
+            "git_commit": "a" * 40,
+        }
+        result = evaluate(matrix)
+        self.assertFalse(result["readiness"]["quickstart_evidence"])
+        self.assertFalse(
+            result["attestations"]["quickstart_15_minute_evidence"][
+                "checks"
+            ]["reference_schema"]
+        )
+
+    def test_release_attestations_must_share_one_commit(self) -> None:
+        gates = {
+            key: {"passed": True, "git_commit": "a" * 40}
+            for key in (
+                "quickstart_15_minute_evidence",
+                "cudanav_release_evidence",
+                "docker_gpu_evidence",
+                "documentation_deployment",
+            )
+        }
+        self.assertTrue(attestations_share_release_commit(gates))
+        gates["docker_gpu_evidence"]["git_commit"] = "b" * 40
+        self.assertFalse(attestations_share_release_commit(gates))
+        gates["docker_gpu_evidence"]["git_commit"] = "a" * 40
+        gates["documentation_deployment"]["passed"] = False
+        self.assertFalse(attestations_share_release_commit(gates))
 
 
 if __name__ == "__main__":

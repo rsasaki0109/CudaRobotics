@@ -49,6 +49,26 @@ the clone/build/run logs, Docker image ID, GPU/driver identity, support matrix,
 and CudaNav JSON/log. Missing Docker or NVIDIA tooling is an unavailable gate,
 not a skipped pass.
 
+## Release attestation references
+
+The four `release_readiness` evidence fields are not inline pass/fail claims.
+At release freeze, each must be a reference with exactly:
+
+```json
+{
+  "path": "docs/results/<v1-attestation>.json",
+  "sha256": "<64 lowercase hex characters>"
+}
+```
+
+The validator reopens and hashes each referenced file, requires its declared
+mode, clean 40-character commit, `v1.0.0` version and tag, upstream payload
+hash, successful validator checks, and mode-specific details. The four modes
+cover the fresh-clone 15-minute run, CudaNav ROS 2 systems release, published
+GPU container, and deployed documentation. They must all identify one release
+commit. A legacy inline object containing only `status`, `version`, and
+`git_commit` is rejected.
+
 At release freeze, require every readiness field:
 
 ```bash

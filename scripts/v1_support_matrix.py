@@ -9,6 +9,8 @@ import re
 from typing import Any
 import xml.etree.ElementTree as ET
 
+from v1_release_attestation import MODES, load_reference
+
 
 ROOT = Path(__file__).resolve().parents[1]
 MATRIX_PATH = ROOT / "docs" / "v1_support_matrix.json"
@@ -54,23 +56,13 @@ def ros_versions() -> dict[str, str]:
     return versions
 
 
-def evidence_passed(value: Any, target_version: str) -> bool:
-    return (
-        isinstance(value, dict)
-        and value.get("status") == "passed"
-        and value.get("version") == target_version
-        and bool(re.fullmatch(r"[0-9a-f]{40}", str(value.get("git_commit", ""))))
-    )
-
-
-def quickstart_evidence_passed(value: Any, target_version: str) -> bool:
-    return (
-        evidence_passed(value, target_version)
-        and isinstance(value.get("duration_seconds"), (int, float))
-        and 0 < value["duration_seconds"] <= 900
-        and value.get("surface") == "docker_source"
-        and value.get("result") == "out/cudanav_closed_loop.json"
-    )
+def attestations_share_release_commit(
+    gates: dict[str, dict[str, Any]],
+) -> bool:
+    passed = [gate for gate in gates.values() if gate.get("passed") is True]
+    return len(passed) == len(MODES) and len(
+        {gate.get("git_commit") for gate in passed}
+    ) == 1
 
 
 def evaluate(matrix: dict[str, Any]) -> dict[str, Any]:
@@ -163,23 +155,37 @@ def evaluate(matrix: dict[str, Any]) -> dict[str, Any]:
         and "v0.1.0 remains the latest published release"
         in read("docs/site/install.html"),
     }
+    target_tag = str(matrix.get("target_tag", ""))
+    attestation_gates = {
+        key: load_reference(
+            readiness.get(key),
+            repo_root=ROOT,
+            key=key,
+            target_version=str(target),
+            target_tag=target_tag,
+        )
+        for key in MODES
+    }
     readiness_checks = {
         "contract_valid": all(checks.values()),
         "release_status": matrix.get("status") == "release",
         "python_at_target": actual_python == target,
         "ros_at_target": set(actual_ros.values()) == {target},
         "published_target": readiness.get("published_version") == target,
-        "quickstart_evidence": quickstart_evidence_passed(
-            readiness.get("quickstart_15_minute_evidence"), str(target)
-        ),
-        "cudanav_release_evidence": evidence_passed(
-            readiness.get("cudanav_release_evidence"), str(target)
-        ),
-        "docker_gpu_evidence": evidence_passed(
-            readiness.get("docker_gpu_evidence"), str(target)
-        ),
-        "documentation_deployment": evidence_passed(
-            readiness.get("documentation_deployment"), str(target)
+        "quickstart_evidence": attestation_gates[
+            "quickstart_15_minute_evidence"
+        ]["passed"],
+        "cudanav_release_evidence": attestation_gates[
+            "cudanav_release_evidence"
+        ]["passed"],
+        "docker_gpu_evidence": attestation_gates[
+            "docker_gpu_evidence"
+        ]["passed"],
+        "documentation_deployment": attestation_gates[
+            "documentation_deployment"
+        ]["passed"],
+        "same_release_commit": attestations_share_release_commit(
+            attestation_gates
         ),
         "colab_target_ref": (
             f"/blob/{matrix.get('target_tag')}/"
@@ -191,6 +197,7 @@ def evaluate(matrix: dict[str, Any]) -> dict[str, Any]:
         "ready": all(readiness_checks.values()),
         "checks": checks,
         "readiness": readiness_checks,
+        "attestations": attestation_gates,
         "actual": {
             "python_version": actual_python,
             "ros_package_versions": actual_ros,
