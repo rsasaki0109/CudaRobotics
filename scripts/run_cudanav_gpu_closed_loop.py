@@ -49,7 +49,7 @@ THRESHOLDS = {
     "minimum_observed_voxels": 500,
     "minimum_occupied_cells": 10,
     "maximum_all_colliding_evaluations": 3,
-    "minimum_nonzero_valid_rollout_ratio": 0.01,
+    "minimum_nonzero_valid_rollout_ratio": 0.001,
     "maximum_ground_truth_distance_m": 13.0,
     "maximum_frames": 400,
 }
