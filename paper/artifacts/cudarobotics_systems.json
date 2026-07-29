@@ -418,22 +418,22 @@
         "python3",
         "scripts/run_cudanav_real_gpu_stack.py",
         "--validate-portable",
-        "docs/results/cudanav_all_gpu_mcd_ntu_day_02_2026-07-29.json",
+        "docs/results/cudanav_all_gpu_mcd_ntu_day_02_2026-07-30.json",
         "--commit",
-        "541a53d36f9dd600646ffcf921d06fab404d67f3"
+        "724d05caae07896a9ebab1a71980f0993f279335"
       ],
       "artifacts": [
         {
-          "path": "docs/results/cudanav_all_gpu_mcd_ntu_day_02_2026-07-29.json",
+          "path": "docs/results/cudanav_all_gpu_mcd_ntu_day_02_2026-07-30.json",
           "normalization": "text_lf",
-          "sha256": "c412a22f41647ba90ee87fc238da83b6394ee9b37d10c922598d7e7bb0ae04fa"
+          "sha256": "cca9c9e02075952ae55fc4a1e71a53e8b28ddd354ae032bec518c4c7b349d272"
         }
       ],
       "assertions": [
         {
           "json_path": "source_commit",
           "op": "eq",
-          "value": "541a53d36f9dd600646ffcf921d06fab404d67f3"
+          "value": "724d05caae07896a9ebab1a71980f0993f279335"
         },
         {
           "json_path": "profile",
@@ -464,6 +464,16 @@
           "json_path": "metrics.mapping.final_observed_voxels",
           "op": "ge",
           "value": 1000
+        },
+        {
+          "json_path": "metrics.ate_rmse_m",
+          "op": "lt",
+          "value": 3.0
+        },
+        {
+          "json_path": "metrics.final_drift_percent",
+          "op": "lt",
+          "value": 5.0
         },
         {
           "json_path": "metrics.esdf.gpu_ms_p95",
@@ -1148,15 +1158,74 @@
     },
     {
       "id": "ros_jazzy_ci",
-      "status": "pending",
+      "status": "complete",
       "kind": "json_assertions",
       "generator_command": [
         "gh",
-        "workflow",
         "run",
-        "ros2_cuda_mppi.yml",
-        "--ref",
-        "PAPER_COMMIT"
+        "download",
+        "30497894277",
+        "--name",
+        "ros-jazzy-ci-evidence-724d05caae07896a9ebab1a71980f0993f279335"
+      ],
+      "artifacts": [
+        {
+          "path": "docs/results/ros_jazzy_ci_724d05ca_2026-07-30.json",
+          "normalization": "text_lf",
+          "sha256": "e52e66aff349402895cc26ff6ce76e34013c3ec36908dcd7ee75e7c6de7e2921"
+        }
+      ],
+      "assertions": [
+        {
+          "json_path": "status",
+          "op": "eq",
+          "value": "passed"
+        },
+        {
+          "json_path": "git_commit",
+          "op": "eq",
+          "value": "724d05caae07896a9ebab1a71980f0993f279335"
+        },
+        {
+          "json_path": "git_dirty",
+          "op": "eq",
+          "value": false
+        },
+        {
+          "json_path": "ros.distro",
+          "op": "eq",
+          "value": "jazzy"
+        },
+        {
+          "json_path": "platform.image",
+          "op": "eq",
+          "value": "ubuntu-24.04"
+        },
+        {
+          "json_path": "cuda.toolkit",
+          "op": "eq",
+          "value": "12.6"
+        },
+        {
+          "json_path": "checks.controller_plugin_load",
+          "op": "eq",
+          "value": "passed"
+        },
+        {
+          "json_path": "checks.costmap_plugin_load",
+          "op": "eq",
+          "value": "passed"
+        },
+        {
+          "json_path": "checks.colcon_tests",
+          "op": "eq",
+          "value": "passed"
+        },
+        {
+          "json_path": "github.run_id",
+          "op": "eq",
+          "value": 30497894277
+        }
       ]
     },
     {
