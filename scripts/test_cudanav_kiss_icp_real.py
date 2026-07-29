@@ -188,23 +188,33 @@ class CudaNavKissIcpRealTest(unittest.TestCase):
             database = root / "timed.db3"
             sequence_database(database, timed=True)
             sequence = root / "timed.bin"
-            report = export_sequence(
+            arguments = {
+                "pointcloud_topic": "/points",
+                "pose_topic": "/pose",
+                "pose_type": "geometry_msgs/msg/PoseStamped",
+                "start_offset_s": 0.0,
+                "maximum_duration_s": 5.0,
+                "maximum_frames": 3,
+                "maximum_pose_age_ms": 1.0,
+                "minimum_range_m": 1.1,
+                "maximum_range_m": 2.6,
+                "point_time_field": "time",
+                "point_time_unit": "seconds",
+                "require_point_time": True,
+                "ring_field": "ring",
+                "require_ring": True,
+            }
+            report = export_sequence(database, sequence, **arguments)
+            fallback_sequence = root / "timed_fallback.bin"
+            fallback = export_sequence(
                 database,
-                sequence,
-                pointcloud_topic="/points",
-                pose_topic="/pose",
-                pose_type="geometry_msgs/msg/PoseStamped",
-                start_offset_s=0.0,
-                maximum_duration_s=5.0,
-                maximum_frames=3,
-                maximum_pose_age_ms=1.0,
-                minimum_range_m=1.1,
-                maximum_range_m=2.6,
-                point_time_field="time",
-                point_time_unit="seconds",
-                require_point_time=True,
-                ring_field="ring",
-                require_ring=True,
+                fallback_sequence,
+                numpy_acceleration=False,
+                **arguments,
+            )
+            self.assertEqual(sequence.read_bytes(), fallback_sequence.read_bytes())
+            self.assertEqual(
+                report["point_time"], fallback["point_time"]
             )
             self.assertEqual(report["sequence_version"], TIMED_VERSION)
             self.assertEqual(

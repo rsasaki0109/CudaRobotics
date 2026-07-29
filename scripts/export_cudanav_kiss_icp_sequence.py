@@ -86,6 +86,79 @@ def nearest_pose(
     return rows[selected], abs(stamps[selected] - stamp_ns)
 
 
+def numpy_timed_payload(
+    cloud: dict[str, Any],
+    point_time_field: str,
+    point_time_scale: float,
+    minimum_range_m: float,
+    maximum_range_m: float,
+) -> tuple[bytes, int, float] | None:
+    try:
+        import numpy as np
+    except ImportError:
+        return None
+
+    formats = {
+        1: "i1",
+        2: "u1",
+        3: "i2",
+        4: "u2",
+        5: "i4",
+        6: "u4",
+        7: "f4",
+        8: "f8",
+    }
+    prefix = ">" if cloud["is_bigendian"] else "<"
+
+    def values(name: str):
+        field = cloud["fields"].get(name)
+        if field is None or field["count"] != 1:
+            raise ValueError(f"PointCloud2 requires scalar field: {name}")
+        code = formats.get(field["datatype"])
+        if code is None:
+            raise ValueError(
+                f"PointCloud2 field has unsupported datatype: {name}"
+            )
+        dtype = np.dtype(prefix + code)
+        if field["offset"] + dtype.itemsize > cloud["point_step"]:
+            raise ValueError(f"PointCloud2 field exceeds point_step: {name}")
+        return np.ndarray(
+            shape=(cloud["height"], cloud["width"]),
+            dtype=dtype,
+            buffer=cloud["data"],
+            offset=field["offset"],
+            strides=(cloud["row_step"], cloud["point_step"]),
+        ).reshape(-1)
+
+    x = values("x").astype(np.float64)
+    y = values("y").astype(np.float64)
+    z = values("z").astype(np.float64)
+    point_times = values(point_time_field).astype(np.float64)
+    point_times *= point_time_scale
+    finite_times = np.isfinite(point_times)
+    if int(finite_times.sum()) < 2:
+        raise ValueError("selected frame has no valid point time span")
+    first_point_time = float(point_times[finite_times].min())
+    point_time_span_s = (
+        float(point_times[finite_times].max()) - first_point_time
+    )
+    finite_xyz = np.isfinite(x) & np.isfinite(y) & np.isfinite(z)
+    distance = np.sqrt(x * x + y * y + z * z)
+    selected = (
+        finite_times
+        & finite_xyz
+        & (distance >= minimum_range_m)
+        & (distance <= maximum_range_m)
+    )
+    count = int(selected.sum())
+    packed = np.empty((count, 4), dtype="<f4")
+    packed[:, 0] = x[selected]
+    packed[:, 1] = y[selected]
+    packed[:, 2] = z[selected]
+    packed[:, 3] = point_times[selected] - first_point_time
+    return packed.tobytes(order="C"), count, point_time_span_s
+
+
 def export_sequence(
     database: Path,
     output: Path,
@@ -104,6 +177,7 @@ def export_sequence(
     require_point_time: bool = False,
     ring_field: str | None = None,
     require_ring: bool = False,
+    numpy_acceleration: bool = True,
 ) -> dict[str, Any]:
     if start_offset_s < 0.0 or maximum_duration_s <= 0.0 or maximum_frames < 2:
         raise ValueError("duration and frame count limits must be positive")
@@ -177,47 +251,77 @@ def export_sequence(
                 xyz = []
                 point_times_s: list[float] = []
                 point_time_span_s: float | None = None
+                timed_payload: bytes | None = None
+                point_count = 0
                 if point_time_field:
                     scale = TIME_UNIT_SECONDS[point_time_unit]
-                    records = point_field_values(
-                        cloud, ("x", "y", "z", point_time_field)
-                    )
-                    selected = []
-                    frame_point_times_s = []
-                    for x, y, z, raw_time in records:
-                        point_time_s = float(raw_time) * scale
-                        if math.isfinite(point_time_s):
-                            frame_point_times_s.append(point_time_s)
-                        values = (float(x), float(y), float(z))
-                        if not all(math.isfinite(value) for value in values):
-                            continue
-                        distance = math.sqrt(x * x + y * y + z * z)
-                        if (
-                            math.isfinite(point_time_s)
-                            and minimum_range_m <= distance <= maximum_range_m
-                        ):
-                            selected.append(
-                                (float(x), float(y), float(z), point_time_s)
-                            )
-                    if len(frame_point_times_s) >= 2:
-                        first_point_time = min(frame_point_times_s)
-                        point_time_span_s = (
-                            max(frame_point_times_s) - first_point_time
+                    accelerated = (
+                        numpy_timed_payload(
+                            cloud,
+                            point_time_field,
+                            scale,
+                            minimum_range_m,
+                            maximum_range_m,
                         )
-                        for x, y, z, point_time in selected:
-                            xyz.extend((x, y, z))
-                            point_times_s.append(point_time - first_point_time)
-                        if not 1e-6 <= point_time_span_s <= 1.0:
-                            raise ValueError(
-                                "point time span must be in [1 us, 1 s]; "
-                                "check point_time_unit"
+                        if numpy_acceleration
+                        else None
+                    )
+                    if accelerated is not None:
+                        timed_payload, point_count, point_time_span_s = accelerated
+                    else:
+                        records = point_field_values(
+                            cloud, ("x", "y", "z", point_time_field)
+                        )
+                        selected = []
+                        frame_point_times_s = []
+                        for x, y, z, raw_time in records:
+                            point_time_s = float(raw_time) * scale
+                            if math.isfinite(point_time_s):
+                                frame_point_times_s.append(point_time_s)
+                            values = (float(x), float(y), float(z))
+                            if not all(math.isfinite(value) for value in values):
+                                continue
+                            distance = math.sqrt(x * x + y * y + z * z)
+                            if (
+                                math.isfinite(point_time_s)
+                                and minimum_range_m
+                                <= distance
+                                <= maximum_range_m
+                            ):
+                                selected.append(
+                                    (
+                                        float(x),
+                                        float(y),
+                                        float(z),
+                                        point_time_s,
+                                    )
+                                )
+                        if len(frame_point_times_s) >= 2:
+                            first_point_time = min(frame_point_times_s)
+                            point_time_span_s = (
+                                max(frame_point_times_s) - first_point_time
                             )
+                            for x, y, z, point_time in selected:
+                                xyz.extend((x, y, z))
+                                point_times_s.append(
+                                    point_time - first_point_time
+                                )
+                            point_count = len(selected)
+                    if (
+                        point_time_span_s is not None
+                        and not 1e-6 <= point_time_span_s <= 1.0
+                    ):
+                        raise ValueError(
+                            "point time span must be in [1 us, 1 s]; "
+                            "check point_time_unit"
+                        )
                 else:
                     for x, y, z in xyz_points(cloud):
                         distance = math.sqrt(x * x + y * y + z * z)
                         if minimum_range_m <= distance <= maximum_range_m:
                             xyz.extend((float(x), float(y), float(z)))
-                if len(xyz) < 30:
+                    point_count = len(xyz) // 3
+                if point_count < 10:
                     continue
                 if point_time_field:
                     if point_time_span_s is None:
@@ -233,28 +337,30 @@ def export_sequence(
                         "<QffffI",
                         stamp_ns,
                         *normalized,
-                        len(xyz) // 3,
+                        point_count,
                     )
                 )
                 if sequence_version == TIMED_VERSION:
                     stream.write(struct.pack("<ff", 0.0, point_time_span_s))
-                    timed_points = []
-                    for point_index, point_time in enumerate(point_times_s):
-                        timed_points.extend(
-                            (
-                                xyz[point_index * 3],
-                                xyz[point_index * 3 + 1],
-                                xyz[point_index * 3 + 2],
-                                point_time,
+                    if timed_payload is None:
+                        timed_points = []
+                        for point_index, point_time in enumerate(point_times_s):
+                            timed_points.extend(
+                                (
+                                    xyz[point_index * 3],
+                                    xyz[point_index * 3 + 1],
+                                    xyz[point_index * 3 + 2],
+                                    point_time,
+                                )
                             )
+                        timed_payload = struct.pack(
+                            f"<{len(timed_points)}f", *timed_points
                         )
-                    stream.write(
-                        struct.pack(f"<{len(timed_points)}f", *timed_points)
-                    )
+                    stream.write(timed_payload)
                 else:
                     stream.write(struct.pack(f"<{len(xyz)}f", *xyz))
                 pose_ages_ms.append(pose_age_ns / 1e6)
-                point_counts.append(len(xyz) // 3)
+                point_counts.append(point_count)
                 reference_xy.append((normalized[0], normalized[1]))
                 frame_count += 1
                 last_stamp = stamp_ns
