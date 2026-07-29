@@ -1,7 +1,7 @@
 # Contact-Rich Diff-MPPI Paper Plan
 
-Status: release evidence complete; artifact ledger ready; manuscript freeze
-remains.
+Status: release evidence complete; artifact ledger ready; submission narrative
+frozen and machine-checked.
 
 The machine-readable source of truth is
 [`artifacts/contact_rich_diff_mppi.json`](artifacts/contact_rich_diff_mppi.json).
@@ -38,10 +38,15 @@ not a standard manipulator benchmark or real-robot result. All frozen results
 were collected on one GTX 1660 Ti; independent-hardware replication remains
 desirable.
 
-## Remaining Submission Work
+## Remaining Submission Packaging
 
-1. Freeze the manuscript narrative around the generated results chapter.
-2. Generate final plots and tables only from the published CSVs.
+The authoritative Markdown submission draft is
+[`diff_mppi_submission_draft.md`](diff_mppi_submission_draft.md). Its title,
+claim/status table, frozen numerical boundaries, and local links are checked
+against the ready ledger in CTest.
+
+1. Convert the frozen Markdown narrative to the selected venue template.
+2. Generate final plots and camera-ready tables only from published CSVs.
 3. Add artifact URLs/DOIs and the final anonymized reproduction entry point.
 4. Run the full paper validation gate on the exact submission commit.
 

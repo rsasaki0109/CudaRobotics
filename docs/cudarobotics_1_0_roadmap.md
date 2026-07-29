@@ -39,8 +39,8 @@ explicit failure reporting across the complete loop.
 | Mapping | Rolling voxel map, exact typed ESDF, lifecycle nodes | ROS 2 Jazzy stream latency/correctness evidence |
 | Nav2 integration | Voxel costmap plugin, CUDA MPPI, deterministic closed-loop bringup; native GPU core passes 30 traversals / 1059.4 simulated seconds | Plugin-load CI and ROS 2 release-profile 10-minute GPU run with MCAP/video |
 | Reproducibility | Closed-loop, real-rosbag shadow, and multi-GPU manifest gates; GTX 1660 Ti native release node is UUID-bound | ROS release run, ROS real-bag run, and one additional physical GPU model at the same commit/digest |
-| Contact paper | Published 32,400-episode robustness, exact 10 ms matched-compute, and 3,150-episode closed-loop MuJoCo evidence | Submission freeze, narrative/table regeneration, and optional independent-hardware replication |
-| Papers | Contact-rich Diff-MPPI ledger is `ready: true`; systems ledger is machine-checked | Complete CudaNav closed-loop, recorded-shadow, multi-GPU, and ROS 2 evidence |
+| Contact paper | Published 32,400-episode robustness, exact 10 ms matched-compute, 3,150-episode closed-loop MuJoCo evidence, and ledger-synchronized submission draft | Venue-template packaging, artifact URLs/anonymization, and optional independent-hardware replication |
+| Papers | Contact-rich Diff-MPPI ledger is `ready: true` with a frozen draft; CudaNav systems draft is synchronized to its machine-checked ledger | Complete CudaNav ROS 2 closed-loop, recorded-shadow, and second-model GPU evidence |
 
 Implementation status is not evidence status. The machine-readable paper
 ledgers under `paper/artifacts/` remain `ready: false` until the rightmost
