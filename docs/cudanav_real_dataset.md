@@ -80,6 +80,16 @@ python3 scripts/validate_cudanav_real_dataset.py \
   --materialization build/cudanav_real_dataset/materialization.json
 ```
 
+The default sidecar backend is standard rosbag2 SQLite and does not require
+`rosbag2_py`. Use `--storage mcap` on the derivation command, or
+`--sidecar-storage mcap` on the pipeline, when an MCAP artifact is preferred
+and ROS 2 Python packages are available. ROS Jazzy CI retains an explicit MCAP
+write/open round trip in addition to the dependency-free SQLite tests.
+The pipeline refreshes the remote Drive identity by default. For an offline
+rerun, `--no-probe` reuses a previously bound probe from the existing
+inspection report and records that report's hash and inspection time; without
+either source of remote identity the materialization gate remains red.
+
 The materialization gate requires positive message counts for every selected
 recorded input and for the derived Path. It rehashes both local bag trees, the
 generator report, and the acquisition inspection by default. The inspection

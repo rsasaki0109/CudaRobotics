@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""ROS Jazzy integration test for the derived Path MCAP writer."""
+"""ROS Jazzy integration test for the optional derived Path MCAP writer."""
 
 from __future__ import annotations
 
@@ -153,6 +153,8 @@ def main() -> int:
                 str(acquisition_report),
                 "--materialization",
                 str(materialization),
+                "--storage",
+                "mcap",
             ],
             cwd=ROOT,
             check=True,
@@ -173,7 +175,11 @@ def main() -> int:
         if not gate["ready"]:
             raise AssertionError(json.dumps(gate, indent=2))
         generator = json.loads(report.read_text())
-        if generator["input_samples"] != 3 or generator["output_poses"] < 2:
+        if (
+            generator["input_samples"] != 3
+            or generator["output_poses"] < 2
+            or generator["storage_id"] != "mcap"
+        ):
             raise AssertionError(generator)
     print("ROS derived Path sidecar round trip passed")
     return 0

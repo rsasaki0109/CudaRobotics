@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 from pathlib import Path
+from unittest.mock import patch
 import unittest
 
 from cudanav_real_dataset import DEFAULT_SPEC
@@ -11,11 +12,21 @@ from run_cudanav_real_dataset_pipeline import (
     DEFAULT_CONTROLLER,
     DEFAULT_CONTROLLER_COMMAND,
     command_plan,
+    parse_args,
     validate_args,
 )
 
 
 class CudaNavRealDatasetPipelineTest(unittest.TestCase):
+    def test_dependency_free_sqlite_sidecar_is_the_default(self) -> None:
+        with patch(
+            "sys.argv",
+            ["run_cudanav_real_dataset_pipeline.py"],
+        ):
+            args = parse_args()
+        self.assertEqual(args.sidecar_storage, "sqlite3")
+        self.assertTrue(args.probe)
+
     def arguments(self, root: Path) -> argparse.Namespace:
         return argparse.Namespace(
             spec=DEFAULT_SPEC,
