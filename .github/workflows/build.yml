@@ -53,10 +53,13 @@ jobs:
         run: |
           git diff --exit-code
           git diff --cached --exit-code
+          git clean -fdx
+          test -z "$(git status --porcelain)"
           python scripts/release_ci_evidence.py \
             --output build/github_build_ci_evidence.json \
             --gate github_build \
             --workflow "$GITHUB_WORKFLOW" \
+            --check clean_checkout \
             --check cmake_configure \
             --check cuda_build \
             --check python_ctest \
