@@ -64,9 +64,13 @@ python3 scripts/run_cudanav_real_gpu_stack.py \
 ## Mapping and safety semantics
 
 The 3D mapper retains the complete voxel grid, while its 2D navigation
-projection uses a declared height band. CudaNav bringup selects
-`[-0.5, 2.0)` m so ground returns below the robot and overhead returns do not
-become planar obstacles.
+projection uses a declared height band. The native shadow runner keeps
+odometry X/Y but expresses Z relative to the current estimated LiDAR origin.
+CudaNav selects `[-0.5, 2.0)` m in that sensor-relative height frame so road
+elevation cannot leave the finite voxel grid, ground returns below the robot,
+and overhead returns do not become planar obstacles. The result records this
+as `mapping.height_frame = estimated_sensor_relative` and reports both the
+largest absolute odometry Z and the number of frames that integrated rays.
 
 Before ESDF inflation, the robot's declared 0.30 m circular footprint is
 cleared. The ROS Nav2 voxel layer applies the same rule. This prevents the

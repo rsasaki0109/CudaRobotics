@@ -38,6 +38,10 @@ struct Options {
     double maximum_safety_stop_speed = 0.05;
     double maximum_ate_rmse_m = 5.0;
     double maximum_final_drift_percent = 10.0;
+    float kiss_map_voxel_size = 0.35f;
+    float kiss_scan_voxel_size = 0.22f;
+    float kiss_map_radius = 40.0f;
+    int kiss_normal_neighbors = 12;
     bool check = false;
 };
 
@@ -146,7 +150,7 @@ std::string gpu_uuid(const cudaDeviceProp& properties) {
     return stream.str();
 }
 
-std::vector<float> transform_scan(
+std::vector<float> transform_scan_navigation_height_frame(
     const std::vector<float>& scan,
     const cudarobotics::KissIcpPose& pose)
 {
@@ -159,8 +163,11 @@ std::vector<float> transform_scan(
             pose.R.m[0] * x + pose.R.m[1] * y + pose.R.m[2] * z + pose.t[0];
         world[index + 1] =
             pose.R.m[3] * x + pose.R.m[4] * y + pose.R.m[5] * z + pose.t[1];
+        // The rolling map feeds a planar navigation costmap. Keep odometry X/Y,
+        // but express height relative to the current LiDAR origin so road
+        // elevation cannot leave the map's finite Z extent.
         world[index + 2] =
-            pose.R.m[6] * x + pose.R.m[7] * y + pose.R.m[8] * z + pose.t[2];
+            pose.R.m[6] * x + pose.R.m[7] * y + pose.R.m[8] * z;
     }
     return world;
 }
@@ -248,7 +255,9 @@ void usage(const char* executable) {
         "[--maximum-all-colliding-evaluations N] "
         "[--minimum-valid-rollout-ratio X] [--maximum-ate-rmse-m X] "
         "[--maximum-final-drift-percent X] "
-        "[--maximum-safety-stop-speed X]\n",
+        "[--maximum-safety-stop-speed X] [--kiss-map-voxel-size X] "
+        "[--kiss-scan-voxel-size X] [--kiss-map-radius X] "
+        "[--kiss-normal-neighbors N]\n",
         executable);
 }
 
@@ -283,6 +292,14 @@ Options parse_options(int argc, char** argv) {
             options.maximum_ate_rmse_m = std::stod(next());
         } else if (argument == "--maximum-final-drift-percent") {
             options.maximum_final_drift_percent = std::stod(next());
+        } else if (argument == "--kiss-map-voxel-size") {
+            options.kiss_map_voxel_size = std::stof(next());
+        } else if (argument == "--kiss-scan-voxel-size") {
+            options.kiss_scan_voxel_size = std::stof(next());
+        } else if (argument == "--kiss-map-radius") {
+            options.kiss_map_radius = std::stof(next());
+        } else if (argument == "--kiss-normal-neighbors") {
+            options.kiss_normal_neighbors = std::stoi(next());
         } else if (argument == "--check") {
             options.check = true;
         } else if (argument == "--help" || argument == "-h") {
@@ -303,7 +320,12 @@ Options parse_options(int argc, char** argv) {
         options.minimum_valid_rollout_ratio > 1.0 ||
         options.maximum_safety_stop_speed < 0.0 ||
         options.maximum_ate_rmse_m <= 0.0 ||
-        options.maximum_final_drift_percent <= 0.0) {
+        options.maximum_final_drift_percent <= 0.0 ||
+        options.kiss_map_voxel_size <= 0.0f ||
+        options.kiss_scan_voxel_size <= 0.0f ||
+        options.kiss_map_radius <= 0.0f ||
+        options.kiss_normal_neighbors < 1 ||
+        options.kiss_normal_neighbors > 20) {
         throw std::invalid_argument("invalid numeric option");
     }
     return options;
@@ -326,6 +348,10 @@ int main(int argc, char** argv) {
         }
 
         cudarobotics::KissIcpConfig kiss_config;
+        kiss_config.map_voxel_size = options.kiss_map_voxel_size;
+        kiss_config.scan_voxel_size = options.kiss_scan_voxel_size;
+        kiss_config.map_radius = options.kiss_map_radius;
+        kiss_config.normal_neighbors = options.kiss_normal_neighbors;
         kiss_config.max_scan_points = 200000;
         kiss_config.max_map_points = 200000;
         kiss_config.hash_capacity = 1u << 19;
@@ -393,6 +419,8 @@ int main(int argc, char** argv) {
         double reference_distance = 0.0;
         double estimated_distance = 0.0;
         double final_error = 0.0;
+        double maximum_abs_estimated_sensor_height = 0.0;
+        std::size_t frames_with_integrated_rays = 0;
         float previous_estimated_x = 0.0f;
         float previous_estimated_y = 0.0f;
 
@@ -421,10 +449,15 @@ int main(int argc, char** argv) {
             }
             previous_estimated_x = pose.t[0];
             previous_estimated_y = pose.t[1];
+            maximum_abs_estimated_sensor_height = std::max(
+                maximum_abs_estimated_sensor_height,
+                std::fabs(static_cast<double>(pose.t[2])));
 
-            const std::vector<float> world = transform_scan(frame.xyz, pose);
-            const float sensor_origin[3] = {pose.t[0], pose.t[1], pose.t[2]};
+            const std::vector<float> world =
+                transform_scan_navigation_height_frame(frame.xyz, pose);
+            const float sensor_origin[3] = {pose.t[0], pose.t[1], 0.0f};
             const auto mapping = mapper.integrate_scan(world, sensor_origin);
+            if (mapping.integrated_rays > 0) ++frames_with_integrated_rays;
             final_observed_voxels = mapping.observed_voxels;
             total_integrated_rays += mapping.integrated_rays;
             raycast_ms.push_back(mapping.raycast_ms + mapping.shift_ms);
@@ -573,6 +606,7 @@ int main(int argc, char** argv) {
                 static_cast<std::size_t>(options.minimum_observed_voxels) &&
             maximum_occupied_cells >=
                 static_cast<std::size_t>(options.minimum_occupied_cells) &&
+            frames_with_integrated_rays == frames.size() &&
             control_evaluations >= options.minimum_control_evaluations &&
             minimum_nonzero_valid_ratio >= options.minimum_valid_rollout_ratio &&
             all_colliding_evaluations <=
@@ -599,6 +633,12 @@ int main(int argc, char** argv) {
              << "  },\n"
              << "  \"stages\": [\"gpu_kiss_icp\", \"gpu_voxel_mapping\", "
                 "\"gpu_esdf\", \"cuda_mppi\"],\n"
+             << "  \"odometry_config\": {\n"
+             << "    \"map_voxel_size_m\": " << kiss_config.map_voxel_size << ",\n"
+             << "    \"scan_voxel_size_m\": " << kiss_config.scan_voxel_size << ",\n"
+             << "    \"map_radius_m\": " << kiss_config.map_radius << ",\n"
+             << "    \"normal_neighbors\": " << kiss_config.normal_neighbors << "\n"
+             << "  },\n"
              << "  \"frames\": " << frames.size() << ",\n"
              << "  \"duration_s\": "
              << static_cast<double>(
@@ -616,6 +656,11 @@ int main(int argc, char** argv) {
              << "  \"inliers_min\": " << minimum_observed_inliers << ",\n"
              << "  \"nn_ms_p95\": " << percentile(nn_ms, 0.95) << ",\n"
              << "  \"mapping\": {\n"
+             << "    \"height_frame\": \"estimated_sensor_relative\",\n"
+             << "    \"maximum_abs_estimated_sensor_height_m\": "
+             << maximum_abs_estimated_sensor_height << ",\n"
+             << "    \"frames_with_integrated_rays\": "
+             << frames_with_integrated_rays << ",\n"
              << "    \"final_observed_voxels\": " << final_observed_voxels << ",\n"
              << "    \"total_integrated_rays\": " << total_integrated_rays << ",\n"
              << "    \"map_shifts\": " << map_shifts << ",\n"

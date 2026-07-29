@@ -145,6 +145,7 @@ def metrics_contract(result: dict[str, Any]) -> dict[str, Any]:
             "yaw_error_p95_rad",
             "inliers_min",
             "nn_ms_p95",
+            "odometry_config",
             "mapping",
             "esdf",
             "mppi",
@@ -197,6 +198,12 @@ def make_manifest(
             >= expected["minimum_observed_voxels"]
             and result.get("mapping", {}).get("maximum_occupied_cells", 0)
             >= expected["minimum_occupied_cells"]
+            and (
+                "frames_with_integrated_rays"
+                not in result.get("mapping", {})
+                or result["mapping"]["frames_with_integrated_rays"]
+                == result.get("frames")
+            )
         ),
         "esdf": (
             result.get("esdf", {}).get("unknown_policy") == "free"
