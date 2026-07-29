@@ -195,3 +195,18 @@ profile downgrades, dirty runs, and commit mismatches. `report.md` is a
 human-readable rendering and is not a substitute for the manifest gate.
 GitHub Build, manylinux wheel, ROS 2, and final evidence checks remain explicit
 external gates and must be attached to the same release-candidate commit.
+
+The Build and Python package workflows support manual execution on a
+release-candidate branch or tag. Successful runs upload JSON attestations
+bound to the exact SHA checked out from that ref:
+
+```bash
+python3 scripts/validate_release_ci.py github_build_ci_evidence.json \
+  --gate github_build --commit "$RC_COMMIT"
+python3 scripts/validate_release_ci.py python_package_ci_evidence.json \
+  --gate python_manylinux_wheels --commit "$RC_COMMIT"
+```
+
+Pull-request runs are intentionally rejected as final release evidence. The
+Python attestation also requires both versioned build/test jobs, CPython
+3.10/3.12 manylinux completion, and both declared artifact groups.

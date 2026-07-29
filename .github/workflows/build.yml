@@ -1,6 +1,7 @@
 name: Build
 
 on:
+  workflow_dispatch:
   push:
     branches: [master]
   pull_request:
@@ -43,3 +44,28 @@ jobs:
 
       - name: Run CPU tests
         run: cd build && ctest --output-on-failure --label-regex cpu -j$(nproc)
+
+      - name: Create commit-bound Build evidence
+        if: github.event_name != 'pull_request'
+        run: |
+          test -z "$(git status --porcelain)"
+          python scripts/release_ci_evidence.py \
+            --output build/github_build_ci_evidence.json \
+            --gate github_build \
+            --workflow "$GITHUB_WORKFLOW" \
+            --check cmake_configure \
+            --check cuda_build \
+            --check python_ctest \
+            --check cpu_ctest
+          python scripts/validate_release_ci.py \
+            build/github_build_ci_evidence.json \
+            --gate github_build \
+            --commit "$GITHUB_SHA"
+
+      - name: Upload commit-bound Build evidence
+        if: github.event_name != 'pull_request'
+        uses: actions/upload-artifact@v4
+        with:
+          name: github-build-ci-evidence-${{ github.sha }}
+          path: build/github_build_ci_evidence.json
+          if-no-files-found: error
