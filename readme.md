@@ -109,6 +109,7 @@ python examples/python/registration_quickstart.py
 | Contributing a demo or reproduction | [`CONTRIBUTING.md`](CONTRIBUTING.md) |
 | CudaNav end-to-end architecture contract | [`docs/cudanav_architecture.md`](docs/cudanav_architecture.md) |
 | Reusable GPU KISS-ICP streaming API | [`docs/kiss_icp_gpu_core.md`](docs/kiss_icp_gpu_core.md) |
+| Real-bag GPU KISS-ICP evidence | [`docs/cudanav_kiss_icp_real.md`](docs/cudanav_kiss_icp_real.md) |
 | ROS 2 lifecycle GPU KISS-ICP component | [`ros2_ws/src/cuda_kiss_icp/`](ros2_ws/src/cuda_kiss_icp/) |
 | Rolling GPU voxel mapping core | [`docs/voxel_mapping_gpu_core.md`](docs/voxel_mapping_gpu_core.md) |
 | ROS 2 lifecycle voxel mapper | [`ros2_ws/src/cuda_voxel_mapping/`](ros2_ws/src/cuda_voxel_mapping/) |

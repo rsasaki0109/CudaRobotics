@@ -152,7 +152,7 @@
         {
           "path": ".github/workflows/ros2_cuda_mppi.yml",
           "normalization": "text_lf",
-          "sha256": "97c87a65452e710212f563a4d274a6767bddadd698239ee3b4f56294b19672f4"
+          "sha256": "807857994132a4b22d9ae76ce65245453f821572abd8277576949e7129306894"
         },
         {
           "path": "scripts/cudanav_ros_ci_evidence.py",
@@ -188,6 +188,26 @@
           "path": "scripts/export_rosbag_motion.py",
           "normalization": "text_lf",
           "sha256": "c4657e64720f0197c741a8732e4c11aa0625f5b06c2a95dc62269ca6ee7e48bf"
+        },
+        {
+          "path": "scripts/export_cudanav_kiss_icp_sequence.py",
+          "normalization": "text_lf",
+          "sha256": "d38bb602bae978d81a5892255cf957f2af667f5027f8970da5af04fa7f125c8f"
+        },
+        {
+          "path": "scripts/run_cudanav_kiss_icp_real.py",
+          "normalization": "text_lf",
+          "sha256": "270d4fe2aaa7f8cb824ea503b1d628a6a4679be4d257a59d98e72362a4c7a7eb"
+        },
+        {
+          "path": "scripts/test_cudanav_kiss_icp_real.py",
+          "normalization": "text_lf",
+          "sha256": "f0dcb1ff2e75e0a8cba8239d8154f6fb75caa42fe6d152c9b10b651a9771714e"
+        },
+        {
+          "path": "tools/cudanav_kiss_icp_sequence.cu",
+          "normalization": "text_lf",
+          "sha256": "8fc5fe98e2d54043115af34cfdc72f557324c1a9538e3a35ebda931b6d36b035"
         }
       ]
     },
