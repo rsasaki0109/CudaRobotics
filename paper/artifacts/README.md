@@ -34,6 +34,35 @@ the implementation exists. First attach the generated artifact, freeze its
 SHA-256, and add assertions that test the exact metric used in the prose.
 Negative results should remain declared evidence rather than being removed.
 
+For the systems paper, packaging is intentionally unavailable until every
+submission-required claim is supported by complete evidence and the draft no
+longer labels itself non-ready:
+
+```bash
+PAPER_COMMIT="$(git rev-parse HEAD)"
+python3 scripts/validate_paper_artifacts.py \
+  paper/artifacts/cudarobotics_systems.json --require-ready
+python3 scripts/assemble_systems_paper_bundle.py \
+  --output-dir build/cudarobotics_systems_paper_bundle \
+  --commit "$PAPER_COMMIT"
+python3 scripts/validate_systems_paper_bundle.py \
+  build/cudarobotics_systems_paper_bundle/submission_manifest.json \
+  --commit "$PAPER_COMMIT" --require-ready
+python3 scripts/archive_systems_paper_bundle.py \
+  build/cudarobotics_systems_paper_bundle/submission_manifest.json \
+  --output build/cudarobotics-systems-paper-artifact.zip \
+  --commit "$PAPER_COMMIT"
+python3 scripts/validate_systems_paper_archive.py \
+  build/cudarobotics-systems-paper-artifact.zip \
+  --checksum build/cudarobotics-systems-paper-artifact.zip.sha256 \
+  --commit "$PAPER_COMMIT"
+```
+
+The assembler copies the final manuscript, ready ledger, every complete
+ledger artifact, and every directly linked local document. It refuses the
+current partial ledger, dirty commits, stale claim-status rows, non-final
+manuscript markers, missing links, and incomplete inventories.
+
 For the ready contact-rich ledger, the submission bundle has a second,
 portable validation layer:
 

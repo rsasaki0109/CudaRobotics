@@ -292,3 +292,12 @@ are final. `scripts/archive_contact_submission_bundle.py` produces
 in member names. `scripts/validate_contact_submission_archive.py` reruns the
 anonymous ledger, figure-source, exact-inventory, redaction, identity-scan, and
 archive-integrity gates.
+
+The systems paper has a separate fail-closed path because its claim ledger is
+not yet ready. After all submission-required claims become supported,
+`scripts/assemble_systems_paper_bundle.py` copies the final manuscript, ledger,
+all complete evidence files, and directly linked local protocols into an exact
+inventory. `scripts/archive_systems_paper_bundle.py` then produces
+`cudarobotics-systems-paper-artifact.zip`; its validator reruns the ledger
+assertions and manuscript/status/link contract after safe extraction. The
+current partial ledger is an explicit negative test and cannot be packaged.
