@@ -52,13 +52,21 @@ def parse_args() -> argparse.Namespace:
         choices=("curl", "gdown"),
         default="curl",
     )
-    parser.add_argument("--probe", action="store_true")
+    parser.add_argument(
+        "--probe",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help=(
+            "refresh the remote file identity (default); --no-probe reuses a "
+            "valid probe bound in the existing inspection report"
+        ),
+    )
     parser.add_argument("--reindex", action="store_true")
     parser.add_argument("--generate-metadata", action="store_true")
     parser.add_argument(
         "--sidecar-storage",
         choices=("mcap", "sqlite3"),
-        default="mcap",
+        default="sqlite3",
     )
     parser.add_argument("--run-autonomy", action="store_true")
     parser.add_argument("--profile", choices=("smoke", "release"), default="smoke")

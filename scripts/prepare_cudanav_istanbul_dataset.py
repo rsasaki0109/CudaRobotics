@@ -75,6 +75,61 @@ def probe_acquisition(acquisition: dict[str, Any]) -> dict[str, Any]:
     return result
 
 
+def reusable_remote_probe(
+    report_path: Path,
+    spec_path: Path = DEFAULT_SPEC,
+) -> dict[str, Any] | None:
+    if not report_path.is_file():
+        return None
+    try:
+        previous = read_json(report_path)
+        spec_path = spec_path.resolve()
+        acquisition = read_json(spec_path)["acquisition"]
+        probe = previous["remote_probe"]
+        expected_checks = {
+            "database_filename": True,
+            "database_bytes": True,
+        }
+        database = probe["database"]
+        valid = (
+            previous.get("dataset_spec", {}).get("sha256")
+            == sha256_file(spec_path)
+            and probe.get("schema_version") == 1
+            and probe.get("passed") is True
+            and database.get("file_id") == acquisition["file_id"]
+            and database.get("filename") == acquisition["expected_database"]
+            and database.get("bytes")
+            == acquisition["expected_database_bytes"]
+        )
+        if "metadata_file_id" in acquisition:
+            expected_checks.update(
+                {
+                    "metadata_filename": True,
+                    "metadata_bytes": True,
+                }
+            )
+            metadata = probe["metadata"]
+            valid = (
+                valid
+                and metadata.get("file_id")
+                == acquisition["metadata_file_id"]
+                and metadata.get("filename")
+                == acquisition["expected_metadata"]
+                and metadata.get("bytes")
+                == acquisition["expected_metadata_bytes"]
+            )
+        if not valid or probe.get("checks") != expected_checks:
+            return None
+        reused = dict(probe)
+        reused["reused_from_inspection"] = {
+            "sha256": sha256_file(report_path),
+            "inspected_at": previous.get("inspected_at"),
+        }
+        return reused
+    except (KeyError, OSError, TypeError, ValueError):
+        return None
+
+
 def download_command(
     file_id: str, output: Path, backend: str = "curl"
 ) -> list[str]:
@@ -278,13 +333,16 @@ def main() -> int:
     args = parser.parse_args()
     spec = read_json(args.spec)
     acquisition = spec["acquisition"]
+    output = args.output_dir.resolve()
+    report_path = (args.report or output / "inspection.json").resolve()
     remote_probe = None
     if args.download or args.probe or args.probe_only:
         remote_probe = probe_acquisition(acquisition)
+    else:
+        remote_probe = reusable_remote_probe(report_path, args.spec)
     if args.probe_only:
         print(json.dumps(remote_probe, indent=2, sort_keys=True))
         return 0
-    output = args.output_dir.resolve()
     output.mkdir(parents=True, exist_ok=True)
     if args.download:
         downloads = [
@@ -318,7 +376,6 @@ def main() -> int:
     report = inspect(output, args.spec, remote_probe)
     if metadata_report is not None:
         report["generated_metadata"] = metadata_report
-    report_path = (args.report or output / "inspection.json").resolve()
     report_path.parent.mkdir(parents=True, exist_ok=True)
     report_path.write_text(
         json.dumps(report, indent=2, sort_keys=True) + "\n",

@@ -104,7 +104,7 @@
         {
           "path": "scripts/derive_cudanav_path_sidecar.py",
           "normalization": "text_lf",
-          "sha256": "f0590f3cf8f430ac60674dc8fdd08800e13e7538ad6e147432619e34a41bb754"
+          "sha256": "5bf83d0b0f2de1b6359b1855545abae97204e32fe8a55e622a4b56e9df70cf66"
         },
         {
           "path": "scripts/run_cudanav_rosbag_replay.py",
@@ -149,17 +149,17 @@
         {
           "path": "scripts/test_derive_cudanav_path_sidecar_ros.py",
           "normalization": "text_lf",
-          "sha256": "35b4020726056a56cabc820d9498b99234b8a615ee5f9a3033cdb50dcb5a71d7"
+          "sha256": "ba4218074f814a8b4415bb272ec559445d6546f893b736f17d402f5a939b0989"
         },
         {
           "path": "scripts/prepare_cudanav_istanbul_dataset.py",
           "normalization": "text_lf",
-          "sha256": "67e824a359e9c7993eb6d7ce1243fce542638d88b6e6e3e9d2b9c10826d2f6cd"
+          "sha256": "b4acc657cd03262e7db922c1245cc005fc6f96c73646589a2fa2a96f729f8fae"
         },
         {
           "path": "scripts/run_cudanav_real_dataset_pipeline.py",
           "normalization": "text_lf",
-          "sha256": "250f49634630f538e554047f0166c8ea5d297e86ce7e93430e1a48809eea7cf1"
+          "sha256": "622596dadc1c5ce667ac9d829c8b3335df5e816eeb25c329dcab58e68dc74a4a"
         },
         {
           "path": "scripts/export_rosbag_motion.py",

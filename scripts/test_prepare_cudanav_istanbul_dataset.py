@@ -3,16 +3,19 @@
 from __future__ import annotations
 
 from pathlib import Path
+import json
 import sqlite3
 import tempfile
 import unittest
 from unittest.mock import patch
 
 from cudanav_real_dataset import DEFAULT_SPEC, read_json
+from cudanav_rosbag_evidence import sha256_file
 from prepare_cudanav_istanbul_dataset import (
     download_command,
     inspect,
     probe_acquisition,
+    reusable_remote_probe,
     write_metadata,
 )
 
@@ -81,6 +84,50 @@ class PrepareCudaNavIstanbulDatasetTest(unittest.TestCase):
         ):
             with self.assertRaises(ValueError):
                 probe_acquisition(acquisition)
+
+    def test_existing_bound_probe_can_be_reused_without_relabelling(self) -> None:
+        spec = read_json(DEFAULT_SPEC)
+        acquisition = spec["acquisition"]
+        probe = {
+            "schema_version": 1,
+            "database": {
+                "file_id": acquisition["file_id"],
+                "filename": acquisition["expected_database"],
+                "bytes": acquisition["expected_database_bytes"],
+            },
+            "metadata": {
+                "file_id": acquisition["metadata_file_id"],
+                "filename": acquisition["expected_metadata"],
+                "bytes": acquisition["expected_metadata_bytes"],
+            },
+            "checks": {
+                "database_filename": True,
+                "database_bytes": True,
+                "metadata_filename": True,
+                "metadata_bytes": True,
+            },
+            "passed": True,
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            report = Path(directory) / "inspection.json"
+            report.write_text(
+                json.dumps(
+                    {
+                        "dataset_spec": {
+                            "sha256": sha256_file(DEFAULT_SPEC),
+                        },
+                        "inspected_at": "2026-07-29T00:00:00+00:00",
+                        "remote_probe": probe,
+                    }
+                )
+            )
+            reused = reusable_remote_probe(report)
+        self.assertIsNotNone(reused)
+        self.assertEqual(reused["database"], probe["database"])
+        self.assertEqual(
+            reused["reused_from_inspection"]["inspected_at"],
+            "2026-07-29T00:00:00+00:00",
+        )
 
     def test_exact_database_topics_and_content_are_frozen(self) -> None:
         spec = read_json(DEFAULT_SPEC)

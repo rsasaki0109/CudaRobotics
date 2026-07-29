@@ -274,7 +274,15 @@ def main() -> int:
     parser.add_argument("--acquisition-report", type=Path, required=True)
     parser.add_argument("--materialization", type=Path, required=True)
     parser.add_argument("--spec", type=Path, default=DEFAULT_SPEC)
-    parser.add_argument("--storage", choices=("mcap", "sqlite3"), default="mcap")
+    parser.add_argument(
+        "--storage",
+        choices=("mcap", "sqlite3"),
+        default="sqlite3",
+        help=(
+            "rosbag2 output backend; sqlite3 is dependency-free, while mcap "
+            "requires rosbag2_py"
+        ),
+    )
     args = parser.parse_args()
     spec = read_json(args.spec)
     contract = spec["path_derivation"]
