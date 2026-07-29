@@ -284,3 +284,11 @@ After the four immutable-tag attestations pass
 `scripts/validate_v1_release_archive.py` reopens the exact public attachment,
 enforces the five-file bundle inventory, and proves all four attestations name
 the same `v1.0.0` commit.
+
+The anonymous contact-rich Diff-MPPI submission uses the same archive
+primitive only after its venue, clean commit, and anonymous HTTPS artifact URL
+are final. `scripts/archive_contact_submission_bundle.py` produces
+`contact-rich-diff-mppi-submission.zip` and a checksum without author identity
+in member names. `scripts/validate_contact_submission_archive.py` reruns the
+anonymous ledger, figure-source, exact-inventory, redaction, identity-scan, and
+archive-integrity gates.

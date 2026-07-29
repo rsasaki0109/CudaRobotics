@@ -91,6 +91,7 @@ class ContactSubmissionBundleTest(unittest.TestCase):
 
     def test_editorial_placeholders_are_valid_but_not_ready(self) -> None:
         diagnostic = dict(self.manifest)
+        diagnostic.pop("validation", None)
         diagnostic["venue"] = "unselected"
         diagnostic["artifact_url"] = ""
         diagnostic["git_dirty"] = True
@@ -111,13 +112,44 @@ class ContactSubmissionBundleTest(unittest.TestCase):
         finally:
             leak.unlink()
 
-    def test_identifying_artifact_url_is_not_ready(self) -> None:
+    def test_nested_manifest_named_identity_leak_is_rejected(self) -> None:
+        directory = self.output / "nested"
+        leak = directory / "submission_manifest.json"
+        try:
+            directory.mkdir()
+            leak.write_text("author@example.net\n", encoding="utf-8")
+            gate = load_bundle(self.manifest_path, COMMIT)
+            self.assertFalse(gate["valid"])
+            self.assertFalse(gate["checks"]["complete_inventory"])
+        finally:
+            leak.unlink()
+            directory.rmdir()
+
+    def test_identifying_artifact_url_is_invalid(self) -> None:
         diagnostic = dict(self.manifest)
+        diagnostic.pop("validation", None)
         diagnostic["artifact_url"] = "https://example.net/rsasaki0109/artifact"
         gate = evaluate_bundle(diagnostic, self.output, COMMIT)
-        self.assertTrue(gate["valid"])
+        self.assertFalse(gate["valid"])
         self.assertFalse(gate["ready"])
+        self.assertFalse(gate["checks"]["manifest_identity_clean"])
         self.assertFalse(gate["readiness_checks"]["artifact_url"])
+
+    def test_unknown_identifying_manifest_field_is_rejected(self) -> None:
+        diagnostic = dict(self.manifest)
+        diagnostic.pop("validation", None)
+        diagnostic["author_email"] = "author@example.net"
+        gate = evaluate_bundle(diagnostic, self.output, COMMIT)
+        self.assertFalse(gate["valid"])
+        self.assertFalse(gate["checks"]["manifest_schema"])
+        self.assertFalse(gate["checks"]["manifest_identity_clean"])
+
+    def test_tampered_stored_validation_is_rejected(self) -> None:
+        diagnostic = json.loads(json.dumps(self.manifest))
+        diagnostic["validation"]["ready"] = False
+        gate = evaluate_bundle(diagnostic, self.output, COMMIT)
+        self.assertFalse(gate["valid"])
+        self.assertFalse(gate["checks"]["validation_record"])
 
 
 if __name__ == "__main__":
