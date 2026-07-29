@@ -21,6 +21,7 @@ from cudanav_rosbag_evidence import sha256_file
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_SPEC = ROOT / "docs" / "cudanav_real_dataset_smoke.json"
 EXPORTER = ROOT / "scripts" / "export_cudanav_kiss_icp_sequence.py"
+TIMING_INSPECTOR = ROOT / "scripts" / "inspect_pointcloud2_timing.py"
 RUNNER_NAME = (
     Path("bin/Release/cudanav_kiss_icp_sequence.exe")
     if os.name == "nt"
@@ -29,6 +30,7 @@ RUNNER_NAME = (
 PROFILES = {
     "smoke": {
         "require_point_time": False,
+        "minimum_timing_frames": 2,
         "start_offset_s": 1.0,
         "maximum_duration_s": 30.0,
         "maximum_frames": 300,
@@ -38,6 +40,7 @@ PROFILES = {
     },
     "release": {
         "require_point_time": True,
+        "minimum_timing_frames": 1000,
         "start_offset_s": 1.0,
         "maximum_duration_s": 120.0,
         "maximum_frames": 1200,
@@ -80,11 +83,34 @@ def resolve_pointcloud_auxiliary_fields(
         if (
             not isinstance(point_time_contract.get("field"), str)
             or not point_time_contract["field"]
+            or not isinstance(point_time_contract.get("datatype"), int)
+            or isinstance(point_time_contract.get("datatype"), bool)
+            or point_time_contract["datatype"] not in range(1, 9)
             or point_time_contract.get("unit") not in POINT_TIME_UNITS
         ):
             raise ValueError(
-                "PointCloud2 point_time contract requires a nonempty field "
-                "and a supported unit"
+                "PointCloud2 point_time contract requires a nonempty field, "
+                "PointField datatype, and supported unit"
+            )
+        minimum_span = point_time_contract.get("minimum_scan_span_s")
+        maximum_span = point_time_contract.get("maximum_scan_span_s")
+        if not (
+            isinstance(minimum_span, (int, float))
+            and not isinstance(minimum_span, bool)
+            and isinstance(maximum_span, (int, float))
+            and not isinstance(maximum_span, bool)
+            and 0.0 < float(minimum_span) < float(maximum_span) <= 1.0
+        ):
+            raise ValueError(
+                "PointCloud2 point_time contract requires physical "
+                "minimum_scan_span_s and maximum_scan_span_s bounds"
+            )
+        if (
+            profile["require_point_time"]
+            and point_time_contract.get("require_unambiguous_unit") is not True
+        ):
+            raise ValueError(
+                "release point_time contract must require an unambiguous unit"
             )
     if ring_contract is not None:
         if not isinstance(ring_contract, dict):
@@ -92,11 +118,82 @@ def resolve_pointcloud_auxiliary_fields(
         if (
             not isinstance(ring_contract.get("field"), str)
             or not ring_contract["field"]
+            or not isinstance(ring_contract.get("datatype"), int)
+            or isinstance(ring_contract.get("datatype"), bool)
+            or ring_contract["datatype"] not in {1, 2, 3, 4, 5, 6}
         ):
             raise ValueError(
-                "PointCloud2 ring contract requires a nonempty field"
+                "PointCloud2 ring contract requires a nonempty field and "
+                "integer PointField datatype"
             )
     return point_time_contract, ring_contract
+
+
+def build_timing_admission_command(
+    database: Path,
+    output: Path,
+    spec: dict[str, Any],
+    profile: dict[str, Any],
+    point_time_contract: dict[str, Any] | None,
+    ring_contract: dict[str, Any] | None,
+) -> list[str] | None:
+    if point_time_contract is None:
+        return None
+    command = [
+        sys.executable,
+        str(TIMING_INSPECTOR),
+        "--database",
+        str(database.resolve()),
+        "--pointcloud-topic",
+        spec["recorded_inputs"]["pointcloud"]["topic"],
+        "--point-time-field",
+        point_time_contract["field"],
+        "--point-time-datatype",
+        str(point_time_contract["datatype"]),
+        "--point-time-unit",
+        point_time_contract["unit"],
+        "--start-offset-s",
+        str(profile["start_offset_s"]),
+        "--maximum-duration-s",
+        str(profile["maximum_duration_s"]),
+        "--maximum-frames",
+        str(profile["maximum_frames"]),
+        "--minimum-frames",
+        str(profile["minimum_timing_frames"]),
+        "--minimum-scan-span-s",
+        str(point_time_contract["minimum_scan_span_s"]),
+        "--maximum-scan-span-s",
+        str(point_time_contract["maximum_scan_span_s"]),
+        "--output",
+        str(output),
+    ]
+    if point_time_contract.get("require_unambiguous_unit", False):
+        command.append("--require-unambiguous-unit")
+    if ring_contract is not None:
+        command.extend(
+            [
+                "--ring-field",
+                ring_contract["field"],
+                "--ring-datatype",
+                str(ring_contract["datatype"]),
+            ]
+        )
+        if ring_contract.get("required", False):
+            command.append("--require-ring")
+    return command
+
+
+def admitted_database_matches(
+    admission_report: dict[str, Any],
+    spec: dict[str, Any],
+) -> bool:
+    identity = admission_report.get("database", {})
+    expected = spec["acquisition"]
+    return (
+        identity.get("filename") == expected["expected_database"]
+        and identity.get("bytes") == expected["expected_database_bytes"]
+        and identity.get("sha256") == expected["expected_database_sha256"]
+    )
 
 
 def git_identity() -> tuple[str, bool]:
@@ -137,6 +234,51 @@ def count_csv_rows(path: Path) -> int:
         return sum(1 for _ in csv.DictReader(stream))
 
 
+def timing_admission_matches(
+    admission_report: dict[str, Any] | None,
+    export_report: dict[str, Any],
+    *,
+    expected_database_sha256: str,
+    minimum_frames: int,
+) -> bool:
+    if not isinstance(export_report, dict):
+        return False
+    if export_report.get("sequence_version") != 2:
+        return admission_report is None
+    point_time_field = export_report.get("point_time", {}).get("field")
+    ring_field = export_report.get("ring", {}).get("field")
+    exported_fields = export_report.get("point_fields", {})
+    return (
+        isinstance(admission_report, dict)
+        and admission_report.get("valid") is True
+        and isinstance(admission_report.get("checks"), dict)
+        and bool(admission_report["checks"])
+        and all(admission_report["checks"].values())
+        and admission_report.get("database", {}).get("sha256")
+        == expected_database_sha256
+        and admission_report.get("pointcloud_topic")
+        == export_report.get("pointcloud_topic")
+        and admission_report.get("point_time", {}).get("field")
+        == point_time_field
+        and admission_report.get("point_time", {}).get(
+            "declared_datatype"
+        )
+        == exported_fields.get(point_time_field, {}).get("datatype")
+        and admission_report.get("point_time", {}).get("declared_unit")
+        == export_report.get("point_time", {}).get("unit")
+        and admission_report.get("ring", {}).get("field") == ring_field
+        and (
+            ring_field is None
+            or admission_report.get("ring", {}).get("declared_datatype")
+            == exported_fields.get(ring_field, {}).get("datatype")
+        )
+        and admission_report.get("selection", {}).get("frames")
+        == export_report.get("frames")
+        and admission_report.get("selection", {}).get("frames", 0)
+        >= minimum_frames
+    )
+
+
 def make_manifest(
     output: Path,
     *,
@@ -156,6 +298,10 @@ def make_manifest(
     result_json = output / "result.json"
     trajectory = output / "trajectory.csv"
     runner_log = output / "runner.log"
+    admission_json = output / "timing_admission.json"
+    admission_report = (
+        read_json(admission_json) if admission_json.is_file() else None
+    )
     expected_sha = spec["acquisition"]["expected_database_sha256"]
     checks = {
         "profile": profile in PROFILES,
@@ -172,7 +318,10 @@ def make_manifest(
         == spec["recorded_inputs"]["odometry"]["topic"],
         "frame_count": result.get("frames") == export_report.get("frames"),
         "point_time_contract": (
-            not expected["require_point_time"]
+            (
+                not expected["require_point_time"]
+                and export_report.get("sequence_version") != 2
+            )
             or (
                 export_report.get("sequence_version") == 2
                 and export_report.get("point_time", {}).get("present") is True
@@ -183,6 +332,12 @@ def make_manifest(
                 and result.get("sequence_version") == 2
                 and result.get("deskewed_frames") == result.get("frames")
             )
+        ),
+        "timing_admission": timing_admission_matches(
+            admission_report,
+            export_report,
+            expected_database_sha256=expected_sha,
+            minimum_frames=expected["minimum_timing_frames"],
         ),
         "start_offset": export_report.get("start_offset_s")
         == PROFILES[profile]["start_offset_s"],
@@ -227,6 +382,8 @@ def make_manifest(
             "sha256": sha256_file(runner),
         },
     }
+    if admission_json.is_file():
+        artifacts["timing_admission"] = artifact(admission_json, output)
     return {
         "schema_version": 1,
         "profile": profile,
@@ -263,6 +420,7 @@ def make_manifest(
                 "ring",
             )
         },
+        "timing_admission": admission_report,
         "gpu": result["gpu"],
         "metrics": {
             key: result[key]
@@ -309,6 +467,8 @@ def evaluate_manifest(
     manifest_path = manifest_path.resolve()
     root = manifest_path.parent
     payload = read_json(manifest_path)
+    sequence_payload = payload.get("sequence_contract", {})
+    profile_policy = PROFILES.get(payload.get("profile"), {})
     checks = {
         "schema": payload.get("schema_version") == 1,
         "profile": payload.get("profile") in PROFILES,
@@ -337,6 +497,16 @@ def evaluate_manifest(
         ),
         "artifacts": False,
         "metrics": payload.get("metrics", {}).get("quality_pass") is True,
+        "timing_admission": timing_admission_matches(
+            payload.get("timing_admission"),
+            sequence_payload,
+            expected_database_sha256=str(
+                payload.get("database", {}).get("sha256", "")
+            ),
+            minimum_frames=int(
+                profile_policy.get("minimum_timing_frames", 2)
+            ),
+        ),
         "sequence_contract": (
             isinstance(payload.get("sequence_contract"), dict)
             and payload["sequence_contract"].get("frames")
@@ -376,15 +546,17 @@ def evaluate_manifest(
                     runner_path.stat().st_size == runner["bytes"]
                     and sha256_file(runner_path) == runner["sha256"]
                 )
-        checks["artifacts"] = (
-            set(local)
-            == {
+        expected_local = {
                 "sequence",
                 "export_report",
                 "result",
                 "trajectory",
                 "runner_log",
             }
+        if payload.get("sequence_contract", {}).get("sequence_version") == 2:
+            expected_local.add("timing_admission")
+        checks["artifacts"] = (
+            set(local) == expected_local
             and all(
                 (root / descriptor.get("path", "")).is_file()
                 and (root / descriptor["path"]).stat().st_size
@@ -432,6 +604,7 @@ def make_portable_evidence(
         "dataset_spec_sha256": manifest["dataset_spec_sha256"],
         "database": manifest["database"],
         "sequence_contract": manifest["sequence_contract"],
+        "timing_admission": manifest.get("timing_admission"),
         "gpu": manifest["gpu"],
         "metrics": manifest["metrics"],
         "retained_artifacts": retained,
@@ -443,7 +616,17 @@ def make_portable_evidence(
                 "normalization": "text_lf",
                 "sha256": sha256_text_lf(ROOT / relative),
             }
-            for relative in CONTRACT_SOURCES
+            for relative in (
+                CONTRACT_SOURCES
+                + (
+                    ("scripts/inspect_pointcloud2_timing.py",)
+                    if manifest["sequence_contract"].get(
+                        "sequence_version"
+                    )
+                    == 2
+                    else ()
+                )
+            )
         ],
     }
 
@@ -456,6 +639,25 @@ def evaluate_portable_evidence(
 ) -> dict[str, Any]:
     artifacts = payload.get("retained_artifacts")
     sources = payload.get("contract_sources")
+    expected_contract_sources = CONTRACT_SOURCES + (
+        ("scripts/inspect_pointcloud2_timing.py",)
+        if payload.get("sequence_contract", {}).get("sequence_version") == 2
+        else ()
+    )
+    timed_sequence = (
+        payload.get("sequence_contract", {}).get("sequence_version") == 2
+    )
+    admission_payload = payload.get("timing_admission")
+    required_retained = {
+        "sequence",
+        "export_report",
+        "result",
+        "trajectory",
+        "runner_log",
+        "runner",
+    }
+    if timed_sequence:
+        required_retained.add("timing_admission")
     checks = {
         "schema": payload.get("schema_version") == 1,
         "result_id": isinstance(payload.get("result_id"), str)
@@ -514,6 +716,24 @@ def evaluate_portable_evidence(
                 "maximum_pose_age_ms", -1.0
             )
         ),
+        "timing_admission": (
+            not timed_sequence
+            or (
+                isinstance(admission_payload, dict)
+                and timing_admission_matches(
+                    admission_payload,
+                    payload["sequence_contract"],
+                    expected_database_sha256=str(
+                        payload.get("database", {}).get("sha256", "")
+                    ),
+                    minimum_frames=int(
+                        PROFILES.get(payload.get("profile"), {}).get(
+                            "minimum_timing_frames", 2
+                        )
+                    ),
+                )
+            )
+        ),
         "source_validation": (
             payload.get("source_validation", {}).get("valid") is True
             and all(
@@ -530,15 +750,7 @@ def evaluate_portable_evidence(
         },
         "retained_artifacts": (
             isinstance(artifacts, dict)
-            and {
-                "sequence",
-                "export_report",
-                "result",
-                "trajectory",
-                "runner_log",
-                "runner",
-            }
-            <= set(artifacts)
+            and required_retained <= set(artifacts)
             and all(
                 descriptor.get("bytes", 0) > 0
                 and bool(
@@ -550,9 +762,10 @@ def evaluate_portable_evidence(
         ),
         "contract_sources": (
             isinstance(sources, list)
-            and len(sources) == len(CONTRACT_SOURCES)
+            and len(sources) == len(expected_contract_sources)
             and all(isinstance(entry, dict) for entry in sources)
-            and {entry["path"] for entry in sources} == set(CONTRACT_SOURCES)
+            and {entry["path"] for entry in sources}
+            == set(expected_contract_sources)
             and all(
                 entry.get("normalization") == "text_lf"
                 for entry in sources
@@ -691,6 +904,24 @@ def main() -> int:
     except ValueError as error:
         raise SystemExit(str(error)) from error
     output.mkdir(parents=True)
+    timing_admission = output / "timing_admission.json"
+    admission_command = build_timing_admission_command(
+        args.database,
+        timing_admission,
+        spec,
+        profile,
+        point_time_contract,
+        ring_contract,
+    )
+    if admission_command is not None:
+        subprocess.run(admission_command, cwd=ROOT, check=True)
+        if not admitted_database_matches(
+            read_json(timing_admission), spec
+        ):
+            raise SystemExit(
+                "timing admission database identity does not match "
+                "the dataset contract"
+            )
     sequence = output / "sequence.bin"
     export_json = output / "export.json"
     result_json = output / "result.json"
@@ -771,6 +1002,11 @@ def main() -> int:
         export_report=read_json(export_json),
         result=read_json(result_json),
         commands={
+            **(
+                {"timing_admission": admission_command}
+                if admission_command is not None
+                else {}
+            ),
             "export": export_command,
             "gpu_kiss_icp": runner_command,
         },

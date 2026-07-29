@@ -16,9 +16,12 @@ from typing import Any
 from cudanav_real_dataset import read_json
 from cudanav_rosbag_evidence import sha256_file
 from run_cudanav_kiss_icp_real import (
+    admitted_database_matches,
+    build_timing_admission_command,
     git_identity,
     resolve_pointcloud_auxiliary_fields,
     sha256_text_lf,
+    timing_admission_matches,
 )
 
 
@@ -47,6 +50,7 @@ CLAIMS = {
 PROFILES = {
     "smoke": {
         "require_point_time": False,
+        "minimum_timing_frames": 2,
         "start_offset_s": 1.0,
         "maximum_duration_s": 30.0,
         "maximum_frames": 300,
@@ -63,6 +67,7 @@ PROFILES = {
     },
     "release": {
         "require_point_time": True,
+        "minimum_timing_frames": 1000,
         "start_offset_s": 1.0,
         "maximum_duration_s": 120.0,
         "maximum_frames": 1200,
@@ -182,6 +187,10 @@ def make_manifest(
     spec = read_json(spec_path)
     expected = PROFILES[profile]
     trajectory = output / "trajectory.csv"
+    admission_json = output / "timing_admission.json"
+    admission_report = (
+        read_json(admission_json) if admission_json.is_file() else None
+    )
     checks = {
         "profile": profile in PROFILES,
         "git_commit": bool(COMMIT.fullmatch(git_commit)),
@@ -199,7 +208,10 @@ def make_manifest(
         == expected["start_offset_s"],
         "frames": result.get("frames") == export_report.get("frames"),
         "point_time_contract": (
-            not expected["require_point_time"]
+            (
+                not expected["require_point_time"]
+                and export_report.get("sequence_version") != 2
+            )
             or (
                 export_report.get("sequence_version") == 2
                 and export_report.get("point_time", {}).get("present") is True
@@ -211,6 +223,14 @@ def make_manifest(
                 and result.get("deskew", {}).get("frames")
                 == result.get("frames")
             )
+        ),
+        "timing_admission": timing_admission_matches(
+            admission_report,
+            export_report,
+            expected_database_sha256=spec["acquisition"][
+                "expected_database_sha256"
+            ],
+            minimum_frames=expected["minimum_timing_frames"],
         ),
         "stages": result.get("stages") == STAGES,
         "gpu_identity": (
@@ -272,6 +292,8 @@ def make_manifest(
         "bytes": runner.stat().st_size,
         "sha256": sha256_file(runner),
     }
+    if admission_json.is_file():
+        artifacts["timing_admission"] = artifact(admission_json, output)
     return {
         "schema_version": 1,
         "profile": profile,
@@ -286,6 +308,7 @@ def make_manifest(
             "sha256": export_report["database"]["sha256"],
         },
         "sequence_contract": sequence_contract(export_report),
+        "timing_admission": admission_report,
         "gpu": result["gpu"],
         "stages": result["stages"],
         "metrics": metrics_contract(result),
@@ -305,6 +328,8 @@ def evaluate_manifest(
     path = manifest_path.resolve()
     root = path.parent
     payload = read_json(path)
+    sequence_payload = payload.get("sequence_contract", {})
+    profile_policy = PROFILES.get(payload.get("profile"), {})
     checks = {
         "schema": payload.get("schema_version") == 1,
         "profile": payload.get("profile") in PROFILES,
@@ -327,6 +352,16 @@ def evaluate_manifest(
             and payload.get("passed") is True
         ),
         "metrics": payload.get("metrics", {}).get("quality_pass") is True,
+        "timing_admission": timing_admission_matches(
+            payload.get("timing_admission"),
+            sequence_payload,
+            expected_database_sha256=str(
+                payload.get("database", {}).get("sha256", "")
+            ),
+            minimum_frames=int(
+                profile_policy.get("minimum_timing_frames", 2)
+            ),
+        ),
         "sequence": (
             payload.get("sequence_contract", {}).get("frames")
             == payload.get("metrics", {}).get("frames")
@@ -346,6 +381,8 @@ def evaluate_manifest(
             "trajectory",
             "runner_log",
         }
+        if payload.get("sequence_contract", {}).get("sequence_version") == 2:
+            local_names.add("timing_admission")
         local = {
             name: descriptor
             for name, descriptor in artifacts.items()
@@ -400,6 +437,7 @@ def make_portable_evidence(
         "dataset_spec_sha256": manifest["dataset_spec_sha256"],
         "database": manifest["database"],
         "sequence_contract": manifest["sequence_contract"],
+        "timing_admission": manifest.get("timing_admission"),
         "gpu": manifest["gpu"],
         "stages": manifest["stages"],
         "metrics": manifest["metrics"],
@@ -418,7 +456,20 @@ def make_portable_evidence(
                 "normalization": "text_lf",
                 "sha256": sha256_text_lf(ROOT / relative),
             }
-            for relative in CONTRACT_SOURCES
+            for relative in (
+                CONTRACT_SOURCES
+                + (
+                    (
+                        "scripts/inspect_pointcloud2_timing.py",
+                        "scripts/run_cudanav_kiss_icp_real.py",
+                    )
+                    if manifest["sequence_contract"].get(
+                        "sequence_version"
+                    )
+                    == 2
+                    else ()
+                )
+            )
         ],
     }
 
@@ -432,6 +483,28 @@ def evaluate_portable_evidence(
     sources = payload.get("contract_sources")
     artifacts = payload.get("retained_artifacts")
     metrics = payload.get("metrics", {})
+    expected_contract_sources = CONTRACT_SOURCES + (
+        (
+            "scripts/inspect_pointcloud2_timing.py",
+            "scripts/run_cudanav_kiss_icp_real.py",
+        )
+        if payload.get("sequence_contract", {}).get("sequence_version") == 2
+        else ()
+    )
+    timed_sequence = (
+        payload.get("sequence_contract", {}).get("sequence_version") == 2
+    )
+    admission_payload = payload.get("timing_admission")
+    required_retained = {
+        "sequence",
+        "export_report",
+        "result",
+        "trajectory",
+        "runner_log",
+        "runner",
+    }
+    if timed_sequence:
+        required_retained.add("timing_admission")
     checks = {
         "schema": payload.get("schema_version") == 1,
         "result_id": bool(payload.get("result_id")),
@@ -477,6 +550,24 @@ def evaluate_portable_evidence(
             and metrics.get("mppi", {}).get("evaluations", 0) > 0
             and metrics.get("mppi", {}).get("invalid_commands", 1) == 0
         ),
+        "timing_admission": (
+            not timed_sequence
+            or (
+                isinstance(admission_payload, dict)
+                and timing_admission_matches(
+                    admission_payload,
+                    payload["sequence_contract"],
+                    expected_database_sha256=str(
+                        payload.get("database", {}).get("sha256", "")
+                    ),
+                    minimum_frames=int(
+                        PROFILES.get(payload.get("profile"), {}).get(
+                            "minimum_timing_frames", 2
+                        )
+                    ),
+                )
+            )
+        ),
         "source_validation": (
             payload.get("source_validation", {}).get("valid") is True
             and all(
@@ -488,15 +579,7 @@ def evaluate_portable_evidence(
         "claims": payload.get("claims") == CLAIMS,
         "retained_artifacts": (
             isinstance(artifacts, dict)
-            and {
-                "sequence",
-                "export_report",
-                "result",
-                "trajectory",
-                "runner_log",
-                "runner",
-            }
-            <= set(artifacts)
+            and required_retained <= set(artifacts)
             and all(
                 descriptor.get("bytes", 0) > 0
                 and bool(
@@ -508,9 +591,9 @@ def evaluate_portable_evidence(
         ),
         "contract_sources": (
             isinstance(sources, list)
-            and len(sources) == len(CONTRACT_SOURCES)
+            and len(sources) == len(expected_contract_sources)
             and {entry.get("path") for entry in sources}
-            == set(CONTRACT_SOURCES)
+            == set(expected_contract_sources)
             and all(
                 entry.get("normalization") == "text_lf"
                 and bool(
@@ -662,6 +745,24 @@ def main() -> int:
     result_json = output / "result.json"
     trajectory = output / "trajectory.csv"
     runner_log = output / "runner.log"
+    timing_admission = output / "timing_admission.json"
+    admission_command = build_timing_admission_command(
+        args.database,
+        timing_admission,
+        spec,
+        profile,
+        point_time_contract,
+        ring_contract,
+    )
+    if admission_command is not None:
+        subprocess.run(admission_command, cwd=ROOT, check=True)
+        if not admitted_database_matches(
+            read_json(timing_admission), spec
+        ):
+            raise SystemExit(
+                "timing admission database identity does not match "
+                "the dataset contract"
+            )
     export_command = [
         sys.executable,
         str(EXPORTER),
@@ -753,6 +854,11 @@ def main() -> int:
         export_report=read_json(export_json),
         result=read_json(result_json),
         commands={
+            **(
+                {"timing_admission": admission_command}
+                if admission_command is not None
+                else {}
+            ),
             "export": export_command,
             "real_gpu_stack": runner_command,
         },

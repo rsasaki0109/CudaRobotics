@@ -178,8 +178,33 @@ Consequently this contract is deliberately `deskew_capable: false`. It may
 drive the version-1 GPU smoke harnesses, but it cannot satisfy the timed
 version-2 KISS-ICP or all-GPU-stack release gates. Release evidence must use a
 separately content-addressed raw PointCloud2 source whose dataset contract
-declares the actual time field and unit. The exporter validates every frame's
-field schema and timing span and never synthesizes timing from array order.
+declares the actual time field and unit, physically justified minimum and
+maximum scan duration, and whether ring is required. The independent
+`inspect_pointcloud2_timing.py` admission gate checks every selected frame and
+requires the declared unit to be the unique unit candidate inside those
+bounds before either release harness may export it. The exporter then
+revalidates every frame's field schema and timing span and never synthesizes
+timing from array order.
+
+The admission tool can also be run directly while evaluating a candidate bag:
+
+```bash
+python3 scripts/inspect_pointcloud2_timing.py \
+  --database RAW_BAG.db3 \
+  --pointcloud-topic /points_raw \
+  --point-time-field time \
+  --point-time-datatype 7 \
+  --point-time-unit seconds \
+  --ring-field ring --ring-datatype 4 --require-ring \
+  --minimum-scan-span-s 0.05 \
+  --maximum-scan-span-s 0.15 \
+  --require-unambiguous-unit \
+  --output build/cudanav_timing_admission.json
+```
+
+An admission PASS establishes that the recording matches a declared timing
+contract. It does not establish odometry accuracy or authorize a release
+claim; those remain downstream GPU quality gates.
 
 The checked-in portable result is
 [`results/cudanav_istanbul_materialization_2026-07-29.md`](results/cudanav_istanbul_materialization_2026-07-29.md);

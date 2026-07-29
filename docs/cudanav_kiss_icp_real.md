@@ -16,11 +16,43 @@ The exporter has two explicit sequence formats:
 - version 2 stores XYZ plus a finite per-point relative timestamp in seconds.
 
 The release profile is fail-closed: its dataset specification must name a
-scalar PointCloud2 time field and unit, every selected frame must have a time
-span between 1 microsecond and 1 second, the exporter must emit version 2, and
-the native runner must GPU-deskew every frame. A scalar ring field may also be
-declared and is preserved in the evidence contract, although the current
-deskew kernel does not require it.
+scalar PointCloud2 time field and unit plus physical minimum and maximum scan
+duration. It must also set `require_unambiguous_unit: true`. Before export, the
+timing admission tool evaluates seconds, milliseconds, microseconds, and
+nanoseconds against those physical bounds. The declared unit must be the only
+plausible candidate across every selected frame. The audit also requires a
+stable field schema and frame ID, finite nonzero point-time spans, strictly
+increasing cloud stamps, and an integer scalar ring when the dataset declares
+one as required.
+
+The resulting `timing_admission.json` is content-bound to the database,
+selection, topic, field, unit, and exported frame count. The exporter must then
+emit version 2 and the native runner must GPU-deskew every frame. A scalar ring
+field may be declared and is preserved in the evidence contract, although the
+current deskew kernel does not require it.
+
+A timed dataset contract uses this shape:
+
+```json
+{
+  "point_time": {
+    "field": "time",
+    "datatype": 7,
+    "unit": "seconds",
+    "minimum_scan_span_s": 0.05,
+    "maximum_scan_span_s": 0.15,
+    "require_unambiguous_unit": true
+  },
+  "ring": {
+    "field": "ring",
+    "datatype": 4,
+    "required": true
+  }
+}
+```
+
+The physical bounds must come from the sensor/recording contract; they are not
+learned from the same samples being admitted.
 
 The localization-only Istanbul smoke topic contains only `x`, `y`, and `z` in
 `base_link`; it has no per-point time or ring field. It is therefore useful

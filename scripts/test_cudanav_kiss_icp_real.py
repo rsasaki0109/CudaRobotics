@@ -20,6 +20,7 @@ from export_cudanav_kiss_icp_sequence import (
 )
 from run_cudanav_kiss_icp_real import (
     PROFILES,
+    build_timing_admission_command,
     evaluate_manifest,
     evaluate_portable_evidence,
     make_manifest,
@@ -116,6 +117,39 @@ class CudaNavKissIcpRealTest(unittest.TestCase):
             resolve_pointcloud_auxiliary_fields(
                 malformed, PROFILES["release"]
             )
+        timed = deepcopy(spec)
+        timed["recorded_inputs"]["pointcloud"]["point_time"] = {
+            "field": "time",
+            "datatype": 7,
+            "unit": "seconds",
+            "minimum_scan_span_s": 0.05,
+            "maximum_scan_span_s": 0.15,
+            "require_unambiguous_unit": True,
+        }
+        timed["recorded_inputs"]["pointcloud"]["ring"] = {
+            "field": "ring",
+            "datatype": 4,
+            "required": True,
+        }
+        point_time, ring = resolve_pointcloud_auxiliary_fields(
+            timed, PROFILES["release"]
+        )
+        self.assertEqual(point_time["field"], "time")
+        self.assertEqual(ring["field"], "ring")
+        command = build_timing_admission_command(
+            Path("timed.db3"),
+            Path("admission.json"),
+            timed,
+            PROFILES["release"],
+            point_time,
+            ring,
+        )
+        self.assertIsNotNone(command)
+        self.assertIn("--require-unambiguous-unit", command)
+        self.assertIn("--require-ring", command)
+        self.assertEqual(
+            command[command.index("--minimum-frames") + 1], "1000"
+        )
 
     def test_export_sequence_binds_clouds_and_normalized_reference(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
