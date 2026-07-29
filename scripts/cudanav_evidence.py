@@ -354,6 +354,35 @@ def evaluate_manifest(
         )
     else:
         checks["config_sha256_matches"] = False
+        config_path = None
+    command = manifest.get("command")
+    checks["launch_command_recorded"] = (
+        isinstance(command, list)
+        and bool(command)
+        and all(isinstance(token, str) and token for token in command)
+    )
+    config_arguments = (
+        [
+            token.split(":=", 1)[1]
+            for token in command
+            if token.startswith("controller_config:=")
+        ]
+        if checks["launch_command_recorded"]
+        else []
+    )
+    checks["controller_config_command_binding"] = False
+    if len(config_arguments) == 1 and config_path is not None:
+        commanded_config = Path(config_arguments[0])
+        portable_name_binding = commanded_config.name == config_path.name
+        commanded_content_binding = True
+        if commanded_config.is_file():
+            commanded_content_binding = (
+                hashlib.sha256(commanded_config.read_bytes()).hexdigest()
+                == config_digest
+            )
+        checks["controller_config_command_binding"] = (
+            portable_name_binding and commanded_content_binding
+        )
     if policy.require_bag or bool(manifest.get("bag_command")):
         relative = artifacts.get("rosbag")
         if artifact_exists(relative, False):

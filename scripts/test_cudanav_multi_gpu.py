@@ -69,6 +69,13 @@ def write_run(
         "git_commit": "a" * 40,
         "git_dirty": False,
         "config_sha256": hashlib.sha256(config.read_bytes()).hexdigest(),
+        "command": [
+            "ros2",
+            "launch",
+            "cuda_nav_bringup",
+            "cudanav_closed_loop.launch.py",
+            f"controller_config:={config}",
+        ],
         "gpu": [
             {
                 "physical_index": physical_index,

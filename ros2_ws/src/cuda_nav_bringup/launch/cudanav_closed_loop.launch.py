@@ -13,11 +13,12 @@ def generate_launch_description():
     output_path = LaunchConfiguration("output_path")
     traversal_count = LaunchConfiguration("traversal_count")
     mission_timeout_sec = LaunchConfiguration("mission_timeout_sec")
-    controller_config = str(
+    default_controller_config = str(
         Path(get_package_share_directory("cuda_nav_bringup"))
         / "config"
         / "controller.yaml"
     )
+    controller_config = LaunchConfiguration("controller_config")
     lifecycle_nodes = [
         LifecycleNode(
             package="cuda_kiss_icp",
@@ -103,6 +104,10 @@ def generate_launch_description():
             DeclareLaunchArgument("traversal_count", default_value="1"),
             DeclareLaunchArgument(
                 "mission_timeout_sec", default_value="90.0"
+            ),
+            DeclareLaunchArgument(
+                "controller_config",
+                default_value=default_controller_config,
             ),
             Node(
                 package="cuda_nav_bringup",

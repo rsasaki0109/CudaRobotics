@@ -1,4 +1,4 @@
-controller_server:
+/cuda_nav/controller_server:
   ros__parameters:
     controller_frequency: 20.0
     costmap_update_timeout: 0.5
@@ -52,30 +52,29 @@ controller_server:
       lookahead_dist: 3.0
       transform_tolerance: 0.15
 
-local_costmap:
-  local_costmap:
-    ros__parameters:
-      update_frequency: 10.0
-      publish_frequency: 2.0
-      global_frame: odom
-      robot_base_frame: base_link
-      rolling_window: true
-      width: 12.0
-      height: 6.0
-      resolution: 0.10
-      robot_radius: 0.24
-      track_unknown_space: true
-      always_send_full_costmap: true
-      plugins: [cuda_voxel, inflation_layer]
-      cuda_voxel:
-        plugin: "cuda_voxel_costmap_layer::CudaVoxelCostmapLayer"
-        enabled: true
-        occupancy_topic: /cuda_nav/occupancy
-        lethal_threshold: 50
-        unknown_is_free: false
-        use_maximum: false
-        max_map_age_sec: 0.5
-      inflation_layer:
-        plugin: "nav2_costmap_2d::InflationLayer"
-        cost_scaling_factor: 3.0
-        inflation_radius: 0.60
+/cuda_nav/local_costmap/local_costmap:
+  ros__parameters:
+    update_frequency: 10.0
+    publish_frequency: 2.0
+    global_frame: odom
+    robot_base_frame: base_link
+    rolling_window: true
+    width: 12.0
+    height: 6.0
+    resolution: 0.10
+    robot_radius: 0.24
+    track_unknown_space: true
+    always_send_full_costmap: true
+    plugins: [cuda_voxel, inflation_layer]
+    cuda_voxel:
+      plugin: "cuda_voxel_costmap_layer::CudaVoxelCostmapLayer"
+      enabled: true
+      occupancy_topic: /cuda_nav/occupancy
+      lethal_threshold: 50
+      unknown_is_free: false
+      use_maximum: false
+      max_map_age_sec: 0.5
+    inflation_layer:
+      plugin: "nav2_costmap_2d::InflationLayer"
+      cost_scaling_factor: 3.0
+      inflation_radius: 0.60
