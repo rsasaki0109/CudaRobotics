@@ -29,6 +29,21 @@
       ]
     },
     {
+      "id": "real_gpu_odometry",
+      "statement": "The reusable GPU KISS-ICP core processes a content-addressed 300-frame real PointCloud2 sequence with 0.778 m ATE RMSE and 2.961 percent final drift on an NVIDIA GeForce GTX 1660 Ti.",
+      "submission_required": true,
+      "status": "supported",
+      "evidence": [
+        "istanbul_kiss_icp_gpu_smoke",
+        "istanbul_kiss_icp_gpu_report"
+      ],
+      "limitations": [
+        "This is a 29.9-second smoke profile on one GPU model, not the 120-second release profile or a multi-GPU result.",
+        "A declared one-second startup offset excludes a documented GNSS initialization discontinuity of roughly 1.9 m and 146 degrees.",
+        "This proves real-sensor GPU odometry only; it is neither a GPU controller run nor closed-loop evidence."
+      ]
+    },
+    {
       "id": "integrated_gpu_stack",
       "statement": "GPU KISS-ICP, rolling voxel mapping, exact typed ESDF, a Nav2 costmap bridge, and CUDA MPPI build and run as one ROS 2 Jazzy stack.",
       "submission_required": true,
@@ -233,6 +248,102 @@
           "path": "docs/results/cudanav_istanbul_materialization_2026-07-29.md",
           "normalization": "text_lf",
           "sha256": "d0cd80c94c43b2e89b00b98eebd96e6e9b8c3380abfdd019ef9f89e8ed7443bb"
+        }
+      ]
+    },
+    {
+      "id": "istanbul_kiss_icp_gpu_smoke",
+      "status": "complete",
+      "kind": "json_assertions",
+      "generator_command": [
+        "python3",
+        "scripts/run_cudanav_kiss_icp_real.py",
+        "--validate-portable",
+        "docs/results/cudanav_kiss_icp_real_2026-07-29.json",
+        "--commit",
+        "455e013843a77de8b6c78073048c115143cb6edc"
+      ],
+      "artifacts": [
+        {
+          "path": "docs/results/cudanav_kiss_icp_real_2026-07-29.json",
+          "normalization": "text_lf",
+          "sha256": "76866419464d5e96ff8899a6f17e59014d265831dab4ca0d1f2a00a835119a72"
+        }
+      ],
+      "assertions": [
+        {
+          "json_path": "source_commit",
+          "op": "eq",
+          "value": "455e013843a77de8b6c78073048c115143cb6edc"
+        },
+        {
+          "json_path": "claims.real_pointcloud_gpu_odometry",
+          "op": "eq",
+          "value": true
+        },
+        {
+          "json_path": "claims.gpu_controller_run",
+          "op": "eq",
+          "value": false
+        },
+        {
+          "json_path": "claims.closed_loop",
+          "op": "eq",
+          "value": false
+        },
+        {
+          "json_path": "sequence_contract.start_offset_s",
+          "op": "eq",
+          "value": 1.0
+        },
+        {
+          "json_path": "metrics.frames",
+          "op": "eq",
+          "value": 300
+        },
+        {
+          "json_path": "metrics.ate_rmse_m",
+          "op": "lt",
+          "value": 5.0
+        },
+        {
+          "json_path": "metrics.final_drift_percent",
+          "op": "lt",
+          "value": 10.0
+        },
+        {
+          "json_path": "metrics.inliers_min",
+          "op": "gt",
+          "value": 30
+        },
+        {
+          "json_path": "metrics.quality_pass",
+          "op": "eq",
+          "value": true
+        }
+      ]
+    },
+    {
+      "id": "istanbul_kiss_icp_gpu_report",
+      "status": "complete",
+      "kind": "file_set",
+      "generator_command": [
+        "python3",
+        "scripts/run_cudanav_kiss_icp_real.py",
+        "--publish",
+        "build/cudanav_kiss_icp_real_455e013/manifest.json",
+        "--result-id",
+        "cudanav_kiss_icp_real_2026-07-29",
+        "--output-json",
+        "docs/results/cudanav_kiss_icp_real_2026-07-29.json",
+        "--output-markdown",
+        "docs/results/cudanav_kiss_icp_real_2026-07-29.md"
+      ],
+      "artifacts": [
+        {
+          "path": "docs/results/cudanav_kiss_icp_real_2026-07-29.md",
+          "normalization": "text_lf",
+          "sha256": "2dc788ccbed83fda3bebba06c4261586ceff604c05bd97eab4036faa00de8738"
         }
       ]
     },

@@ -1,0 +1,138 @@
+{
+  "claims": {
+    "closed_loop": false,
+    "gpu_controller_run": false,
+    "real_pointcloud_gpu_odometry": true
+  },
+  "contract_sources": [
+    {
+      "normalization": "text_lf",
+      "path": "docs/cudanav_real_dataset_smoke.json",
+      "sha256": "d4fb9efc53d2b52f72d58fda7b80da5661b8cb43844f3cb6fa76a6f0e0385672"
+    },
+    {
+      "normalization": "text_lf",
+      "path": "include/cudarobotics/kiss_icp_gpu.hpp",
+      "sha256": "d7abdc921536ff6283ee7fef0dee020aa6f28fdd69a305865e000df1332ee0f4"
+    },
+    {
+      "normalization": "text_lf",
+      "path": "src/gpu_kiss_icp.cu",
+      "sha256": "cd62b6bfc0c1e6b321906ccd4a44bdc78846b26a417622e233a6f218a3626f45"
+    },
+    {
+      "normalization": "text_lf",
+      "path": "tools/cudanav_kiss_icp_sequence.cu",
+      "sha256": "8fc5fe98e2d54043115af34cfdc72f557324c1a9538e3a35ebda931b6d36b035"
+    },
+    {
+      "normalization": "text_lf",
+      "path": "scripts/export_cudanav_kiss_icp_sequence.py",
+      "sha256": "d38bb602bae978d81a5892255cf957f2af667f5027f8970da5af04fa7f125c8f"
+    },
+    {
+      "normalization": "text_lf",
+      "path": "scripts/run_cudanav_kiss_icp_real.py",
+      "sha256": "3662d20caaea38c63686ee71a81a237f19c06b72b096ce012f195b874def66da"
+    }
+  ],
+  "database": {
+    "bytes": 1009799168,
+    "filename": "rosbag2_2024_09_12-14_59_58_0.db3",
+    "sha256": "eb80d649a41fd557ff3af5df4424051191fb696d0ebecbeb36b385702d2b4c8d"
+  },
+  "dataset_id": "autoware_istanbul_localization_smoke",
+  "dataset_spec_sha256": "d4fb9efc53d2b52f72d58fda7b80da5661b8cb43844f3cb6fa76a6f0e0385672",
+  "evidence_mode": "real_sensor_gpu_odometry_with_reference",
+  "gpu": {
+    "compute_capability": "7.5",
+    "device": 0,
+    "driver_version": 13020,
+    "name": "NVIDIA GeForce GTX 1660 Ti",
+    "uuid": "GPU-f635286a-d68f-5039-cbc9-22d7f295b3a3"
+  },
+  "metrics": {
+    "alignment_rmse_p95": 0.1380191743,
+    "ate_rmse_m": 0.7779705517,
+    "duration_s": 29.90000717,
+    "estimated_path_length_m": 72.80285554,
+    "final_drift_percent": 2.960523029,
+    "final_xy_error_m": 2.140011826,
+    "frames": 300,
+    "inliers_median": 546,
+    "inliers_min": 417,
+    "mean_frame_ms": 9.669275,
+    "nn_ms_p95": 5.581696033,
+    "quality_pass": true,
+    "reference_path_length_m": 72.28492414,
+    "thresholds": {
+      "maximum_ate_rmse_m": 5,
+      "maximum_final_drift_percent": 10,
+      "minimum_inliers": 30
+    },
+    "wall_time_ms": 2900.7825,
+    "yaw_error_p95_rad": 0.003507882357
+  },
+  "profile": "smoke",
+  "publisher_commit": "455e013843a77de8b6c78073048c115143cb6edc",
+  "result_id": "cudanav_kiss_icp_real_2026-07-29",
+  "retained_artifacts": {
+    "export_report": {
+      "bytes": 1001,
+      "sha256": "42d8608ea7076ff93205557ee7d42b7906b7b825bbed9f427cf13dab8304b847"
+    },
+    "result": {
+      "bytes": 1235,
+      "sha256": "3ed7b753603a1ada7b080f34fc73d2e772b51ae24edee359bfdca3f0441fdb80"
+    },
+    "runner": {
+      "bytes": 323584,
+      "sha256": "7c19d0591b4d5e3754d2672ce6aacb9ed9b8a76274e4492ee0e092bcb277afde"
+    },
+    "runner_log": {
+      "bytes": 83,
+      "sha256": "3ea305404db32466e8bead7ab4b005f21a2a4d6cf88e1fad6a394393ec6fa61f"
+    },
+    "sequence": {
+      "bytes": 4378828,
+      "sha256": "693d74dd784511d830e8640c3e369bacfb2ac517c841ab9b3cce082fa2abcb98"
+    },
+    "trajectory": {
+      "bytes": 42477,
+      "sha256": "d281be8e67c5cd17122d7865b4fd4a30496e4927a47aa073ca9a376a41790c92"
+    }
+  },
+  "schema_version": 1,
+  "sequence_contract": {
+    "duration_s": 29.900007168,
+    "frame_id": "base_link",
+    "frames": 300,
+    "maximum_duration_s": 30.0,
+    "maximum_points": 1281,
+    "maximum_pose_age_ms": 50.0,
+    "mean_points": 1214.0033333333333,
+    "minimum_points": 932,
+    "pointcloud_topic": "/localization/util/downsample/pointcloud",
+    "pose_age_p95_ms": 0.357888,
+    "pose_topic": "/sensing/gnss/pose",
+    "pose_type": "geometry_msgs/msg/PoseStamped",
+    "reference_path_length_m": 72.28492121683614,
+    "start_offset_s": 1.0
+  },
+  "source_commit": "455e013843a77de8b6c78073048c115143cb6edc",
+  "source_validation": {
+    "checks": {
+      "artifacts": true,
+      "checks": true,
+      "claims": true,
+      "clean": true,
+      "commit": true,
+      "evidence_mode": true,
+      "metrics": true,
+      "profile": true,
+      "schema": true,
+      "sequence_contract": true
+    },
+    "valid": true
+  }
+}

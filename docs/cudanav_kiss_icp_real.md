@@ -73,6 +73,10 @@ python3 scripts/run_cudanav_kiss_icp_real.py \
   --commit SOURCE_COMMIT
 ```
 
+The checked-in smoke result is
+[`results/cudanav_kiss_icp_real_2026-07-29.md`](results/cudanav_kiss_icp_real_2026-07-29.md);
+its adjacent JSON is the machine-verifiable source.
+
 ## Startup transient
 
 The beginning of this bag contains a GNSS initialization discontinuity: the
