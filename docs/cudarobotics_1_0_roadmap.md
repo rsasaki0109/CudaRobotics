@@ -150,6 +150,10 @@ python3 scripts/run_cudanav_multi_gpu.py \
 gh workflow run ros2_cuda_mppi.yml --ref PAPER_COMMIT
 python3 scripts/validate_cudanav_ros_ci.py \
   build/paper/ros_jazzy_ci/ros_jazzy_ci_evidence.json
+python3 scripts/publish_cudanav_systems_evidence.py \
+  --suite-dir build/cudanav_autonomy_release \
+  --ros-ci build/paper/ros_jazzy_ci/ros_jazzy_ci_evidence.json \
+  --output-dir docs/results --prefix cudanav_systems_YYYY-MM-DD
 ```
 
 `run_autonomy_suite.py` orchestrates these three commands while preserving
@@ -161,6 +165,8 @@ The ROS 2 workflow independently emits a downloadable, commit-bound Jazzy CI
 attestation after the build, plugin-load, parameter-validation, contract, and
 package-test gates pass. See
 [`cudanav_ros_ci_evidence.md`](cudanav_ros_ci_evidence.md).
+The systems publisher then independently revalidates both sources and emits
+portable JSON summary/provenance plus a Markdown report for the paper ledger.
 
 Each run must produce:
 

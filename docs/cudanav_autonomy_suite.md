@@ -59,6 +59,29 @@ python3 scripts/validate_autonomy_suite.py \
   build/cudanav_autonomy_release
 ```
 
+After the release suite and the commit-matched ROS Jazzy workflow artifact
+both pass, freeze the portable systems-paper artifacts:
+
+```bash
+python3 scripts/publish_cudanav_systems_evidence.py \
+  --suite-dir build/cudanav_autonomy_release \
+  --ros-ci build/paper/ros_jazzy_ci/ros_jazzy_ci_evidence.json \
+  --output-dir docs/results \
+  --prefix cudanav_systems_YYYY-MM-DD
+
+python3 scripts/publish_cudanav_systems_evidence.py \
+  --suite-dir build/cudanav_autonomy_release \
+  --ros-ci build/paper/ros_jazzy_ci/ros_jazzy_ci_evidence.json \
+  --output-dir docs/results \
+  --prefix cudanav_systems_YYYY-MM-DD \
+  --check
+```
+
+The publisher independently reruns the aggregate and ROS CI validators. It
+refuses smoke profiles, dirty autonomy suites, failed child modes, or differing
+commits. Its summary preserves the semantic split between closed-loop
+simulation and recorded-motion shadow evaluation.
+
 The release suite passes only when:
 
 - the 10-minute closed-loop release policy passes with retained bag and video;
