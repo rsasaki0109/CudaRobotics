@@ -30,6 +30,21 @@ python scripts/run_cudanav_gpu_closed_loop.py \
   --output-dir build/cudanav_gpu_closed_loop_release
 ```
 
+Render the content-bound visual summary after the release run:
+
+```bash
+python scripts/render_cudanav_gpu_closed_loop.py \
+  --evidence docs/results/cudanav_gpu_closed_loop_release_2026-07-29.json \
+  --trajectory build/cudanav_gpu_closed_loop_release/trajectory.csv \
+  --output gif/cudanav_gpu_closed_loop_release.gif \
+  --manifest gif/cudanav_gpu_closed_loop_release.json
+```
+
+The renderer rejects a trajectory whose SHA-256 does not match the release
+evidence, retains every traversal boundary while sampling the animation, and
+writes a sidecar that binds the source evidence, trajectory, renderer, and GIF.
+Use the same command with `--check-only` to verify an existing visual.
+
 The MPPI warm start is reset at each new mission path. A forward-only planner
 is used when the estimated heading agrees with the first path tangent; a
 bidirectional planner is selected when the robot must initially reverse. Both

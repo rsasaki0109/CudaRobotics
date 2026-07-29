@@ -8,6 +8,8 @@ Profile: `release`
 
 Result: **PASS**
 
+![CudaNav native all-GPU closed-loop release](../../gif/cudanav_gpu_closed_loop_release.gif)
+
 The deterministic S-course plant generates LiDAR from ground truth, but the
 controller only receives the GPU KISS-ICP estimate. Each CUDA MPPI command is
 applied to the plant before the next scan. GPU voxel mapping and GPU ESDF build
@@ -32,6 +34,22 @@ the controller costmap in the same process.
 - Command deadline miss rate: 0.000%
 - All-colliding evaluations: 0
 - Minimum nonzero valid-rollout ratio: 0.195
+
+## Visual evidence
+
+The 180-frame GIF retains the start and end of every traversal and is bound to
+the 10,594-row trajectory by SHA-256. Its machine-readable sidecar records the
+source evidence, trajectory, renderer, dimensions, frame count, and GIF hash:
+[`cudanav_gpu_closed_loop_release.json`](../../gif/cudanav_gpu_closed_loop_release.json).
+
+```bash
+python scripts/render_cudanav_gpu_closed_loop.py \
+  --evidence docs/results/cudanav_gpu_closed_loop_release_2026-07-29.json \
+  --trajectory build/cudanav_gpu_closed_loop_release_b2c4907/trajectory.csv \
+  --output gif/cudanav_gpu_closed_loop_release.gif \
+  --manifest gif/cudanav_gpu_closed_loop_release.json \
+  --check-only
+```
 
 ## Scope
 
