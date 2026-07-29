@@ -26,7 +26,12 @@ SPEC = ROOT / "docs" / "cudanav_real_dataset_smoke.json"
 
 
 class CudaNavRealGpuStackTest(unittest.TestCase):
-    def make_fixture(self, output: Path) -> Path:
+    def make_fixture(
+        self,
+        output: Path,
+        *,
+        frames_with_integrated_rays: int = 2,
+    ) -> Path:
         spec = deepcopy(read_json(SPEC))
         database = output / spec["acquisition"]["expected_database"]
         database.write_bytes(b"database fixture")
@@ -78,7 +83,16 @@ class CudaNavRealGpuStackTest(unittest.TestCase):
             "yaw_error_p95_rad": 0.01,
             "inliers_min": 100,
             "nn_ms_p95": 0.1,
+            "odometry_config": {
+                "map_voxel_size_m": 0.35,
+                "scan_voxel_size_m": 0.22,
+                "map_radius_m": 40.0,
+                "normal_neighbors": 12,
+            },
             "mapping": {
+                "height_frame": "estimated_sensor_relative",
+                "maximum_abs_estimated_sensor_height_m": 4.0,
+                "frames_with_integrated_rays": frames_with_integrated_rays,
                 "final_observed_voxels": 500,
                 "total_integrated_rays": 1000,
                 "map_shifts": 0,
@@ -164,6 +178,16 @@ class CudaNavRealGpuStackTest(unittest.TestCase):
             payload["claims"] = dict(CLAIMS)
             payload["stages"].remove("gpu_esdf")
             manifest_path.write_text(json.dumps(payload), encoding="utf-8")
+            self.assertFalse(evaluate_manifest(manifest_path)["valid"])
+
+    def test_rejects_mapping_that_drops_a_frame(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            manifest_path = self.make_fixture(
+                Path(directory),
+                frames_with_integrated_rays=1,
+            )
+            payload = read_json(manifest_path)
+            self.assertFalse(payload["checks"]["mapping"])
             self.assertFalse(evaluate_manifest(manifest_path)["valid"])
 
 
