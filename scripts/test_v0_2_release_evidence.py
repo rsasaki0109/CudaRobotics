@@ -8,6 +8,7 @@ import tempfile
 import unittest
 
 from cudanav_ros_ci_evidence import REQUIRED_CHECKS, REQUIRED_PACKAGES
+from python_source_provenance import expected_payload
 from release_ci_evidence import GATE_CONTRACTS
 from test_release_preflight import evidence_fixture
 from test_verify_python_release_artifacts import (
@@ -126,6 +127,7 @@ def write_python_artifacts(root: Path) -> Path:
         "package_version": VERSION,
         "git_commit": COMMIT,
         "git_dirty": False,
+        "source_provenance": expected_payload(),
         "artifacts": [
             {
                 "name": path.name,
@@ -213,6 +215,22 @@ class V02ReleaseEvidenceTest(unittest.TestCase):
             self.assertFalse(
                 result["gates"]["python_artifacts"]["checks"][
                     "content_unchanged"
+                ]
+            )
+            self.assertFalse(result["passed"])
+
+    def test_source_provenance_is_required(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            fixture = complete_fixture(Path(directory))
+            manifest = json.loads(
+                fixture["python_artifacts_path"].read_text(encoding="utf-8")
+            )
+            manifest.pop("source_provenance")
+            write_json(fixture["python_artifacts_path"], manifest)
+            result = evaluate_release(**fixture)
+            self.assertFalse(
+                result["gates"]["python_artifacts"]["checks"][
+                    "source_provenance"
                 ]
             )
             self.assertFalse(result["passed"])
