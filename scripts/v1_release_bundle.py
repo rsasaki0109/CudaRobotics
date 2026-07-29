@@ -11,6 +11,14 @@ from typing import Any
 from v1_release_attestation import MODES, load_reference
 
 
+FILENAMES = {
+    "quickstart_15_minute_evidence": "quickstart.json",
+    "cudanav_release_evidence": "cudanav.json",
+    "docker_gpu_evidence": "docker_gpu.json",
+    "documentation_deployment": "documentation.json",
+}
+
+
 def read_object(path: Path) -> dict[str, Any]:
     payload = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(payload, dict):
@@ -45,6 +53,17 @@ def evaluate_bundle(
         for gate in gates.values()
         if gate.get("passed") is True
     }
+    reference_paths = {
+        key: reference.get("path")
+        for key, reference in references.items()
+        if isinstance(reference, dict)
+    }
+    actual_paths = {
+        path.relative_to(root).as_posix()
+        for path in root.rglob("*")
+        if path.is_file()
+        and path.relative_to(root).as_posix() != "bundle.json"
+    }
     checks = {
         "schema": bundle.get("schema_version") == 1,
         "evidence_mode": bundle.get("evidence_mode")
@@ -59,6 +78,8 @@ def evaluate_bundle(
         )
         and bundle.get("git_commit") == expected_commit,
         "attestation_table": set(references) == set(MODES),
+        "canonical_filenames": reference_paths == FILENAMES,
+        "complete_inventory": actual_paths == set(FILENAMES.values()),
         "all_attestations": all(
             gate.get("passed") is True for gate in gates.values()
         ),

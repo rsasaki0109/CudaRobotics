@@ -234,11 +234,15 @@ immutable v1.0.0 tag
   -> deployed public documentation attestation
   -> content-bound bundle.json
   -> validate_v1_support_matrix.py --require-ready
-  -> attach the complete bundle to the GitHub Release
+  -> canonical evidence ZIP + SHA-256 sidecar
+  -> upload, re-download, and validate the GitHub Release bytes
 ```
 
 No producer can turn missing Docker, GPU, ROS 2, second-model, HTTP, or source
-commit evidence into a skipped pass.
+commit evidence into a skipped pass. The post-tag bundle also rejects
+undeclared files and non-canonical attestation names; the archive validator
+rejects unsafe paths, duplicate members, checksum or CRC failure, oversized
+payloads, and non-canonical ZIP metadata.
 
 Publication split:
 

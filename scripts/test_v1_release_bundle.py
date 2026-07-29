@@ -104,6 +104,62 @@ class V1ReleaseBundleTest(unittest.TestCase):
             self.assertFalse(gate["checks"]["all_attestations"])
             self.assertFalse(gate["passed"])
 
+    def test_undeclared_file_is_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            output = root / "bundle"
+            assemble(
+                sources(root),
+                output,
+                version=VERSION,
+                target_tag=TAG,
+                git_commit=COMMIT,
+            )
+            (output / "undeclared.txt").write_text(
+                "not attested\n",
+                encoding="utf-8",
+            )
+            gate = load_bundle(
+                output / "bundle.json",
+                target_version=VERSION,
+                target_tag=TAG,
+                expected_commit=COMMIT,
+            )
+            self.assertFalse(gate["checks"]["complete_inventory"])
+            self.assertFalse(gate["passed"])
+
+    def test_noncanonical_attestation_filename_is_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            output = root / "bundle"
+            assemble(
+                sources(root),
+                output,
+                version=VERSION,
+                target_tag=TAG,
+                git_commit=COMMIT,
+            )
+            bundle_path = output / "bundle.json"
+            payload = json.loads(bundle_path.read_text(encoding="utf-8"))
+            reference = payload["attestations"]["documentation_deployment"]
+            source = output / reference["path"]
+            renamed = output / "renamed.json"
+            source.rename(renamed)
+            reference["path"] = renamed.name
+            bundle_path.write_text(
+                json.dumps(payload) + "\n",
+                encoding="utf-8",
+            )
+            gate = load_bundle(
+                bundle_path,
+                target_version=VERSION,
+                target_tag=TAG,
+                expected_commit=COMMIT,
+            )
+            self.assertFalse(gate["checks"]["canonical_filenames"])
+            self.assertFalse(gate["checks"]["complete_inventory"])
+            self.assertFalse(gate["passed"])
+
 
 if __name__ == "__main__":
     unittest.main()
