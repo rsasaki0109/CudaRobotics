@@ -18,6 +18,10 @@ on:
       - scripts/cudanav_multi_gpu.py
       - scripts/cudanav_rosbag_evidence.py
       - scripts/cudanav_ros_ci_evidence.py
+      - scripts/cudanav_real_dataset.py
+      - scripts/derive_cudanav_path_sidecar.py
+      - scripts/analyze_pointcloud2_clearance.py
+      - scripts/evaluate_mppi_rosbag.py
       - scripts/cudanav_autonomy_suite.py
       - scripts/run_cudanav_closed_loop.py
       - scripts/run_cudanav_multi_gpu.py
@@ -30,11 +34,17 @@ on:
       - scripts/test_cudanav_multi_gpu.py
       - scripts/test_cudanav_rosbag_evidence.py
       - scripts/test_cudanav_ros_ci_evidence.py
+      - scripts/test_cudanav_real_dataset.py
+      - scripts/test_derive_cudanav_path_sidecar.py
+      - scripts/test_derive_cudanav_path_sidecar_ros.py
+      - scripts/test_analyze_pointcloud2_clearance.py
       - scripts/test_publish_cudanav_systems_evidence.py
       - scripts/validate_cudanav_closed_loop.py
       - scripts/validate_cudanav_multi_gpu.py
       - scripts/validate_cudanav_rosbag.py
       - scripts/validate_cudanav_ros_ci.py
+      - scripts/validate_cudanav_real_dataset.py
+      - docs/cudanav_real_dataset.json
       - include/cudarobotics/kiss_icp_gpu.hpp
       - src/gpu_kiss_icp.cu
       - include/cudarobotics/voxel_mapping_gpu.hpp
@@ -59,6 +69,10 @@ on:
       - scripts/cudanav_multi_gpu.py
       - scripts/cudanav_rosbag_evidence.py
       - scripts/cudanav_ros_ci_evidence.py
+      - scripts/cudanav_real_dataset.py
+      - scripts/derive_cudanav_path_sidecar.py
+      - scripts/analyze_pointcloud2_clearance.py
+      - scripts/evaluate_mppi_rosbag.py
       - scripts/cudanav_autonomy_suite.py
       - scripts/run_cudanav_closed_loop.py
       - scripts/run_cudanav_multi_gpu.py
@@ -71,11 +85,17 @@ on:
       - scripts/test_cudanav_multi_gpu.py
       - scripts/test_cudanav_rosbag_evidence.py
       - scripts/test_cudanav_ros_ci_evidence.py
+      - scripts/test_cudanav_real_dataset.py
+      - scripts/test_derive_cudanav_path_sidecar.py
+      - scripts/test_derive_cudanav_path_sidecar_ros.py
+      - scripts/test_analyze_pointcloud2_clearance.py
       - scripts/test_publish_cudanav_systems_evidence.py
       - scripts/validate_cudanav_closed_loop.py
       - scripts/validate_cudanav_multi_gpu.py
       - scripts/validate_cudanav_rosbag.py
       - scripts/validate_cudanav_ros_ci.py
+      - scripts/validate_cudanav_real_dataset.py
+      - docs/cudanav_real_dataset.json
       - include/cudarobotics/kiss_icp_gpu.hpp
       - src/gpu_kiss_icp.cu
       - include/cudarobotics/voxel_mapping_gpu.hpp
@@ -163,6 +183,7 @@ jobs:
           python ../scripts/test_cudanav_rosbag_evidence.py
           python ../scripts/test_cudanav_autonomy_suite.py
           python ../scripts/test_cudanav_ros_ci_evidence.py
+          python ../scripts/test_derive_cudanav_path_sidecar_ros.py
           python ../scripts/test_publish_cudanav_systems_evidence.py
           ros2 run cuda_voxel_costmap_layer plugin_load_test
           ros2 run cuda_mppi_controller plugin_load_test
@@ -198,6 +219,7 @@ jobs:
             --check costmap_plugin_load \
             --check controller_plugin_load \
             --check controller_parameter_validation \
+            --check derived_path_sidecar_roundtrip \
             --check colcon_tests
           python scripts/validate_cudanav_ros_ci.py \
             build/ros_jazzy_ci_evidence.json

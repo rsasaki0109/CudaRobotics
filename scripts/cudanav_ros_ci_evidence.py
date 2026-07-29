@@ -30,6 +30,7 @@ REQUIRED_CHECKS = {
     "controller_plugin_load",
     "controller_parameter_validation",
     "colcon_tests",
+    "derived_path_sidecar_roundtrip",
 }
 
 
