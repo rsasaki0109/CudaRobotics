@@ -37,6 +37,16 @@ copy. `scripts/validate_cudanav_closed_loop.py` rechecks either the
 Release acquisition alternates the S-course 30 times, retains an MCAP rosbag,
 and renders the recorded truth/odometry trajectory as a GIF.
 
+The development Docker image exposes the same short integration path:
+
+```bash
+docker build -f docker/Dockerfile -t cudarobotics .
+docker run --rm --gpus all -v "$PWD/out:/out" cudarobotics cudanav
+```
+
+It writes `/out/cudanav_closed_loop.json` and returns non-zero unless the
+machine-readable smoke gate passes.
+
 Lifecycle transitions use the standard `change_state` and `get_state` services
 in dependency order. This avoids pretending that the custom lifecycle nodes
 implement Nav2 bond semantics.

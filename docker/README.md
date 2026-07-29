@@ -1,4 +1,4 @@
-# Docker demo: Nav2 GPU MPPI controller
+# Docker demo: end-to-end CudaNav and Nav2 GPU MPPI
 
 One-command demo of [`cuda_mppi_controller`](../ros2_ws/src/cuda_mppi_controller/)
 — the GPU-accelerated MPPI controller plugin for Nav2 (1 CUDA thread =
@@ -15,7 +15,25 @@ docker build -f docker/Dockerfile -t cuda-mppi-demo .
 docker run --rm --gpus all cuda-mppi-demo
 ```
 
-The default command loads the plugin through pluginlib exactly as Nav2's
+Run the end-to-end short closed loop:
+
+```bash
+docker build -f docker/Dockerfile -t cudarobotics .
+docker run --rm --gpus all \
+  -v "$PWD/out:/out" \
+  cudarobotics cudanav
+```
+
+This launches GPU KISS-ICP, rolling voxel mapping, typed ESDF, the Nav2
+costmap layer, CUDA MPPI, and the command-driven simulator. It exits non-zero
+unless the generated `/out/cudanav_closed_loop.json` has `smoke_pass: true`;
+the full ROS launch log is retained alongside it. This is the short
+integration demo, not the 10-minute v1.0 release evidence run.
+The source-build command is authoritative until a release tag containing this
+mode has passed the Docker/GPU gate and updated the GHCR image.
+
+The default command remains backward compatible and loads the controller
+plugin through pluginlib exactly as Nav2's
 `controller_server` does, then runs the closed-loop head-to-head benchmark —
 stock `nav2_mppi_controller` (CPU) vs `cuda_mppi_controller` (GPU) on the
 same costmap, plan, and limits — and prints the summary table
