@@ -112,9 +112,10 @@ std::vector<float> scan(const Pose& truth, const std::vector<Segment>& segments)
   return xyz;
 }
 
-std::vector<float> interpolate_path(float spacing) {
+std::vector<float> interpolate_path(float spacing, bool reverse) {
   std::vector<float> path;
-  const auto& waypoints = mission_waypoints();
+  auto waypoints = mission_waypoints();
+  if (reverse) std::reverse(waypoints.begin(), waypoints.end());
   for (std::size_t index = 0; index + 1 < waypoints.size(); ++index) {
     const float dx = waypoints[index + 1].first - waypoints[index].first;
     const float dy = waypoints[index + 1].second - waypoints[index].second;
@@ -130,6 +131,56 @@ std::vector<float> interpolate_path(float spacing) {
   path.push_back(waypoints.back().first);
   path.push_back(waypoints.back().second);
   return path;
+}
+
+struct LocalPath {
+  std::vector<float> xy;
+  float goal_x = 0.0f;
+  float goal_y = 0.0f;
+  float goal_yaw = 0.0f;
+  bool goal_is_final = false;
+};
+
+LocalPath local_path_window(
+  const std::vector<float>& path, float robot_x, float robot_y)
+{
+  if (path.size() < 4 || path.size() % 2 != 0) {
+    throw std::invalid_argument("invalid mission path");
+  }
+  const std::size_t points = path.size() / 2;
+  std::size_t nearest = 0;
+  float best_squared = std::numeric_limits<float>::infinity();
+  for (std::size_t index = 0; index < points; ++index) {
+    const float dx = path[index * 2] - robot_x;
+    const float dy = path[index * 2 + 1] - robot_y;
+    const float squared = dx * dx + dy * dy;
+    if (squared < best_squared) {
+      best_squared = squared;
+      nearest = index;
+    }
+  }
+  std::size_t end = nearest;
+  float arc = 0.0f;
+  for (std::size_t index = nearest + 1; index < points; ++index) {
+    arc += std::hypot(
+      path[index * 2] - path[(index - 1) * 2],
+      path[index * 2 + 1] - path[(index - 1) * 2 + 1]);
+    end = index;
+    if (arc >= 3.0f || end - nearest + 1 >= 256) break;
+  }
+  if (end == nearest && end + 1 < points) ++end;
+  LocalPath result;
+  result.xy.assign(
+    path.begin() + static_cast<std::ptrdiff_t>(nearest * 2),
+    path.begin() + static_cast<std::ptrdiff_t>((end + 1) * 2));
+  result.goal_x = path[end * 2];
+  result.goal_y = path[end * 2 + 1];
+  const std::size_t before = end > nearest ? end - 1 : nearest;
+  result.goal_yaw = std::atan2(
+    result.goal_y - path[before * 2 + 1],
+    result.goal_x - path[before * 2]);
+  result.goal_is_final = end + 1 == points;
+  return result;
 }
 
 Pose estimated_pose(const cudarobotics::KissIcpPose& pose) {
@@ -204,6 +255,8 @@ struct Options {
   std::string json;
   std::string csv;
   int maximum_steps = 1800;
+  int traversals = 1;
+  double minimum_duration_s = 0.0;
   bool check = false;
 };
 
@@ -218,11 +271,16 @@ Options options(int argc, char** argv) {
     if (argument == "--json") result.json = value();
     else if (argument == "--csv") result.csv = value();
     else if (argument == "--maximum-steps") result.maximum_steps = std::stoi(value());
+    else if (argument == "--traversals") result.traversals = std::stoi(value());
+    else if (argument == "--minimum-duration-s") {
+      result.minimum_duration_s = std::stod(value());
+    }
     else if (argument == "--check") result.check = true;
     else throw std::invalid_argument("unknown option: " + argument);
   }
-  if (result.json.empty() || result.csv.empty() || result.maximum_steps < 10) {
-    throw std::invalid_argument("--json, --csv, and a valid --maximum-steps are required");
+  if (result.json.empty() || result.csv.empty() || result.maximum_steps < 10 ||
+      result.traversals < 1 || result.minimum_duration_s < 0.0) {
+    throw std::invalid_argument("invalid closed-loop options");
   }
   return result;
 }
@@ -233,7 +291,7 @@ int main(int argc, char** argv) {
   try {
     const Options run = options(argc, argv);
     const auto segments = course_segments();
-    const auto path = interpolate_path(0.12f);
+    std::vector<float> path = interpolate_path(0.12f, false);
 
     int device = 0;
     int driver_version = 0;
@@ -282,11 +340,15 @@ int main(int argc, char** argv) {
     mppi_params.path_angle_weight = 0.75f;
     mppi_params.distance_field_weight = 3.0f;
     mppi_params.distance_field_cutoff = 0.75f;
-    cuda_mppi_controller::MppiGpu mppi(mppi_params);
+    cuda_mppi_controller::MppiGpu forward_mppi(mppi_params);
+    auto reverse_mppi_params = mppi_params;
+    reverse_mppi_params.v_min = -0.35f;
+    reverse_mppi_params.backward_weight = 0.0f;
+    cuda_mppi_controller::MppiGpu reverse_mppi(reverse_mppi_params);
 
     std::ofstream csv(run.csv);
     if (!csv) throw std::runtime_error("cannot open CSV");
-    csv << "step,time_s,truth_x,truth_y,truth_yaw,estimated_x,estimated_y,"
+    csv << "step,traversal,time_s,truth_x,truth_y,truth_yaw,estimated_x,estimated_y,"
            "estimated_yaw,error_m,inliers,observed_voxels,occupied_cells,"
            "valid_rollout_ratio,all_colliding,retreating,command_v,command_w,"
            "solve_ms,frame_ms\n";
@@ -312,6 +374,10 @@ int main(int argc, char** argv) {
     std::vector<double> frame_ms;
     std::vector<double> solve_ms;
     bool goal_reached = false;
+    bool drive_reverse_mode = false;
+    int traversals_completed = 0;
+    int traversal_start_step = 0;
+    std::vector<int> traversal_frames;
 
     const auto wall_start = std::chrono::steady_clock::now();
     for (int step = 0; step < run.maximum_steps; ++step) {
@@ -364,16 +430,18 @@ int main(int argc, char** argv) {
       const auto costmap = make_costmap(occupancy, distance_field);
 
       const auto solve_start = std::chrono::steady_clock::now();
-      const auto goal = mission_waypoints().back();
-      const float goal_yaw = std::atan2(
-        goal.second - mission_waypoints()[mission_waypoints().size() - 2].second,
-        goal.first - mission_waypoints()[mission_waypoints().size() - 2].first);
+      const bool reverse = traversals_completed % 2 == 1;
+      auto& mppi = drive_reverse_mode ? reverse_mppi : forward_mppi;
+      const auto& waypoints = mission_waypoints();
+      const auto goal = reverse ? waypoints.front() : waypoints.back();
+      const auto local_path = local_path_window(path, estimate.x, estimate.y);
       const auto result = mppi.compute(
         estimate.x, estimate.y, estimate.yaw,
         costmap.data(), occupancy.grid.width, occupancy.grid.height,
         occupancy.grid.origin_x, occupancy.grid.origin_y, occupancy.grid.resolution,
-        path.data(), static_cast<int>(path.size() / 2),
-        goal.first, goal.second, goal_yaw, true);
+        local_path.xy.data(), static_cast<int>(local_path.xy.size() / 2),
+        local_path.goal_x, local_path.goal_y, local_path.goal_yaw,
+        local_path.goal_is_final);
       const double solve = std::chrono::duration<double, std::milli>(
         std::chrono::steady_clock::now() - solve_start).count();
       solve_ms.push_back(solve);
@@ -395,7 +463,8 @@ int main(int argc, char** argv) {
       const double elapsed_frame = std::chrono::duration<double, std::milli>(
         std::chrono::steady_clock::now() - frame_start).count();
       frame_ms.push_back(elapsed_frame);
-      csv << step << ',' << step * kDt << ',' << truth.x << ',' << truth.y << ','
+      csv << step << ',' << traversals_completed << ',' << step * kDt << ','
+          << truth.x << ',' << truth.y << ','
           << truth.yaw << ',' << estimate.x << ',' << estimate.y << ','
           << estimate.yaw << ',' << error << ','
           << odometry_result.alignment.inliers << ',' << mapping.observed_voxels << ','
@@ -406,13 +475,30 @@ int main(int argc, char** argv) {
       ++frames;
 
       if (std::hypot(truth.x - goal.first, truth.y - goal.second) <= 0.30f) {
-        goal_reached = true;
-        break;
+        ++traversals_completed;
+        traversal_frames.push_back(step + 1 - traversal_start_step);
+        traversal_start_step = step + 1;
+        if (traversals_completed >= run.traversals) {
+          goal_reached = true;
+          break;
+        }
+        path = interpolate_path(0.12f, traversals_completed % 2 == 1);
+        const float initial_tangent = std::atan2(
+          path[3] - path[1], path[2] - path[0]);
+        drive_reverse_mode =
+          std::cos(wrap(initial_tangent - estimate.yaw)) < 0.0f;
+        if (drive_reverse_mode) {
+          reverse_mppi.reset();
+        } else {
+          forward_mppi.reset();
+        }
+        command_v = command_w = 0.0f;
       }
     }
     csv.close();
 
-    const auto goal = mission_waypoints().back();
+    const auto goal = run.traversals % 2 == 1
+      ? mission_waypoints().back() : mission_waypoints().front();
     const double goal_distance = std::hypot(truth.x - goal.first, truth.y - goal.second);
     const double final_error = std::hypot(
       previous_estimate.x - truth.x, previous_estimate.y - truth.y);
@@ -428,11 +514,16 @@ int main(int argc, char** argv) {
     const bool causal = command_effect_distance > 5.0 && truth_distance > 5.0;
     const bool quality_pass =
       goal_reached && collisions == 0 && goal_distance <= 0.30 &&
-      drift_percent < 5.0 && deadline_miss_rate < 0.05 && causal &&
+      drift_percent < (run.traversals > 1 ? 1.0 : 5.0) &&
+      deadline_miss_rate < (run.traversals > 1 ? 0.01 : 0.05) && causal &&
       invalid_commands == 0 && final_observed_voxels >= 500 &&
       maximum_occupied_cells >= 10 && minimum_inliers >= 30 &&
-      all_colliding <= 3 && minimum_nonzero_valid_ratio >= 0.001f &&
-      truth_distance <= 13.0 && frames <= 400;
+      all_colliding <= 3 * run.traversals &&
+      minimum_nonzero_valid_ratio >= 0.001f &&
+      truth_distance <= 13.0 * run.traversals &&
+      frames <= 400 * run.traversals &&
+      frames * kDt >= run.minimum_duration_s &&
+      traversals_completed == run.traversals;
 
     std::ofstream json(run.json);
     if (!json) throw std::runtime_error("cannot open JSON");
@@ -444,6 +535,14 @@ int main(int argc, char** argv) {
             "\"gpu_esdf\", \"cuda_mppi\", \"command_driven_plant\"],\n"
          << "  \"frames\": " << frames << ",\n"
          << "  \"simulated_duration_s\": " << frames * kDt << ",\n"
+         << "  \"traversals_requested\": " << run.traversals << ",\n"
+         << "  \"traversals_completed\": " << traversals_completed << ",\n"
+         << "  \"traversal_frames\": [";
+    for (std::size_t index = 0; index < traversal_frames.size(); ++index) {
+      if (index) json << ", ";
+      json << traversal_frames[index];
+    }
+    json << "],\n"
          << "  \"wall_time_ms\": " << wall_ms << ",\n"
          << "  \"goal_reached\": " << (goal_reached ? "true" : "false") << ",\n"
          << "  \"collision_count\": " << collisions << ",\n"

@@ -53,6 +53,16 @@ THRESHOLDS = {
     "maximum_ground_truth_distance_m": 13.0,
     "maximum_frames": 400,
 }
+RELEASE_THRESHOLDS = {
+    **THRESHOLDS,
+    "maximum_odometry_drift_percent": 1.0,
+    "maximum_command_deadline_miss_rate": 0.01,
+    "minimum_simulated_duration_s": 600.0,
+    "traversals": 30,
+    "maximum_all_colliding_evaluations": 90,
+    "maximum_ground_truth_distance_m": 390.0,
+    "maximum_frames": 12000,
+}
 CONTRACT_SOURCES = [
     "CMakeLists.txt",
     "include/cuda_mppi_controller/mppi_gpu.hpp",
@@ -94,44 +104,75 @@ def source_digest() -> str:
     return digest.hexdigest()
 
 
-def evaluate_result(result: dict[str, Any]) -> dict[str, bool]:
+def evaluate_result(
+    result: dict[str, Any],
+    profile: str = "smoke",
+    expected_traversals: int | None = None,
+) -> dict[str, bool]:
+    thresholds = dict(
+        RELEASE_THRESHOLDS if profile == "release" else THRESHOLDS
+    )
+    if expected_traversals is None:
+        expected_traversals = int(thresholds.get("traversals", 1))
+    if profile == "smoke" and expected_traversals != 1:
+        thresholds["maximum_all_colliding_evaluations"] = (
+            THRESHOLDS["maximum_all_colliding_evaluations"]
+            * expected_traversals
+        )
+        thresholds["maximum_ground_truth_distance_m"] = (
+            THRESHOLDS["maximum_ground_truth_distance_m"]
+            * expected_traversals
+        )
+        thresholds["maximum_frames"] = (
+            THRESHOLDS["maximum_frames"] * expected_traversals
+        )
     return {
         "scenario": result.get("scenario") == "cudanav_s_course",
         "stages": result.get("stages") == STAGES,
         "claims": result.get("claims") == CLAIMS,
         "goal_reached": result.get("goal_reached") is True,
         "goal_distance": result.get("ground_truth_goal_distance_m", 1e9)
-        <= THRESHOLDS["maximum_goal_distance_m"],
+        <= thresholds["maximum_goal_distance_m"],
         "collision_free": result.get("collision_count", 1e9)
-        <= THRESHOLDS["maximum_collision_count"],
+        <= thresholds["maximum_collision_count"],
         "odometry_drift": result.get("odometry_drift_percent", 1e9)
-        < THRESHOLDS["maximum_odometry_drift_percent"],
+        < thresholds["maximum_odometry_drift_percent"],
         "deadline": result.get("command_deadline_miss_rate", 1.0)
-        < THRESHOLDS["maximum_command_deadline_miss_rate"],
+        < thresholds["maximum_command_deadline_miss_rate"],
         "causal_command_effect": (
             result.get("causal_command_effect") is True
             and result.get("command_effect_distance_m", 0.0)
-            >= THRESHOLDS["minimum_command_effect_distance_m"]
+            >= thresholds["minimum_command_effect_distance_m"]
         ),
         "finite_commands": result.get("invalid_commands", 1) == 0,
         "odometry_inliers": result.get("minimum_inliers", 0)
-        >= THRESHOLDS["minimum_inliers"],
+        >= thresholds["minimum_inliers"],
         "voxel_mapping": result.get("final_observed_voxels", 0)
-        >= THRESHOLDS["minimum_observed_voxels"],
+        >= thresholds["minimum_observed_voxels"],
         "occupied_cells": result.get("maximum_occupied_cells", 0)
-        >= THRESHOLDS["minimum_occupied_cells"],
+        >= thresholds["minimum_occupied_cells"],
         "bounded_safety_interventions": result.get(
             "all_colliding_evaluations", 1e9
         )
-        <= THRESHOLDS["maximum_all_colliding_evaluations"],
+        <= thresholds["maximum_all_colliding_evaluations"],
         "valid_rollouts": result.get(
             "minimum_nonzero_valid_rollout_ratio", 0.0
         )
-        >= THRESHOLDS["minimum_nonzero_valid_rollout_ratio"],
+        >= thresholds["minimum_nonzero_valid_rollout_ratio"],
         "bounded_path_length": result.get("ground_truth_distance_m", 1e9)
-        <= THRESHOLDS["maximum_ground_truth_distance_m"],
+        <= thresholds["maximum_ground_truth_distance_m"],
         "bounded_completion": result.get("frames", 1e9)
-        <= THRESHOLDS["maximum_frames"],
+        <= thresholds["maximum_frames"],
+        "traversals": (
+            result.get("traversals_requested") == expected_traversals
+            and result.get("traversals_completed") == expected_traversals
+            and len(result.get("traversal_frames", [])) == expected_traversals
+        ),
+        "release_duration": (
+            profile != "release"
+            or result.get("simulated_duration_s", 0.0)
+            >= thresholds["minimum_simulated_duration_s"]
+        ),
         "gpu_identity": bool(result.get("gpu", {}).get("name"))
         and result.get("gpu", {}).get("driver_version", 0) > 0,
         "native_quality_gate": result.get("quality_pass") is True,
@@ -144,15 +185,21 @@ def trajectory_rows(path: Path) -> int:
 
 
 def portable_evidence(manifest: dict[str, Any]) -> dict[str, Any]:
+    profile = manifest["profile"]
     return {
         "schema_version": 1,
-        "result_id": "cudanav_gpu_closed_loop_s_course_2026-07-29",
+        "result_id": (
+            "cudanav_gpu_closed_loop_release_2026-07-29"
+            if profile == "release"
+            else "cudanav_gpu_closed_loop_s_course_2026-07-29"
+        ),
         "source_commit": manifest["source_commit"],
         "source_digest": manifest["source_digest"],
         "scenario": SCENARIO,
         "stages": STAGES,
         "claims": CLAIMS,
-        "thresholds": THRESHOLDS,
+        "profile": manifest["profile"],
+        "thresholds": manifest["thresholds"],
         "metrics": manifest["result"],
         "checks": manifest["checks"],
         "artifacts": manifest["artifacts"],
@@ -167,11 +214,19 @@ def portable_evidence(manifest: dict[str, Any]) -> dict[str, Any]:
 def render_markdown(evidence: dict[str, Any]) -> str:
     metrics = evidence["metrics"]
     passed = all(evidence["checks"].values())
-    return f"""# CudaNav native all-GPU closed-loop S-course
+    profile = evidence["profile"]
+    title = (
+        "CudaNav native all-GPU 10-minute closed-loop release"
+        if profile == "release"
+        else "CudaNav native all-GPU closed-loop S-course"
+    )
+    return f"""# {title}
 
 Date: 2026-07-29
 
 Source commit: `{evidence["source_commit"]}`
+
+Profile: `{profile}`
 
 Result: **{"PASS" if passed else "FAIL"}**
 
@@ -183,6 +238,8 @@ the controller costmap in the same process.
 ## Result
 
 - Goal reached: {str(metrics["goal_reached"]).lower()}
+- Traversals: {metrics["traversals_completed"]}/{metrics["traversals_requested"]}
+- Simulated duration: {metrics["simulated_duration_s"]:.1f} s
 - Final ground-truth goal distance: {metrics["ground_truth_goal_distance_m"]:.3f} m
 - Collision count: {metrics["collision_count"]}
 - Ground-truth distance: {metrics["ground_truth_distance_m"]:.3f} m
@@ -206,9 +263,11 @@ the controller costmap in the same process.
 
 def main() -> int:
     parser = argparse.ArgumentParser()
+    parser.add_argument("--profile", choices=("smoke", "release"), default="smoke")
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--runner", type=Path, default=DEFAULT_RUNNER)
-    parser.add_argument("--maximum-steps", type=int, default=1800)
+    parser.add_argument("--maximum-steps", type=int)
+    parser.add_argument("--traversals", type=int)
     parser.add_argument("--publish-json", type=Path)
     parser.add_argument("--publish-markdown", type=Path)
     args = parser.parse_args()
@@ -217,11 +276,24 @@ def main() -> int:
     runner = args.runner.resolve()
     if not runner.is_file():
         raise SystemExit(f"runner does not exist: {runner}")
+    thresholds = (
+        RELEASE_THRESHOLDS if args.profile == "release" else THRESHOLDS
+    )
+    traversals = args.traversals or int(thresholds.get("traversals", 1))
+    maximum_steps = args.maximum_steps or 400 * traversals
+    minimum_duration = (
+        float(thresholds.get("minimum_simulated_duration_s", 0.0))
+        if args.traversals is None
+        else 0.0
+    )
     result_path = output / "result.json"
     trajectory_path = output / "trajectory.csv"
     command = [
         str(runner), "--json", str(result_path), "--csv", str(trajectory_path),
-        "--maximum-steps", str(args.maximum_steps), "--check",
+        "--maximum-steps", str(maximum_steps),
+        "--traversals", str(traversals),
+        "--minimum-duration-s", str(minimum_duration),
+        "--check",
     ]
     completed = subprocess.run(
         command, cwd=ROOT, text=True, capture_output=True, check=False
@@ -233,7 +305,7 @@ def main() -> int:
             f"closed-loop runner failed ({completed.returncode}); see {log_path}"
         )
     result = json.loads(result_path.read_text(encoding="utf-8"))
-    checks = evaluate_result(result)
+    checks = evaluate_result(result, args.profile, traversals)
     checks["trajectory_rows"] = trajectory_rows(trajectory_path) == result["frames"]
     checks["source_commit"] = len(git_commit()) == 40
     artifacts = {
@@ -249,10 +321,11 @@ def main() -> int:
     }
     manifest = {
         "schema_version": 1,
+        "profile": args.profile,
         "source_commit": git_commit(),
         "source_digest": source_digest(),
         "scenario": SCENARIO,
-        "thresholds": THRESHOLDS,
+        "thresholds": thresholds,
         "result": result,
         "checks": checks,
         "artifacts": artifacts,
