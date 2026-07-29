@@ -35,6 +35,7 @@ def evaluate_spec(spec: dict[str, Any]) -> dict[str, bool]:
     recorded = spec.get("recorded_inputs", {})
     path = spec.get("path_derivation", {})
     claims = path.get("claims", {}) if isinstance(path, dict) else {}
+    quality = spec.get("quality_evaluation", {})
     required = {
         "pointcloud": ("/pandar_points", "sensor_msgs/msg/PointCloud2"),
         "odometry": ("/applanix/lvx_client/odom", "nav_msgs/msg/Odometry"),
@@ -79,6 +80,24 @@ def evaluate_spec(spec: dict[str, Any]) -> dict[str, bool]:
             and claims.get("recorded_path") is False
             and claims.get("closed_loop") is False
             and claims.get("evidence_mode") == EVIDENCE_MODE
+        ),
+        "pointcloud_quality_contract": (
+            isinstance(quality, dict)
+            and quality.get("kind")
+            == "pointcloud2_front_clearance_with_shadow_diagnostics"
+            and quality.get("pointcloud_topic") == "/pandar_points"
+            and quality.get("command_source") == "cuda_mppi_diagnostics_csv"
+            and quality.get("timestamp_basis") == "pointcloud_header_stamp"
+            and quality.get("filter")
+            == {
+                "half_angle_rad": 0.5235987755982988,
+                "minimum_z_m": -0.5,
+                "maximum_z_m": 2.5,
+                "minimum_range_m": 0.05,
+                "maximum_range_m": 50.0,
+                "maximum_command_age_ms": 200.0,
+            }
+            and quality.get("minimum_command_pair_ratio") == 0.9
         ),
     }
 

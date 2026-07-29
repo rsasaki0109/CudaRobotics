@@ -159,6 +159,7 @@ def main() -> int:
             "--derived-path-bag and --dataset-materialization must be used together"
         )
     dataset_gate = None
+    materialization_payload = None
     if dataset_materialization is not None:
         dataset_gate = evaluate_real_dataset(
             ROOT / "docs" / "cudanav_real_dataset.json",
@@ -255,6 +256,33 @@ def main() -> int:
         "--minimum-valid-ratio",
         str(args.minimum_valid_ratio),
     ]
+    if materialization_payload is not None:
+        dataset_spec = json.loads(
+            (ROOT / "docs" / "cudanav_real_dataset.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        quality_filter = dataset_spec["quality_evaluation"]["filter"]
+        evaluate_command.extend(
+            [
+                "--pointcloud-topic",
+                dataset_spec["recorded_inputs"]["pointcloud"]["topic"],
+                "--odometry-topic",
+                dataset_spec["recorded_inputs"]["odometry"]["topic"],
+                "--pointcloud-half-angle-rad",
+                str(quality_filter["half_angle_rad"]),
+                "--pointcloud-minimum-z-m",
+                str(quality_filter["minimum_z_m"]),
+                "--pointcloud-maximum-z-m",
+                str(quality_filter["maximum_z_m"]),
+                "--pointcloud-minimum-range-m",
+                str(quality_filter["minimum_range_m"]),
+                "--pointcloud-maximum-range-m",
+                str(quality_filter["maximum_range_m"]),
+                "--pointcloud-maximum-command-age-ms",
+                str(quality_filter["maximum_command_age_ms"]),
+            ]
+        )
     env = os.environ.copy()
     env.setdefault("PYTHONNOUSERSITE", "1")
     if args.ros_domain_id is not None:

@@ -8,8 +8,10 @@ import csv
 import json
 import math
 from pathlib import Path
+import sqlite3
 
 import analyze_rosbag_clearance
+import analyze_pointcloud2_clearance
 import export_rosbag_motion
 import render_cuda_mppi_diagnostics
 
@@ -50,6 +52,7 @@ def build_report(
     minimum_clearance_m: float,
     maximum_solve_p95_ms: float,
     minimum_valid_ratio: float,
+    evidence_mode: str = "shadow_controller_with_recorded_motion",
 ) -> dict[str, object]:
     checks = {
         "motion_has_duration": float(motion["duration_s"]) > 0.0,
@@ -78,9 +81,7 @@ def build_report(
     return {
         "schema_version": 1,
         "evidence_mode": (
-            "shadow_controller_with_recorded_motion"
-            if diagnostics is not None
-            else "recorded_motion_only"
+            evidence_mode if diagnostics is not None else "recorded_motion_only"
         ),
         "quality_pass": all(checks.values()),
         "checks": checks,
@@ -187,27 +188,112 @@ def parse_args() -> argparse.Namespace:
         "--odometry-topic", default="/mobile_base_controller/odom"
     )
     parser.add_argument("--scan-topic", default="/scan")
+    parser.add_argument("--pointcloud-topic")
+    parser.add_argument("--pointcloud-half-angle-rad", type=float, default=math.pi / 6)
+    parser.add_argument("--pointcloud-minimum-z-m", type=float, default=-0.5)
+    parser.add_argument("--pointcloud-maximum-z-m", type=float, default=2.5)
+    parser.add_argument("--pointcloud-minimum-range-m", type=float, default=0.05)
+    parser.add_argument("--pointcloud-maximum-range-m", type=float, default=50.0)
+    parser.add_argument(
+        "--pointcloud-maximum-command-age-ms", type=float, default=200.0
+    )
     parser.add_argument("--minimum-clearance-m", type=float, default=0.10)
     parser.add_argument("--maximum-solve-p95-ms", type=float, default=50.0)
     parser.add_argument("--minimum-valid-ratio", type=float, default=0.50)
     return parser.parse_args()
 
 
+def recorded_sensor_motion(
+    db: Path, odometry_topic: str, diagnostics_csv: Path
+) -> dict[str, object]:
+    connection = sqlite3.connect(f"file:{db.as_posix()}?mode=ro", uri=True)
+    try:
+        odometry = [
+            export_rosbag_motion.parse_odometry(payload)
+            for _, payload in export_rosbag_motion.messages(
+                connection, odometry_topic
+            )
+        ]
+    finally:
+        connection.close()
+    if len(odometry) < 2:
+        raise ValueError("recorded sensor evaluation requires odometry samples")
+    odometry.sort(key=lambda row: int(row["stamp_ns"]))
+    commands = analyze_pointcloud2_clearance.diagnostics_commands(
+        diagnostics_csv
+    )
+    distance = sum(
+        math.hypot(float(b["x"]) - float(a["x"]), float(b["y"]) - float(a["y"]))
+        for a, b in zip(odometry, odometry[1:])
+    )
+    speeds = [
+        math.hypot(float(row["linear_x"]), float(row["linear_y"]))
+        for row in odometry
+    ]
+    command_speeds = [
+        math.hypot(row["cmd_v"], row["cmd_vy"]) for row in commands
+    ]
+    return {
+        "database": str(db),
+        "odometry_topic": odometry_topic,
+        "command_topic": "cuda_mppi_diagnostics_csv",
+        "command_samples": len(commands),
+        "odometry_samples": len(odometry),
+        "duration_s": (
+            int(odometry[-1]["stamp_ns"]) - int(odometry[0]["stamp_ns"])
+        )
+        / 1e9,
+        "path_length_m": distance,
+        "net_displacement_m": math.hypot(
+            float(odometry[-1]["x"]) - float(odometry[0]["x"]),
+            float(odometry[-1]["y"]) - float(odometry[0]["y"]),
+        ),
+        "mean_speed_mps": sum(speeds) / len(speeds),
+        "max_speed_mps": max(speeds),
+        "mean_command_speed_mps": sum(command_speeds) / len(command_speeds),
+        "max_command_speed_mps": max(command_speeds),
+        "max_abs_command_yaw_rate_rps": max(
+            abs(row["cmd_w"]) for row in commands
+        ),
+    }
+
+
 def main() -> int:
     args = parse_args()
     db = args.db.resolve()
-    motion = export_rosbag_motion.export_motion(
-        db,
-        args.output_dir / "motion",
-        command_topic=args.command_topic,
-        odometry_topic=args.odometry_topic,
-    )
-    clearance = analyze_rosbag_clearance.analyze(
-        db,
-        args.output_dir / "clearance_samples.csv",
-        scan_topic=args.scan_topic,
-        command_topic=args.command_topic,
-    )
+    if args.pointcloud_topic:
+        if args.diagnostics_csv is None:
+            raise SystemExit("--pointcloud-topic requires --diagnostics-csv")
+        motion = recorded_sensor_motion(
+            db, args.odometry_topic, args.diagnostics_csv
+        )
+        clearance = analyze_pointcloud2_clearance.analyze(
+            db,
+            args.output_dir / "clearance_samples.csv",
+            args.diagnostics_csv,
+            pointcloud_topic=args.pointcloud_topic,
+            half_angle_rad=args.pointcloud_half_angle_rad,
+            minimum_z_m=args.pointcloud_minimum_z_m,
+            maximum_z_m=args.pointcloud_maximum_z_m,
+            minimum_range_m=args.pointcloud_minimum_range_m,
+            maximum_range_m=args.pointcloud_maximum_range_m,
+            maximum_command_age_ms=args.pointcloud_maximum_command_age_ms,
+        )
+        evidence_mode = "real_sensor_shadow_with_derived_path"
+    else:
+        motion = export_rosbag_motion.export_motion(
+            db,
+            args.output_dir / "motion",
+            command_topic=args.command_topic,
+            odometry_topic=args.odometry_topic,
+        )
+        clearance = analyze_rosbag_clearance.analyze(
+            db,
+            args.output_dir / "clearance_samples.csv",
+            scan_topic=args.scan_topic,
+            command_topic=args.command_topic,
+        )
+        evidence_mode = "shadow_controller_with_recorded_motion"
     diagnostics = diagnostics_metrics(args.diagnostics_csv)
     report = build_report(
         motion,
@@ -216,6 +302,7 @@ def main() -> int:
         minimum_clearance_m=args.minimum_clearance_m,
         maximum_solve_p95_ms=args.maximum_solve_p95_ms,
         minimum_valid_ratio=args.minimum_valid_ratio,
+        evidence_mode=evidence_mode,
     )
     write_report(report, args.output_dir)
     print(f"wrote {args.output_dir / 'evaluation.md'}")

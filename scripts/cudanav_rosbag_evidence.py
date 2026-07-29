@@ -348,7 +348,11 @@ def evaluate_manifest(
             "evaluation_quality_pass": evaluation.get("quality_pass") is True,
             "evaluation_mode": (
                 evaluation.get("evidence_mode")
-                == "shadow_controller_with_recorded_motion"
+                == (
+                    "real_sensor_shadow_with_derived_path"
+                    if derived_mode
+                    else "shadow_controller_with_recorded_motion"
+                )
             ),
             "minimum_duration": _finite_at_least(
                 evaluation.get("motion", {}).get("duration_s")
@@ -363,6 +367,22 @@ def evaluate_manifest(
             ),
         }
     )
+    checks["pointcloud_evaluation_contract"] = not derived_mode
+    if derived_mode:
+        try:
+            from cudanav_real_dataset import DEFAULT_SPEC, read_json
+
+            quality = read_json(DEFAULT_SPEC)["quality_evaluation"]
+            checks["pointcloud_evaluation_contract"] = (
+                isinstance(evaluation.get("clearance"), dict)
+                and evaluation["clearance"].get("pointcloud_topic")
+                == quality["pointcloud_topic"]
+                and evaluation["clearance"].get("filter") == quality["filter"]
+                and evaluation["clearance"].get("diagnostics_source")
+                == str(diagnostics_path)
+            )
+        except (KeyError, OSError, TypeError, ValueError):
+            checks["pointcloud_evaluation_contract"] = False
 
     recording = _artifact(root, artifacts.get("recording"), directory=True)
     if policy["require_recording"]:
@@ -468,10 +488,54 @@ def evaluate_manifest(
             and str(database_path) in commands["evaluate"]
             and str(diagnostics_path) in commands["evaluate"]
         )
+        checks["pointcloud_evaluate_command_bound"] = not derived_mode
+        if derived_mode:
+            try:
+                from cudanav_real_dataset import DEFAULT_SPEC, read_json
+
+                spec = read_json(DEFAULT_SPEC)
+                expected_options = {
+                    "--pointcloud-topic": spec["recorded_inputs"][
+                        "pointcloud"
+                    ]["topic"],
+                    "--odometry-topic": spec["recorded_inputs"]["odometry"][
+                        "topic"
+                    ],
+                    "--pointcloud-half-angle-rad": str(
+                        spec["quality_evaluation"]["filter"]["half_angle_rad"]
+                    ),
+                    "--pointcloud-minimum-z-m": str(
+                        spec["quality_evaluation"]["filter"]["minimum_z_m"]
+                    ),
+                    "--pointcloud-maximum-z-m": str(
+                        spec["quality_evaluation"]["filter"]["maximum_z_m"]
+                    ),
+                    "--pointcloud-minimum-range-m": str(
+                        spec["quality_evaluation"]["filter"]["minimum_range_m"]
+                    ),
+                    "--pointcloud-maximum-range-m": str(
+                        spec["quality_evaluation"]["filter"]["maximum_range_m"]
+                    ),
+                    "--pointcloud-maximum-command-age-ms": str(
+                        spec["quality_evaluation"]["filter"][
+                            "maximum_command_age_ms"
+                        ]
+                    ),
+                }
+                command = commands["evaluate"]
+                checks["pointcloud_evaluate_command_bound"] = all(
+                    option in command
+                    and command.index(option) + 1 < len(command)
+                    and command[command.index(option) + 1] == value
+                    for option, value in expected_options.items()
+                )
+            except (KeyError, OSError, TypeError, ValueError):
+                checks["pointcloud_evaluate_command_bound"] = False
     else:
         checks["controller_inputs_bound"] = False
         checks["play_input_bound"] = False
         checks["evaluate_inputs_bound"] = False
+        checks["pointcloud_evaluate_command_bound"] = False
     if policy["require_recording"]:
         record_command = (
             commands.get("record") if isinstance(commands, dict) else None

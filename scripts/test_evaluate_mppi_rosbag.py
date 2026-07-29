@@ -46,6 +46,20 @@ def main() -> int:
     )
     assert report["quality_pass"]
     assert report["evidence_mode"] == "shadow_controller_with_recorded_motion"
+    pointcloud_report = MODULE.build_report(
+        motion,
+        clearance,
+        diagnostics,
+        minimum_clearance_m=0.10,
+        maximum_solve_p95_ms=50.0,
+        minimum_valid_ratio=0.50,
+        evidence_mode="real_sensor_shadow_with_derived_path",
+    )
+    assert pointcloud_report["quality_pass"]
+    assert (
+        pointcloud_report["evidence_mode"]
+        == "real_sensor_shadow_with_derived_path"
+    )
     with tempfile.TemporaryDirectory() as directory:
         output = Path(directory)
         MODULE.write_report(report, output)
