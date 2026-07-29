@@ -7,6 +7,9 @@
 [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/rsasaki0109/CudaRobotics/blob/master/examples/colab/cudarobotics_quickstart.ipynb)
 
 <p align="center">
+  <a href="gif/cudanav_gpu_closed_loop_release.gif">
+    <img src="gif/cudanav_gpu_closed_loop_release.gif" alt="CudaNav native all-GPU 30-traversal closed-loop release" width="180"/>
+  </a>
   <a href="https://rsasaki0109.github.io/CudaRobotics/gpu_mppi_racing.gif">
     <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_mppi_racing.gif" alt="CUDA MPPI racing demo" width="180"/>
   </a>
@@ -16,22 +19,19 @@
   <a href="https://rsasaki0109.github.io/CudaRobotics/gpu_multi_robot_planner.gif">
     <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_multi_robot_planner.gif" alt="CUDA multi-robot planner demo" width="180"/>
   </a>
-  <a href="https://rsasaki0109.github.io/CudaRobotics/gpu_diffusion_planner.gif">
-    <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_diffusion_planner.gif" alt="CUDA diffusion planner demo" width="180"/>
-  </a>
   <a href="gif/gpu_multi_robot_place_graph_slam.gif">
     <img src="gif/gpu_multi_robot_place_graph_slam.gif" alt="CUDA multi-robot place graph SLAM demo" width="180"/>
   </a>
 </p>
 
 <p align="center">
+  <a href="gif/cudanav_gpu_closed_loop_release.gif">CudaNav closed loop</a>
+  /
   <a href="https://rsasaki0109.github.io/CudaRobotics/gpu_mppi_racing.gif">MPPI racing</a>
   /
   <a href="https://rsasaki0109.github.io/CudaRobotics/comparison_expansion_reset_mcl.gif">Expansion-reset MCL</a>
   /
   <a href="https://rsasaki0109.github.io/CudaRobotics/gpu_multi_robot_planner.gif">Multi-robot planner</a>
-  /
-  <a href="https://rsasaki0109.github.io/CudaRobotics/gpu_diffusion_planner.gif">Diffusion planner</a>
   /
   <a href="gif/gpu_multi_robot_place_graph_slam.gif">Multi-robot place graph SLAM</a>
   /
