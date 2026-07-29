@@ -57,8 +57,15 @@ def evaluate_spec(spec: dict[str, Any]) -> dict[str, bool]:
             == "1uta5Xr_ftV4jERxPNVqooDvWerK0dn89"
             and acquisition.get("uri")
             == "https://drive.google.com/uc?id=1uta5Xr_ftV4jERxPNVqooDvWerK0dn89"
+            and acquisition.get("folder_id")
+            == "1BMPcUhjq_BCLi521X88WpujoOiEi3_CJ"
             and acquisition.get("expected_database")
-            == "rosbag2_2024_09_11-17_53_54_0.db3"
+            == "test_20240930_134039_0.db3"
+            and acquisition.get("expected_database_bytes") == 60179423232
+            and acquisition.get("metadata_file_id")
+            == "10tw3sBZzVAiu9gWbB4mMclGuzY2-86In"
+            and acquisition.get("expected_metadata") == "metadata.yaml"
+            and acquisition.get("expected_metadata_bytes") == 4854
             and acquisition.get("redistribution_authorized") is False
         ),
         "recorded_topics": (
@@ -244,6 +251,9 @@ def evaluate_materialization(
         required_checks = inspection["required_topic_checks"]
         acquisition = inspection["acquisition"]
         inspection_topics = inspection["topics"]
+        remote_probe = inspection["remote_probe"]
+        remote_database = remote_probe["database"]
+        remote_metadata = remote_probe["metadata"]
         checks["acquisition_inspection_bound"] = (
             inspection.get("schema_version") == 1
             and inspection.get("dataset_id") == spec["dataset_id"]
@@ -253,6 +263,34 @@ def evaluate_materialization(
             and acquisition.get("file_id") == spec["acquisition"]["file_id"]
             and acquisition.get("expected_database")
             == spec["acquisition"]["expected_database"]
+            and acquisition.get("expected_database_bytes")
+            == spec["acquisition"]["expected_database_bytes"]
+            and acquisition.get("metadata_file_id")
+            == spec["acquisition"]["metadata_file_id"]
+            and acquisition.get("expected_metadata")
+            == spec["acquisition"]["expected_metadata"]
+            and remote_probe.get("schema_version") == 1
+            and remote_probe.get("passed") is True
+            and isinstance(remote_probe.get("checks"), dict)
+            and remote_probe["checks"]
+            == {
+                "database_filename": True,
+                "database_bytes": True,
+                "metadata_filename": True,
+                "metadata_bytes": True,
+            }
+            and remote_database.get("file_id")
+            == spec["acquisition"]["file_id"]
+            and remote_database.get("filename")
+            == spec["acquisition"]["expected_database"]
+            and remote_database.get("bytes")
+            == spec["acquisition"]["expected_database_bytes"]
+            and remote_metadata.get("file_id")
+            == spec["acquisition"]["metadata_file_id"]
+            and remote_metadata.get("filename")
+            == spec["acquisition"]["expected_metadata"]
+            and remote_metadata.get("bytes")
+            == spec["acquisition"]["expected_metadata_bytes"]
             and database_path.name == spec["acquisition"]["expected_database"]
             and isinstance(database.get("bytes"), int)
             and database["bytes"] > 0

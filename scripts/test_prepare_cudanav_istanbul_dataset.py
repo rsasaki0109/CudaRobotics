@@ -6,12 +6,64 @@ from pathlib import Path
 import sqlite3
 import tempfile
 import unittest
+from unittest.mock import patch
 
 from cudanav_real_dataset import DEFAULT_SPEC, read_json
-from prepare_cudanav_istanbul_dataset import inspect
+from prepare_cudanav_istanbul_dataset import inspect, probe_acquisition
 
 
 class PrepareCudaNavIstanbulDatasetTest(unittest.TestCase):
+    def test_remote_probe_freezes_current_official_folder_files(self) -> None:
+        acquisition = read_json(DEFAULT_SPEC)["acquisition"]
+
+        def metadata(file_id: str) -> dict:
+            if file_id == acquisition["file_id"]:
+                return {
+                    "file_id": file_id,
+                    "filename": acquisition["expected_database"],
+                    "bytes": acquisition["expected_database_bytes"],
+                    "url": "https://example.invalid/database",
+                }
+            return {
+                "file_id": file_id,
+                "filename": acquisition["expected_metadata"],
+                "bytes": acquisition["expected_metadata_bytes"],
+                "url": "https://example.invalid/metadata",
+            }
+
+        with patch(
+            "prepare_cudanav_istanbul_dataset.remote_file_metadata",
+            side_effect=metadata,
+        ):
+            result = probe_acquisition(acquisition)
+        self.assertTrue(result["passed"], result)
+        self.assertTrue(all(result["checks"].values()))
+
+    def test_remote_probe_rejects_replaced_database(self) -> None:
+        acquisition = read_json(DEFAULT_SPEC)["acquisition"]
+
+        def metadata(file_id: str) -> dict:
+            if file_id == acquisition["file_id"]:
+                return {
+                    "file_id": file_id,
+                    "filename": "replacement.db3",
+                    "bytes": acquisition["expected_database_bytes"],
+                    "url": "https://example.invalid/database",
+                }
+            return {
+                "file_id": file_id,
+                "filename": acquisition["expected_metadata"],
+                "bytes": acquisition["expected_metadata_bytes"],
+                "url": "https://example.invalid/metadata",
+            }
+
+        with patch(
+            "prepare_cudanav_istanbul_dataset.remote_file_metadata",
+            side_effect=metadata,
+        ):
+            with self.assertRaises(ValueError):
+                probe_acquisition(acquisition)
+
     def test_exact_database_topics_and_content_are_frozen(self) -> None:
         spec = read_json(DEFAULT_SPEC)
         with tempfile.TemporaryDirectory() as directory:

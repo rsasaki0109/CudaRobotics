@@ -410,6 +410,15 @@ class CudaNavAutonomySuiteTest(unittest.TestCase):
                             "expected_database": spec["acquisition"][
                                 "expected_database"
                             ],
+                            "expected_database_bytes": spec["acquisition"][
+                                "expected_database_bytes"
+                            ],
+                            "metadata_file_id": spec["acquisition"][
+                                "metadata_file_id"
+                            ],
+                            "expected_metadata": spec["acquisition"][
+                                "expected_metadata"
+                            ],
                         },
                         "database": {
                             "source": str(database.resolve()),
@@ -425,6 +434,36 @@ class CudaNavAutonomySuiteTest(unittest.TestCase):
                         },
                         "required_topic_checks": {
                             name: True for name in spec["recorded_inputs"]
+                        },
+                        "remote_probe": {
+                            "schema_version": 1,
+                            "database": {
+                                "file_id": spec["acquisition"]["file_id"],
+                                "filename": spec["acquisition"][
+                                    "expected_database"
+                                ],
+                                "bytes": spec["acquisition"][
+                                    "expected_database_bytes"
+                                ],
+                            },
+                            "metadata": {
+                                "file_id": spec["acquisition"][
+                                    "metadata_file_id"
+                                ],
+                                "filename": spec["acquisition"][
+                                    "expected_metadata"
+                                ],
+                                "bytes": spec["acquisition"][
+                                    "expected_metadata_bytes"
+                                ],
+                            },
+                            "checks": {
+                                "database_filename": True,
+                                "database_bytes": True,
+                                "metadata_filename": True,
+                                "metadata_bytes": True,
+                            },
+                            "passed": True,
                         },
                         "passed": True,
                     }

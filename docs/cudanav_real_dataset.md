@@ -21,14 +21,19 @@ translation and yaw transform so the resulting trajectory starts in CudaNav's
   tree hashes.
 
 The source documentation does not grant this repository redistribution rights.
-The selected raw urban-evaluation file is fixed to Google Drive ID
-`1uta5Xr_ftV4jERxPNVqooDvWerK0dn89` and database
-`rosbag2_2024_09_11-17_53_54_0.db3`; keep it outside release artifacts.
+The current official Drive folder contains one bag. It is fixed to Google
+Drive ID `1uta5Xr_ftV4jERxPNVqooDvWerK0dn89`, database
+`test_20240930_134039_0.db3` (60,179,423,232 bytes), and its separately hosted
+`metadata.yaml` (4,854 bytes). Keep both outside release artifacts. Older
+localization-evaluation instructions used a different filename; the
+machine-readable contract follows the current contents served by the official
+dataset folder.
 
 Validate the selection before downloading:
 
 ```bash
 python3 scripts/validate_cudanav_real_dataset.py
+python3 scripts/prepare_cudanav_istanbul_dataset.py --probe-only
 ```
 
 Download, inspect the SQLite topic table, and regenerate rosbag2 metadata in a
@@ -66,7 +71,7 @@ Then generate the rosbag2 sidecar and freeze both local inputs:
 python3 scripts/derive_cudanav_path_sidecar.py \
   --source-bag build/datasets/cudanav_istanbul \
   --database \
-    build/datasets/cudanav_istanbul/rosbag2_2024_09_11-17_53_54_0.db3 \
+    build/datasets/cudanav_istanbul/test_20240930_134039_0.db3 \
   --output-bag build/cudanav_real_dataset/path_sidecar \
   --report build/cudanav_real_dataset/path_generator.json \
   --acquisition-report build/datasets/cudanav_istanbul/inspection.json \

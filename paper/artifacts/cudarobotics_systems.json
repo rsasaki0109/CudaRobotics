@@ -99,7 +99,7 @@
         {
           "path": "scripts/validate_cudanav_real_dataset.py",
           "normalization": "text_lf",
-          "sha256": "0c1e7a0bbf23971877c604509db0473fa71e81312b7f5f9454667199b72b854f"
+          "sha256": "03d85f2e04242a2f1ac06a6bc50acb1944761a4a3205a4f4eaf75e88abb16e0d"
         },
         {
           "path": "scripts/derive_cudanav_path_sidecar.py",
@@ -129,7 +129,7 @@
         {
           "path": "docs/cudanav_real_dataset.json",
           "normalization": "text_lf",
-          "sha256": "61208598f6f5c07360ac79a854efce677cd998144ec91d1c4d1d5a09ca39828e"
+          "sha256": "71469e169173f69061482d2a32203a20082023edeb94c07c90ba122769111e8e"
         },
         {
           "path": ".github/workflows/ros2_cuda_mppi.yml",
@@ -144,12 +144,12 @@
         {
           "path": "scripts/test_derive_cudanav_path_sidecar_ros.py",
           "normalization": "text_lf",
-          "sha256": "c318622929ffc9f85b7b005a3aa16fc46bfc79977ee2423a73c15c5a6d28789c"
+          "sha256": "35b4020726056a56cabc820d9498b99234b8a615ee5f9a3033cdb50dcb5a71d7"
         },
         {
           "path": "scripts/prepare_cudanav_istanbul_dataset.py",
           "normalization": "text_lf",
-          "sha256": "8f2cee59b1c35ba11dd92b2cddd6f6ac88f97194c29ec210a11d5a0f440beef0"
+          "sha256": "3c7d408a91432a892f786b7f848a9f8182831b2acf4d7780e96f00911af18274"
         },
         {
           "path": "scripts/run_cudanav_real_dataset_pipeline.py",

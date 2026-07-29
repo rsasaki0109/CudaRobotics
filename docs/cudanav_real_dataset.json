@@ -8,9 +8,14 @@
     "file_id": "1uta5Xr_ftV4jERxPNVqooDvWerK0dn89",
     "uri": "https://drive.google.com/uc?id=1uta5Xr_ftV4jERxPNVqooDvWerK0dn89",
     "collection_uri": "https://drive.google.com/drive/folders/17zXiBeYlM90gQ5hV6EAWaoBTnNFoVPML?usp=drive_link",
-    "expected_database": "rosbag2_2024_09_11-17_53_54_0.db3",
+    "folder_id": "1BMPcUhjq_BCLi521X88WpujoOiEi3_CJ",
+    "expected_database": "test_20240930_134039_0.db3",
+    "expected_database_bytes": 60179423232,
+    "metadata_file_id": "10tw3sBZzVAiu9gWbB4mMclGuzY2-86In",
+    "expected_metadata": "metadata.yaml",
+    "expected_metadata_bytes": 4854,
     "redistribution_authorized": false,
-    "note": "Download the raw urban-evaluation ROS 2 bag. Do not mirror it in release artifacts without separate permission."
+    "note": "Current contents of the official Istanbul ROS 2 bag folder, probed 2026-07-29. Download the raw bag and metadata sidecar. Do not mirror them in release artifacts without separate permission."
   },
   "recorded_inputs": {
     "pointcloud": {
