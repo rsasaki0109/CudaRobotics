@@ -1,0 +1,374 @@
+{
+  "claims": {
+    "closed_loop": false,
+    "gpu_controller_run": false,
+    "real_pointcloud_gpu_odometry": true
+  },
+  "contract_sources": [
+    {
+      "normalization": "text_lf",
+      "path": "docs/cudanav_timed_dataset_mcd_ntu_day_02_materialized.json",
+      "sha256": "ddbdb8bb7ef5b4d1cc90a4b804b964ec0f41319c67230839ed87e457e86714c4"
+    },
+    {
+      "normalization": "text_lf",
+      "path": "include/cudarobotics/kiss_icp_gpu.hpp",
+      "sha256": "cb5d094334c5050a01207c21a2ff16ca10de77d94d9730fcf31a19e2153d6575"
+    },
+    {
+      "normalization": "text_lf",
+      "path": "src/gpu_kiss_icp.cu",
+      "sha256": "b5298143d3596863e41ac78083a9432ac324be30ecf38d074e14b295d2f421d3"
+    },
+    {
+      "normalization": "text_lf",
+      "path": "tools/cudanav_kiss_icp_sequence.cu",
+      "sha256": "b06f4d13a3977be1c97aded525db6bc5e912b19efa32f72ee6b82a22b9bab089"
+    },
+    {
+      "normalization": "text_lf",
+      "path": "scripts/export_cudanav_kiss_icp_sequence.py",
+      "sha256": "8abd90e542c9edc78e4266536d6149de8ab50c9aa11f3f6641a5813fdffe3fab"
+    },
+    {
+      "normalization": "text_lf",
+      "path": "scripts/run_cudanav_kiss_icp_real.py",
+      "sha256": "a8747dd06cb19fe98143361c3dc9b60abbdedc310fc25ee64f406f5c99c90574"
+    },
+    {
+      "normalization": "text_lf",
+      "path": "scripts/inspect_pointcloud2_timing.py",
+      "sha256": "c65498eae0b95b88d9c28bb926abc533d2e543ca4019652d3026fe7764b60c92"
+    }
+  ],
+  "database": {
+    "bytes": 7559663616,
+    "filename": "mcd_ntu_day_02_timed_0.db3",
+    "sha256": "69595af33297924ef36f1cdd0507d4e868d784337bd1249a41e4d4131c30614c"
+  },
+  "dataset_id": "mcd_ntu_day_02_os1_128_ros2_timed_120s",
+  "dataset_spec_path": "docs/cudanav_timed_dataset_mcd_ntu_day_02_materialized.json",
+  "dataset_spec_sha256": "ddbdb8bb7ef5b4d1cc90a4b804b964ec0f41319c67230839ed87e457e86714c4",
+  "evidence_mode": "real_sensor_gpu_odometry_with_reference",
+  "gpu": {
+    "compute_capability": "7.5",
+    "device": 0,
+    "driver_version": 13020,
+    "name": "NVIDIA GeForce GTX 1660 Ti",
+    "uuid": "GPU-f635286a-d68f-5039-cbc9-22d7f295b3a3"
+  },
+  "metrics": {
+    "alignment_rmse_p95": 0.08641859144,
+    "ate_rmse_m": 0.8148791565,
+    "deskew_gpu_ms": 140.7120946,
+    "deskewed_frames": 1190,
+    "duration_s": 118.901932,
+    "estimated_path_length_m": 327.7913386,
+    "final_drift_percent": 0.4724012764,
+    "final_xy_error_m": 1.540128383,
+    "frames": 1190,
+    "inliers_median": 35243,
+    "inliers_min": 25004,
+    "mean_frame_ms": 327.1479201,
+    "nn_ms_p95": 177.8207092,
+    "point_time_span_s_p95": 0.1000994369,
+    "quality_pass": true,
+    "reference_path_length_m": 326.0212154,
+    "sequence_version": 2,
+    "thresholds": {
+      "maximum_ate_rmse_m": 3,
+      "maximum_final_drift_percent": 5,
+      "minimum_inliers": 100
+    },
+    "wall_time_ms": 389306.0249,
+    "yaw_error_p95_rad": 0.01841384172
+  },
+  "profile": "release",
+  "publisher_commit": "efff8a78f851a57f34b87930d91b2bdac2dad2b0",
+  "result_id": "cudanav_kiss_icp_mcd_ntu_day_02_2026-07-29",
+  "retained_artifacts": {
+    "export_report": {
+      "bytes": 2069,
+      "sha256": "ace45ba0eb5253d3059578594012a25bf9f0cf52002bfd91c4e85443e4c03b3a"
+    },
+    "result": {
+      "bytes": 1364,
+      "sha256": "bd9ad14430e1ea4a95a3f0b2b5d97d24f5ffdd1b9bde41bd220de8b511be7383"
+    },
+    "runner": {
+      "bytes": 344064,
+      "sha256": "36122aefeddd3bb242e79f20833b4c6191924a32a7e31b7952c03cb3412860f9"
+    },
+    "runner_log": {
+      "bytes": 86,
+      "sha256": "462df1c8edb48bf1960dab1834f76fd547daf8befdd2314ba8d7e3ab33c3b2b4"
+    },
+    "sequence": {
+      "bytes": 1758954344,
+      "sha256": "ca7f383a785dd2795f1bd9d5c68a0d66465adf6b8354d86f39e028b0f96cbaf9"
+    },
+    "timing_admission": {
+      "bytes": 3852,
+      "sha256": "baa5df702c9000c5ec042fa5ae38d5abc655df0e24e7eddb5a990bfc3945bbad"
+    },
+    "trajectory": {
+      "bytes": 160618,
+      "sha256": "784cda8586d1ce2189218047012eacf01e1f8897b9026d26023e09ba396306dd"
+    }
+  },
+  "schema_version": 1,
+  "sequence_contract": {
+    "duration_s": 118.90193195,
+    "frame_id": "os_sensor",
+    "frames": 1190,
+    "maximum_duration_s": 120.0,
+    "maximum_points": 114120,
+    "maximum_pose_age_ms": 50.0,
+    "mean_points": 92379.8050420168,
+    "minimum_points": 71820,
+    "point_fields": {
+      "ambient": {
+        "count": 1,
+        "datatype": 4,
+        "offset": 28
+      },
+      "intensity": {
+        "count": 1,
+        "datatype": 7,
+        "offset": 16
+      },
+      "range": {
+        "count": 1,
+        "datatype": 6,
+        "offset": 32
+      },
+      "reflectivity": {
+        "count": 1,
+        "datatype": 4,
+        "offset": 24
+      },
+      "ring": {
+        "count": 1,
+        "datatype": 2,
+        "offset": 26
+      },
+      "t": {
+        "count": 1,
+        "datatype": 6,
+        "offset": 20
+      },
+      "x": {
+        "count": 1,
+        "datatype": 7,
+        "offset": 0
+      },
+      "y": {
+        "count": 1,
+        "datatype": 7,
+        "offset": 4
+      },
+      "z": {
+        "count": 1,
+        "datatype": 7,
+        "offset": 8
+      }
+    },
+    "point_time": {
+      "field": "t",
+      "frames_with_valid_span": 1190,
+      "minimum_span_s": 0.09938044,
+      "p95_span_s": 0.10009944000000001,
+      "present": true,
+      "unit": "nanoseconds"
+    },
+    "pointcloud_topic": "/os_cloud_node/points",
+    "pose_age_p95_ms": 0.0,
+    "pose_topic": "/mcd/ground_truth/os_sensor_pose",
+    "pose_type": "geometry_msgs/msg/PoseStamped",
+    "reference_path_length_m": 326.02116532257253,
+    "ring": {
+      "field": "ring",
+      "present": true
+    },
+    "sequence_version": 2,
+    "start_offset_s": 1.0
+  },
+  "source_commit": "d240161ec1a42eb128023f891e82a5bbff1407e0",
+  "source_validation": {
+    "checks": {
+      "artifacts": true,
+      "checks": true,
+      "claims": true,
+      "clean": true,
+      "commit": true,
+      "evidence_mode": true,
+      "metrics": true,
+      "profile": true,
+      "schema": true,
+      "sequence_contract": true,
+      "timing_admission": true
+    },
+    "valid": true
+  },
+  "timing_admission": {
+    "algorithm": "cudarobotics.pointcloud2_timing_admission.v1",
+    "checks": {
+      "declared_unit_plausible": true,
+      "finite_point_times": true,
+      "minimum_frames": true,
+      "nonzero_raw_time_span": true,
+      "point_time_datatype": true,
+      "ring_datatype": true,
+      "scalar_integer_ring": true,
+      "scalar_time_field": true,
+      "stable_frame_id": true,
+      "stable_schema": true,
+      "strict_frame_timestamps": true,
+      "topic_type": true,
+      "unit_unambiguous": true
+    },
+    "database": {
+      "bytes": 7559663616,
+      "filename": "mcd_ntu_day_02_timed_0.db3",
+      "sha256": "69595af33297924ef36f1cdd0507d4e868d784337bd1249a41e4d4131c30614c"
+    },
+    "frame_id": "os_sensor",
+    "point_fields": {
+      "ambient": {
+        "count": 1,
+        "datatype": 4,
+        "offset": 28
+      },
+      "intensity": {
+        "count": 1,
+        "datatype": 7,
+        "offset": 16
+      },
+      "range": {
+        "count": 1,
+        "datatype": 6,
+        "offset": 32
+      },
+      "reflectivity": {
+        "count": 1,
+        "datatype": 4,
+        "offset": 24
+      },
+      "ring": {
+        "count": 1,
+        "datatype": 2,
+        "offset": 26
+      },
+      "t": {
+        "count": 1,
+        "datatype": 6,
+        "offset": 20
+      },
+      "x": {
+        "count": 1,
+        "datatype": 7,
+        "offset": 0
+      },
+      "y": {
+        "count": 1,
+        "datatype": 7,
+        "offset": 4
+      },
+      "z": {
+        "count": 1,
+        "datatype": 7,
+        "offset": 8
+      }
+    },
+    "point_time": {
+      "candidate_units": {
+        "microseconds": {
+          "plausible": false,
+          "scale_to_seconds": 1e-06,
+          "span": {
+            "maximum_s": 100.52179,
+            "median_s": 99.886485,
+            "minimum_s": 99.38044,
+            "p05_s": 99.68023,
+            "p95_s": 100.09944
+          }
+        },
+        "milliseconds": {
+          "plausible": false,
+          "scale_to_seconds": 0.001,
+          "span": {
+            "maximum_s": 100521.79000000001,
+            "median_s": 99886.485,
+            "minimum_s": 99380.44,
+            "p05_s": 99680.23,
+            "p95_s": 100099.44
+          }
+        },
+        "nanoseconds": {
+          "plausible": true,
+          "scale_to_seconds": 1e-09,
+          "span": {
+            "maximum_s": 0.10052179,
+            "median_s": 0.099886485,
+            "minimum_s": 0.09938044,
+            "p05_s": 0.09968023000000001,
+            "p95_s": 0.10009944000000001
+          }
+        },
+        "seconds": {
+          "plausible": false,
+          "scale_to_seconds": 1.0,
+          "span": {
+            "maximum_s": 100521790.0,
+            "median_s": 99886485.0,
+            "minimum_s": 99380440.0,
+            "p05_s": 99680230.0,
+            "p95_s": 100099440.0
+          }
+        }
+      },
+      "datatype": 6,
+      "declared_datatype": 6,
+      "declared_unit": "nanoseconds",
+      "field": "t",
+      "nondecreasing_frames": 0,
+      "nonincreasing_frames": 0,
+      "physical_span_bounds_s": {
+        "maximum": 0.11,
+        "minimum": 0.09
+      },
+      "plausible_units": [
+        "nanoseconds"
+      ],
+      "raw_span": {
+        "maximum": 100521790.0,
+        "minimum": 99380440.0
+      },
+      "require_unambiguous_unit": true
+    },
+    "pointcloud_topic": "/os_cloud_node/points",
+    "pointcloud_type": "sensor_msgs/msg/PointCloud2",
+    "ring": {
+      "declared_datatype": 2,
+      "distinct_values": 128,
+      "field": "ring",
+      "maximum": 127,
+      "minimum": 0,
+      "present": true,
+      "required": true
+    },
+    "schema_version": 1,
+    "selection": {
+      "first_source_stamp_ns": 1644824097448537144,
+      "frames": 1190,
+      "last_selected_stamp_ns": 1644824217351002643,
+      "maximum_duration_s": 120.0,
+      "maximum_frames": 1200,
+      "maximum_points": 131072,
+      "minimum_frames": 1000,
+      "minimum_points": 131072,
+      "start_offset_s": 1.0
+    },
+    "valid": true
+  }
+}

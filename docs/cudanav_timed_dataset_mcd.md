@@ -78,6 +78,25 @@ This artifact is timing-admitted input, not a GPU performance result. It
 becomes release evidence only after the 120-second KISS-ICP and all-GPU stack
 quality gates pass.
 
+## GPU KISS-ICP release result
+
+The standalone timed-odometry release gate passed on commit `d240161` using an
+NVIDIA GeForce GTX 1660 Ti:
+
+- 1,190 deskewed frames over 118.902 seconds;
+- 326.021 m reference path;
+- 0.815 m ATE RMSE;
+- 0.472% final drift;
+- 25,004 minimum inliers;
+- 327.148 ms mean frame time;
+- 177.821 ms GPU nearest-neighbour p95.
+
+The thresholds were ATE RMSE at most 3 m, final drift at most 5%, and at least
+100 inliers. The content-bound portable result is
+[`results/cudanav_kiss_icp_mcd_ntu_day_02_2026-07-29.md`](results/cudanav_kiss_icp_mcd_ntu_day_02_2026-07-29.md).
+This closes the standalone KISS-ICP gate; the all-GPU shadow-stack gate remains
+separate.
+
 ## Source and license
 
 - Dataset/download: <https://mcdviral.github.io/Download.html>
