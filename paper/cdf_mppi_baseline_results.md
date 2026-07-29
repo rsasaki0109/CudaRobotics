@@ -155,6 +155,14 @@ there and lead with the pushing results, not the smooth reaching tasks.
 We checked whether existing underactuated / higher-fidelity tasks reveal a
 Diff-MPPI advantage, and surveyed the suite for the contact-rich regime.
 
+> **2026-07-28 correction:** This section records the infrastructure state at
+> the time of the original probe. Differentiable planar contact and a
+> closed-loop MuJoCo 3.11.0 transfer plant have since been implemented and
+> frozen in
+> [`contact_rich_diff_mppi_results.md`](contact_rich_diff_mppi_results.md).
+> The release closes the planar sim-to-sim fidelity gap described below; it
+> does not constitute a standard 7-DOF manipulation or real-robot result.
+
 - **Existing cartpole swing-up** (`benchmark_diff_mppi_cartpole`, 8 seeds): no
   clean win. `cartpole_large_angle`: all methods fail (success 0, incl. K=2048).
   `cartpole_recover`: best is diff_mppi_1@K256 = 0.50 vs mppi 0.0–0.25 (a faint
@@ -731,4 +739,6 @@ disclosed goal-config asymmetry).
   (diff_mppi_3 0.62 < mppi 0.88) → the paper needs a setting where the autodiff
   refinement pays off: matched per-step *wall-clock* budget and/or gap #2.
 - If a faithful neural CDF is wanted: add eikonal/Sobolev supervision to GpuMLP.
-- gap #2 (high-fidelity experiment) remains: 7-DOF/contact-rich MuJoCo + sim-to-real.
+- [PARTIAL] gap #2 now has closed-loop planar contact transfer in MuJoCo 3.11.0
+  with friction, mass, and observation-noise variations. Standard 7-DOF
+  manipulation and real-robot transfer remain open.
