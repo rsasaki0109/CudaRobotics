@@ -142,6 +142,7 @@ def main() -> int:
     parser.add_argument("--database", type=Path, required=True)
     parser.add_argument("--output-bag", type=Path, required=True)
     parser.add_argument("--report", type=Path, required=True)
+    parser.add_argument("--acquisition-report", type=Path, required=True)
     parser.add_argument("--materialization", type=Path, required=True)
     parser.add_argument("--spec", type=Path, default=DEFAULT_SPEC)
     args = parser.parse_args()
@@ -181,6 +182,7 @@ def main() -> int:
         source_bag,
         args.output_bag.resolve(),
         args.report,
+        args.acquisition_report,
     )
     args.materialization.parent.mkdir(parents=True, exist_ok=True)
     args.materialization.write_text(

@@ -13,6 +13,8 @@ import sys
 import tempfile
 
 from test_export_rosbag_motion import Writer
+from cudanav_real_dataset import DEFAULT_SPEC, read_json
+from prepare_cudanav_istanbul_dataset import inspect
 from validate_cudanav_real_dataset import evaluate
 
 
@@ -53,7 +55,8 @@ def write_source_bag(root: Path) -> Path:
         "      message_count: 1\n"
     )
     (root / "metadata.yaml").write_text(metadata)
-    database = root / "source.db3"
+    spec = read_json(DEFAULT_SPEC)
+    database = root / spec["acquisition"]["expected_database"]
     connection = sqlite3.connect(database)
     connection.executescript(
         "CREATE TABLE topics("
@@ -63,15 +66,28 @@ def write_source_bag(root: Path) -> Path:
         "id INTEGER PRIMARY KEY, topic_id INTEGER, "
         "timestamp INTEGER, data BLOB);"
         "INSERT INTO topics VALUES("
-        "1, '/applanix/lvx_client/odom', "
+        "1, '/pandar_points', "
+        "'sensor_msgs/msg/PointCloud2', 'cdr', '');"
+        "INSERT INTO topics VALUES("
+        "2, '/applanix/lvx_client/odom', "
         "'nav_msgs/msg/Odometry', 'cdr', '');"
+        "INSERT INTO topics VALUES("
+        "3, '/tf_static', "
+        "'tf2_msgs/msg/TFMessage', 'cdr', '');"
     )
     connection.executemany(
-        "INSERT INTO messages(topic_id, timestamp, data) VALUES(1, ?, ?)",
+        "INSERT INTO messages(topic_id, timestamp, data) VALUES(2, ?, ?)",
         [
             (10_000_000_000, odometry(10, 5.0, 2.0, 0.2)),
             (11_000_000_000, odometry(11, 5.5, 2.1, 0.2)),
             (12_000_000_000, odometry(12, 6.0, 2.2, 0.3)),
+        ],
+    )
+    connection.executemany(
+        "INSERT INTO messages(topic_id, timestamp, data) VALUES(?, ?, ?)",
+        [
+            (1, 10_000_000_000, b"pointcloud fixture"),
+            (3, 10_000_000_000, b"static tf fixture"),
         ],
     )
     connection.commit()
@@ -84,6 +100,10 @@ def main() -> int:
         root = Path(directory)
         source = root / "source"
         database = write_source_bag(source)
+        acquisition_report = source / "inspection.json"
+        acquisition_report.write_text(
+            json.dumps(inspect(source), indent=2, sort_keys=True) + "\n"
+        )
         sidecar = root / "sidecar"
         report = root / "generator.json"
         materialization = root / "materialization.json"
@@ -99,6 +119,8 @@ def main() -> int:
                 str(sidecar),
                 "--report",
                 str(report),
+                "--acquisition-report",
+                str(acquisition_report),
                 "--materialization",
                 str(materialization),
             ],

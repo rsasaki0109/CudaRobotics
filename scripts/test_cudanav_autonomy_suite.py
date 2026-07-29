@@ -391,6 +391,46 @@ class CudaNavAutonomySuiteTest(unittest.TestCase):
             (source / "metadata.yaml").write_text(
                 "\n".join(source_metadata) + "\n"
             )
+            database = source / spec["acquisition"]["expected_database"]
+            database.write_bytes(b"source database fixture")
+            inspection = source / "inspection.json"
+            inspection.write_text(
+                json.dumps(
+                    {
+                        "schema_version": 1,
+                        "dataset_id": spec["dataset_id"],
+                        "inspected_at": "2026-07-29T00:00:00+00:00",
+                        "dataset_spec": {
+                            "path": str(DEFAULT_SPEC.resolve()),
+                            "sha256": sha256_file(DEFAULT_SPEC),
+                        },
+                        "acquisition": {
+                            "method": spec["acquisition"]["method"],
+                            "file_id": spec["acquisition"]["file_id"],
+                            "expected_database": spec["acquisition"][
+                                "expected_database"
+                            ],
+                        },
+                        "database": {
+                            "source": str(database.resolve()),
+                            "bytes": database.stat().st_size,
+                            "sha256": sha256_file(database),
+                        },
+                        "topics": {
+                            item["topic"]: {
+                                "type": item["type"],
+                                "count": 5,
+                            }
+                            for item in spec["recorded_inputs"].values()
+                        },
+                        "required_topic_checks": {
+                            name: True for name in spec["recorded_inputs"]
+                        },
+                        "passed": True,
+                    }
+                )
+                + "\n"
+            )
             manifest["input_bag"] = describe_input(source)
             derived = root / "derived"
             derived.mkdir()
@@ -428,7 +468,7 @@ class CudaNavAutonomySuiteTest(unittest.TestCase):
             materialization.write_text(
                 json.dumps(
                     make_materialization(
-                        DEFAULT_SPEC, source, derived, report
+                        DEFAULT_SPEC, source, derived, report, inspection
                     )
                 )
                 + "\n"

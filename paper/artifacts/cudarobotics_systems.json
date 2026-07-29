@@ -94,17 +94,17 @@
         {
           "path": "scripts/cudanav_real_dataset.py",
           "normalization": "text_lf",
-          "sha256": "c3dd693aa634a6a787d9d304b77d89dfc8517c88b762dcd4d854793ac9ac8204"
+          "sha256": "d2d521ee438e1437ac67144a50e4512e1755127bc04d7c8bc981523153ecf39d"
         },
         {
           "path": "scripts/validate_cudanav_real_dataset.py",
           "normalization": "text_lf",
-          "sha256": "7b074bba6241ba2361c49cab4308d91bac4eea982c6b30c204a61d699d239e8e"
+          "sha256": "0c1e7a0bbf23971877c604509db0473fa71e81312b7f5f9454667199b72b854f"
         },
         {
           "path": "scripts/derive_cudanav_path_sidecar.py",
           "normalization": "text_lf",
-          "sha256": "e12a821bb36ada806934adfb47d77a076119f43477d25025981bee13918b4442"
+          "sha256": "d1d607013541ad59bd1f9829d5ef2e6c89087592932ff5d63c3ae5648a101506"
         },
         {
           "path": "scripts/run_cudanav_rosbag_replay.py",
@@ -144,12 +144,12 @@
         {
           "path": "scripts/test_derive_cudanav_path_sidecar_ros.py",
           "normalization": "text_lf",
-          "sha256": "a9b3aead03604f46e4ddaf4eeb1c9310aa40fb6428d56e510e2121c3f1e25ef6"
+          "sha256": "c318622929ffc9f85b7b005a3aa16fc46bfc79977ee2423a73c15c5a6d28789c"
         },
         {
           "path": "scripts/prepare_cudanav_istanbul_dataset.py",
           "normalization": "text_lf",
-          "sha256": "3a8b07c7ef48416a80d55998dc6e9f6d8525c63a09732e016ece9225d6010554"
+          "sha256": "8f2cee59b1c35ba11dd92b2cddd6f6ac88f97194c29ec210a11d5a0f440beef0"
         }
       ]
     },

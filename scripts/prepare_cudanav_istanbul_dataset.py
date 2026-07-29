@@ -69,6 +69,10 @@ def inspect(root: Path, spec_path: Path = DEFAULT_SPEC) -> dict[str, Any]:
         "schema_version": 1,
         "dataset_id": spec["dataset_id"],
         "inspected_at": datetime.now(timezone.utc).isoformat(),
+        "dataset_spec": {
+            "path": str(spec_path),
+            "sha256": sha256_file(spec_path),
+        },
         "acquisition": {
             "method": acquisition["method"],
             "file_id": acquisition["file_id"],
