@@ -16,6 +16,19 @@
       ]
     },
     {
+      "id": "real_dataset_materialization",
+      "statement": "A content-addressed public Istanbul localization bag is acquired, inspected, and converted into a bounded deterministic Path sidecar with portable validation evidence.",
+      "submission_required": true,
+      "status": "supported",
+      "evidence": [
+        "istanbul_materialization_smoke"
+      ],
+      "limitations": [
+        "This proves real-file acquisition and derived-Path materialization only; it is neither a GPU controller run nor closed-loop evidence.",
+        "The 120-second localization smoke is distinct from the 56 GB raw mapping-kit release dataset."
+      ]
+    },
+    {
       "id": "integrated_gpu_stack",
       "statement": "GPU KISS-ICP, rolling voxel mapping, exact typed ESDF, a Nav2 costmap bridge, and CUDA MPPI build and run as one ROS 2 Jazzy stack.",
       "submission_required": true,
@@ -175,6 +188,31 @@
           "path": "scripts/export_rosbag_motion.py",
           "normalization": "text_lf",
           "sha256": "c4657e64720f0197c741a8732e4c11aa0625f5b06c2a95dc62269ca6ee7e48bf"
+        }
+      ]
+    },
+    {
+      "id": "istanbul_materialization_smoke",
+      "status": "complete",
+      "kind": "file_set",
+      "generator_command": [
+        "python3",
+        "scripts/publish_cudanav_dataset_evidence.py",
+        "--validate",
+        "docs/results/cudanav_istanbul_materialization_2026-07-29.json",
+        "--commit",
+        "589732155794d10d1c3ec86481145af557d11b6f"
+      ],
+      "artifacts": [
+        {
+          "path": "docs/results/cudanav_istanbul_materialization_2026-07-29.json",
+          "normalization": "text_lf",
+          "sha256": "3ccbc452390f1539f29cb3a44952814d49145556bc99f80e07faaa9585fcdb08"
+        },
+        {
+          "path": "docs/results/cudanav_istanbul_materialization_2026-07-29.md",
+          "normalization": "text_lf",
+          "sha256": "357d4073b9d2f4e155f665001b92245def605813977abec3681bcd7e352a0e39"
         }
       ]
     },

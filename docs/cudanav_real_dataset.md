@@ -170,3 +170,7 @@ This proves real-file acquisition, topic inspection, PoseStamped decoding,
 Path derivation, and content-addressed materialization. It does not by itself
 prove a GPU controller run; that requires `--run-autonomy` in a sourced ROS 2
 CUDA environment.
+
+The checked-in portable result is
+[`results/cudanav_istanbul_materialization_2026-07-29.md`](results/cudanav_istanbul_materialization_2026-07-29.md);
+its adjacent JSON is the machine-verifiable source.
