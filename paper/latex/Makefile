@@ -1,11 +1,18 @@
-TEX = diff_mppi
+TEX ?= contact_rich_diff_mppi
 LATEXMK = latexmk
 PDFLATEX = pdflatex
 BIBTEX = bibtex
 
-.PHONY: all clean distclean
+.PHONY: all figures legacy clean distclean
 
-all: $(TEX).pdf
+all: figures $(TEX).pdf
+
+figures:
+	python3 ../../scripts/render_contact_submission_figures.py \
+		--output-dir ../figures/submission
+
+legacy:
+	$(MAKE) TEX=diff_mppi diff_mppi.pdf
 
 $(TEX).pdf: $(TEX).tex references.bib
 	$(PDFLATEX) $(TEX)
@@ -17,9 +24,15 @@ latexmk: $(TEX).tex references.bib
 	$(LATEXMK) -pdf -pdflatex="pdflatex -interaction=nonstopmode" $(TEX)
 
 clean:
-	rm -f $(TEX).aux $(TEX).bbl $(TEX).blg $(TEX).log $(TEX).out
-	rm -f $(TEX).fdb_latexmk $(TEX).fls $(TEX).synctex.gz
-	rm -f $(TEX).toc $(TEX).lof $(TEX).lot $(TEX).nav $(TEX).snm
+	rm -f contact_rich_diff_mppi.aux contact_rich_diff_mppi.bbl
+	rm -f contact_rich_diff_mppi.blg contact_rich_diff_mppi.log
+	rm -f contact_rich_diff_mppi.out contact_rich_diff_mppi.pdf
+	rm -f contact_rich_diff_mppi.fdb_latexmk contact_rich_diff_mppi.fls
+	rm -f contact_rich_diff_mppi.synctex.gz
+	rm -f diff_mppi.aux diff_mppi.bbl diff_mppi.blg diff_mppi.log
+	rm -f diff_mppi.out diff_mppi.fdb_latexmk diff_mppi.fls
+	rm -f diff_mppi.synctex.gz
+	rm -f *.toc *.lof *.lot *.nav *.snm
 
 distclean: clean
-	rm -f $(TEX).pdf
+	rm -f diff_mppi.pdf

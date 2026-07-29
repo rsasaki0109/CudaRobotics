@@ -1,0 +1,81 @@
+name: Contact paper
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [master]
+    paths:
+      - ".github/workflows/contact-paper.yml"
+      - "paper/artifacts/contact_rich_diff_mppi.json"
+      - "paper/contact_rich_diff_mppi_results.md"
+      - "paper/diff_mppi_submission_draft.md"
+      - "paper/latex/contact_rich_diff_mppi.tex"
+      - "paper/latex/references.bib"
+      - "scripts/assemble_contact_submission_bundle.py"
+      - "scripts/contact_submission_bundle.py"
+      - "scripts/render_contact_submission_figures.py"
+      - "scripts/test_contact_rich_diff_mppi_paper.py"
+      - "scripts/test_contact_submission_bundle.py"
+      - "scripts/test_contact_submission_archive.py"
+      - "docs/results/contact_robustness_2026-07-28_*"
+      - "docs/results/contact_matched_compute_2026-07-28_*"
+      - "docs/results/contact_external_fidelity_2026-07-28_*"
+  pull_request:
+    branches: [master]
+    paths:
+      - ".github/workflows/contact-paper.yml"
+      - "paper/**"
+      - "scripts/*contact*"
+      - "docs/results/contact_*"
+
+jobs:
+  build-contact-paper:
+    runs-on: ubuntu-22.04
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install figure dependencies
+        run: python -m pip install --disable-pip-version-check matplotlib
+
+      - name: Validate frozen contact claims
+        run: |
+          python scripts/validate_paper_artifacts.py \
+            paper/artifacts/contact_rich_diff_mppi.json --require-ready
+          python scripts/render_contact_paper_results.py --check
+          python scripts/test_contact_rich_diff_mppi_paper.py
+
+      - name: Render content-bound submission figures
+        run: |
+          python scripts/render_contact_submission_figures.py \
+            --output-dir paper/figures/submission
+
+      - name: Compile anonymous IEEE manuscript
+        uses: xu-cheng/latex-action@6549dc21effb2730855a1281407ecfcececc6c1b # v4
+        with:
+          root_file: contact_rich_diff_mppi.tex
+          working_directory: paper/latex
+          args: -pdf -file-line-error -halt-on-error -interaction=nonstopmode
+
+      - name: Validate anonymous bundle contracts
+        run: |
+          python scripts/test_contact_submission_bundle.py
+          python scripts/test_contact_submission_archive.py
+
+      - name: Upload manuscript and figure evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: contact-rich-diff-mppi-paper-${{ github.sha }}
+          if-no-files-found: error
+          path: |
+            paper/latex/contact_rich_diff_mppi.pdf
+            paper/figures/submission/figure_manifest.json
+            paper/figures/submission/*.pdf
+            paper/figures/submission/*.svg
+            paper/figures/submission/*.png
