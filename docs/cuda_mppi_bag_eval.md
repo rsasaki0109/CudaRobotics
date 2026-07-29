@@ -46,7 +46,15 @@ The release profile requires:
 - a quality-passing shadow evaluation with at least 60 seconds of recorded
   motion and 100 CUDA MPPI diagnostic samples;
 - controller config, diagnostics, evaluation, and command-to-input bindings;
-- a retained MCAP output recording with `metadata.yaml`.
+- a content-addressed MCAP output recording with `metadata.yaml` and storage
+  data;
+- positive recorded message counts for `/cuda_nav/cmd_vel`,
+  `/cuda_nav/odom`, `/cuda_nav/occupancy`, and `/cuda_nav/esdf`.
+
+The default output recording also retains the CudaNav local map, local costmap,
+component diagnostics, TF, source points, and recorded plan. Supplying custom
+`--record-topic` values in a release run is rejected if any of the four
+required CudaNav outputs is omitted.
 
 Revalidate the directory, including the external source bag:
 

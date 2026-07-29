@@ -8,6 +8,7 @@ import tempfile
 import unittest
 
 from cudanav_rosbag_evidence import (
+    REQUIRED_CUDANAV_OUTPUT_TOPICS,
     describe_input,
     evaluate_manifest,
     sha256_file,
@@ -152,11 +153,52 @@ class CudaNavRosbagEvidenceTest(unittest.TestCase):
             recording = run / "recording"
             recording.mkdir()
             (recording / "metadata.yaml").write_text(
-                "storage_identifier: mcap\n", encoding="utf-8"
+                "rosbag2_bagfile_information:\n"
+                "  storage_identifier: mcap\n"
+                "  topics_with_message_count:\n"
+                + "".join(
+                    "    - topic_metadata:\n"
+                    f"        name: {topic}\n"
+                    "        type: test_msgs/msg/Test\n"
+                    "      message_count: 10\n"
+                    for topic in REQUIRED_CUDANAV_OUTPUT_TOPICS
+                ),
+                encoding="utf-8",
+            )
+            (recording / "recording_0.mcap").write_bytes(
+                b"representative shadow output bytes"
             )
             manifest["artifacts"]["recording"] = "recording"
+            manifest["record_topics"] = list(
+                REQUIRED_CUDANAV_OUTPUT_TOPICS
+            )
+            manifest["required_output_topics"] = list(
+                REQUIRED_CUDANAV_OUTPUT_TOPICS
+            )
+            manifest["recording_identity"] = describe_input(recording)
+            manifest["commands"]["record"] = [
+                "ros2",
+                "bag",
+                "record",
+                "--output",
+                str(recording),
+                *REQUIRED_CUDANAV_OUTPUT_TOPICS,
+            ]
             passed = evaluate_manifest(manifest, run, "release")
             self.assertTrue(passed["passed"], passed)
+
+            metadata = recording / "metadata.yaml"
+            metadata.write_text(
+                metadata.read_text(encoding="utf-8").replace(
+                    "message_count: 10", "message_count: 0", 1
+                ),
+                encoding="utf-8",
+            )
+            manifest["recording_identity"] = describe_input(recording)
+            empty_output = evaluate_manifest(manifest, run, "release")
+            self.assertFalse(
+                empty_output["checks"]["required_output_topic_messages"]
+            )
 
     def test_path_traversal_and_dirty_tree_are_rejected(self):
         with tempfile.TemporaryDirectory() as directory:

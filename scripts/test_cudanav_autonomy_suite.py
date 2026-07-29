@@ -9,7 +9,10 @@ import tempfile
 import unittest
 
 from cudanav_autonomy_suite import evaluate_suite, sha256_file
-from cudanav_rosbag_evidence import describe_input
+from cudanav_rosbag_evidence import (
+    REQUIRED_CUDANAV_OUTPUT_TOPICS,
+    describe_input,
+)
 from run_autonomy_suite import (
     validate_closed_loop,
     validate_multi_gpu,
@@ -131,7 +134,21 @@ def write_rosbag(run: Path) -> dict:
     (run / "play.log").write_text("bag played\n", encoding="utf-8")
     recording = run / "recording"
     recording.mkdir()
-    (recording / "metadata.yaml").write_text("storage_identifier: mcap\n")
+    (recording / "metadata.yaml").write_text(
+        "rosbag2_bagfile_information:\n"
+        "  storage_identifier: mcap\n"
+        "  topics_with_message_count:\n"
+        + "".join(
+            "    - topic_metadata:\n"
+            f"        name: {topic}\n"
+            "        type: test_msgs/msg/Test\n"
+            "      message_count: 10\n"
+            for topic in REQUIRED_CUDANAV_OUTPUT_TOPICS
+        )
+    )
+    (recording / "recording_0.mcap").write_bytes(
+        b"representative shadow output bytes"
+    )
     evaluation = {
         "schema_version": 1,
         "evidence_mode": "shadow_controller_with_recorded_motion",
@@ -178,6 +195,9 @@ def write_rosbag(run: Path) -> dict:
             "sha256": database_entry["sha256"],
         },
         "controller_config_sha256": sha256_file(config),
+        "record_topics": list(REQUIRED_CUDANAV_OUTPUT_TOPICS),
+        "required_output_topics": list(REQUIRED_CUDANAV_OUTPUT_TOPICS),
+        "recording_identity": describe_input(recording),
         "diagnostics_sha256": sha256_file(diagnostics),
         "evaluation_sha256": sha256_file(evaluation_path),
         "commands": {
@@ -192,6 +212,14 @@ def write_rosbag(run: Path) -> dict:
                 "evaluate.py",
                 str(database.resolve()),
                 str(diagnostics.resolve()),
+            ],
+            "record": [
+                "ros2",
+                "bag",
+                "record",
+                "--output",
+                str(recording.resolve()),
+                *REQUIRED_CUDANAV_OUTPUT_TOPICS,
             ],
         },
         "artifacts": {

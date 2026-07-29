@@ -88,7 +88,7 @@
         {
           "path": "scripts/cudanav_rosbag_evidence.py",
           "normalization": "text_lf",
-          "sha256": "a11b7287a8530f38d230a0045662cd27e033372f0d703fca653912bd3254de14"
+          "sha256": "41e5c04cf31c9dcbfc6809578a819f0a1944579e51ab3d34c164411880cb2a3a"
         }
       ]
     },

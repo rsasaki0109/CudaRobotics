@@ -438,6 +438,17 @@ def main() -> int:
         '"all_traversals_completed"',
     ):
         assert term in evidence_source
+    rosbag_evidence_source = (
+        ROOT / "scripts" / "cudanav_rosbag_evidence.py"
+    ).read_text(encoding="utf-8")
+    for term in (
+        "REQUIRED_CUDANAV_OUTPUT_TOPICS",
+        "rosbag_topic_counts",
+        '"recording_content_unchanged"',
+        '"required_output_topic_messages"',
+        '"record_command_bound"',
+    ):
+        assert term in rosbag_evidence_source
     harness_source = (
         ROOT / "scripts" / "run_cudanav_closed_loop.py"
     ).read_text(encoding="utf-8")
