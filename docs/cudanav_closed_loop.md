@@ -56,6 +56,10 @@ command path remains available, its bytes. Cross-machine copies retain the
 filename plus recorded SHA-256 binding. This keeps the executed Nav2 parameters
 bound even when the colcon install space contains an older package copy.
 Artifact paths are constrained to the run directory when revalidated.
+Every retained file artifact, including the summary, trajectory, launch log,
+controller configuration, and optional video/logs, has a manifest SHA-256;
+semantic revalidation cannot hide a post-run replacement with another
+otherwise passing file.
 
 The `release` profile is intentionally stricter: at least 600 seconds,
 collision count zero, drift below 1%, command deadline misses below 1%, and

@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 from datetime import datetime, timezone
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -182,6 +183,7 @@ def import_suite(
             relative = Path(f"gpu_{device_slot:02d}") / f"run_{repetition:02d}"
             destination = output_dir / relative
             shutil.copytree(source, destination)
+            copied_manifest = destination / "manifest.json"
             suite["runs"].append(
                 {
                     "device": device,
@@ -192,6 +194,9 @@ def import_suite(
                     "returncode": 0,
                     "source_git_commit": manifest.get("git_commit"),
                     "source_config_sha256": manifest.get("config_sha256"),
+                    "manifest_sha256": hashlib.sha256(
+                        copied_manifest.read_bytes()
+                    ).hexdigest(),
                 }
             )
     return suite
@@ -296,6 +301,13 @@ def main() -> int:
                     "driver_log": driver_log.name,
                     "command": command,
                     "returncode": result.returncode,
+                    "manifest_sha256": (
+                        hashlib.sha256(
+                            (run_directory / "manifest.json").read_bytes()
+                        ).hexdigest()
+                        if (run_directory / "manifest.json").is_file()
+                        else ""
+                    ),
                 }
             )
             suite_path.write_text(

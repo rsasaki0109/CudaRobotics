@@ -77,11 +77,21 @@ class CudaNavEvidenceTest(unittest.TestCase):
             config_hash = hashlib.sha256(
                 (root / "controller.yaml").read_bytes()
             ).hexdigest()
+            artifact_hashes = {
+                name: hashlib.sha256((root / relative).read_bytes()).hexdigest()
+                for name, relative in {
+                    "summary": "mission_summary.json",
+                    "trajectory": "trajectory.csv",
+                    "launch_log": "launch.log",
+                    "controller_config": "controller.yaml",
+                }.items()
+            }
             manifest = {
                 "schema_version": 1,
                 "git_commit": "a" * 40,
                 "git_dirty": False,
                 "config_sha256": config_hash,
+                "artifact_sha256": artifact_hashes,
                 "command": [
                     "ros2",
                     "launch",
@@ -110,6 +120,14 @@ class CudaNavEvidenceTest(unittest.TestCase):
             smoke = evaluate_manifest(manifest, root, "smoke")
             release = evaluate_manifest(manifest, root, "release")
             self.assertTrue(smoke["passed"])
+            summary_path = root / "mission_summary.json"
+            original_summary = summary_path.read_bytes()
+            summary_path.write_bytes(original_summary + b" ")
+            tampered_summary = evaluate_manifest(manifest, root, "smoke")
+            self.assertFalse(
+                tampered_summary["checks"]["artifact_sha256_matches"]
+            )
+            summary_path.write_bytes(original_summary)
             self.assertFalse(release["passed"])
             self.assertFalse(release["checks"]["artifact_rosbag"])
             self.assertFalse(release["checks"]["artifact_video"])

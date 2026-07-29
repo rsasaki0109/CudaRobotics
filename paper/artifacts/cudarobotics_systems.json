@@ -78,12 +78,12 @@
         {
           "path": "scripts/cudanav_evidence.py",
           "normalization": "text_lf",
-          "sha256": "63978a28edc90fd27289707de7d6dd4af7e277d5cb36c33ad959d7b5f307bdc5"
+          "sha256": "168f72fbd3ee0685f3e2b7d49ae867a189253006f714e89bdcefc8e77f720b6b"
         },
         {
           "path": "scripts/cudanav_multi_gpu.py",
           "normalization": "text_lf",
-          "sha256": "9c5824cac89bea32b35d685d012f59b4a4d78ab7f9683be182f8a20692061313"
+          "sha256": "bec82f7b84f444e91e42d49bbcfc59fa4b0a1abc6182732a6d8ae652d58a04b3"
         },
         {
           "path": "scripts/cudanav_rosbag_evidence.py",

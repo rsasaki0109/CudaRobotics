@@ -320,6 +320,27 @@ def main() -> int:
             except (OSError, subprocess.SubprocessError) as exception:
                 render_error = str(exception)
     summary_gate = evaluate_summary(summary, args.profile)
+    artifacts = {
+        "summary": summary_path.name,
+        "trajectory": trajectory_path.name,
+        "launch_log": log_path.name,
+        "controller_config": config_copy.name,
+        "rosbag": bag_path.name
+        if record_bag and (bag_path / "metadata.yaml").is_file()
+        else None,
+        "rosbag_log": bag_log_path.name if record_bag else None,
+        "video": video_path.name if video_path.is_file() else None,
+        "render_log": render_log_path.name
+        if render_video and render_log_path.is_file()
+        else None,
+    }
+    artifact_sha256 = {}
+    for name, relative in artifacts.items():
+        if not relative or name == "rosbag":
+            continue
+        artifact_path = output_dir / relative
+        if artifact_path.is_file():
+            artifact_sha256[name] = sha256(artifact_path)
     manifest = {
         "schema_version": 1,
         "profile": args.profile,
@@ -349,20 +370,8 @@ def main() -> int:
                 "CUDA_VISIBLE_DEVICES",
             )
         },
-        "artifacts": {
-            "summary": summary_path.name,
-            "trajectory": trajectory_path.name,
-            "launch_log": log_path.name,
-            "controller_config": config_copy.name,
-            "rosbag": bag_path.name
-            if record_bag and (bag_path / "metadata.yaml").is_file()
-            else None,
-            "rosbag_log": bag_log_path.name if record_bag else None,
-            "video": video_path.name if video_path.is_file() else None,
-            "render_log": render_log_path.name
-            if render_video and render_log_path.is_file()
-            else None,
-        },
+        "artifacts": artifacts,
+        "artifact_sha256": artifact_sha256,
         "summary_gate": summary_gate,
     }
     manifest_path = output_dir / "manifest.json"

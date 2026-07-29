@@ -456,6 +456,7 @@ def main() -> int:
         '"git_commit"',
         '"git_dirty"',
         '"config_sha256"',
+        '"artifact_sha256"',
         'f"controller_config:={config_copy}"',
         '"gpu"',
         '"launch_log"',
@@ -484,6 +485,7 @@ def main() -> int:
         '"gpu_device_coverage"',
         '"gpu_model_coverage"',
         '"device_binding"',
+        '"manifest_binding"',
         "is_relative_to(root)",
     ):
         assert term in multi_gpu_source

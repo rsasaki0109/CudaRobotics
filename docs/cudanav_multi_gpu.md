@@ -23,6 +23,8 @@ The publication gate defaults to:
 - exactly one visible GPU recorded by each child;
 - declared physical index/name/UUID matching the child manifest;
 - identical full git commit and controller-config SHA-256 across all runs;
+- a matching SHA-256 for every child manifest, whose own retained files are
+  also content-addressed;
 - the requested device × repetition cell count present.
 
 The output must be outside the repository or under a git-ignored path. This
@@ -49,6 +51,9 @@ Every imported directory is independently checked as CudaNav smoke evidence
 before it is copied. The aggregate gate then revalidates all copied runs and
 requires identical commit and controller-config SHA-256 values, distinct
 physical GPU UUIDs, distinct model names, and a complete repetition matrix.
+Each aggregate run row binds the copied child manifest SHA-256, preventing a
+post-import edit even when the edited child would still satisfy the semantic
+smoke thresholds.
 If multiple repetitions are imported, every physical GPU must contribute the
 same count. `--import-run` cannot be combined with local `--devices`.
 

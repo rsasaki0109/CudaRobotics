@@ -83,6 +83,16 @@ def write_closed(
         "git_commit": COMMIT,
         "git_dirty": False,
         "config_sha256": CONFIG_SHA,
+        "artifact_sha256": {
+            name: sha256_file(run / relative)
+            for name, relative in {
+                "summary": "mission_summary.json",
+                "trajectory": "trajectory.csv",
+                "launch_log": "launch.log",
+                "controller_config": "controller.yaml",
+                "video": "replay.gif",
+            }.items()
+        },
         "command": [
             "ros2",
             "launch",
@@ -256,6 +266,9 @@ def write_multi_gpu(root: Path) -> dict:
                 "directory": relative,
                 "returncode": 0,
                 "device": device,
+                "manifest_sha256": sha256_file(
+                    root / relative / "manifest.json"
+                ),
             }
         )
     manifest = {

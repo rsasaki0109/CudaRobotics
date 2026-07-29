@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
 from typing import Any
@@ -50,6 +51,13 @@ def evaluate_multi_gpu_suite(
             run_results.append(run_result)
             continue
         try:
+            manifest_digest = hashlib.sha256(
+                manifest_path.read_bytes()
+            ).hexdigest()
+            manifest_binding = (
+                isinstance(entry.get("manifest_sha256"), str)
+                and entry["manifest_sha256"] == manifest_digest
+            )
             manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
             artifacts = manifest.get("artifacts", {})
             summary_path = run_directory / artifacts["summary"]
@@ -79,6 +87,7 @@ def evaluate_multi_gpu_suite(
                     "artifact_binding": binding,
                     "one_visible_gpu": one_gpu,
                     "device_binding": device_binding,
+                    "manifest_binding": manifest_binding,
                 }
             )
             passed = (
@@ -87,6 +96,7 @@ def evaluate_multi_gpu_suite(
                 and binding
                 and one_gpu
                 and device_binding
+                and manifest_binding
                 and entry.get("returncode") == 0
             )
             run_result["passed"] = passed
