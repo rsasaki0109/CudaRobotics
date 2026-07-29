@@ -87,6 +87,8 @@ The release suite passes only when:
 - the 10-minute closed-loop release policy passes with retained bag and video;
 - the content-addressed real rosbag release policy passes and remains labelled
   `shadow_controller_with_recorded_motion`;
+- the shadow output MCAP contains positive message counts for CudaNav commands,
+  odometry, occupancy, and typed ESDF;
 - the multi-GPU matrix passes with at least two physical UUIDs and two model
   names;
 - all child manifests and their content hashes are valid;

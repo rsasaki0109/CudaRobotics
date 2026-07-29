@@ -17,6 +17,7 @@ import time
 from typing import Any
 
 from cudanav_rosbag_evidence import (
+    REQUIRED_CUDANAV_OUTPUT_TOPICS,
     describe_input,
     evaluate_manifest,
     sha256_file,
@@ -28,11 +29,17 @@ ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_TOPICS = (
     "/tf",
     "/tf_static",
-    "/odom",
-    "/cmd_vel",
+    "/points",
     "/plan",
-    "/local_costmap/costmap",
-    "/diagnostics",
+    "/cuda_nav/odom",
+    "/cuda_nav/cmd_vel",
+    "/cuda_nav/occupancy",
+    "/cuda_nav/local_map",
+    "/cuda_nav/esdf",
+    "/cuda_nav/local_costmap/costmap",
+    "/cuda_nav/odometry_diagnostics",
+    "/cuda_nav/mapping_diagnostics",
+    "/cuda_nav/esdf_diagnostics",
 )
 
 
@@ -127,14 +134,23 @@ def main() -> int:
         raise SystemExit("--evaluation-db must be contained in --bag")
     if not config.is_file():
         raise SystemExit(f"controller config does not exist: {config}")
+    record = args.record if args.record is not None else args.profile == "release"
+    if args.profile == "release" and not record:
+        raise SystemExit("release profile requires output rosbag recording")
+    topics = args.record_topic or list(DEFAULT_TOPICS)
+    missing_output_topics = sorted(
+        set(REQUIRED_CUDANAV_OUTPUT_TOPICS) - set(topics)
+    )
+    if args.profile == "release" and missing_output_topics:
+        raise SystemExit(
+            "release recording omits required CudaNav outputs: "
+            + ", ".join(missing_output_topics)
+        )
     output = args.output_dir.resolve()
     if output.exists() and any(output.iterdir()):
         raise SystemExit(f"refusing non-empty output directory: {output}")
     output.mkdir(parents=True, exist_ok=True)
 
-    record = args.record if args.record is not None else args.profile == "release"
-    if args.profile == "release" and not record:
-        raise SystemExit("release profile requires output rosbag recording")
     diagnostics = output / "diagnostics.csv"
     config_copy = output / "controller.yaml"
     shutil.copy2(config, config_copy)
@@ -151,7 +167,6 @@ def main() -> int:
         play_command.append("--clock")
     play_command.extend(args.bag_play_arg)
     recording = output / "recording"
-    topics = args.record_topic or list(DEFAULT_TOPICS)
     record_command = [
         "ros2",
         "bag",
@@ -264,6 +279,13 @@ def main() -> int:
             "sha256": sha256_file(evaluation_db),
         },
         "controller_config_sha256": sha256_file(config_copy),
+        "record_topics": topics if record else [],
+        "required_output_topics": list(REQUIRED_CUDANAV_OUTPUT_TOPICS),
+        "recording_identity": (
+            describe_input(recording)
+            if record and (recording / "metadata.yaml").is_file()
+            else None
+        ),
         "diagnostics_sha256": (
             sha256_file(diagnostics) if diagnostics.is_file() else ""
         ),

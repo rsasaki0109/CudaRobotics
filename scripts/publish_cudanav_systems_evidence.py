@@ -11,6 +11,7 @@ from typing import Any
 from cudanav_autonomy_suite import evaluate_suite, sha256_file
 from cudanav_multi_gpu import evaluate_multi_gpu_suite
 from cudanav_ros_ci_evidence import evaluate as evaluate_ros_ci
+from cudanav_rosbag_evidence import rosbag_topic_counts
 
 
 def read_json(path: Path) -> dict[str, Any]:
@@ -81,6 +82,18 @@ def build_artifacts(
         rosbag_root, rosbag_manifest["artifacts"]["evaluation"]
     )
     evaluation = read_json(evaluation_path)
+    recording_root = (
+        rosbag_root / rosbag_manifest["artifacts"]["recording"]
+    ).resolve()
+    if (
+        not recording_root.is_relative_to(rosbag_root)
+        or not recording_root.is_dir()
+    ):
+        raise ValueError("real-rosbag output recording is missing")
+    output_topic_counts = rosbag_topic_counts(
+        recording_root / "metadata.yaml"
+    )
+    required_output_topics = rosbag_manifest["required_output_topics"]
 
     multi_manifest_path = multi_root / "multi_gpu_manifest.json"
     multi_manifest = read_json(multi_manifest_path)
@@ -129,6 +142,13 @@ def build_artifacts(
             "input_total_bytes": rosbag_manifest["input_bag"]["total_bytes"],
             "duration_sec": motion["duration_s"],
             "diagnostics_samples": diagnostics["samples"],
+            "output_recording_tree_sha256": rosbag_manifest[
+                "recording_identity"
+            ]["tree_sha256"],
+            "required_output_topic_messages": {
+                topic: output_topic_counts[topic]
+                for topic in required_output_topics
+            },
         },
         "multi_gpu": {
             "run_count": len(multi_manifest["runs"]),
@@ -179,6 +199,21 @@ def build_artifacts(
             "file_count": rosbag_manifest["input_bag"]["file_count"],
             "total_bytes": rosbag_manifest["input_bag"]["total_bytes"],
         },
+        "output_recording": {
+            "tree_sha256": rosbag_manifest["recording_identity"][
+                "tree_sha256"
+            ],
+            "file_count": rosbag_manifest["recording_identity"][
+                "file_count"
+            ],
+            "total_bytes": rosbag_manifest["recording_identity"][
+                "total_bytes"
+            ],
+            "required_output_topic_messages": {
+                topic: output_topic_counts[topic]
+                for topic in required_output_topics
+            },
+        },
         "ros_jazzy_ci": ros_ci["github"],
     }
     report = render_report(summary)
@@ -190,6 +225,7 @@ def render_report(summary: dict[str, Any]) -> str:
     bag = summary["real_rosbag_shadow"]
     multi = summary["multi_gpu"]
     ci = summary["ros_jazzy_ci"]
+    output_counts = bag["required_output_topic_messages"]
     models = ", ".join(f"`{model}`" for model in multi["gpu_models"])
     lines = [
         "# CudaNav Systems Release Evidence",
@@ -241,6 +277,17 @@ def render_report(summary: dict[str, Any]) -> str:
         "",
         f"- Physical GPU models: {models}",
         f"- Real-bag tree SHA-256: `{bag['input_tree_sha256']}`",
+        (
+            "- Shadow-output recording tree SHA-256: "
+            f"`{bag['output_recording_tree_sha256']}`"
+        ),
+        (
+            "- Required CudaNav output messages: "
+            + ", ".join(
+                f"`{topic}`={count}"
+                for topic, count in sorted(output_counts.items())
+            )
+        ),
         f"- ROS workflow: {ci['run_url']}",
         "",
         "The real-bag result is explicitly shadow-controller evidence. It is "

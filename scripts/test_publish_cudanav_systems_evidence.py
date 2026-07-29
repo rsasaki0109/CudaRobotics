@@ -43,6 +43,14 @@ class PublishCudaNavSystemsEvidenceTest(unittest.TestCase):
                 summary["real_rosbag_shadow"]["evidence_mode"],
                 "shadow_controller_with_recorded_motion",
             )
+            self.assertEqual(
+                set(
+                    summary["real_rosbag_shadow"][
+                        "required_output_topic_messages"
+                    ].values()
+                ),
+                {10},
+            )
             self.assertEqual(summary["multi_gpu"]["physical_model_count"], 2)
             self.assertEqual(summary["ros_jazzy_ci"]["ros_distro"], "jazzy")
             self.assertIn("not a closed-loop claim", report)

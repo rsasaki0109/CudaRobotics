@@ -24,6 +24,13 @@ PROFILES = {
     },
 }
 
+REQUIRED_CUDANAV_OUTPUT_TOPICS = (
+    "/cuda_nav/cmd_vel",
+    "/cuda_nav/odom",
+    "/cuda_nav/occupancy",
+    "/cuda_nav/esdf",
+)
+
 
 def sha256_file(path: Path) -> str:
     digest = hashlib.sha256()
@@ -65,6 +72,24 @@ def describe_input(path: Path) -> dict[str, Any]:
         "total_bytes": sum(entry["bytes"] for entry in entries),
         "files": entries,
     }
+
+
+def rosbag_topic_counts(metadata_path: Path) -> dict[str, int]:
+    """Read topic message counts from rosbag2 metadata without a YAML dependency."""
+    counts: dict[str, int] = {}
+    current_name: str | None = None
+    for raw_line in metadata_path.read_text(encoding="utf-8").splitlines():
+        stripped = raw_line.strip()
+        if stripped.startswith("name:"):
+            current_name = stripped.split(":", 1)[1].strip().strip("\"'")
+        elif current_name is not None and stripped.startswith("message_count:"):
+            value = stripped.split(":", 1)[1].strip()
+            try:
+                counts[current_name] = int(value)
+            except ValueError:
+                counts[current_name] = -1
+            current_name = None
+    return counts
 
 
 def _artifact(root: Path, relative: Any, *, directory: bool = False) -> Path | None:
@@ -290,6 +315,63 @@ def evaluate_manifest(
             and (recording / "metadata.yaml").is_file()
             and (recording / "metadata.yaml").stat().st_size > 0
         )
+        record_topics = manifest.get("record_topics")
+        required_topics = manifest.get("required_output_topics")
+        checks["record_topics_recorded"] = (
+            isinstance(record_topics, list)
+            and bool(record_topics)
+            and len(record_topics) == len(set(record_topics))
+            and all(isinstance(topic, str) and topic for topic in record_topics)
+        )
+        checks["required_output_topics_declared"] = (
+            isinstance(required_topics, list)
+            and set(required_topics) == set(REQUIRED_CUDANAV_OUTPUT_TOPICS)
+        )
+        checks["required_output_topics_recorded"] = (
+            checks["record_topics_recorded"]
+            and checks["required_output_topics_declared"]
+            and set(required_topics) <= set(record_topics)
+        )
+        recording_identity = manifest.get("recording_identity")
+        checks["recording_identity_schema"] = (
+            isinstance(recording_identity, dict)
+            and bool(
+                re.fullmatch(
+                    r"[0-9a-f]{64}",
+                    str(recording_identity.get("tree_sha256", "")),
+                )
+            )
+            and isinstance(recording_identity.get("file_count"), int)
+            and recording_identity["file_count"] >= 2
+            and isinstance(recording_identity.get("total_bytes"), int)
+            and recording_identity["total_bytes"] > 0
+        )
+        checks["recording_content_unchanged"] = False
+        checks["required_output_topic_messages"] = False
+        if checks["artifact_recording"]:
+            try:
+                current_recording = describe_input(recording)
+                checks["recording_content_unchanged"] = (
+                    checks["recording_identity_schema"]
+                    and current_recording["tree_sha256"]
+                    == recording_identity["tree_sha256"]
+                    and current_recording["file_count"]
+                    == recording_identity["file_count"]
+                    and current_recording["total_bytes"]
+                    == recording_identity["total_bytes"]
+                )
+                topic_counts = rosbag_topic_counts(
+                    recording / "metadata.yaml"
+                )
+                checks["required_output_topic_messages"] = (
+                    checks["required_output_topics_declared"]
+                    and all(
+                        topic_counts.get(topic, 0) > 0
+                        for topic in required_topics
+                    )
+                )
+            except (OSError, TypeError, ValueError):
+                pass
     elif artifacts.get("recording"):
         checks["artifact_recording"] = recording is not None
 
@@ -325,6 +407,17 @@ def evaluate_manifest(
         checks["controller_inputs_bound"] = False
         checks["play_input_bound"] = False
         checks["evaluate_inputs_bound"] = False
+    if policy["require_recording"]:
+        record_command = (
+            commands.get("record") if isinstance(commands, dict) else None
+        )
+        checks["record_command_bound"] = (
+            isinstance(record_command, list)
+            and recording is not None
+            and str(recording) in record_command
+            and isinstance(manifest.get("record_topics"), list)
+            and set(manifest["record_topics"]) <= set(record_command)
+        )
     return {
         "profile": profile,
         "passed": all(checks.values()),
