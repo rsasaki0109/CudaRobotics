@@ -212,6 +212,7 @@ def main() -> int:
         "cuda_nav_bringup",
         "cudanav_closed_loop.launch.py",
         f"output_path:={summary_path}",
+        f"controller_config:={config_copy}",
         f"traversal_count:={traversal_count}",
         f"mission_timeout_sec:={mission_timeout_sec}",
     ]

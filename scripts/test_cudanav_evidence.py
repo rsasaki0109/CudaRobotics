@@ -82,6 +82,13 @@ class CudaNavEvidenceTest(unittest.TestCase):
                 "git_commit": "a" * 40,
                 "git_dirty": False,
                 "config_sha256": config_hash,
+                "command": [
+                    "ros2",
+                    "launch",
+                    "cuda_nav_bringup",
+                    "cudanav_closed_loop.launch.py",
+                    f"controller_config:={root / 'controller.yaml'}",
+                ],
                 "gpu": [
                     {
                         "physical_index": "0",
@@ -115,6 +122,39 @@ class CudaNavEvidenceTest(unittest.TestCase):
             mismatch = evaluate_manifest(manifest, root, "smoke")
             self.assertFalse(mismatch["checks"]["config_sha256_matches"])
             manifest["config_sha256"] = config_hash
+            manifest["command"][-1] = (
+                f"controller_config:={root / 'other.yaml'}"
+            )
+            command_mismatch = evaluate_manifest(manifest, root, "smoke")
+            self.assertFalse(
+                command_mismatch["checks"][
+                    "controller_config_command_binding"
+                ]
+            )
+            other = root / "other"
+            other.mkdir()
+            (other / "controller.yaml").write_text(
+                "controller: changed\n", encoding="utf-8"
+            )
+            manifest["command"][-1] = (
+                f"controller_config:={other / 'controller.yaml'}"
+            )
+            content_mismatch = evaluate_manifest(manifest, root, "smoke")
+            self.assertFalse(
+                content_mismatch["checks"][
+                    "controller_config_command_binding"
+                ]
+            )
+            manifest["command"][-1] = (
+                "controller_config:=/unavailable/original/controller.yaml"
+            )
+            portable = evaluate_manifest(manifest, root, "smoke")
+            self.assertTrue(
+                portable["checks"]["controller_config_command_binding"]
+            )
+            manifest["command"][-1] = (
+                f"controller_config:={root / 'controller.yaml'}"
+            )
             manifest["artifacts"]["summary"] = "../outside.json"
             traversal = evaluate_manifest(manifest, root, "smoke")
             self.assertFalse(traversal["checks"]["artifact_summary"])

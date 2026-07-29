@@ -49,8 +49,13 @@ The harness refuses a non-empty output directory and records the full git
 commit, dirty-worktree state, controller-config SHA-256, GPU UUID/driver,
 selected environment, exact launch command, launch log, mission summary, and
 machine-readable gate results. A passing manifest requires a clean worktree and
-the retained config bytes must match the recorded hash. Artifact paths are
-constrained to the run directory when revalidated.
+the retained config bytes must match the recorded hash. The runner passes that
+retained config copy back into the launch through `controller_config:=...`;
+independent validation checks its retained filename and, while the original
+command path remains available, its bytes. Cross-machine copies retain the
+filename plus recorded SHA-256 binding. This keeps the executed Nav2 parameters
+bound even when the colcon install space contains an older package copy.
+Artifact paths are constrained to the run directory when revalidated.
 
 The `release` profile is intentionally stricter: at least 600 seconds,
 collision count zero, drift below 1%, command deadline misses below 1%, and

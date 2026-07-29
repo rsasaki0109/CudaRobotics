@@ -157,6 +157,7 @@ jobs:
           source /opt/ros/jazzy/setup.bash
           cd ros2_ws
           source install/setup.bash
+          python ../scripts/test_cudanav_contract.py
           python ../scripts/test_cudanav_evidence.py
           python ../scripts/test_cudanav_multi_gpu.py
           python ../scripts/test_cudanav_rosbag_evidence.py

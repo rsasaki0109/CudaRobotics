@@ -336,8 +336,24 @@ def main() -> int:
         'executable="cudanav_loopback_simulator"',
         'executable="lifecycle_orchestrator"',
         'executable="follow_path_mission"',
+        'DeclareLaunchArgument(',
+        '"controller_config"',
     ):
         assert term in bringup_launch
+    controller_config = (
+        BRINGUP_PACKAGE / "config" / "controller.yaml"
+    ).read_text(encoding="utf-8")
+    for term in (
+        "/cuda_nav/controller_server:",
+        "/cuda_nav/local_costmap/local_costmap:",
+        'plugin: "cuda_mppi_controller::CudaMppiController"',
+        'plugin: "cuda_voxel_costmap_layer::CudaVoxelCostmapLayer"',
+    ):
+        assert term in controller_config, (
+            f"missing namespaced controller config term: {term}"
+        )
+    assert "\ncontroller_server:" not in controller_config
+    assert "\nlocal_costmap:" not in controller_config
     shadow_launch = (
         BRINGUP_PACKAGE / "launch" / "cudanav_recorded_shadow.launch.py"
     ).read_text(encoding="utf-8")
@@ -429,6 +445,7 @@ def main() -> int:
         '"git_commit"',
         '"git_dirty"',
         '"config_sha256"',
+        'f"controller_config:={config_copy}"',
         '"gpu"',
         '"launch_log"',
         '"rosbag"',

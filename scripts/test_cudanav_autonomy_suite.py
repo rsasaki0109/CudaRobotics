@@ -80,6 +80,13 @@ def write_closed(
         "git_commit": COMMIT,
         "git_dirty": False,
         "config_sha256": CONFIG_SHA,
+        "command": [
+            "ros2",
+            "launch",
+            "cuda_nav_bringup",
+            "cudanav_closed_loop.launch.py",
+            f"controller_config:={run / 'controller.yaml'}",
+        ],
         "gpu": [
             {
                 "physical_index": physical_index,

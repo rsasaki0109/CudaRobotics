@@ -78,7 +78,7 @@
         {
           "path": "scripts/cudanav_evidence.py",
           "normalization": "text_lf",
-          "sha256": "0917d1f0ae63fd561dd9f7ed1f35cdd91a6e2ea5479e5617b91509ba3d7e31f7"
+          "sha256": "63978a28edc90fd27289707de7d6dd4af7e277d5cb36c33ad959d7b5f307bdc5"
         },
         {
           "path": "scripts/cudanav_multi_gpu.py",
@@ -119,7 +119,12 @@
         {
           "path": "ros2_ws/src/cuda_nav_bringup/launch/cudanav_closed_loop.launch.py",
           "normalization": "text_lf",
-          "sha256": "429398d9d79b6a0dd26874916d3380bc08d39a3489891d83e50816cdf95c30a1"
+          "sha256": "8373bde7ae1da9203de428c32a5cfc7c56e68dbfe8b8c3754f7a9c631b64d23f"
+        },
+        {
+          "path": "ros2_ws/src/cuda_nav_bringup/config/controller.yaml",
+          "normalization": "text_lf",
+          "sha256": "5a808fd3acfc9fd45f8b3022b5decb61f6f5e9d14ad8eda8b4e526e05734e1db"
         }
       ]
     },
