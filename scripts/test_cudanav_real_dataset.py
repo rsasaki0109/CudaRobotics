@@ -9,6 +9,7 @@ import tempfile
 import unittest
 
 from cudanav_real_dataset import DEFAULT_SPEC, make_materialization, read_json
+from run_cudanav_rosbag_replay import play_argv
 from validate_cudanav_real_dataset import evaluate, evaluate_materialization
 
 
@@ -29,7 +30,55 @@ def write_bag(root: Path, topics: list[tuple[str, str, int]]) -> Path:
     return root
 
 
+def write_report(root: Path, spec: dict, input_samples: int = 5) -> Path:
+    contract = spec["path_derivation"]
+    path = root / "generator_report.json"
+    path.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "algorithm": contract["algorithm"],
+                "source_topic": contract["source_topic"],
+                "output_topic": contract["output_topic"],
+                "parameters": contract["parameters"],
+                "input_samples": input_samples,
+                "output_poses": 2,
+                "first_stamp_ns": 1,
+                "last_stamp_ns": 2,
+                "frame_id": "odom",
+                "recorded_path": False,
+                "closed_loop": False,
+            }
+        )
+        + "\n"
+    )
+    return path
+
+
 class CudaNavRealDatasetTest(unittest.TestCase):
+    def test_derived_replay_uses_rosbag2_multi_input_ordering(self) -> None:
+        command = play_argv(
+            Path("/data/source"),
+            Path("/data/path"),
+            True,
+            ["--rate", "0.5"],
+        )
+        self.assertEqual(
+            command,
+            [
+                "ros2",
+                "bag",
+                "play",
+                "-i",
+                str(Path("/data/source")),
+                "-i",
+                str(Path("/data/path")),
+                "--clock",
+                "--rate",
+                "0.5",
+            ],
+        )
+
     def test_selected_spec_is_valid_but_not_materialized(self) -> None:
         result = evaluate(DEFAULT_SPEC)
         self.assertTrue(result["valid"], result)
@@ -55,7 +104,9 @@ class CudaNavRealDatasetTest(unittest.TestCase):
             evidence_path = root / "materialization.json"
             evidence_path.write_text(
                 json.dumps(
-                    make_materialization(DEFAULT_SPEC, source, derived),
+                    make_materialization(
+                        DEFAULT_SPEC, source, derived, write_report(root, spec)
+                    ),
                     indent=2,
                 )
                 + "\n"
@@ -80,7 +131,9 @@ class CudaNavRealDatasetTest(unittest.TestCase):
                 root / "derived",
                 [(path["output_topic"], path["output_type"], 0)],
             )
-            evidence = make_materialization(DEFAULT_SPEC, source, derived)
+            evidence = make_materialization(
+                DEFAULT_SPEC, source, derived, write_report(root, spec)
+            )
             evidence["provenance"]["closed_loop"] = True
             checks = evaluate_materialization(
                 spec, DEFAULT_SPEC.resolve(), evidence
@@ -104,12 +157,39 @@ class CudaNavRealDatasetTest(unittest.TestCase):
                 root / "derived",
                 [(path["output_topic"], path["output_type"], 2)],
             )
-            evidence = make_materialization(DEFAULT_SPEC, source, derived)
+            evidence = make_materialization(
+                DEFAULT_SPEC, source, derived, write_report(root, spec)
+            )
             evidence["source_metadata"]["sha256"] = "0" * 64
             checks = evaluate_materialization(
                 spec, DEFAULT_SPEC.resolve(), evidence
             )
             self.assertFalse(checks["source_metadata_bound"])
+
+    def test_generator_fields_cannot_be_detached_from_hashed_report(self) -> None:
+        spec = read_json(DEFAULT_SPEC)
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = write_bag(
+                root / "source",
+                [
+                    (entry["topic"], entry["type"], 5)
+                    for entry in spec["recorded_inputs"].values()
+                ],
+            )
+            path = spec["path_derivation"]
+            derived = write_bag(
+                root / "derived",
+                [(path["output_topic"], path["output_type"], 2)],
+            )
+            evidence = make_materialization(
+                DEFAULT_SPEC, source, derived, write_report(root, spec)
+            )
+            evidence["generator_report"]["output_poses"] = 3
+            checks = evaluate_materialization(
+                spec, DEFAULT_SPEC.resolve(), evidence
+            )
+            self.assertFalse(checks["generator_report_content"])
 
     def test_spec_cannot_call_derived_path_recorded(self) -> None:
         spec = deepcopy(read_json(DEFAULT_SPEC))

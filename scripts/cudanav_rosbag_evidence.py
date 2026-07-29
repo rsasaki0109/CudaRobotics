@@ -126,10 +126,11 @@ def evaluate_manifest(
     checks: dict[str, bool] = {
         "manifest_schema": manifest.get("schema_version") == 1,
         "profile_matches": manifest.get("profile") == profile,
-        "evidence_mode": (
-            manifest.get("evidence_mode")
-            == "shadow_controller_with_recorded_motion"
-        ),
+        "evidence_mode": manifest.get("evidence_mode")
+        in {
+            "shadow_controller_with_recorded_motion",
+            "real_sensor_shadow_with_derived_path",
+        },
         "git_commit_recorded": bool(
             re.fullmatch(r"[0-9a-fA-F]{40,64}", str(manifest.get("git_commit", "")))
         ),
@@ -165,6 +166,10 @@ def evaluate_manifest(
         )
     )
     source = manifest.get("input_bag")
+    derived_mode = (
+        manifest.get("evidence_mode")
+        == "real_sensor_shadow_with_derived_path"
+    )
     checks["input_identity_schema"] = (
         isinstance(source, dict)
         and bool(re.fullmatch(r"[0-9a-f]{64}", str(source.get("tree_sha256", ""))))
@@ -189,6 +194,31 @@ def evaluate_manifest(
                 )
             except (FileNotFoundError, OSError, TypeError, ValueError):
                 checks["input_content_unchanged"] = False
+    derived = manifest.get("derived_path_bag")
+    checks["derived_path_contract"] = not derived_mode
+    if derived_mode:
+        checks["derived_path_contract"] = (
+            isinstance(derived, dict)
+            and bool(
+                re.fullmatch(
+                    r"[0-9a-f]{64}", str(derived.get("tree_sha256", ""))
+                )
+            )
+            and isinstance(derived.get("file_count"), int)
+            and derived["file_count"] >= 2
+            and isinstance(derived.get("total_bytes"), int)
+            and derived["total_bytes"] > 0
+        )
+        if checks["derived_path_contract"] and verify_source:
+            try:
+                current_derived = describe_input(Path(derived["source"]))
+                checks["derived_path_contract"] = (
+                    current_derived["tree_sha256"] == derived["tree_sha256"]
+                    and current_derived["file_count"] == derived["file_count"]
+                    and current_derived["total_bytes"] == derived["total_bytes"]
+                )
+            except (OSError, TypeError, ValueError):
+                checks["derived_path_contract"] = False
 
     artifacts = manifest.get("artifacts")
     checks["artifact_table"] = isinstance(artifacts, dict)
@@ -198,6 +228,7 @@ def evaluate_manifest(
     config_path = _artifact(root, artifacts.get("controller_config"))
     launch_log = _artifact(root, artifacts.get("controller_log"))
     play_log = _artifact(root, artifacts.get("play_log"))
+    dataset_path = _artifact(root, artifacts.get("dataset_materialization"))
     checks.update(
         {
             "artifact_evaluation": evaluation_path is not None,
@@ -205,8 +236,33 @@ def evaluate_manifest(
             "artifact_controller_config": config_path is not None,
             "artifact_controller_log": launch_log is not None,
             "artifact_play_log": play_log is not None,
+            "dataset_materialization": (
+                not derived_mode
+                or (
+                    dataset_path is not None
+                    and sha256_file(dataset_path)
+                    == manifest.get("dataset_materialization_sha256")
+                )
+            ),
         }
     )
+    checks["dataset_materialization_semantics"] = not derived_mode
+    if derived_mode and dataset_path is not None:
+        try:
+            from cudanav_real_dataset import DEFAULT_SPEC
+            from validate_cudanav_real_dataset import evaluate as evaluate_dataset
+
+            dataset_payload = json.loads(dataset_path.read_text(encoding="utf-8"))
+            dataset_gate = evaluate_dataset(DEFAULT_SPEC, dataset_path)
+            checks["dataset_materialization_semantics"] = (
+                dataset_gate["ready"]
+                and dataset_payload["source_bag"]["tree_sha256"]
+                == source["tree_sha256"]
+                and dataset_payload["derived_path_bag"]["tree_sha256"]
+                == derived["tree_sha256"]
+            )
+        except (KeyError, OSError, TypeError, ValueError, json.JSONDecodeError):
+            checks["dataset_materialization_semantics"] = False
     checks["config_sha256_matches"] = (
         config_path is not None
         and sha256_file(config_path)
@@ -396,6 +452,15 @@ def evaluate_manifest(
         checks["play_input_bound"] = (
             isinstance(source, dict)
             and str(Path(source.get("source", "")).resolve()) in commands["play"]
+            and (
+                not derived_mode
+                or (
+                    isinstance(derived, dict)
+                    and str(Path(derived.get("source", "")).resolve())
+                    in commands["play"]
+                    and commands["play"].count("-i") == 2
+                )
+            )
         )
         checks["evaluate_inputs_bound"] = (
             database_path is not None

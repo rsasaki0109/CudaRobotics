@@ -53,6 +53,8 @@ def main() -> int:
     assert odom["frame_id"] == "odom"
     assert odom["child_frame_id"] == "base_link"
     assert abs(odom["yaw"] - 0.5) < 1e-12
+    assert abs(odom["qz"] - math.sin(0.25)) < 1e-12
+    assert abs(odom["qw"] - math.cos(0.25)) < 1e-12
     assert odom["linear_x"] == 0.4
     print("offline CDR motion decoder checks passed")
     return 0

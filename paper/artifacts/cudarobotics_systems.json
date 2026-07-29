@@ -49,7 +49,8 @@
         "real_rosbag_release"
       ],
       "limitations": [
-        "Rosbag replay is shadow-controller evidence and is not a closed-loop success claim."
+        "Rosbag replay is shadow-controller evidence and is not a closed-loop success claim.",
+        "The selected public PointCloud2 dataset has a deterministic odometry-derived Path contract, but its PointCloud2/ESDF clearance evaluator and release-profile GPU run remain pending."
       ]
     },
     {
@@ -88,7 +89,37 @@
         {
           "path": "scripts/cudanav_rosbag_evidence.py",
           "normalization": "text_lf",
-          "sha256": "41e5c04cf31c9dcbfc6809578a819f0a1944579e51ab3d34c164411880cb2a3a"
+          "sha256": "cd231c95837dafc016cfc9338ef138c3d8627d50346ba5dbe61637305d983f0b"
+        },
+        {
+          "path": "scripts/cudanav_real_dataset.py",
+          "normalization": "text_lf",
+          "sha256": "c3dd693aa634a6a787d9d304b77d89dfc8517c88b762dcd4d854793ac9ac8204"
+        },
+        {
+          "path": "scripts/validate_cudanav_real_dataset.py",
+          "normalization": "text_lf",
+          "sha256": "7ce4e83bd2dcc5b3efac34cfb9d8695945f75c2abf0fb1c4e507b46170317d25"
+        },
+        {
+          "path": "scripts/derive_cudanav_path_sidecar.py",
+          "normalization": "text_lf",
+          "sha256": "e12a821bb36ada806934adfb47d77a076119f43477d25025981bee13918b4442"
+        },
+        {
+          "path": "scripts/run_cudanav_rosbag_replay.py",
+          "normalization": "text_lf",
+          "sha256": "9a3fa126eff323a27a3a6033fd23c882a755d4d40799736bf4c8a5f8463d2bc0"
+        },
+        {
+          "path": "scripts/run_autonomy_suite.py",
+          "normalization": "text_lf",
+          "sha256": "166395b9ddb253efa61bd529653cfd22690f59b5ac847ad5fa975596e7d9d941"
+        },
+        {
+          "path": "docs/cudanav_real_dataset.json",
+          "normalization": "text_lf",
+          "sha256": "e11d2ee69dd0ba0139c4537bc7b3023b853ac858b6bfb806795af01599fbe29e"
         }
       ]
     },

@@ -10,6 +10,7 @@ import unittest
 
 from cudanav_autonomy_suite import evaluate_suite, sha256_file
 from cudanav_evidence import REQUIRED_CLOSED_LOOP_BAG_TOPICS
+from cudanav_real_dataset import DEFAULT_SPEC, make_materialization, read_json
 from cudanav_rosbag_evidence import (
     REQUIRED_CUDANAV_OUTPUT_TOPICS,
     describe_input,
@@ -366,6 +367,94 @@ class CudaNavAutonomySuiteTest(unittest.TestCase):
             result = evaluate_suite(suite, root)
             self.assertFalse(result["modes"]["real_rosbag_shadow"]["passed"])
             self.assertFalse(result["passed"])
+
+    def test_derived_path_shadow_revalidates_dataset_provenance(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            run = root / "run"
+            manifest = write_rosbag(run)
+            spec = read_json(DEFAULT_SPEC)
+            source = root / "input_bag"
+            source_metadata = [
+                "rosbag2_bagfile_information:",
+                "  topics_with_message_count:",
+            ]
+            for item in spec["recorded_inputs"].values():
+                source_metadata.extend(
+                    [
+                        "    - topic_metadata:",
+                        f"        name: {item['topic']}",
+                        f"        type: {item['type']}",
+                        "      message_count: 5",
+                    ]
+                )
+            (source / "metadata.yaml").write_text(
+                "\n".join(source_metadata) + "\n"
+            )
+            manifest["input_bag"] = describe_input(source)
+            derived = root / "derived"
+            derived.mkdir()
+            contract = spec["path_derivation"]
+            (derived / "metadata.yaml").write_text(
+                "rosbag2_bagfile_information:\n"
+                "  topics_with_message_count:\n"
+                "    - topic_metadata:\n"
+                f"        name: {contract['output_topic']}\n"
+                f"        type: {contract['output_type']}\n"
+                "      message_count: 1\n"
+            )
+            (derived / "path.mcap").write_bytes(b"derived path fixture")
+            report = root / "generator.json"
+            report.write_text(
+                json.dumps(
+                    {
+                        "schema_version": 1,
+                        "algorithm": contract["algorithm"],
+                        "source_topic": contract["source_topic"],
+                        "output_topic": contract["output_topic"],
+                        "parameters": contract["parameters"],
+                        "input_samples": 5,
+                        "output_poses": 3,
+                        "first_stamp_ns": 1,
+                        "last_stamp_ns": 5,
+                        "frame_id": "odom",
+                        "recorded_path": False,
+                        "closed_loop": False,
+                    }
+                )
+                + "\n"
+            )
+            materialization = run / "dataset_materialization.json"
+            materialization.write_text(
+                json.dumps(
+                    make_materialization(
+                        DEFAULT_SPEC, source, derived, report
+                    )
+                )
+                + "\n"
+            )
+            manifest["evidence_mode"] = (
+                "real_sensor_shadow_with_derived_path"
+            )
+            manifest["derived_path_bag"] = describe_input(derived)
+            manifest["dataset_materialization_sha256"] = sha256_file(
+                materialization
+            )
+            manifest["artifacts"]["dataset_materialization"] = (
+                materialization.name
+            )
+            manifest["commands"]["play"] = [
+                "ros2",
+                "bag",
+                "play",
+                "-i",
+                str(source.resolve()),
+                "-i",
+                str(derived.resolve()),
+            ]
+            (run / "manifest.json").write_text(json.dumps(manifest) + "\n")
+            result = validate_rosbag(run, "release")
+            self.assertTrue(result["passed"], result)
 
     def test_closed_loop_bag_requires_messages_on_every_evidence_topic(self):
         with tempfile.TemporaryDirectory() as directory:

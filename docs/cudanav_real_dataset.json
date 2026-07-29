@@ -30,7 +30,7 @@
     "output_topic": "/cuda_nav/derived_plan",
     "output_type": "nav_msgs/msg/Path",
     "parameters": {
-      "coordinate_frame": "recorded_odometry_frame",
+      "coordinate_frame": "first_pose_se2_normalized_to_odom",
       "ordering": "header_stamp_then_record_order",
       "duplicate_stamp_policy": "keep_first",
       "minimum_translation_m": 0.05

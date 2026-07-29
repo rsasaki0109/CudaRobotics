@@ -23,6 +23,7 @@ from cudanav_rosbag_evidence import (
     sha256_file,
 )
 from run_cudanav_closed_loop import command_output, git_dirty, gpu_identity
+from validate_cudanav_real_dataset import evaluate as evaluate_real_dataset
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -46,6 +47,8 @@ DEFAULT_TOPICS = (
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--bag", type=Path, required=True)
+    parser.add_argument("--derived-path-bag", type=Path)
+    parser.add_argument("--dataset-materialization", type=Path)
     parser.add_argument(
         "--evaluation-db",
         type=Path,
@@ -112,6 +115,23 @@ def controller_argv(template: str, replacements: dict[str, str]) -> list[str]:
     return command
 
 
+def play_argv(
+    source: Path,
+    derived_path_bag: Path | None,
+    use_sim_time: bool,
+    extra_args: list[str],
+) -> list[str]:
+    command = ["ros2", "bag", "play"]
+    if derived_path_bag is not None:
+        command.extend(["-i", str(source), "-i", str(derived_path_bag)])
+    else:
+        command.append(str(source))
+    if use_sim_time:
+        command.append("--clock")
+    command.extend(extra_args)
+    return command
+
+
 def write_json_atomic(path: Path, payload: dict[str, Any]) -> None:
     temporary = path.with_suffix(path.suffix + ".tmp")
     temporary.write_text(
@@ -126,6 +146,26 @@ def main() -> int:
     if args.duration_sec < 0.0 or args.settle_sec < 0.0:
         raise SystemExit("duration and settle times must be non-negative")
     source = args.bag.resolve()
+    derived_path_bag = (
+        args.derived_path_bag.resolve() if args.derived_path_bag else None
+    )
+    dataset_materialization = (
+        args.dataset_materialization.resolve()
+        if args.dataset_materialization
+        else None
+    )
+    if (derived_path_bag is None) != (dataset_materialization is None):
+        raise SystemExit(
+            "--derived-path-bag and --dataset-materialization must be used together"
+        )
+    dataset_gate = None
+    if dataset_materialization is not None:
+        dataset_gate = evaluate_real_dataset(
+            ROOT / "docs" / "cudanav_real_dataset.json",
+            dataset_materialization,
+        )
+        if not dataset_gate["ready"]:
+            raise SystemExit("real-dataset materialization gate did not pass")
     evaluation_db = args.evaluation_db.resolve()
     config = args.controller_config.resolve()
     if not evaluation_db.is_file():
@@ -154,7 +194,24 @@ def main() -> int:
     diagnostics = output / "diagnostics.csv"
     config_copy = output / "controller.yaml"
     shutil.copy2(config, config_copy)
+    materialization_copy = output / "dataset_materialization.json"
+    if dataset_materialization is not None:
+        shutil.copy2(dataset_materialization, materialization_copy)
     input_identity = describe_input(source)
+    derived_identity = (
+        describe_input(derived_path_bag) if derived_path_bag is not None else None
+    )
+    if dataset_gate is not None:
+        materialization_payload = json.loads(
+            materialization_copy.read_text(encoding="utf-8")
+        )
+        if (
+            materialization_payload["source_bag"]["tree_sha256"]
+            != input_identity["tree_sha256"]
+            or materialization_payload["derived_path_bag"]["tree_sha256"]
+            != derived_identity["tree_sha256"]
+        ):
+            raise SystemExit("runner bags do not match dataset materialization")
     input_root = source if source.is_dir() else source.parent
     replacements = {
         "out_dir": str(output),
@@ -162,10 +219,9 @@ def main() -> int:
         "controller_config": str(config_copy),
     }
     controller_command = controller_argv(args.controller_command, replacements)
-    play_command = ["ros2", "bag", "play", str(source)]
-    if args.use_sim_time:
-        play_command.append("--clock")
-    play_command.extend(args.bag_play_arg)
+    play_command = play_argv(
+        source, derived_path_bag, args.use_sim_time, args.bag_play_arg
+    )
     recording = output / "recording"
     record_command = [
         "ros2",
@@ -262,7 +318,11 @@ def main() -> int:
     manifest = {
         "schema_version": 1,
         "profile": args.profile,
-        "evidence_mode": "shadow_controller_with_recorded_motion",
+        "evidence_mode": (
+            "real_sensor_shadow_with_derived_path"
+            if derived_path_bag is not None
+            else "shadow_controller_with_recorded_motion"
+        ),
         "started_at": started_at,
         "finished_at": datetime.now(timezone.utc).isoformat(),
         "git_commit": command_output(["git", "rev-parse", "HEAD"]),
@@ -273,6 +333,12 @@ def main() -> int:
             for key in ("ROS_DISTRO", "ROS_DOMAIN_ID", "CUDA_VISIBLE_DEVICES")
         },
         "input_bag": input_identity,
+        "derived_path_bag": derived_identity,
+        "dataset_materialization_sha256": (
+            sha256_file(materialization_copy)
+            if dataset_materialization is not None
+            else ""
+        ),
         "evaluation_database": {
             "source": str(evaluation_db),
             "relative_path": evaluation_db.relative_to(input_root).as_posix(),
@@ -314,6 +380,11 @@ def main() -> int:
             ),
             "diagnostics": diagnostics.name if diagnostics.is_file() else None,
             "controller_config": config_copy.name,
+            "dataset_materialization": (
+                materialization_copy.name
+                if dataset_materialization is not None
+                else None
+            ),
             "controller_log": "controller.log",
             "play_log": "play.log",
             "record_log": "record.log",
