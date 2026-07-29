@@ -1,0 +1,333 @@
+\documentclass[conference]{IEEEtran}
+
+\usepackage{amsmath}
+\usepackage{booktabs}
+\usepackage{cite}
+\usepackage{graphicx}
+\usepackage{url}
+
+\graphicspath{{../figures/submission/}}
+
+\begin{document}
+
+\title{Contact-Rich Diff-MPPI: Hybrid Sampling and Gradient Refinement
+for GPU Manipulation}
+
+\author{\IEEEauthorblockN{Anonymous Authors}}
+
+\maketitle
+
+\begin{abstract}
+Sampling-based model predictive control searches broadly but may spend many
+rollouts resolving a local contact mode.  Differentiable trajectory
+optimization supplies local information, yet can fail when initialized in the
+wrong basin.  We study a minimal, training-free hybrid that preserves the
+standard Model Predictive Path Integral (MPPI) update and then applies one or
+three clipped autodiff steps to the nominal control sequence.  The evaluation
+keeps failures visible and separates three claims.  First, a preregistered
+32,400-episode GPU matrix spans 12 model and geometry conditions, five
+contact-rich tasks, six planners, three rollout budgets, and 30 paired seeds;
+Diff-MPPI-3 produces 33 Holm-significant positive and 6 negative cells versus
+MPPI.  Second, in enforced 10 ms control slots with disjoint calibration and
+held-out seeds, Diff-MPPI-3 reaches 1.00 real-time success on contact loss
+versus 0.467 for MPPI, a paired difference of \(+0.533\) with Holm
+\(p=0.000305\).  Third, 3,150 closed-loop MuJoCo episodes test an independently
+executed contact plant across friction, mass, and observation-noise changes;
+Diff-MPPI-3 reaches 0.457 aggregate success versus 0.289 for MPPI, with three
+positive and zero negative Holm-significant cells.  Tall-object regressions
+and an unsolved detour family bound the result.  The evidence supports a
+localized compute--quality advantage for selected contact-rich tasks, not
+universal planner dominance or real-robot transfer.
+\end{abstract}
+
+\begin{IEEEkeywords}
+model predictive control, MPPI, differentiable control, contact-rich
+manipulation, GPU computing
+\end{IEEEkeywords}
+
+\section{Introduction}
+
+Model Predictive Path Integral control uses importance-weighted stochastic
+rollouts to optimize nonlinear control sequences and maps naturally to GPU
+execution~\cite{williams2017mppi}.  Its broad search is valuable for
+nonconvex costs and contact-mode changes, but finite samples can repeatedly
+miss the narrow local corrections needed to restore or maintain contact.
+Gradient-based refinement has complementary behavior: once a nominal sequence
+enters an informative basin, local derivatives can sharpen it cheaply, while
+a wrong basin or a topological detour can still defeat the method.
+
+We investigate the smallest useful combination of these mechanisms.
+Diff-MPPI leaves the sampling update intact and appends a short, clipped
+forward-mode autodiff refinement.  It learns no sampler, uses no offline
+dataset, and does not differentiate through the sampling distribution.  The
+question is deliberately narrow: does this local refinement improve selected
+contact-rich tasks under fixed samples, enforced deadlines, and an
+independently executed contact plant?
+
+The evaluation is organized around paired, content-addressed evidence instead
+of a collection of favorable examples.  It contributes:
+
+\begin{enumerate}
+  \item a minimal GPU hybrid of standard MPPI sampling and one or three local
+  autodiff steps for planar contact-rich manipulation;
+  \item a 32,400-episode robustness protocol with paired seeds, full-family
+  Holm correction, smooth and hard-contact plants, and retained negative
+  cells;
+  \item an enforced 10 ms matched-compute evaluation with disjoint calibration
+  and held-out seeds; and
+  \item a 3,150-episode closed-loop MuJoCo transfer study in which the planners
+  retain their nominal smooth model while a distinct engine advances the
+  executed plant.
+\end{enumerate}
+
+The result is not universal.  Diff-MPPI-3 has six corrected regressions under
+a tall-box condition, and every method fails the detour family in the
+deadline-matched experiment.  These failures are part of the declared result.
+
+\section{Related Work}
+
+\textbf{Sampling-based MPC.}
+MPPI updates a nominal control sequence by exponentially weighting sampled
+trajectory perturbations~\cite{williams2017mppi}.  The update tolerates
+nonsmooth costs and parallelizes over rollouts, which makes it a strong
+baseline for real-time GPU control.
+
+\textbf{Sampling and local optimization.}
+CEM-GD combines population search with gradient-based refinement for
+model-based planning~\cite{bharadhwaj2020cemgd}.  Other hybrids add feedback,
+learned proposals, or trajectory-optimization subproblems.  Our contribution
+is not the generic idea of combining sampling and gradients.  It is the
+controlled localization of a minimal post-MPPI refinement under a declared
+contact-family statistical protocol and a wall-clock control slot.
+
+\textbf{Differentiable contact and external execution.}
+Contact gradients can expose local information that random perturbations
+rarely sample, but the gradient depends on a model whose smoothing and contact
+law may be wrong.  We therefore use a smooth nominal model for optimization
+and separately execute commands in MuJoCo~\cite{todorov2012mujoco}.  This is
+closed-loop sim-to-sim transfer rather than open-loop replay, a standard robot
+benchmark, or physical-robot evidence.
+
+\section{Method}
+
+\subsection{MPPI update}
+
+Let \(U=(u_0,\ldots,u_{T-1})\) be the nominal sequence and
+\(\epsilon_k\) a sampled perturbation.  A rollout produces cost \(S_k\).
+With temperature \(\lambda\) and \(\rho=\min_k S_k\), normalized weights are
+\begin{equation}
+w_k =
+\frac{\exp(-(S_k-\rho)/\lambda)}
+     {\sum_j \exp(-(S_j-\rho)/\lambda)} ,
+\end{equation}
+and the standard update is
+\begin{equation}
+U^+ = U + \sum_k w_k\epsilon_k .
+\end{equation}
+Rollouts, stage costs, and weighted reductions execute on the GPU.
+
+\subsection{Local autodiff refinement}
+
+Starting from \(U^{(0)}=U^+\), the hybrid differentiates the nominal smooth
+contact rollout and applies
+\begin{equation}
+U^{(j+1)} =
+\Pi_{\mathcal U}\!\left[
+U^{(j)}-\alpha\,
+\operatorname{clip}\!\left(\nabla_U J(U^{(j)}),g_{\max}\right)
+\right],
+\end{equation}
+where \(\Pi_{\mathcal U}\) enforces control limits.  Diff-MPPI-1 takes one step
+and Diff-MPPI-3 takes three.  The controller executes the first refined
+command, shifts the horizon, and repeats from the observed next state.
+
+The derivative is local to the post-MPPI nominal sequence.  We do not
+differentiate through random-number generation, sampled rollouts, importance
+weights, or the sampling update.  Sampling remains responsible for mode-level
+search; refinement only sharpens the selected mode.
+
+\subsection{Contact models and baselines}
+
+The nominal planner uses a differentiable planar box-contact approximation.
+The robustness matrix varies contact gain, object size and aspect ratio, and
+also includes a momentum-carrying hard-contact plant with friction and damping
+sweeps.  The broad comparison contains vanilla MPPI, Diff-MPPI-1,
+Diff-MPPI-3, SOPPI, SOPPI-fast, and a hard-model MPPI reference.  SOPPI-fast
+contains one nominal gradient step and is therefore not labeled a pure
+sampling-only or pure-SVGD baseline.
+
+\section{Experimental Protocol}
+
+\subsection{Tasks and broad robustness matrix}
+
+Five planar box-manipulation tasks cover sustained swivel, strict pose
+alignment, obstacle detour, recovery after contact loss, and curved contact.
+The release matrix comprises 12 model/geometry conditions, five tasks, six
+planners, \(K\in\{128,256,512\}\), and 30 paired seeds per cell: 32,400
+episodes and 1,080 summary cells.
+
+Comparisons use paired success differences, paired bootstrap 95\% confidence
+intervals, exact McNemar tests, and Holm correction over the declared family.
+Statistical significance is not an artifact-validity condition; losses and
+zero-success cells remain valid evidence.
+
+\subsection{Enforced 10 ms control slot}
+
+Calibration and evaluation seeds are disjoint.  For three planners and five
+tasks, 25 calibration seeds select the largest sample count with zero
+calibration deadline misses, giving 375 calibration episodes.  Thirty held-out
+seeds per planner/task cell give 450 evaluation episodes.  Every planner
+receives an enforced 10 ms slot, and real-time success requires both task
+success and zero deadline misses.  All three planners select \(K=1024\) on the
+reference GPU; fairness comes from the enforced slot, not unequal \(K\).
+
+\subsection{Closed-loop MuJoCo transfer}
+
+The external-fidelity block contains 3,150 closed-loop episodes over seven
+nominal, friction, mass, and observation-noise conditions; five tasks; three
+planners; \(K=256\); and 30 paired seeds.  CUDA planners optimize the nominal
+smooth dynamics.  MuJoCo 3.11.0 advances every chosen command and returns the
+next state.  The same paired bootstrap, McNemar, and full-family Holm procedure
+is applied.
+
+\subsection{Evidence freeze}
+
+All frozen results were collected on one NVIDIA GeForce GTX 1660 Ti.  Each
+experiment block retains its source commit, hardware identity, commands,
+matrix shape, raw artifact hashes, report hashes, and independent validator
+result.  The supplementary ledger reruns numerical assertions against the
+copied evidence.  Independent hardware replication is desirable but is not
+implied.
+
+\section{Results}
+
+\subsection{Broad robustness}
+
+\begin{table}[t]
+\centering
+\caption{Aggregate 32,400-episode robustness matrix.}
+\label{tab:robustness}
+\begin{tabular}{lrrr}
+\toprule
+Planner & Episodes & Success & Mean ms \\
+\midrule
+Diff-MPPI-3    & 5,400 & 0.614 & 2.655 \\
+Diff-MPPI-1    & 5,400 & 0.595 & 0.959 \\
+SOPPI-fast     & 5,400 & 0.557 & 1.464 \\
+MPPI           & 5,400 & 0.453 & 0.120 \\
+SOPPI          & 5,400 & 0.446 & 0.426 \\
+MPPI-hardmodel & 5,400 & 0.331 & 0.159 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Table~\ref{tab:robustness} shows the aggregate ordering.  Across the 360 paired
+comparisons against MPPI, the declared family contains 33 Holm-significant
+positive and 6 negative success cells.  All six negative cells are
+Diff-MPPI-3 under the tall-box condition.  The hard-contact friction/damping
+conditions retain positive cells under a structurally different,
+momentum-carrying plant.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\columnwidth]{contact_robustness.pdf}
+\caption{Corrected positive and negative Diff-MPPI-3 cells versus MPPI across
+the robustness conditions.}
+\label{fig:robustness}
+\end{figure}
+
+\subsection{Deadline-matched control}
+
+\begin{table}[t]
+\centering
+\caption{Held-out episodes under the enforced 10 ms slot.}
+\label{tab:deadline}
+\begin{tabular}{lrrr}
+\toprule
+Planner & Episodes & RT success & Misses \\
+\midrule
+Diff-MPPI-3 & 150 & 0.800 & 1 \\
+SOPPI-fast  & 150 & 0.793 & 55 \\
+MPPI        & 150 & 0.673 & 4 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The aggregate row mixes tasks of different difficulty, so the preregistered
+paired family is primary.  On contact loss, Diff-MPPI-3 reaches 1.00
+real-time success versus 0.467 for MPPI.  The paired difference is \(+0.533\),
+with bootstrap 95\% CI \([+0.367,+0.700]\) and Holm
+\(p=0.000305\).  SOPPI-fast reaches 0.967 and improves by \(+0.500\), with
+Holm \(p=0.002472\).  The other four task cells are not Holm-significant, and
+all planners remain 0/30 on detour.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\columnwidth]{contact_matched_compute.pdf}
+\caption{Held-out real-time success under identical 10 ms control slots.}
+\label{fig:matched}
+\end{figure}
+
+\subsection{Closed-loop MuJoCo transfer}
+
+\begin{table}[t]
+\centering
+\caption{Aggregate closed-loop MuJoCo transfer.}
+\label{tab:mujoco}
+\begin{tabular}{lrrr}
+\toprule
+Planner & Episodes & Success & Mean ms \\
+\midrule
+Diff-MPPI-3 & 1,050 & 0.457 & 2.614 \\
+SOPPI-fast  & 1,050 & 0.340 & 1.432 \\
+MPPI        & 1,050 & 0.289 & 0.117 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The 70-cell paired family contains three Holm-significant positive
+Diff-MPPI-3 cells and zero negative cells.  No individual
+observation-noise cell survives full-family correction, so sensing-noise
+effects remain descriptive.  Detour remains zero-success across planners and
+conditions.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\columnwidth]{contact_external_fidelity.pdf}
+\caption{Closed-loop MuJoCo success across physical and sensing variations.}
+\label{fig:mujoco}
+\end{figure}
+
+\section{Discussion and Limitations}
+
+The results support a division of labor.  Sampling performs broad search.
+When the nominal sequence enters a useful contact basin, one or three gradient
+steps can correct alignment or contact loss without replacing MPPI.  The
+contact-loss result survives an enforced control slot, and the aggregate
+advantage transfers to an independently executed MuJoCo plant.
+
+The failures define the boundary.  Tall objects produce six corrected
+negative cells, which indicates sensitivity to geometry or gradient scaling.
+Detour remains unsolved because obstacle-induced topology requires a different
+mode rather than sharper local refinement.  SOPPI-fast is competitive, but
+its own gradient step prevents a pure sampling-versus-gradient interpretation.
+
+All frozen experiments use one GTX 1660 Ti.  The nominal and hard-contact
+plants are custom GPU simulations.  The external plant is a custom planar
+MuJoCo model, not a standard manipulator suite.  Closed-loop MuJoCo transfer
+is sim-to-sim evidence, not real-robot evidence.  The work does not cover
+deformable contact, 3D grasping, or physical hardware safety constraints.
+
+\section{Conclusion}
+
+A short, training-free autodiff refinement can improve selected contact-rich
+MPPI cells under fixed samples, enforced deadlines, and sim-to-sim model
+mismatch.  The 32,400-episode robustness family, exact 10 ms evaluation, and
+3,150-episode closed-loop MuJoCo block also expose corrected regressions and
+an unsolved detour family.  The supported claim is therefore a localized
+compute--quality advantage, not universal planner dominance.
+
+\bibliographystyle{IEEEtran}
+\bibliography{references}
+
+\end{document}

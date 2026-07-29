@@ -89,3 +89,9 @@ claim assertions against the copied evidence. The final canonical ZIP and its
 SHA-256 sidecar are the submission artifacts. The archive validator checks the
 anonymous manifest, exact inventory, source commit, checksum, CRC, canonical
 metadata, and safe paths before extracting any member.
+
+The bundle also requires the anonymous IEEE conference source
+`paper/latex/contact_rich_diff_mppi.tex` and its bibliography. The
+`Contact paper` GitHub workflow regenerates all three frozen figures, compiles
+that source, runs the bundle/archive tamper tests, and uploads the PDF and
+figure manifest as commit-bound CI evidence.

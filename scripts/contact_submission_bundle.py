@@ -233,6 +233,8 @@ def evaluate_bundle(
         "complete_inventory": declared_paths == actual_paths,
         "categories": {
             "manuscript",
+            "manuscript_source",
+            "bibliography",
             "ledger",
             "generated_results",
             "protocol",

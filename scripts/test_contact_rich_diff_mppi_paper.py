@@ -14,6 +14,8 @@ ROOT = Path(__file__).resolve().parents[1]
 def main() -> int:
     draft_path = ROOT / "paper" / "diff_mppi_submission_draft.md"
     paper = draft_path.read_text(encoding="utf-8")
+    latex_path = ROOT / "paper" / "latex" / "contact_rich_diff_mppi.tex"
+    latex = latex_path.read_text(encoding="utf-8")
     ledger = json.loads(
         (
             ROOT / "paper" / "artifacts" / "contact_rich_diff_mppi.json"
@@ -60,8 +62,39 @@ def main() -> int:
     ]
     for phrase in stale:
         assert phrase not in paper, f"legacy broad claim remains: {phrase}"
+    assert r"\documentclass[conference]{IEEEtran}" in latex
+    assert r"\author{\IEEEauthorblockN{Anonymous Authors}}" in latex
+    assert r"\graphicspath{{../figures/submission/}}" in latex
+    assert r"\bibliography{references}" in latex
+    for stem in (
+        "contact_robustness.pdf",
+        "contact_matched_compute.pdf",
+        "contact_external_fidelity.pdf",
+    ):
+        assert stem in latex, f"contact LaTeX source omits figure: {stem}"
+    latex_required = [
+        "32,400-episode",
+        "33 Holm-significant",
+        "6 negative",
+        "enforced 10 ms",
+        "0.000305",
+        "3,150",
+        "three Holm-significant positive",
+        "zero negative",
+        "not universal planner dominance",
+        "not real-robot evidence",
+    ]
+    latex_lower = latex.lower()
+    for phrase in latex_required:
+        assert phrase.lower() in latex_lower, (
+            f"contact LaTeX source omits frozen result/boundary: {phrase}"
+        )
+    for token in ("Ryohei", "Sasaki", "rsasa", "@"):
+        assert token.lower() not in latex_lower, (
+            f"contact LaTeX source contains identity token: {token}"
+        )
     print(
-        "Contact-rich submission draft is aligned with "
+        "Contact-rich Markdown and anonymous IEEE source are aligned with "
         f"{len(ledger['claims'])} ready claims"
     )
     return 0

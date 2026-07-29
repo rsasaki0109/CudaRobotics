@@ -1,7 +1,8 @@
 # Contact-Rich Diff-MPPI Paper Plan
 
 Status: release evidence complete; artifact ledger ready; submission narrative
-frozen and machine-checked.
+frozen and machine-checked; anonymous IEEE conference source and compile CI
+implemented.
 
 The machine-readable source of truth is
 [`artifacts/contact_rich_diff_mppi.json`](artifacts/contact_rich_diff_mppi.json).
@@ -38,16 +39,26 @@ not a standard manipulator benchmark or real-robot result. All frozen results
 were collected on one GTX 1660 Ti; independent-hardware replication remains
 desirable.
 
-## Remaining Submission Packaging
+## Submission Source and Remaining Packaging
 
 The authoritative Markdown submission draft is
 [`diff_mppi_submission_draft.md`](diff_mppi_submission_draft.md). Its title,
 claim/status table, frozen numerical boundaries, and local links are checked
 against the ready ledger in CTest.
 
-1. Convert the frozen Markdown narrative to the selected venue template.
-2. Select the final anonymous artifact URL/DOI.
-3. Assemble and validate the bundle on the exact submission commit.
+The anonymous IEEE conference source is
+[`latex/contact_rich_diff_mppi.tex`](latex/contact_rich_diff_mppi.tex). It
+references the three content-bound generated PDF figures, contains no author
+identity, and is checked against the same frozen numerical boundaries. The
+`Contact paper` GitHub workflow regenerates the figures, compiles the PDF in a
+pinned TeX Live action, reruns the ledger and anonymous bundle contracts, and
+uploads the PDF plus figure evidence.
+
+Remaining editorial/external steps:
+
+1. Select the final venue option if it differs from generic IEEE conference.
+2. Select and publish the real anonymous artifact URL/DOI.
+3. Assemble and validate the bundle on the exact clean submission commit.
 
 The final robustness, matched-compute, and external-fidelity plots are now
 generated only from the frozen published CSVs. The renderer writes PDF, SVG,
