@@ -25,6 +25,83 @@ TIME_UNIT_SECONDS = {
 INTEGER_POINT_FIELD_TYPES = {1, 2, 3, 4, 5, 6}
 
 
+def point_field_statistics(
+    cloud: dict[str, Any],
+    field_name: str,
+    *,
+    collect_unique: bool = False,
+    numpy_acceleration: bool = True,
+) -> dict[str, Any]:
+    field = cloud["fields"].get(field_name)
+    if not isinstance(field, dict) or field.get("count") != 1:
+        raise ValueError(f"PointCloud2 requires scalar field: {field_name}")
+    if numpy_acceleration:
+        try:
+            import numpy as np
+
+            formats = {
+                1: "i1",
+                2: "u1",
+                3: "i2",
+                4: "u2",
+                5: "i4",
+                6: "u4",
+                7: "f4",
+                8: "f8",
+            }
+            code = formats.get(field["datatype"])
+            if code is None:
+                raise ValueError(
+                    f"PointCloud2 field has unsupported datatype: {field_name}"
+                )
+            prefix = ">" if cloud["is_bigendian"] else "<"
+            values = np.ndarray(
+                shape=(cloud["height"], cloud["width"]),
+                dtype=np.dtype(prefix + code),
+                buffer=cloud["data"],
+                offset=field["offset"],
+                strides=(cloud["row_step"], cloud["point_step"]),
+            ).reshape(-1)
+            finite = bool(np.isfinite(values).all())
+            result = {
+                "count": int(values.size),
+                "finite": finite,
+                "minimum": float(values.min()) if values.size else None,
+                "maximum": float(values.max()) if values.size else None,
+                "nondecreasing": bool(
+                    values.size < 2 or np.all(values[:-1] <= values[1:])
+                ),
+                "nonincreasing": bool(
+                    values.size < 2 or np.all(values[:-1] >= values[1:])
+                ),
+            }
+            if collect_unique:
+                result["unique"] = {int(value) for value in np.unique(values)}
+            return result
+        except ImportError:
+            pass
+
+    values = [
+        item[0] for item in point_field_values(cloud, (field_name,))
+    ]
+    finite = all(math.isfinite(float(value)) for value in values)
+    result = {
+        "count": len(values),
+        "finite": finite,
+        "minimum": min(values) if values else None,
+        "maximum": max(values) if values else None,
+        "nondecreasing": all(
+            left <= right for left, right in zip(values, values[1:])
+        ),
+        "nonincreasing": all(
+            left >= right for left, right in zip(values, values[1:])
+        ),
+    }
+    if collect_unique:
+        result["unique"] = {int(value) for value in values}
+    return result
+
+
 def percentile(values: list[float], fraction: float) -> float:
     ordered = sorted(values)
     index = min(
@@ -165,31 +242,27 @@ def inspect_timing(
                 isinstance(time_field, dict)
                 and time_field.get("datatype") == point_time_datatype
             )
-            time_values = [
-                float(item[0])
-                for item in point_field_values(cloud, (point_time_field,))
-            ]
-            point_counts.append(len(time_values))
-            finite = all(math.isfinite(value) for value in time_values)
+            time_statistics = point_field_statistics(
+                cloud, point_time_field
+            )
+            point_counts.append(time_statistics["count"])
+            finite = time_statistics["finite"]
             checks["finite_point_times"] &= finite
-            if len(time_values) < 2 or not finite:
+            if time_statistics["count"] < 2 or not finite:
                 checks["nonzero_raw_time_span"] = False
                 raw_spans.append(0.0)
             else:
-                raw_span = max(time_values) - min(time_values)
+                raw_span = (
+                    time_statistics["maximum"]
+                    - time_statistics["minimum"]
+                )
                 checks["nonzero_raw_time_span"] &= raw_span > 0.0
                 raw_spans.append(raw_span)
                 nondecreasing_frames += int(
-                    all(
-                        left <= right
-                        for left, right in zip(time_values, time_values[1:])
-                    )
+                    time_statistics["nondecreasing"]
                 )
                 nonincreasing_frames += int(
-                    all(
-                        left >= right
-                        for left, right in zip(time_values, time_values[1:])
-                    )
+                    time_statistics["nonincreasing"]
                 )
 
             if ring_field:
@@ -204,13 +277,12 @@ def inspect_timing(
                     isinstance(ring_schema, dict)
                     and ring_schema.get("datatype") == ring_datatype
                 )
-                decoded_rings = [
-                    int(item[0])
-                    for item in point_field_values(cloud, (ring_field,))
-                ]
-                if decoded_rings:
-                    current_min = min(decoded_rings)
-                    current_max = max(decoded_rings)
+                ring_statistics = point_field_statistics(
+                    cloud, ring_field, collect_unique=True
+                )
+                if ring_statistics["count"]:
+                    current_min = int(ring_statistics["minimum"])
+                    current_max = int(ring_statistics["maximum"])
                     ring_minimum = (
                         current_min
                         if ring_minimum is None
@@ -221,7 +293,7 @@ def inspect_timing(
                         if ring_maximum is None
                         else max(ring_maximum, current_max)
                     )
-                    ring_values_seen.update(decoded_rings)
+                    ring_values_seen.update(ring_statistics["unique"])
             elif require_ring:
                 checks["scalar_integer_ring"] = False
     finally:

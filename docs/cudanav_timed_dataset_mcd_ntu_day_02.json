@@ -1,0 +1,99 @@
+{
+  "schema_version": 1,
+  "candidate_id": "mcd_ntu_day_02_os1_128",
+  "status": "downloaded_unmaterialized",
+  "dataset": {
+    "name": "MCD Multi-Campus Dataset",
+    "sequence": "ntu_day_02",
+    "duration_s": 229.0,
+    "license": "CC-BY-NC-SA-4.0",
+    "commercial_use": false,
+    "official_download_page": "https://mcdviral.github.io/Download.html",
+    "official_user_manual": "https://mcdviral.github.io/UserManual",
+    "official_ground_truth_manual": "https://mcdviral.github.io/Groundtruth.html",
+    "paper": "https://openaccess.thecvf.com/content/CVPR2024/papers/Nguyen_MCD_Diverse_Large-Scale_Multi-Campus_Dataset_for_Robot_Perception_CVPR_2024_paper.pdf"
+  },
+  "source_artifacts": {
+    "ouster_rosbag": {
+      "google_drive_id": "1jDS84WvHCfM_L73EptXKp-BKPIPKoE0Z",
+      "filename": "ntu_day_02_os1_128.bag",
+      "format": "rosbag1_v2_bz2_chunks",
+      "declared_size": "5.0 GB",
+      "bytes": 5315535806,
+      "sha256": "718db91f798798c2c44a8718229223dcf65964c1f8aca5d524c460dceb4e1bfb"
+    },
+    "discrete_ground_truth": {
+      "google_drive_id": "1fB-AJx6jRwEWhJ0jVLlWkc38PpKCMTNy",
+      "filename": "pose_inW.csv",
+      "bytes": 359708,
+      "sha256": "95407adc71d6d0c1d7d58c3c5181edcb24ced78535992908afa9f754d57f4d00"
+    },
+    "continuous_ground_truth": {
+      "google_drive_id": "19j_KBh8Tmfhi6DALY-soZDd90bsXy35X",
+      "filename": "spline.csv",
+      "bytes": 1561509,
+      "sha256": "3dcfd46810939aaf8d92f7b95f8a2005d6fd8af2c5a7ba89f934f83ee61c51ea"
+    },
+    "calibration": {
+      "google_drive_id": "1zVTBqh4cA1DciWBj5n7BGiexbfan1BBL",
+      "filename": "calibration.yaml",
+      "bytes": 6416,
+      "sha256": "43642504cd6a9c73043793bae2a52fd2c006508053402c4407c9252c067aaabc"
+    }
+  },
+  "pointcloud": {
+    "topic": "/os_cloud_node/points",
+    "type": "sensor_msgs/PointCloud2",
+    "rate_hz": 10.0,
+    "channels": 128,
+    "points_per_channel": 1024,
+    "header_stamp_semantics": "end_of_0.1_second_sweep",
+    "point_time": {
+      "field": "t",
+      "datatype": 6,
+      "ros_pointfield_type": "UINT32",
+      "unit": "nanoseconds",
+      "semantics": "offset_relative_to_start_of_sweep",
+      "minimum_scan_span_s": 0.09,
+      "maximum_scan_span_s": 0.11,
+      "require_unambiguous_unit": true
+    },
+    "ring": {
+      "field": "ring",
+      "datatype": 2,
+      "ros_pointfield_type": "UINT8",
+      "required": true
+    }
+  },
+  "reference": {
+    "discrete_file": "pose_inW.csv",
+    "continuous_file": "spline.csv",
+    "discrete_rate_hz": 10.0,
+    "pose_semantics": "world_T_body",
+    "lidar_extrinsic": "body.os_sensor.T",
+    "required_materialized_pose": "world_T_os_sensor",
+    "required_ros2_type": "geometry_msgs/msg/PoseStamped"
+  },
+  "materialization": {
+    "source_format": "rosbag1",
+    "target_format": "rosbag2_sqlite3_cdr",
+    "pointcloud_target_type": "sensor_msgs/msg/PointCloud2",
+    "pointcloud_target_topic": "/os_cloud_node/points",
+    "pose_target_topic": "/mcd/ground_truth/os_sensor_pose",
+    "selection_start_offset_s": 1.0,
+    "selection_duration_s": 120.0,
+    "dependency": "rosbags",
+    "adapter": "scripts/materialize_mcd_timed_rosbag.py"
+  },
+  "readiness": {
+    "official_schema_bound": true,
+    "ground_truth_files_content_addressed": true,
+    "calibration_content_addressed": true,
+    "ouster_rosbag_content_addressed": true,
+    "ros1_to_ros2_adapter_validated": false,
+    "timing_admission_passed": false,
+    "gpu_kiss_icp_release_passed": false,
+    "all_gpu_stack_release_passed": false,
+    "ready": false
+  }
+}
