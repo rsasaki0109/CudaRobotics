@@ -72,3 +72,13 @@ TEST(OccupancyBridge, SamplesRotatedMapAtCellCenters)
   EXPECT_FALSE(cuda_voxel_costmap_layer::sample_occupancy_cost(
       map, 20.0, 20.0, config, cost));
 }
+
+TEST(OccupancyBridge, ClearsOnlyInsideDeclaredRobotRadius)
+{
+  EXPECT_TRUE(cuda_voxel_costmap_layer::inside_footprint_clearing_radius(
+      1.2, 2.0, 1.0, 2.0, 0.3));
+  EXPECT_FALSE(cuda_voxel_costmap_layer::inside_footprint_clearing_radius(
+      1.4, 2.0, 1.0, 2.0, 0.3));
+  EXPECT_FALSE(cuda_voxel_costmap_layer::inside_footprint_clearing_radius(
+      1.0, 2.0, 1.0, 2.0, 0.0));
+}

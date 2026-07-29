@@ -134,8 +134,9 @@ counters.
 3. Build and exercise rolling voxel mapping with full SE(3), field-name lookup,
    relative topics, and explicit unknown-space semantics. The reusable GPU
    DDA/log-odds core, rolling shift, lifecycle component, standard occupancy
-   projection, and 3D local-map publication are implemented. ROS Jazzy compile
-   and recorded sensor-stream evidence remain release gates.
+   projection with a declared navigation height band, and 3D local-map
+   publication are implemented. ROS Jazzy compile and recorded sensor-stream
+   evidence remain release gates.
 4. Build and exercise typed ESDF publication with exact CPU-reference
    comparison. The separable exact GPU EDT, both explicit unknown policies,
    lifecycle component, schema/range validation, and `DistanceField2D`
@@ -145,7 +146,9 @@ counters.
    contract, validates the standard occupancy schema and exact global frame,
    supports planar map-origin rotation, preserves unknown space as
    `NO_INFORMATION` by default, and projects cell centers into rolling Nav2
-   master grids. ROS Jazzy plugin-load and numerical tests remain CI gates.
+   master grids. It also clears only the declared robot footprint before the
+   subsequent inflation layer. ROS Jazzy plugin-load and numerical tests
+   remain CI gates.
 6. Bring up the complete graph in simulation. `cuda_nav_bringup` now defines a
    deterministic command-driven S-course where ground truth only generates
    `PointCloud2` and evaluates the outcome. It does not publish odometry or TF:

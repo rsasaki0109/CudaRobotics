@@ -60,6 +60,8 @@ CudaVoxelMapperNode::CudaVoxelMapperNode(const rclcpp::NodeOptions & options)
   declare_parameter("log_odds_min", -4.0);
   declare_parameter("log_odds_max", 4.0);
   declare_parameter("occupied_threshold", 0.0);
+  declare_parameter("projection_min_z", -1000.0);
+  declare_parameter("projection_max_z", 1000.0);
   declare_parameter("rolling_margin_cells", 48);
   declare_parameter("max_scan_points", 200000);
 }
@@ -208,6 +210,10 @@ bool CudaVoxelMapperNode::read_and_validate_parameters(std::string & error)
     static_cast<float>(get_parameter("log_odds_max").as_double());
   mapping_config_.occupied_threshold =
     static_cast<float>(get_parameter("occupied_threshold").as_double());
+  mapping_config_.projection_min_z =
+    static_cast<float>(get_parameter("projection_min_z").as_double());
+  mapping_config_.projection_max_z =
+    static_cast<float>(get_parameter("projection_max_z").as_double());
 
   if (input_topic_.empty() || occupancy_topic_.empty() ||
     local_map_topic_.empty() || diagnostics_topic_.empty())

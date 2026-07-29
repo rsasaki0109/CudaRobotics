@@ -151,6 +151,18 @@ bool sample_occupancy_cost(
   return true;
 }
 
+bool inside_footprint_clearing_radius(
+  double world_x, double world_y,
+  double robot_x, double robot_y,
+  double radius)
+{
+  return radius > 0.0 &&
+         std::isfinite(world_x) && std::isfinite(world_y) &&
+         std::isfinite(robot_x) && std::isfinite(robot_y) &&
+         std::isfinite(radius) &&
+         std::hypot(world_x - robot_x, world_y - robot_y) <= radius;
+}
+
 void CudaVoxelCostmapLayer::onInitialize()
 {
   auto node = node_.lock();
@@ -163,6 +175,7 @@ void CudaVoxelCostmapLayer::onInitialize()
   declareParameter("unknown_is_free", rclcpp::ParameterValue(false));
   declareParameter("use_maximum", rclcpp::ParameterValue(false));
   declareParameter("max_map_age_sec", rclcpp::ParameterValue(0.0));
+  declareParameter("footprint_clearing_radius", rclcpp::ParameterValue(0.0));
 
   int threshold = 50;
   node->get_parameter(name_ + ".enabled", enabled_);
@@ -171,6 +184,8 @@ void CudaVoxelCostmapLayer::onInitialize()
   node->get_parameter(name_ + ".unknown_is_free", bridge_config_.unknown_is_free);
   node->get_parameter(name_ + ".use_maximum", use_maximum_);
   node->get_parameter(name_ + ".max_map_age_sec", max_map_age_sec_);
+  node->get_parameter(
+    name_ + ".footprint_clearing_radius", footprint_clearing_radius_);
   if (occupancy_topic_.empty()) {
     throw std::invalid_argument("occupancy_topic must be non-empty");
   }
@@ -179,6 +194,12 @@ void CudaVoxelCostmapLayer::onInitialize()
   }
   if (!std::isfinite(max_map_age_sec_) || max_map_age_sec_ < 0.0) {
     throw std::invalid_argument("max_map_age_sec must be finite and non-negative");
+  }
+  if (!std::isfinite(footprint_clearing_radius_) ||
+    footprint_clearing_radius_ < 0.0)
+  {
+    throw std::invalid_argument(
+            "footprint_clearing_radius must be finite and non-negative");
   }
   bridge_config_.lethal_threshold = threshold;
   matchSize();
@@ -236,10 +257,17 @@ void CudaVoxelCostmapLayer::include_map_bounds(
 }
 
 void CudaVoxelCostmapLayer::updateBounds(
-  double, double, double,
+  double robot_x, double robot_y, double,
   double * min_x, double * min_y, double * max_x, double * max_y)
 {
   if (!enabled_) return;
+  if (std::isfinite(robot_x) && std::isfinite(robot_y)) {
+    robot_x_ = robot_x;
+    robot_y_ = robot_y;
+    has_robot_pose_ = true;
+  } else {
+    has_robot_pose_ = false;
+  }
   std::lock_guard<std::mutex> lock(map_mutex_);
   if (!map_ || !input_valid_) {
     current_ = false;
@@ -289,6 +317,12 @@ void CudaVoxelCostmapLayer::updateCosts(
       master_grid.mapToWorld(
         static_cast<unsigned int>(x), static_cast<unsigned int>(y),
         world_x, world_y);
+      if (has_robot_pose_ && inside_footprint_clearing_radius(
+          world_x, world_y, robot_x_, robot_y_, footprint_clearing_radius_))
+      {
+        master_grid.setCost(x, y, nav2_costmap_2d::FREE_SPACE);
+        continue;
+      }
       unsigned char layer_cost = nav2_costmap_2d::NO_INFORMATION;
       if (!sample_occupancy_cost(
           *map, world_x, world_y, bridge_config_, layer_cost))
@@ -317,6 +351,7 @@ void CudaVoxelCostmapLayer::reset()
   pending_min_x_ = pending_min_y_ = std::numeric_limits<double>::infinity();
   pending_max_x_ = pending_max_y_ = -std::numeric_limits<double>::infinity();
   current_ = false;
+  has_robot_pose_ = false;
 }
 
 }  // namespace cuda_voxel_costmap_layer

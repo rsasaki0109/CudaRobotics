@@ -167,7 +167,7 @@
         {
           "path": ".github/workflows/ros2_cuda_mppi.yml",
           "normalization": "text_lf",
-          "sha256": "807857994132a4b22d9ae76ce65245453f821572abd8277576949e7129306894"
+          "sha256": "6426620bbbd7cc130274187fa330d5616295ce66a764e35ae16e4f63a2f70933"
         },
         {
           "path": "scripts/cudanav_ros_ci_evidence.py",
@@ -223,6 +223,21 @@
           "path": "tools/cudanav_kiss_icp_sequence.cu",
           "normalization": "text_lf",
           "sha256": "8fc5fe98e2d54043115af34cfdc72f557324c1a9538e3a35ebda931b6d36b035"
+        },
+        {
+          "path": "scripts/run_cudanav_real_gpu_stack.py",
+          "normalization": "text_lf",
+          "sha256": "3fd36f1851c2dfefd4a4ba0d1f0e505575445db263e6b551f82ae9a29b165e84"
+        },
+        {
+          "path": "scripts/test_cudanav_real_gpu_stack.py",
+          "normalization": "text_lf",
+          "sha256": "0cfee5ddee73dd626bccd9bfef5a1f6c97b6e12ec03290823664343c502b3a6a"
+        },
+        {
+          "path": "tools/cudanav_real_gpu_stack_sequence.cu",
+          "normalization": "text_lf",
+          "sha256": "dd60145c02da87c845ffbfab8d7bbe93a5d0ae112c5b8e5e628f684839e16f3c"
         }
       ]
     },
@@ -364,7 +379,7 @@
         {
           "path": "include/cudarobotics/voxel_mapping_gpu.hpp",
           "normalization": "text_lf",
-          "sha256": "fb3a46acfac5f30e69a5fbf21dd9ca48765d3beac8f24515fe9d259f7b268973"
+          "sha256": "36e5638815089bcb30cfd119959d4f94dfa0405e875e1203d92e6172e30849de"
         },
         {
           "path": "include/cudarobotics/esdf_2d_gpu.hpp",
@@ -374,12 +389,42 @@
         {
           "path": "ros2_ws/src/cuda_nav_bringup/launch/cudanav_closed_loop.launch.py",
           "normalization": "text_lf",
-          "sha256": "8373bde7ae1da9203de428c32a5cfc7c56e68dbfe8b8c3754f7a9c631b64d23f"
+          "sha256": "a70b2d7e70c01c3e6faeec8b6d13a206cdb596956b86a432b3a2d7a33b46da7d"
         },
         {
           "path": "ros2_ws/src/cuda_nav_bringup/config/controller.yaml",
           "normalization": "text_lf",
-          "sha256": "5a808fd3acfc9fd45f8b3022b5decb61f6f5e9d14ad8eda8b4e526e05734e1db"
+          "sha256": "eb1efd71a66b8ead97cfd0ce1322ad74ba5b88784fd54dd123144526f3279c68"
+        },
+        {
+          "path": "src/voxel_mapping_gpu.cu",
+          "normalization": "text_lf",
+          "sha256": "071c2af40b69c9a2d2e77af711c697f6c5c5a2e8686ddcddf2e7146ebaafd900"
+        },
+        {
+          "path": "ros2_ws/src/cuda_nav_bringup/launch/cudanav_recorded_shadow.launch.py",
+          "normalization": "text_lf",
+          "sha256": "9cf25eddb58bca2fe34a017f94281e74b8a6a39d07ba7aa86f14b8122b237730"
+        },
+        {
+          "path": "ros2_ws/src/cuda_voxel_mapping/src/cuda_voxel_mapper_node.cpp",
+          "normalization": "text_lf",
+          "sha256": "354382003750f6938db0ccbbddf3b05a379d851d568880a308a2a3a6761a7d9a"
+        },
+        {
+          "path": "ros2_ws/src/cuda_voxel_costmap_layer/include/cuda_voxel_costmap_layer/cuda_voxel_costmap_layer.hpp",
+          "normalization": "text_lf",
+          "sha256": "2ce2f29a1768dee39fe9db7d7a0f257d186296185c539225774c4695c083c1f8"
+        },
+        {
+          "path": "ros2_ws/src/cuda_voxel_costmap_layer/src/cuda_voxel_costmap_layer.cpp",
+          "normalization": "text_lf",
+          "sha256": "179cc0e955c11b81e47b874b942262a66e94aa444c445edf19faeaf35a37aafb"
+        },
+        {
+          "path": "ros2_ws/src/cuda_voxel_costmap_layer/test/occupancy_bridge_test.cpp",
+          "normalization": "text_lf",
+          "sha256": "d6e2f93d93d4884b9016d81e5d4721eb6835ebc86cd1442088a4b07ae5d2327c"
         }
       ]
     },

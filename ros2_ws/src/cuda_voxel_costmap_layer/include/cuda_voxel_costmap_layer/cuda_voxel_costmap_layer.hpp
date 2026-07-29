@@ -33,6 +33,11 @@ bool sample_occupancy_cost(
   const OccupancyBridgeConfig & config,
   unsigned char & cost);
 
+bool inside_footprint_clearing_radius(
+  double world_x, double world_y,
+  double robot_x, double robot_y,
+  double radius);
+
 class CudaVoxelCostmapLayer : public nav2_costmap_2d::CostmapLayer
 {
 public:
@@ -60,6 +65,10 @@ private:
   OccupancyBridgeConfig bridge_config_;
   bool use_maximum_ = false;
   double max_map_age_sec_ = 0.0;
+  double footprint_clearing_radius_ = 0.0;
+  double robot_x_ = 0.0;
+  double robot_y_ = 0.0;
+  bool has_robot_pose_ = false;
 
   rclcpp::Subscription<nav_msgs::msg::OccupancyGrid>::SharedPtr map_subscription_;
   nav_msgs::msg::OccupancyGrid::ConstSharedPtr map_;

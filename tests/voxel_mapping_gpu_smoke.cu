@@ -25,6 +25,13 @@ int main()
         std::fprintf(stderr, "invalid rolling margin was accepted\n");
         return 1;
     }
+    invalid = VoxelMappingConfig{};
+    invalid.projection_min_z = 1.0f;
+    invalid.projection_max_z = 1.0f;
+    if (validate_voxel_mapping_config(invalid).empty()) {
+        std::fprintf(stderr, "invalid projection height band was accepted\n");
+        return 1;
+    }
 
     VoxelMappingConfig config;
     config.width = 16;
@@ -34,6 +41,8 @@ int main()
     config.origin_z = -1.0f;
     config.min_range = 0.1f;
     config.max_range = 10.0f;
+    config.projection_min_z = -0.5f;
+    config.projection_max_z = 0.5f;
     config.rolling_margin_cells = 3;
     config.max_scan_points = 32;
 
@@ -79,12 +88,21 @@ int main()
         return 5;
     }
 
+    const std::vector<float> high_scan = {7.0f, 4.0f, 2.0f};
+    mapper.integrate_scan(high_scan, shifted_origin);
+    projection = mapper.occupancy_projection();
+    const int high_hit = index_2d(projection.grid, 7.0f, 4.0f);
+    if (projection.data[high_hit] == 100) {
+        std::fprintf(stderr, "projection included an obstacle above its height band\n");
+        return 6;
+    }
+
     const VoxelGridSnapshot snapshot = mapper.snapshot();
     if (snapshot.log_odds.size() != 16u * 16u * 4u ||
         snapshot.observed.size() != snapshot.log_odds.size())
     {
         std::fprintf(stderr, "voxel snapshot shape is invalid\n");
-        return 6;
+        return 7;
     }
 
     bool rejected_bad_shape = false;
@@ -95,7 +113,7 @@ int main()
     }
     if (!rejected_bad_shape) {
         std::fprintf(stderr, "malformed XYZ input was accepted\n");
-        return 7;
+        return 8;
     }
 
     std::printf("GPU rolling voxel mapping smoke: PASS\n");

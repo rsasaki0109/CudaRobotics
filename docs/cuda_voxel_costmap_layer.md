@@ -22,6 +22,9 @@ costmap consumed by `cuda_mppi_controller`.
   The last map is not silently relabelled as fresh.
 - Bounds from every unprocessed rolling-map position are accumulated so a fast
   sequence of origin shifts cannot leave an old obstacle region dirty.
+- `footprint_clearing_radius` clears only the declared disc around the current
+  robot pose before inflation. CudaNav uses 0.30 m, preventing self-occupancy
+  from invalidating every controller rollout without erasing nearby obstacles.
 
 The default authoritative merge writes source values into the master grid.
 `use_maximum: true` is available when earlier layers must retain larger costs.
@@ -30,7 +33,8 @@ Inflation should be listed after this plugin.
 ## Verification
 
 `occupancy_bridge_test` checks schema rejection, standard occupancy conversion,
-and a 90-degree rotated map sampled at cell centers. `plugin_load_test` loads
+a 90-degree rotated map sampled at cell centers, and the exact circular
+footprint-clearing boundary. `plugin_load_test` loads
 the class through pluginlib using the same base interface as Nav2. Both are
 included in the ROS Jazzy workflow; the branch still requires that workflow to
 run before this component is release evidence.

@@ -101,6 +101,7 @@ real recorded data, and multi-GPU reproducibility prove different claims:
 | Real rosbag shadow replay | `scripts/run_cudanav_rosbag_replay.py` | Real sensor/motion data passes the GPU controller quality gate |
 | Real dataset pipeline | `scripts/run_cudanav_real_dataset_pipeline.py` | Acquisition inspection, derived Path, materialization, and replay use one content-bound plan |
 | Real-bag GPU KISS-ICP | `scripts/run_cudanav_kiss_icp_real.py` | Recorded PointCloud2 GPU odometry passes reference and artifact-integrity gates |
+| Real-data all-GPU core shadow | `scripts/run_cudanav_real_gpu_stack.py` | KISS-ICP, voxel mapping, ESDF inflation, and CUDA MPPI share one content-bound real sequence |
 | GPU matrix | `scripts/run_cudanav_multi_gpu.py` | The same commit and config reproduce across physical GPU models |
 | Full autonomy suite | `scripts/run_autonomy_suite.py` | Closed-loop, recorded/shadow, and multi-GPU gates from one content-bound release entry point |
 
@@ -114,6 +115,9 @@ and exact commands. See
 The standalone real-sensor odometry gate is documented in
 [`cudanav_kiss_icp_real.md`](cudanav_kiss_icp_real.md); it is not a controller
 or closed-loop claim.
+The four-stage native shadow gate is documented in
+[`cudanav_real_gpu_stack.md`](cudanav_real_gpu_stack.md). Its commands are not
+applied, so it remains distinct from ROS 2 and closed-loop evidence.
 The aggregate release workflow is documented in
 [`cudanav_autonomy_suite.md`](cudanav_autonomy_suite.md).
 

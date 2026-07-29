@@ -74,6 +74,7 @@
       unknown_is_free: false
       use_maximum: false
       max_map_age_sec: 0.5
+      footprint_clearing_radius: 0.30
     inflation_layer:
       plugin: "nav2_costmap_2d::InflationLayer"
       cost_scaling_factor: 3.0
