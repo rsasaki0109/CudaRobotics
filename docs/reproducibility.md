@@ -209,4 +209,12 @@ python3 scripts/validate_release_ci.py python_package_ci_evidence.json \
 
 Pull-request runs are intentionally rejected as final release evidence. The
 Python attestation also requires both versioned build/test jobs, CPython
-3.10/3.12 manylinux completion, and both declared artifact groups.
+3.10/3.12 manylinux completion, both declared artifact groups, and the
+SHA-256 of an artifact manifest regenerated after downloading those groups
+inside the same workflow run.
+
+`scripts/validate_v0_2_release.py` is the final v0.2 decision point. It
+independently reruns both local preflight gates, all three remote CI gates,
+Python archive structure/hash checks, exact-commit checks, and the explicit
+real-rosbag negative-result contract. A successful child report by itself does
+not authorize tagging; the aggregate must emit `status: ready`.

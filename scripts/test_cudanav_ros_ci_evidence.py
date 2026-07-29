@@ -27,6 +27,9 @@ def valid_payload() -> dict:
             "run_url": (
                 "https://github.com/rsasaki0109/CudaRobotics/actions/runs/123"
             ),
+            "workflow": "ROS2 CUDA MPPI",
+            "event": "workflow_dispatch",
+            "ref": "refs/heads/release-candidate",
         },
         "platform": {
             "os": "Linux",
@@ -59,6 +62,11 @@ class CudaNavRosCiEvidenceTest(unittest.TestCase):
                     payload["checks"].pop("colcon_tests")
                 self.assertFalse(evaluate(payload)["passed"])
 
+    def test_expected_commit_must_match(self):
+        result = evaluate(valid_payload(), expected_commit="b" * 40)
+        self.assertFalse(result["checks"]["git_commit"])
+        self.assertFalse(result["passed"])
+
     def test_writer_and_independent_validator_round_trip(self):
         with tempfile.TemporaryDirectory() as directory:
             output = Path(directory) / "ros_jazzy_ci_evidence.json"
@@ -75,6 +83,12 @@ class CudaNavRosCiEvidenceTest(unittest.TestCase):
                 "123",
                 "--run-attempt",
                 "1",
+                "--workflow",
+                "ROS2 CUDA MPPI",
+                "--event",
+                "workflow_dispatch",
+                "--ref",
+                "refs/heads/release-candidate",
                 "--runner-os",
                 "Linux",
                 "--runner-arch",

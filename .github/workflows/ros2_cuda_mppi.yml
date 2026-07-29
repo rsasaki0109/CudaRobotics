@@ -172,6 +172,7 @@ jobs:
           colcon test-result --verbose
 
       - name: Create ROS 2 Jazzy evidence attestation
+        if: github.event_name != 'pull_request'
         shell: bash
         run: |
           set -eo pipefail
@@ -202,6 +203,7 @@ jobs:
             build/ros_jazzy_ci_evidence.json
 
       - name: Upload ROS 2 Jazzy evidence
+        if: github.event_name != 'pull_request'
         uses: actions/upload-artifact@v4
         with:
           name: ros-jazzy-ci-evidence-${{ github.sha }}
