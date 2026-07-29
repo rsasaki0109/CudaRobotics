@@ -2,7 +2,7 @@
 requires = [
   "scikit-build-core>=0.10",
   "nanobind>=2.0",
-  "numpy>=1.23",
+  "numpy>=1.23,<2.3",
 ]
 build-backend = "scikit_build_core.build"
 
@@ -77,3 +77,6 @@ environment = { CUDACXX = "/usr/local/cuda/bin/nvcc", CMAKE_CUDA_COMPILER = "/us
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 filterwarnings = ["ignore::DeprecationWarning"]
+markers = [
+  "gpu_registration: requires a CUDA-capable GPU for registration consistency checks",
+]
