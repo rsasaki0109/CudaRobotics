@@ -46,9 +46,39 @@ claim/status table, frozen numerical boundaries, and local links are checked
 against the ready ledger in CTest.
 
 1. Convert the frozen Markdown narrative to the selected venue template.
-2. Generate final plots and camera-ready tables only from published CSVs.
-3. Add artifact URLs/DOIs and the final anonymized reproduction entry point.
-4. Run the full paper validation gate on the exact submission commit.
+2. Select the final anonymous artifact URL/DOI.
+3. Assemble and validate the bundle on the exact submission commit.
+
+The final robustness, matched-compute, and external-fidelity plots are now
+generated only from the frozen published CSVs. The renderer writes PDF, SVG,
+PNG, and a source-hash/semantic manifest:
+
+```bash
+python3 scripts/render_contact_submission_figures.py \
+  --output-dir build/contact_submission_figures
+```
+
+After choosing the venue and anonymous artifact entry point, create the
+portable package from a clean commit:
+
+```bash
+python3 scripts/assemble_contact_submission_bundle.py \
+  --output-dir build/contact_submission_bundle \
+  --venue VENUE \
+  --artifact-url https://ANONYMOUS_ARTIFACT_URL
+python3 scripts/validate_contact_submission_bundle.py \
+  build/contact_submission_bundle/submission_manifest.json \
+  --commit "$(git rev-parse HEAD)" --require-ready
+```
+
+The assembler copies the frozen manuscript, generated results, protocols,
+published CSVs/reports, and all three figure formats. It rewrites absolute
+machine paths in the two ledger provenance payloads, updates their hashes in
+an anonymous ledger, and reruns every claim assertion inside the portable
+bundle. The validator then reopens every file, checks its size and SHA-256,
+revalidates the anonymous ledger, binds the figure sources, scans for identity
+leaks, and refuses `ready: true` until the venue, clean commit, and HTTPS
+artifact entry point are final.
 
 No new broad-performance claim should be added without first extending the
 artifact ledger and its statistical contract.
