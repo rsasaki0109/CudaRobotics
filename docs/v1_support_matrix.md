@@ -49,6 +49,34 @@ the clone/build/run logs, Docker image ID, GPU/driver identity, support matrix,
 and CudaNav JSON/log. Missing Docker or NVIDIA tooling is an unavailable gate,
 not a skipped pass.
 
+After the release-profile directory passes, publish its content-bound matrix
+attestation. The command independently revalidates the retained manifest and
+every declared artifact before writing anything:
+
+```bash
+python3 scripts/publish_v1_quickstart_attestation.py \
+  --evidence-dir build/v1_quickstart \
+  --output docs/results/v1_quickstart_release.json
+```
+
+The printed `{path, sha256}` object is the exact value to place in
+`release_readiness.quickstart_15_minute_evidence`.
+
+After `docker-image.yml` publishes the immutable `v1.0.0` tag, dispatch the
+separate self-hosted GPU gate:
+
+```bash
+gh workflow run v1-docker-gpu-evidence.yml \
+  --ref v1.0.0 -f tag=v1.0.0
+```
+
+The runner pulls the published image rather than rebuilding it, requires the
+OCI source revision to equal the checked-out tag commit, records the GHCR
+digest and physical GPU UUID, runs `cudanav`, and uploads the content-bound
+logs, result, manifest, and `v1_docker_gpu_release.json`. Copy the downloaded
+attestation into `docs/results/` without editing it and use its SHA-256 for
+`release_readiness.docker_gpu_evidence`.
+
 ## Release attestation references
 
 The four `release_readiness` evidence fields are not inline pass/fail claims.

@@ -9,9 +9,13 @@ import sys
 import tempfile
 import unittest
 
-from publish_cudanav_systems_evidence import build_artifacts
+from publish_cudanav_systems_evidence import (
+    build_artifacts,
+    build_v1_attestation,
+)
 import test_cudanav_autonomy_suite as autonomy_fixture
 from test_cudanav_ros_ci_evidence import valid_payload
+from v1_release_attestation import validate_payload
 
 
 class PublishCudaNavSystemsEvidenceTest(unittest.TestCase):
@@ -64,6 +68,31 @@ class PublishCudaNavSystemsEvidenceTest(unittest.TestCase):
             self.assertIn("not a closed-loop claim", report)
             self.assertNotIn(str(suite_root.resolve()), report)
             self.assertEqual(provenance["git_commit"], "a" * 40)
+            self.assertIs(provenance["git_dirty"], False)
+
+    def test_release_suite_builds_valid_v1_attestation(self):
+        with tempfile.TemporaryDirectory() as directory:
+            suite_root, ros_ci = self.fixture(Path(directory))
+            summary, provenance, _ = build_artifacts(
+                suite_root, ros_ci
+            )
+            attestation = build_v1_attestation(
+                summary,
+                provenance,
+                target_version="1.0.0",
+                target_tag="v1.0.0",
+            )
+            gate = validate_payload(
+                attestation,
+                key="cudanav_release_evidence",
+                target_version="1.0.0",
+                target_tag="v1.0.0",
+            )
+            self.assertTrue(gate["passed"], gate)
+            self.assertEqual(
+                attestation["details"]["physical_gpu_models"],
+                ["GPU A", "GPU B"],
+            )
 
     def test_ros_ci_commit_must_match_suite(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -106,11 +135,16 @@ class PublishCudaNavSystemsEvidenceTest(unittest.TestCase):
                 str(output),
                 "--prefix",
                 "cudanav_systems_fixture",
+                "--v1-attestation-name",
+                "v1_cudanav_systems_release.json",
             ]
             subprocess.run(command, check=True)
             subprocess.run([*command, "--check"], check=True)
             self.assertTrue(
                 (output / "cudanav_systems_fixture_summary.json").is_file()
+            )
+            self.assertTrue(
+                (output / "v1_cudanav_systems_release.json").is_file()
             )
 
 

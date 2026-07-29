@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 from pathlib import Path
 from typing import Any
@@ -13,6 +14,11 @@ from cudanav_evidence import REQUIRED_CLOSED_LOOP_BAG_TOPICS
 from cudanav_multi_gpu import evaluate_multi_gpu_suite
 from cudanav_ros_ci_evidence import evaluate as evaluate_ros_ci
 from cudanav_rosbag_evidence import rosbag_topic_counts
+from v1_release_attestation import MODES, validate_payload
+
+
+ROOT = Path(__file__).resolve().parents[1]
+V1_KEY = "cudanav_release_evidence"
 
 
 def read_json(path: Path) -> dict[str, Any]:
@@ -126,6 +132,7 @@ def build_artifacts(
         "evidence_mode": "cudanav_systems_release",
         "status": "passed",
         "git_commit": suite["git_commit"],
+        "git_dirty": suite["git_dirty"],
         "controller_config_sha256": config_hashes[0],
         "closed_loop": {
             "evidence_mode": "closed_loop_simulation",
@@ -192,6 +199,7 @@ def build_artifacts(
         "schema_version": 1,
         "evidence_mode": "cudanav_systems_release_provenance",
         "git_commit": suite["git_commit"],
+        "git_dirty": suite["git_dirty"],
         "controller_config_sha256": config_hashes[0],
         "source_artifacts": {
             "autonomy_suite_manifest_sha256": sha256_file(
@@ -249,6 +257,124 @@ def build_artifacts(
     }
     report = render_report(summary)
     return summary, provenance, report
+
+
+def build_v1_attestation(
+    summary: dict[str, Any],
+    provenance: dict[str, Any],
+    *,
+    target_version: str,
+    target_tag: str,
+) -> dict[str, Any]:
+    closed = summary.get("closed_loop", {})
+    real = summary.get("real_rosbag_shadow", {})
+    multi = summary.get("multi_gpu", {})
+    ros = summary.get("ros_jazzy_ci", {})
+    models = multi.get("gpu_models") if isinstance(multi, dict) else None
+    elapsed = closed.get("elapsed_sec") if isinstance(closed, dict) else None
+    drift = (
+        closed.get("odometry_drift_percent")
+        if isinstance(closed, dict)
+        else None
+    )
+    deadline_miss = (
+        closed.get("command_deadline_miss_rate")
+        if isinstance(closed, dict)
+        else None
+    )
+    checks = {
+        "summary_schema": summary.get("schema_version") == 1,
+        "summary_mode": summary.get("evidence_mode")
+        == "cudanav_systems_release",
+        "summary_status": summary.get("status") == "passed",
+        "provenance_schema": provenance.get("schema_version") == 1,
+        "provenance_mode": provenance.get("evidence_mode")
+        == "cudanav_systems_release_provenance",
+        "same_commit": summary.get("git_commit")
+        == provenance.get("git_commit"),
+        "source_clean": summary.get("git_dirty") is False
+        and provenance.get("git_dirty") is False,
+        "same_controller_config": summary.get("controller_config_sha256")
+        == provenance.get("controller_config_sha256"),
+        "closed_loop_release": isinstance(elapsed, (int, float))
+        and not isinstance(elapsed, bool)
+        and elapsed >= 600
+        and closed.get("collision_count") == 0
+        and isinstance(drift, (int, float))
+        and not isinstance(drift, bool)
+        and drift < 1.0
+        and isinstance(deadline_miss, (int, float))
+        and not isinstance(deadline_miss, bool)
+        and deadline_miss < 0.01,
+        "real_rosbag_shadow": isinstance(real, dict)
+        and real.get("evidence_mode")
+        == "shadow_controller_with_recorded_motion"
+        and real.get("quality_pass") is True,
+        "multi_gpu": isinstance(models, list)
+        and all(isinstance(model, str) and model for model in models)
+        and len(set(models)) >= 2
+        and multi.get("physical_model_count") == len(set(models)),
+        "ros_jazzy": isinstance(ros, dict)
+        and ros.get("status") == "passed"
+        and ros.get("ros_distro") == "jazzy",
+        "source_artifacts": isinstance(
+            provenance.get("source_artifacts"), dict
+        )
+        and bool(provenance["source_artifacts"])
+        and all(
+            isinstance(value, str)
+            and len(value) == 64
+            and all(character in "0123456789abcdef" for character in value)
+            for value in provenance["source_artifacts"].values()
+        ),
+    }
+    if not all(checks.values()):
+        failed = sorted(name for name, passed in checks.items() if not passed)
+        raise ValueError(
+            "CudaNav systems artifacts failed: " + ", ".join(failed)
+        )
+    summary_content = encoded(summary).encode("utf-8")
+    provenance_content = encoded(provenance).encode("utf-8")
+    summary_sha = hashlib.sha256(summary_content).hexdigest()
+    provenance_sha = hashlib.sha256(provenance_content).hexdigest()
+    payload_sha = hashlib.sha256(
+        f"{summary_sha}:{provenance_sha}".encode("ascii")
+    ).hexdigest()
+    attestation = {
+        "schema_version": 1,
+        "evidence_mode": MODES[V1_KEY],
+        "status": "passed",
+        "version": target_version,
+        "target_tag": target_tag,
+        "git_commit": summary["git_commit"],
+        "git_dirty": summary["git_dirty"],
+        "payload_sha256": payload_sha,
+        "checks": checks,
+        "details": {
+            "ros2_closed_loop": True,
+            "closed_loop_duration_seconds": elapsed,
+            "real_rosbag_shadow": True,
+            "physical_gpu_models": models,
+            "ros_distribution": ros["ros_distro"],
+            "systems_summary_sha256": summary_sha,
+            "systems_provenance_sha256": provenance_sha,
+        },
+    }
+    gate = validate_payload(
+        attestation,
+        key=V1_KEY,
+        target_version=target_version,
+        target_tag=target_tag,
+    )
+    if not gate["passed"]:
+        failed = sorted(
+            name for name, passed in gate["checks"].items() if not passed
+        )
+        raise ValueError(
+            "generated CudaNav v1 attestation failed: "
+            + ", ".join(failed)
+        )
+    return attestation
 
 
 def render_report(summary: dict[str, Any]) -> str:
@@ -341,12 +467,21 @@ def main() -> int:
     parser.add_argument("--ros-ci", type=Path, required=True)
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--prefix", required=True)
+    parser.add_argument("--v1-attestation-name")
     parser.add_argument("--check", action="store_true")
     args = parser.parse_args()
     if not args.prefix or any(
         token in args.prefix for token in ("/", "\\", "..")
     ):
         raise SystemExit("--prefix must be a safe filename prefix")
+    if args.v1_attestation_name and (
+        any(
+            token in args.v1_attestation_name
+            for token in ("/", "\\", "..")
+        )
+        or not args.v1_attestation_name.endswith(".json")
+    ):
+        raise SystemExit("--v1-attestation-name must be a safe JSON filename")
     try:
         summary, provenance, report = build_artifacts(
             args.suite_dir, args.ros_ci
@@ -359,6 +494,15 @@ def main() -> int:
         output / f"{args.prefix}_provenance.json": encoded(provenance),
         output / f"{args.prefix}_report.md": report,
     }
+    if args.v1_attestation_name:
+        matrix = read_json(ROOT / "docs" / "v1_support_matrix.json")
+        attestation = build_v1_attestation(
+            summary,
+            provenance,
+            target_version=str(matrix.get("target_version", "")),
+            target_tag=str(matrix.get("target_tag", "")),
+        )
+        targets[output / args.v1_attestation_name] = encoded(attestation)
     if args.check:
         stale = [
             str(path)
