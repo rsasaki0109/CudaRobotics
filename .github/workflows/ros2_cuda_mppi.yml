@@ -27,6 +27,7 @@ on:
       - scripts/run_cudanav_closed_loop.py
       - scripts/run_cudanav_multi_gpu.py
       - scripts/run_cudanav_rosbag_replay.py
+      - scripts/run_cudanav_real_dataset_pipeline.py
       - scripts/run_autonomy_suite.py
       - scripts/publish_cudanav_systems_evidence.py
       - scripts/render_cudanav_trajectory.py
@@ -39,6 +40,7 @@ on:
       - scripts/test_derive_cudanav_path_sidecar.py
       - scripts/test_derive_cudanav_path_sidecar_ros.py
       - scripts/test_prepare_cudanav_istanbul_dataset.py
+      - scripts/test_run_cudanav_real_dataset_pipeline.py
       - scripts/test_analyze_pointcloud2_clearance.py
       - scripts/test_publish_cudanav_systems_evidence.py
       - scripts/validate_cudanav_closed_loop.py
@@ -80,6 +82,7 @@ on:
       - scripts/run_cudanav_closed_loop.py
       - scripts/run_cudanav_multi_gpu.py
       - scripts/run_cudanav_rosbag_replay.py
+      - scripts/run_cudanav_real_dataset_pipeline.py
       - scripts/run_autonomy_suite.py
       - scripts/publish_cudanav_systems_evidence.py
       - scripts/render_cudanav_trajectory.py
@@ -92,6 +95,7 @@ on:
       - scripts/test_derive_cudanav_path_sidecar.py
       - scripts/test_derive_cudanav_path_sidecar_ros.py
       - scripts/test_prepare_cudanav_istanbul_dataset.py
+      - scripts/test_run_cudanav_real_dataset_pipeline.py
       - scripts/test_analyze_pointcloud2_clearance.py
       - scripts/test_publish_cudanav_systems_evidence.py
       - scripts/validate_cudanav_closed_loop.py
@@ -189,6 +193,7 @@ jobs:
           python ../scripts/test_cudanav_ros_ci_evidence.py
           python ../scripts/test_cudanav_real_dataset.py
           python ../scripts/test_prepare_cudanav_istanbul_dataset.py
+          python ../scripts/test_run_cudanav_real_dataset_pipeline.py
           python ../scripts/test_derive_cudanav_path_sidecar.py
           python ../scripts/test_analyze_pointcloud2_clearance.py
           python ../scripts/test_evaluate_mppi_rosbag.py

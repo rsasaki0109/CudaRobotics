@@ -141,6 +141,8 @@ Current evidence entry points:
 ```bash
 python3 scripts/run_autonomy_suite.py \
   --profile release --output-dir build/cudanav_autonomy_release ...
+python3 scripts/run_cudanav_real_dataset_pipeline.py \
+  --download --reindex --run-autonomy --profile release ...
 python3 scripts/run_cudanav_closed_loop.py \
   --profile release --output-dir build/cudanav_closed_loop
 python3 scripts/run_cudanav_rosbag_replay.py \

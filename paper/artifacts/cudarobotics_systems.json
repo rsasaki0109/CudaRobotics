@@ -134,7 +134,7 @@
         {
           "path": ".github/workflows/ros2_cuda_mppi.yml",
           "normalization": "text_lf",
-          "sha256": "048d1fa8273aa4f635df9e4bebc69491360700cb409e88a49afcd0b8ba024eb9"
+          "sha256": "5e2d3933c5e4761e15446baef2b240646e712b02f9d20661ceb9fc4c0db47399"
         },
         {
           "path": "scripts/cudanav_ros_ci_evidence.py",
@@ -150,6 +150,11 @@
           "path": "scripts/prepare_cudanav_istanbul_dataset.py",
           "normalization": "text_lf",
           "sha256": "8f2cee59b1c35ba11dd92b2cddd6f6ac88f97194c29ec210a11d5a0f440beef0"
+        },
+        {
+          "path": "scripts/run_cudanav_real_dataset_pipeline.py",
+          "normalization": "text_lf",
+          "sha256": "67afe2469c8126e146389a2699b0c979aac8d4835eb0d4b1a97984b058b479f6"
         }
       ]
     },
