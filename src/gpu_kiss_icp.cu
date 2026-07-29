@@ -879,7 +879,9 @@ static void render_gif(const std::vector<std::vector<float>>& scans,
         put(b2,py,0.5,cv::Scalar(150,200,150),1);
         video.write(img);
     }
-    video.release(); avi_to_gif("tmp/gpu_kiss_icp.avi","gif/gpu_kiss_icp.gif",18,820);
+    video.release();
+    cudabot::avi_to_gif(
+        "tmp/gpu_kiss_icp.avi", "gif/gpu_kiss_icp.gif", 18, 820);
     std::printf("wrote gif/gpu_kiss_icp.gif\n");
 }
 
