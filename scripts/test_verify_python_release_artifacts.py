@@ -11,6 +11,7 @@ import zipfile
 from pathlib import Path
 
 import verify_python_release_artifacts as verifier
+from python_source_provenance import serialized_payload
 
 
 VERSION = "0.2.0"
@@ -25,6 +26,7 @@ def required_sdist_names() -> set[str]:
         f"{ROOT}/src/cudarobotics/__init__.py",
         f"{ROOT}/src/cudarobotics/bindings.cpp",
         f"{ROOT}/src/cudarobotics/registration/__init__.py",
+        f"{ROOT}/{verifier.PROVENANCE_PATH}",
         f"{ROOT}/core/include/cuda_check.cuh",
         f"{ROOT}/core/include/cuda_mppi_controller/mppi_gpu.hpp",
     }
@@ -43,17 +45,29 @@ def required_sdist_names() -> set[str]:
 def write_sdist(path: Path, names: set[str]) -> None:
     with tarfile.open(path, "w:gz") as archive:
         for name in sorted(names):
-            contents = b"test\n"
+            contents = (
+                serialized_payload()
+                if name.endswith(verifier.PROVENANCE_PATH)
+                else b"test\n"
+            )
             info = tarfile.TarInfo(name)
             info.size = len(contents)
             archive.addfile(info, io.BytesIO(contents))
 
 
-def write_wheel(path: Path, *, include_extension: bool = True) -> None:
+def write_wheel(
+    path: Path,
+    *,
+    include_extension: bool = True,
+    provenance: bytes | None = None,
+) -> None:
     dist_info = f"cudarobotics-{VERSION}.dist-info"
     files = {
         "cudarobotics/__init__.py": b"",
         "cudarobotics/registration/__init__.py": b"",
+        "cudarobotics/_source_provenance.json": (
+            serialized_payload() if provenance is None else provenance
+        ),
         f"{dist_info}/METADATA": (
             f"Name: cudarobotics\nVersion: {VERSION}\n".encode()
         ),
@@ -98,6 +112,18 @@ class ArtifactVerifierTests(unittest.TestCase):
             write_wheel(path, include_extension=False)
             with self.assertRaisesRegex(
                 AssertionError, "exactly one native extension"
+            ):
+                verifier.validate_wheel(path, VERSION)
+
+    def test_wheel_rejects_stale_source_provenance(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = (
+                Path(directory)
+                / f"cudarobotics-{VERSION}-py3-none-any.whl"
+            )
+            write_wheel(path, provenance=b'{"schema_version": 1}\n')
+            with self.assertRaisesRegex(
+                AssertionError, "source provenance does not match"
             ):
                 verifier.validate_wheel(path, VERSION)
 

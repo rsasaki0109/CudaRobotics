@@ -17,4 +17,5 @@ install -m 0644 "${INC}/cuda_check.cuh" "${CORE}/include/cuda_check.cuh"
 install -m 0644 "${INC}/cuda_mppi_controller/mppi_gpu.hpp" "${CORE}/include/cuda_mppi_controller/mppi_gpu.hpp"
 install -m 0644 "${INC}/cudarobotics/"*.hpp "${CORE}/include/cudarobotics/"
 
+python3 "${ROOT}/scripts/python_source_provenance.py"
 echo "Synced python/core from ${ROOT}/src and ${ROOT}/include"

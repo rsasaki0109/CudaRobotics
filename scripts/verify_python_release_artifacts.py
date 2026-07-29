@@ -13,6 +13,7 @@ import tarfile
 import zipfile
 from pathlib import Path
 
+from python_source_provenance import expected_payload
 
 REPO = Path(__file__).resolve().parents[1]
 CUDA_SOURCES = (
@@ -24,6 +25,18 @@ CUDA_SOURCES = (
     "robust_treg_gpu.cu",
     "robust_p2plane_gpu.cu",
 )
+PROVENANCE_PATH = "src/cudarobotics/_source_provenance.json"
+
+
+def validate_provenance(contents: bytes, artifact: str) -> None:
+    try:
+        payload = json.loads(contents.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as error:
+        raise AssertionError(f"{artifact} has invalid source provenance") from error
+    assert payload == expected_payload(), (
+        f"{artifact} source provenance does not match the current Python/CUDA "
+        "source tree; rebuild artifacts from this checkout"
+    )
 
 
 def package_version() -> str:
@@ -60,6 +73,7 @@ def validate_sdist(path: Path, version: str) -> None:
         f"{root}/src/cudarobotics/__init__.py",
         f"{root}/src/cudarobotics/bindings.cpp",
         f"{root}/src/cudarobotics/registration/__init__.py",
+        f"{root}/{PROVENANCE_PATH}",
         f"{root}/core/include/cuda_check.cuh",
         f"{root}/core/include/cuda_mppi_controller/mppi_gpu.hpp",
     }
@@ -85,6 +99,9 @@ def validate_sdist(path: Path, version: str) -> None:
         assert not forbidden, (
             f"{path.name} contains cache/build artifacts: {forbidden}"
         )
+        member = archive.extractfile(f"{root}/{PROVENANCE_PATH}")
+        assert member is not None
+        validate_provenance(member.read(), path.name)
 
 
 def validate_wheel(path: Path, version: str) -> None:
@@ -92,6 +109,7 @@ def validate_wheel(path: Path, version: str) -> None:
     required = {
         "cudarobotics/__init__.py",
         "cudarobotics/registration/__init__.py",
+        "cudarobotics/_source_provenance.json",
         f"{dist_info}/METADATA",
         f"{dist_info}/WHEEL",
         f"{dist_info}/RECORD",
@@ -115,6 +133,10 @@ def validate_wheel(path: Path, version: str) -> None:
         assert re.search(
             rf"(?m)^Version: {re.escape(version)}$", metadata
         ), f"{path.name} metadata version does not match {version}"
+        validate_provenance(
+            archive.read("cudarobotics/_source_provenance.json"),
+            path.name,
+        )
 
 
 def parse_args() -> argparse.Namespace:
@@ -164,6 +186,7 @@ def main() -> int:
         "git_dirty": dirty,
         "platform": platform.platform(),
         "python": platform.python_version(),
+        "source_provenance": expected_payload(),
         "artifacts": [
             {
                 "name": path.name,
