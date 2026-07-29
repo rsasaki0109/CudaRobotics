@@ -303,6 +303,36 @@ def evaluate_manifest(
     ):
         relative = artifacts.get(artifact)
         checks[f"artifact_{artifact}"] = artifact_exists(relative, True)
+    artifact_hashes = manifest.get("artifact_sha256")
+    checks["artifact_sha256_table"] = isinstance(artifact_hashes, dict)
+    required_file_artifacts = {
+        name
+        for name, relative in artifacts.items()
+        if name != "rosbag"
+        and isinstance(relative, str)
+        and relative
+    }
+    checks["artifact_sha256_coverage"] = (
+        checks["artifact_sha256_table"]
+        and set(artifact_hashes) == required_file_artifacts
+    )
+    checks["artifact_sha256_matches"] = False
+    if checks["artifact_sha256_coverage"]:
+        try:
+            checks["artifact_sha256_matches"] = all(
+                bool(
+                    re.fullmatch(
+                        r"[0-9a-f]{64}", str(artifact_hashes[name])
+                    )
+                )
+                and hashlib.sha256(
+                    (root / artifacts[name]).resolve().read_bytes()
+                ).hexdigest()
+                == artifact_hashes[name]
+                for name in required_file_artifacts
+            )
+        except OSError:
+            checks["artifact_sha256_matches"] = False
     trajectory_relative = artifacts.get("trajectory")
     checks["trajectory_schema"] = False
     if checks["artifact_trajectory"]:

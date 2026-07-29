@@ -69,6 +69,15 @@ def write_run(
         "git_commit": "a" * 40,
         "git_dirty": False,
         "config_sha256": hashlib.sha256(config.read_bytes()).hexdigest(),
+        "artifact_sha256": {
+            name: hashlib.sha256((run / relative).read_bytes()).hexdigest()
+            for name, relative in {
+                "summary": "mission_summary.json",
+                "trajectory": "trajectory.csv",
+                "launch_log": "launch.log",
+                "controller_config": "controller.yaml",
+            }.items()
+        },
         "command": [
             "ros2",
             "launch",
@@ -100,6 +109,12 @@ def write_run(
     (run / "manifest.json").write_text(
         json.dumps(manifest) + "\n", encoding="utf-8"
     )
+
+
+def manifest_sha256(root: Path, relative: str) -> str:
+    return hashlib.sha256(
+        (root / relative / "manifest.json").read_bytes()
+    ).hexdigest()
 
 
 class MultiGpuEvidenceTest(unittest.TestCase):
@@ -134,16 +149,33 @@ class MultiGpuEvidenceTest(unittest.TestCase):
                         "directory": "gpu_0/run_00",
                         "returncode": 0,
                         "device": gpu_a,
+                        "manifest_sha256": manifest_sha256(
+                            root, "gpu_0/run_00"
+                        ),
                     },
                     {
                         "directory": "gpu_1/run_00",
                         "returncode": 0,
                         "device": gpu_b,
+                        "manifest_sha256": manifest_sha256(
+                            root, "gpu_1/run_00"
+                        ),
                     },
                 ],
             }
             gate = evaluate_multi_gpu_suite(suite, root)
             self.assertTrue(gate["passed"])
+            child_manifest = root / "gpu_0/run_00/manifest.json"
+            payload = json.loads(child_manifest.read_text(encoding="utf-8"))
+            payload["post_collection_edit"] = True
+            child_manifest.write_text(
+                json.dumps(payload) + "\n", encoding="utf-8"
+            )
+            tampered = evaluate_multi_gpu_suite(suite, root)
+            self.assertFalse(tampered["passed"])
+            self.assertFalse(
+                tampered["runs"][0]["manifest_binding"]
+            )
 
     def test_same_model_and_config_drift_fail(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -171,11 +203,17 @@ class MultiGpuEvidenceTest(unittest.TestCase):
                         "directory": "gpu_0/run_00",
                         "returncode": 0,
                         "device": gpu_a,
+                        "manifest_sha256": manifest_sha256(
+                            root, "gpu_0/run_00"
+                        ),
                     },
                     {
                         "directory": "gpu_1/run_00",
                         "returncode": 0,
                         "device": gpu_b,
+                        "manifest_sha256": manifest_sha256(
+                            root, "gpu_1/run_00"
+                        ),
                     },
                 ],
             }
