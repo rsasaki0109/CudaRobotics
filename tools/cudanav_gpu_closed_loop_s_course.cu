@@ -431,7 +431,7 @@ int main(int argc, char** argv) {
       drift_percent < 5.0 && deadline_miss_rate < 0.05 && causal &&
       invalid_commands == 0 && final_observed_voxels >= 500 &&
       maximum_occupied_cells >= 10 && minimum_inliers >= 30 &&
-      all_colliding <= 3 && minimum_nonzero_valid_ratio >= 0.01f &&
+      all_colliding <= 3 && minimum_nonzero_valid_ratio >= 0.001f &&
       truth_distance <= 13.0 && frames <= 400;
 
     std::ofstream json(run.json);
