@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 from datetime import datetime, timezone
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -25,6 +26,7 @@ GATE_CONTRACTS = {
             "cpu_ctest",
         },
         "artifacts": set(),
+        "artifact_manifest": False,
     },
     "python_manylinux_wheels": {
         "workflow": "Python package",
@@ -38,6 +40,7 @@ GATE_CONTRACTS = {
             "cudarobotics-wheels",
             "cudarobotics-manylinux-wheels",
         },
+        "artifact_manifest": True,
     },
 }
 
@@ -57,6 +60,7 @@ def evaluate(
     commit = payload.get("git_commit")
     required_checks = contract["checks"] if contract else set()
     required_artifacts = contract["artifacts"] if contract else set()
+    artifact_manifest = payload.get("artifact_manifest")
     checks = {
         "schema": payload.get("schema_version") == 1,
         "evidence_mode": payload.get("evidence_mode") == "release_ci",
@@ -94,6 +98,20 @@ def evaluate(
         "artifacts": isinstance(artifacts, list)
         and len(artifacts) == len(set(artifacts))
         and required_artifacts <= set(artifacts),
+        "artifact_manifest": (
+            isinstance(artifact_manifest, dict)
+            and artifact_manifest.get("name") == "python_artifacts.json"
+            and isinstance(artifact_manifest.get("bytes"), int)
+            and artifact_manifest["bytes"] > 0
+            and bool(
+                re.fullmatch(
+                    r"[0-9a-f]{64}",
+                    str(artifact_manifest.get("sha256", "")),
+                )
+            )
+        )
+        if contract and contract["artifact_manifest"]
+        else artifact_manifest is None,
     }
     return {"passed": all(checks.values()), "checks": checks}
 
@@ -132,7 +150,20 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--check", action="append", default=[])
     parser.add_argument("--artifact", action="append", default=[])
+    parser.add_argument("--artifact-manifest", type=Path)
     return parser.parse_args()
+
+
+def describe_file(path: Path) -> dict[str, Any]:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for block in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(block)
+    return {
+        "name": path.name,
+        "bytes": path.stat().st_size,
+        "sha256": digest.hexdigest(),
+    }
 
 
 def main() -> int:
@@ -142,6 +173,12 @@ def main() -> int:
         run_attempt = int(args.run_attempt)
     except ValueError as error:
         raise SystemExit("GitHub run identifiers must be integers") from error
+    artifact_manifest = None
+    if args.artifact_manifest is not None:
+        path = args.artifact_manifest.resolve()
+        if not path.is_file():
+            raise SystemExit(f"artifact manifest is missing: {path}")
+        artifact_manifest = describe_file(path)
     payload = {
         "schema_version": 1,
         "evidence_mode": "release_ci",
@@ -169,6 +206,7 @@ def main() -> int:
             name: "passed" for name in sorted(set(args.check))
         },
         "artifacts": sorted(set(args.artifact)),
+        "artifact_manifest": artifact_manifest,
     }
     result = evaluate(payload, expected_gate=args.gate)
     if not result["passed"]:

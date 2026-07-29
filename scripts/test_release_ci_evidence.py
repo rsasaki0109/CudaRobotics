@@ -31,6 +31,15 @@ def valid_payload(gate: str) -> dict:
         "platform": {"os": "Linux", "arch": "X64"},
         "checks": {name: "passed" for name in contract["checks"]},
         "artifacts": sorted(contract["artifacts"]),
+        "artifact_manifest": (
+            {
+                "name": "python_artifacts.json",
+                "bytes": 100,
+                "sha256": "b" * 64,
+            }
+            if contract["artifact_manifest"]
+            else None
+        ),
     }
 
 
@@ -77,6 +86,13 @@ class ReleaseCiEvidenceTest(unittest.TestCase):
         payload["github"]["workflow"] = "Python package"
         result = evaluate(payload)
         self.assertFalse(result["checks"]["workflow"])
+        self.assertFalse(result["passed"])
+
+    def test_python_artifact_manifest_is_required(self) -> None:
+        payload = valid_payload("python_manylinux_wheels")
+        payload["artifact_manifest"] = None
+        result = evaluate(payload)
+        self.assertFalse(result["checks"]["artifact_manifest"])
         self.assertFalse(result["passed"])
 
 
