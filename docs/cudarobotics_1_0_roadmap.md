@@ -30,14 +30,14 @@ The project is not complete when the components merely run independently. A
 v1.0 release requires a versioned launch path, reproducible evidence, and
 explicit failure reporting across the complete loop.
 
-## Status Snapshot (2026-07-29)
+## Status Snapshot (2026-07-30)
 
 | Area | Implemented | Evidence still required |
 |---|---|---|
-| v0.2 closure | CPU/GPU release preflight, rebuilt sdist/Windows wheel, artifact verifier, synchronized Python CUDA core, release notes/site | Green final-commit Build, Python manylinux, and ROS 2 workflows; tag/release |
-| GPU odometry | Reusable voxel-hash KISS-ICP core and lifecycle ROS component | ROS 2 Jazzy compile plus recorded-stream runtime evidence |
-| Mapping | Rolling voxel map, exact typed ESDF, lifecycle nodes | ROS 2 Jazzy stream latency/correctness evidence |
-| Nav2 integration | Voxel costmap plugin, CUDA MPPI, deterministic closed-loop bringup; native GPU core passes 30 traversals / 1059.4 simulated seconds | Plugin-load CI and ROS 2 release-profile 10-minute GPU run with MCAP/video |
+| v0.2 closure | CPU/GPU release preflight, rebuilt sdist/Windows wheel, artifact verifier, synchronized Python CUDA core, release notes/site, and green exact-commit Build/Python/ROS 2 workflows | Tag/release |
+| GPU odometry | Reusable voxel-hash KISS-ICP core, lifecycle ROS component, and exact-commit ROS 2 Jazzy compile/test evidence | Recorded-stream runtime evidence |
+| Mapping | Rolling voxel map, exact typed ESDF, lifecycle nodes, and exact-commit ROS 2 Jazzy compile/test evidence | Stream-level GPU latency/correctness evidence |
+| Nav2 integration | Voxel costmap plugin, CUDA MPPI, deterministic closed-loop bringup, passing controller/costmap plugin-load CI, and a native GPU core that passes 30 traversals / 1059.4 simulated seconds | ROS 2 release-profile 10-minute GPU run with MCAP/video |
 | Reproducibility | Closed-loop, real-rosbag shadow, and multi-GPU manifest gates; GTX 1660 Ti native release node is UUID-bound; all four v1 external gates now have fail-closed attestation producers and a post-tag release bundle | Execute the ROS release/real-bag runs, add one physical GPU model, and acquire the fresh-clone, published-image, and deployed-docs attestations from one immutable tag |
 | Contact paper | Published 32,400-episode robustness, exact 10 ms matched-compute, 3,150-episode closed-loop MuJoCo evidence, and ledger-synchronized submission draft | Venue-template packaging, artifact URLs/anonymization, and optional independent-hardware replication |
 | Papers | Contact-rich Diff-MPPI ledger is `ready: true` with a frozen draft; CudaNav systems draft is synchronized to its machine-checked ledger | Complete CudaNav ROS 2 closed-loop, recorded-shadow, and second-model GPU evidence |

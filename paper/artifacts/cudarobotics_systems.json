@@ -83,7 +83,7 @@
         "ros_jazzy_ci"
       ],
       "limitations": [
-        "Reusable CUDA sources and ROS integration are present, but a green ROS 2 Jazzy build and plugin-load run from the paper commit is still required."
+        "The exact-commit ROS 2 Jazzy build, package tests, parameter validation, and both Nav2 plugin-load gates pass without a GPU driver; release-profile GPU runtime MCAP and video evidence remain required."
       ]
     },
     {
@@ -1148,15 +1148,84 @@
     },
     {
       "id": "ros_jazzy_ci",
-      "status": "pending",
+      "status": "complete",
       "kind": "json_assertions",
       "generator_command": [
         "gh",
-        "workflow",
         "run",
-        "ros2_cuda_mppi.yml",
-        "--ref",
-        "PAPER_COMMIT"
+        "download",
+        "30461012212",
+        "--name",
+        "ros-jazzy-ci-evidence-417e28e2ce7dfb3e1033e9c19bd3731b309cefb0"
+      ],
+      "artifacts": [
+        {
+          "path": "docs/results/ros_jazzy_ci_417e28e2_2026-07-29.json",
+          "normalization": "text_lf",
+          "sha256": "0ad834082dc815784dcdb9e9f3f252941ef023c915d058f29450af2496b4c65e"
+        }
+      ],
+      "assertions": [
+        {
+          "json_path": "status",
+          "op": "eq",
+          "value": "passed"
+        },
+        {
+          "json_path": "evidence_mode",
+          "op": "eq",
+          "value": "ros_jazzy_ci"
+        },
+        {
+          "json_path": "git_commit",
+          "op": "eq",
+          "value": "417e28e2ce7dfb3e1033e9c19bd3731b309cefb0"
+        },
+        {
+          "json_path": "git_dirty",
+          "op": "eq",
+          "value": false
+        },
+        {
+          "json_path": "github.run_id",
+          "op": "eq",
+          "value": 30461012212
+        },
+        {
+          "json_path": "ros.distro",
+          "op": "eq",
+          "value": "jazzy"
+        },
+        {
+          "json_path": "platform.image",
+          "op": "eq",
+          "value": "ubuntu-24.04"
+        },
+        {
+          "json_path": "cuda.toolkit",
+          "op": "eq",
+          "value": "12.6"
+        },
+        {
+          "json_path": "checks.colcon_build",
+          "op": "eq",
+          "value": "passed"
+        },
+        {
+          "json_path": "checks.colcon_tests",
+          "op": "eq",
+          "value": "passed"
+        },
+        {
+          "json_path": "checks.controller_plugin_load",
+          "op": "eq",
+          "value": "passed"
+        },
+        {
+          "json_path": "checks.costmap_plugin_load",
+          "op": "eq",
+          "value": "passed"
+        }
       ]
     },
     {

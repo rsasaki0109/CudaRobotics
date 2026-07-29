@@ -186,7 +186,7 @@ The following IDs are authoritative and are checked against the manuscript:
 | `real_gpu_odometry` | Supported | 1,190-frame timed GPU KISS-ICP release profile |
 | `real_gpu_core_shadow` | Supported | 1,190-frame native all-GPU shadow release profile |
 | `native_gpu_core_closed_loop` | Supported | 30-traversal native release plus bound visual |
-| `integrated_gpu_stack` | Partial | Sources exist; final-commit ROS 2 runtime attestation pending |
+| `integrated_gpu_stack` | Partial | Exact-commit Jazzy build, tests, parameter validation, and both plugin-load gates pass; GPU runtime attestation pending |
 | `closed_loop_autonomy` | Partial | Native release passes; ROS 2 MCAP/video release pending |
 | `real_data_shadow` | Partial | Native release passes; ROS 2 release replay pending |
 | `multi_gpu_reproduction` | Partial | One UUID-bound GTX 1660 Ti node; second model pending |
@@ -391,12 +391,14 @@ and calibrated sensor-frame reference poses, but shadow commands cannot
 influence future scans. The native real-data release profile passes; the
 remaining real-data gap is ROS 2 runtime replay rather than native duration.
 
-The architecture has ROS 2/Nav2 adapters, but source presence and unit tests
-are weaker evidence than a release-profile runtime on the exact paper commit.
-That run must retain the MCAP, metadata, required topic counts, parameters,
-metrics, logs, and video. Finally, all physical evidence currently comes from
-one GTX 1660 Ti. The matrix claim requires a second GPU UUID and model at an
-identical source commit and digest.
+The exact-commit Ubuntu 24.04 ROS 2 Jazzy workflow builds all eight CudaNav
+packages with CUDA 12.6, runs their tests and evidence contracts, validates
+controller parameters, and loads both Nav2 plugins. This driverless CI
+attestation is still weaker than a release-profile GPU runtime. That run must
+retain the MCAP, metadata, required topic counts, parameters, metrics, logs,
+and video. Finally, all physical evidence currently comes from one GTX 1660
+Ti. The matrix claim requires a second GPU UUID and model at an identical
+source commit and digest.
 
 These omissions are release gates, not future-work decoration. The manuscript
 and ledger intentionally keep the affected claims partial.
