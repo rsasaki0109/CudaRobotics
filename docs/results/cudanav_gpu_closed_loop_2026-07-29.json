@@ -1,0 +1,173 @@
+{
+  "artifacts": {
+    "result": {
+      "bytes": 1160,
+      "path": "result.json",
+      "sha256": "fa4093d92f27e123a94a1d32a6dcd9e0dbbe42af330f7b2acd6865fc771b8a47"
+    },
+    "runner": {
+      "bytes": 1317376,
+      "path": "cudanav_gpu_closed_loop_s_course.exe",
+      "sha256": "fe8b9b41706c2947932196fb127cf38f90f2e6ecd85e4f85eaad8a585c3282f9"
+    },
+    "runner_log": {
+      "bytes": 64,
+      "path": "runner.log",
+      "sha256": "514a5ce5cb498d6ad0880df0eafbbe5c7d3dc7a4b4987281a2da767dbad22dad"
+    },
+    "trajectory": {
+      "bytes": 27641,
+      "path": "trajectory.csv",
+      "sha256": "f1067b53784008ba509ca0631b243efc7943cacd726d030729168e9235e64500"
+    }
+  },
+  "checks": {
+    "causal_command_effect": true,
+    "claims": true,
+    "collision_free": true,
+    "deadline": true,
+    "finite_commands": true,
+    "goal_distance": true,
+    "goal_reached": true,
+    "gpu_identity": true,
+    "native_quality_gate": true,
+    "occupied_cells": true,
+    "odometry_drift": true,
+    "odometry_inliers": true,
+    "scenario": true,
+    "source_commit": true,
+    "stages": true,
+    "trajectory_rows": true,
+    "voxel_mapping": true
+  },
+  "claims": {
+    "native_gpu_core_closed_loop": true,
+    "real_data": false,
+    "ros2_runtime": false
+  },
+  "metrics": {
+    "all_colliding_evaluations": 0,
+    "causal_command_effect": true,
+    "claims": {
+      "native_gpu_core_closed_loop": true,
+      "real_data": false,
+      "ros2_runtime": false
+    },
+    "collision_count": 0,
+    "command_deadline_miss_rate": 0.0,
+    "command_effect_distance_m": 10.387107526,
+    "final_observed_voxels": 43278,
+    "frame_ms_p95": 4.2841,
+    "frames": 219,
+    "goal_reached": true,
+    "gpu": {
+      "driver_version": 13020,
+      "name": "NVIDIA GeForce GTX 1660 Ti"
+    },
+    "ground_truth_distance_m": 10.387107526,
+    "ground_truth_goal_distance_m": 0.281836987,
+    "invalid_commands": 0,
+    "maximum_occupied_cells": 668,
+    "minimum_inliers": 243,
+    "minimum_nonzero_valid_rollout_ratio": 0.010253906,
+    "mppi_solve_ms_p95": 0.4661,
+    "odometry_ate_rmse_m": 0.011524459,
+    "odometry_drift_percent": 0.201697994,
+    "odometry_position_error_m": 0.020950587,
+    "quality_pass": true,
+    "retreating_evaluations": 0,
+    "scenario": "cudanav_s_course",
+    "schema_version": 1,
+    "simulated_duration_s": 21.899999619,
+    "stages": [
+      "gpu_kiss_icp",
+      "gpu_voxel_mapping",
+      "gpu_esdf",
+      "cuda_mppi",
+      "command_driven_plant"
+    ],
+    "wall_time_ms": 734.5783
+  },
+  "result_id": "cudanav_gpu_closed_loop_s_course_2026-07-29",
+  "scenario": {
+    "control_period_s": 0.1,
+    "obstacles": [
+      [
+        3.6,
+        -2.5,
+        4.3,
+        0.55
+      ],
+      [
+        6.1,
+        -0.55,
+        6.8,
+        2.5
+      ]
+    ],
+    "outer_bounds": [
+      -1.0,
+      -2.5,
+      10.0,
+      2.5
+    ],
+    "ray_count": 240,
+    "robot_radius_m": 0.24,
+    "waypoints": [
+      [
+        0.0,
+        0.0
+      ],
+      [
+        2.7,
+        0.0
+      ],
+      [
+        3.15,
+        1.15
+      ],
+      [
+        4.75,
+        1.15
+      ],
+      [
+        5.55,
+        -1.15
+      ],
+      [
+        7.25,
+        -1.15
+      ],
+      [
+        9.0,
+        0.0
+      ]
+    ],
+    "z_levels_m": [
+      -0.45,
+      0.0,
+      0.45
+    ]
+  },
+  "schema_version": 1,
+  "scope_note": "Native deterministic S-course simulation. CUDA MPPI commands are applied to the plant and affect later LiDAR scans. This is not a ROS 2 runtime result and does not use recorded real-world data.",
+  "source_commit": "3f65377c3cf38b3874c31d5efcb193720f245cca",
+  "source_digest": "b551782e2d4295d50323439f337dd328b282f2253e29940a1589dd6be99fdf9f",
+  "stages": [
+    "gpu_kiss_icp",
+    "gpu_voxel_mapping",
+    "gpu_esdf",
+    "cuda_mppi",
+    "command_driven_plant"
+  ],
+  "thresholds": {
+    "maximum_collision_count": 0,
+    "maximum_command_deadline_miss_rate": 0.05,
+    "maximum_goal_distance_m": 0.3,
+    "maximum_odometry_drift_percent": 5.0,
+    "minimum_command_effect_distance_m": 5.0,
+    "minimum_inliers": 30,
+    "minimum_observed_voxels": 500,
+    "minimum_occupied_cells": 10
+  }
+}

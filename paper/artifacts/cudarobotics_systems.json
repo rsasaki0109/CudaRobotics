@@ -59,6 +59,20 @@
       ]
     },
     {
+      "id": "native_gpu_core_closed_loop",
+      "statement": "The native all-GPU core closes the loop on the deterministic CudaNav S-course: GPU KISS-ICP state drives voxel mapping, ESDF, and CUDA MPPI commands that move the plant to within 0.282 m of the goal with zero collisions and 0.202 percent final odometry drift.",
+      "submission_required": true,
+      "status": "supported",
+      "evidence": [
+        "native_gpu_closed_loop_smoke",
+        "native_gpu_closed_loop_report"
+      ],
+      "limitations": [
+        "This is a 21.9-second deterministic native simulation on one GPU model, not the ten-minute ROS 2 release profile or a multi-GPU result.",
+        "The plant and LiDAR are synthetic; this does not upgrade the separate real-data shadow evidence into a real-world closed-loop claim."
+      ]
+    },
+    {
       "id": "integrated_gpu_stack",
       "statement": "GPU KISS-ICP, rolling voxel mapping, exact typed ESDF, a Nav2 costmap bridge, and CUDA MPPI build and run as one ROS 2 Jazzy stack.",
       "submission_required": true,
@@ -511,6 +525,110 @@
           "path": "docs/results/cudanav_real_gpu_stack_2026-07-29.md",
           "normalization": "text_lf",
           "sha256": "947cad893db3ce9621b5acde7d176e7c8b591efdd80680d0cacf0c4614e4d68a"
+        }
+      ]
+    },
+    {
+      "id": "native_gpu_closed_loop_smoke",
+      "status": "complete",
+      "kind": "json_assertions",
+      "generator_command": [
+        "python3",
+        "scripts/run_cudanav_gpu_closed_loop.py",
+        "--output-dir",
+        "build/cudanav_gpu_closed_loop_3f65377",
+        "--publish-json",
+        "docs/results/cudanav_gpu_closed_loop_2026-07-29.json",
+        "--publish-markdown",
+        "docs/results/cudanav_gpu_closed_loop_2026-07-29.md"
+      ],
+      "artifacts": [
+        {
+          "path": "docs/results/cudanav_gpu_closed_loop_2026-07-29.json",
+          "normalization": "text_lf",
+          "sha256": "436c6e8aede710aba71f30de2d21b30ce57b00fd83186ef2cd95be8baf289c76"
+        }
+      ],
+      "assertions": [
+        {
+          "json_path": "source_commit",
+          "op": "eq",
+          "value": "3f65377c3cf38b3874c31d5efcb193720f245cca"
+        },
+        {
+          "json_path": "claims.native_gpu_core_closed_loop",
+          "op": "eq",
+          "value": true
+        },
+        {
+          "json_path": "claims.ros2_runtime",
+          "op": "eq",
+          "value": false
+        },
+        {
+          "json_path": "claims.real_data",
+          "op": "eq",
+          "value": false
+        },
+        {
+          "json_path": "metrics.goal_reached",
+          "op": "eq",
+          "value": true
+        },
+        {
+          "json_path": "metrics.collision_count",
+          "op": "eq",
+          "value": 0
+        },
+        {
+          "json_path": "metrics.ground_truth_goal_distance_m",
+          "op": "le",
+          "value": 0.3
+        },
+        {
+          "json_path": "metrics.odometry_drift_percent",
+          "op": "lt",
+          "value": 5.0
+        },
+        {
+          "json_path": "metrics.causal_command_effect",
+          "op": "eq",
+          "value": true
+        },
+        {
+          "json_path": "metrics.command_effect_distance_m",
+          "op": "ge",
+          "value": 5.0
+        },
+        {
+          "json_path": "metrics.command_deadline_miss_rate",
+          "op": "lt",
+          "value": 0.05
+        },
+        {
+          "json_path": "metrics.quality_pass",
+          "op": "eq",
+          "value": true
+        }
+      ]
+    },
+    {
+      "id": "native_gpu_closed_loop_report",
+      "status": "complete",
+      "kind": "file_set",
+      "generator_command": [
+        "python3",
+        "scripts/run_cudanav_gpu_closed_loop.py",
+        "--output-dir",
+        "build/cudanav_gpu_closed_loop_3f65377",
+        "--publish-markdown",
+        "docs/results/cudanav_gpu_closed_loop_2026-07-29.md"
+      ],
+      "artifacts": [
+        {
+          "path": "docs/results/cudanav_gpu_closed_loop_2026-07-29.md",
+          "normalization": "text_lf",
+          "sha256": "e58cf3126863f9d0bb95de2ac998675aa952edc88ebfa61cd9dd7e779e590aa5"
         }
       ]
     },
