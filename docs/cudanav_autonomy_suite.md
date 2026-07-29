@@ -34,6 +34,14 @@ streams. LaserScan-only datasets require an explicitly recorded conversion or
 a platform-specific launch; the suite does not silently reinterpret LaserScan
 as the KISS-ICP input.
 
+The selected real-sensor source and its stricter derived-Path provenance
+contract are documented in
+[`cudanav_real_dataset.md`](cudanav_real_dataset.md). Until its sidecar Path
+generator and replay integration are complete, that selection remains
+`valid: true, ready: false`. A derived Path must use the distinct
+`real_sensor_shadow_with_derived_path` label; it cannot be relabelled as a
+recorded Path or closed-loop execution.
+
 The local release closed-loop directory is automatically included in the
 cross-machine GPU aggregate. Repeat `--multi-gpu-run` for more imported
 machines. Alternatively, use `--multi-gpu-devices 0,1` when two distinct GPU

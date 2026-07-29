@@ -1,0 +1,45 @@
+{
+  "schema_version": 1,
+  "dataset_id": "autoware_istanbul_mapping_kit",
+  "status": "selected_unmaterialized",
+  "canonical_documentation": "https://autowarefoundation.github.io/autoware-documentation/main/datasets/#istanbul-open-dataset",
+  "acquisition": {
+    "method": "manual_google_drive",
+    "uri": "https://drive.google.com/drive/folders/17zXiBeYlM90gQ5hV6EAWaoBTnNFoVPML?usp=drive_link",
+    "redistribution_authorized": false,
+    "note": "Download one ROS 2 bag from the official folder. Do not mirror it in release artifacts without separate permission."
+  },
+  "recorded_inputs": {
+    "pointcloud": {
+      "topic": "/pandar_points",
+      "type": "sensor_msgs/msg/PointCloud2"
+    },
+    "odometry": {
+      "topic": "/applanix/lvx_client/odom",
+      "type": "nav_msgs/msg/Odometry"
+    },
+    "static_transforms": {
+      "topic": "/tf_static",
+      "type": "tf2_msgs/msg/TFMessage"
+    }
+  },
+  "path_derivation": {
+    "kind": "deterministic_sidecar_from_recorded_odometry",
+    "algorithm": "cudarobotics.recorded_odometry_path.v1",
+    "source_topic": "/applanix/lvx_client/odom",
+    "output_topic": "/cuda_nav/derived_plan",
+    "output_type": "nav_msgs/msg/Path",
+    "parameters": {
+      "coordinate_frame": "recorded_odometry_frame",
+      "ordering": "header_stamp_then_record_order",
+      "duplicate_stamp_policy": "keep_first",
+      "minimum_translation_m": 0.05
+    },
+    "claims": {
+      "recorded_path": false,
+      "closed_loop": false,
+      "evidence_mode": "real_sensor_shadow_with_derived_path"
+    }
+  },
+  "materialization": null
+}
