@@ -14,6 +14,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from release_preflight_evidence import (
+    collect_evidence_files,
+    evaluate_manifest,
+)
+
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -184,6 +189,7 @@ def render_report(manifest: dict[str, Any]) -> str:
         f"- Dirty checkout: `{str(manifest['git_dirty']).lower()}`",
         f"- Platform: `{manifest['platform']}`",
         f"- Python: `{manifest['python']}`",
+        f"- Content-bound evidence files: `{len(manifest.get('evidence_files', []))}`",
         "",
         "| Local gate | Status | Seconds | Log |",
         "|---|---:|---:|---|",
@@ -277,7 +283,21 @@ def main() -> int:
             "ros2_cuda_mppi",
             "closed_loop_rosbag_or_explicit_negative_result",
         ],
+        "evidence_files": collect_evidence_files(output_dir, checks)
+        if not args.dry_run
+        else [],
     }
+    if not args.dry_run:
+        evidence_gate = evaluate_manifest(
+            manifest,
+            output_dir,
+            expected_profile=args.profile,
+            expected_commit=manifest["git_commit"],
+        )
+        manifest["evidence_gate"] = evidence_gate
+        if not evidence_gate["passed"]:
+            status = "failed"
+            manifest["status"] = status
     manifest_path = output_dir / "manifest.json"
     report_path = output_dir / "report.md"
     manifest_path.write_text(

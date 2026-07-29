@@ -4,10 +4,17 @@
 from __future__ import annotations
 
 import argparse
+import json
 import tempfile
 import unittest
 from pathlib import Path
 
+from release_preflight_evidence import (
+    CPU_REQUIRED_CHECKS,
+    GPU_REQUIRED_CHECKS,
+    collect_evidence_files,
+    evaluate_manifest,
+)
 import run_release_preflight as preflight
 
 
@@ -20,6 +27,47 @@ def arguments(profile: str, *, with_dist: bool = False) -> argparse.Namespace:
         require_clean=False,
         dry_run=True,
     )
+
+
+def evidence_fixture(root: Path, profile: str = "cpu") -> dict:
+    required = (
+        GPU_REQUIRED_CHECKS if profile == "gpu" else CPU_REQUIRED_CHECKS
+    )
+    checks = []
+    for name in sorted(required):
+        check = {"name": name, "status": "passed", "returncode": 0}
+        if name != "clean_checkout":
+            relative = f"logs/{name}.log"
+            path = root / relative
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(f"{name} passed\n", encoding="utf-8")
+            check["report_log"] = relative
+        checks.append(check)
+    (root / "python_artifacts.json").write_text(
+        json.dumps({"status": "passed"}) + "\n", encoding="utf-8"
+    )
+    if profile == "gpu":
+        (root / "registration_smoke.csv").write_text(
+            "status\npassed\n", encoding="utf-8"
+        )
+        (root / "registration_smoke.md").write_text(
+            "# Passed\n", encoding="utf-8"
+        )
+    return {
+        "schema_version": 1,
+        "status": "passed",
+        "profile": profile,
+        "git_commit": "a" * 40,
+        "git_dirty": False,
+        "checks": checks,
+        "external_gates": [
+            "github_build",
+            "python_manylinux_wheels",
+            "ros2_cuda_mppi",
+            "closed_loop_rosbag_or_explicit_negative_result",
+        ],
+        "evidence_files": collect_evidence_files(root, checks),
+    }
 
 
 class ReleasePreflightTests(unittest.TestCase):
@@ -85,6 +133,70 @@ class ReleasePreflightTests(unittest.TestCase):
         }
         report = preflight.render_report(manifest)
         self.assertIn("| `clean_checkout` | failed |", report)
+
+    def test_content_bound_cpu_evidence_passes(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            result = evaluate_manifest(
+                evidence_fixture(root),
+                root,
+                expected_profile="cpu",
+                expected_commit="a" * 40,
+            )
+            self.assertTrue(result["passed"], result)
+
+    def test_modified_log_is_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest = evidence_fixture(root)
+            (root / "logs/version_consistency.log").write_text(
+                "replacement\n", encoding="utf-8"
+            )
+            result = evaluate_manifest(manifest, root)
+            self.assertFalse(
+                result["checks"]["evidence_content_unchanged"]
+            )
+            self.assertFalse(result["passed"])
+
+    def test_generated_artifact_cannot_be_omitted(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest = evidence_fixture(root)
+            manifest["evidence_files"] = [
+                entry
+                for entry in manifest["evidence_files"]
+                if entry["path"] != "python_artifacts.json"
+            ]
+            result = evaluate_manifest(manifest, root)
+            self.assertFalse(result["checks"]["evidence_complete"])
+            self.assertFalse(result["passed"])
+
+    def test_gpu_profile_requires_registration_evidence(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest = evidence_fixture(root)
+            manifest["profile"] = "gpu"
+            result = evaluate_manifest(manifest, root)
+            self.assertFalse(result["checks"]["required_checks"])
+            self.assertFalse(result["passed"])
+
+    def test_evidence_path_cannot_escape_preflight_directory(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / "preflight"
+            root.mkdir()
+            manifest = evidence_fixture(root)
+            outside = root.parent / "outside.log"
+            outside.write_text("outside\n", encoding="utf-8")
+            manifest["evidence_files"][0] = {
+                "path": "../outside.log",
+                "bytes": outside.stat().st_size,
+                "sha256": "0" * 64,
+            }
+            result = evaluate_manifest(manifest, root)
+            self.assertFalse(
+                result["checks"]["evidence_content_unchanged"]
+            )
+            self.assertFalse(result["passed"])
 
 
 if __name__ == "__main__":

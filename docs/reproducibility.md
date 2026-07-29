@@ -182,9 +182,16 @@ python3 scripts/run_release_preflight.py \
   --dist-dir build/release_v0.2.0/dist \
   --output-dir build/release_v0.2.0/preflight \
   --require-clean
+python3 scripts/validate_release_preflight.py \
+  build/release_v0.2.0/preflight \
+  --profile gpu --commit "$(git rev-parse HEAD)"
 ```
 
 The output directory contains `manifest.json`, `report.md`, per-gate logs,
-registration CSV/Markdown, and the Python artifact SHA256 manifest. GitHub
-Build, manylinux wheel, ROS 2, and final evidence checks remain explicit
+registration CSV/Markdown, and the Python artifact SHA256 manifest. The
+manifest content-addresses every per-gate log and generated evidence file; the
+independent validator rejects missing, replaced, or post-run edited content,
+profile downgrades, dirty runs, and commit mismatches. `report.md` is a
+human-readable rendering and is not a substitute for the manifest gate.
+GitHub Build, manylinux wheel, ROS 2, and final evidence checks remain explicit
 external gates and must be attached to the same release-candidate commit.
