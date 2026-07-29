@@ -7,7 +7,7 @@ release evidence. It orchestrates three deliberately distinct modes:
 |---|---|---|
 | `closed_loop` | Commands affect subsequent simulated robot state | `run_cudanav_closed_loop.py` |
 | `real_rosbag_shadow` | CUDA controller is evaluated against recorded motion; not closed loop | `run_cudanav_rosbag_replay.py` |
-| `multi_gpu` | The closed-loop smoke reproduces across physical GPU models | `run_cudanav_multi_gpu.py` |
+| `multi_gpu` | ROS smoke or native 30-traversal release reproduces across physical GPU UUIDs/models | `run_cudanav_multi_gpu.py` |
 
 The aggregate gate never relabels recorded/shadow evidence as closed-loop
 success. It independently reruns every child validator and requires identical

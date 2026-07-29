@@ -117,6 +117,91 @@ def manifest_sha256(root: Path, relative: str) -> str:
     ).hexdigest()
 
 
+def write_native_run(
+    root: Path,
+    relative: str,
+    gpu_name: str,
+    gpu_uuid: str,
+    physical_index: str = "0",
+) -> None:
+    run = root / relative
+    run.mkdir(parents=True)
+    result = {
+        "scenario": "cudanav_s_course",
+        "stages": [
+            "gpu_kiss_icp",
+            "gpu_voxel_mapping",
+            "gpu_esdf",
+            "cuda_mppi",
+            "command_driven_plant",
+        ],
+        "claims": {
+            "native_gpu_core_closed_loop": True,
+            "ros2_runtime": False,
+            "real_data": False,
+        },
+        "goal_reached": True,
+        "ground_truth_goal_distance_m": 0.2,
+        "collision_count": 0,
+        "odometry_drift_percent": 0.1,
+        "command_deadline_miss_rate": 0.0,
+        "causal_command_effect": True,
+        "command_effect_distance_m": 330.0,
+        "invalid_commands": 0,
+        "minimum_inliers": 100,
+        "final_observed_voxels": 1000,
+        "maximum_occupied_cells": 100,
+        "all_colliding_evaluations": 0,
+        "minimum_nonzero_valid_rollout_ratio": 0.1,
+        "ground_truth_distance_m": 330.0,
+        "frames": 7000,
+        "simulated_duration_s": 700.0,
+        "traversals_requested": 30,
+        "traversals_completed": 30,
+        "traversal_frames": [233] * 30,
+        "gpu": {"name": gpu_name, "driver_version": 12000},
+        "quality_pass": True,
+    }
+    result_path = run / "result.json"
+    trajectory_path = run / "trajectory.csv"
+    result_path.write_text(json.dumps(result) + "\n", encoding="utf-8")
+    trajectory_path.write_text("step,x\n0,0\n", encoding="utf-8")
+
+    def artifact(path: Path) -> dict:
+        return {
+            "path": path.name,
+            "bytes": path.stat().st_size,
+            "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+        }
+
+    checks = {
+        "release": True,
+        "gpu_binding": True,
+        "clean_checkout": True,
+    }
+    manifest = {
+        "schema_version": 1,
+        "profile": "release",
+        "source_commit": "a" * 40,
+        "source_digest": "b" * 64,
+        "git_dirty": False,
+        "gpu_identity": {
+            "physical_index": physical_index,
+            "name": gpu_name,
+            "uuid": gpu_uuid,
+            "driver_version": "999.0",
+        },
+        "checks": checks,
+        "artifacts": {
+            "result": artifact(result_path),
+            "trajectory": artifact(trajectory_path),
+        },
+    }
+    (run / "manifest.json").write_text(
+        json.dumps(manifest) + "\n", encoding="utf-8"
+    )
+
+
 class MultiGpuEvidenceTest(unittest.TestCase):
     def test_visible_device_filter_records_physical_gpu(self):
         output = (
@@ -286,6 +371,51 @@ class MultiGpuEvidenceTest(unittest.TestCase):
                     output,
                     minimum_gpu_devices=1,
                     minimum_gpu_models=1,
+                )
+
+    def test_native_release_import_requires_two_physical_models(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source_a = root / "native_a"
+            source_b = root / "native_b"
+            output = root / "suite"
+            output.mkdir()
+            write_native_run(root, "native_a", "GPU A", "GPU-native-a")
+            write_native_run(root, "native_b", "GPU B", "GPU-native-b")
+            suite = import_suite(
+                [source_a, source_b],
+                output,
+                minimum_gpu_devices=2,
+                minimum_gpu_models=2,
+                evidence_kind="native-release",
+            )
+            self.assertEqual(suite["profile"], "release")
+            self.assertEqual(suite["evidence_kind"], "native_release")
+            gate = evaluate_multi_gpu_suite(suite, output)
+            self.assertTrue(gate["passed"], gate)
+
+    def test_native_release_import_rejects_dirty_evidence(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "native"
+            output = root / "suite"
+            output.mkdir()
+            write_native_run(root, "native", "GPU A", "GPU-native-a")
+            manifest_path = source / "manifest.json"
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            manifest["git_dirty"] = True
+            manifest_path.write_text(
+                json.dumps(manifest) + "\n", encoding="utf-8"
+            )
+            with self.assertRaisesRegex(
+                ValueError, "failed native release validation"
+            ):
+                import_suite(
+                    [source],
+                    output,
+                    minimum_gpu_devices=1,
+                    minimum_gpu_models=1,
+                    evidence_kind="native-release",
                 )
 
 

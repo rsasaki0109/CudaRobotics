@@ -103,7 +103,7 @@ real recorded data, and multi-GPU reproducibility prove different claims:
 | Real dataset pipeline | `scripts/run_cudanav_real_dataset_pipeline.py` | Acquisition inspection, derived Path, materialization, and replay use one content-bound plan |
 | Real-bag GPU KISS-ICP | `scripts/run_cudanav_kiss_icp_real.py` | Recorded PointCloud2 GPU odometry passes reference and artifact-integrity gates |
 | Real-data all-GPU core shadow | `scripts/run_cudanav_real_gpu_stack.py` | KISS-ICP, voxel mapping, ESDF inflation, and CUDA MPPI share one content-bound real sequence |
-| GPU matrix | `scripts/run_cudanav_multi_gpu.py` | The same commit and config reproduce across physical GPU models |
+| GPU matrix | `scripts/run_cudanav_multi_gpu.py` | ROS smoke or native 30-traversal release reproduces from the same commit/config across physical GPU UUIDs and models |
 | Full autonomy suite | `scripts/run_autonomy_suite.py` | Closed-loop, recorded/shadow, and multi-GPU gates from one content-bound release entry point |
 
 All three runners write self-describing manifests and refuse dirty release
