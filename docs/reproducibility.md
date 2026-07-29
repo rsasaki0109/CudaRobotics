@@ -121,9 +121,10 @@ The four-stage native shadow gate is documented in
 applied, so it remains distinct from ROS 2 and closed-loop evidence.
 The native S-course gate is documented in
 [`cudanav_gpu_closed_loop.md`](cudanav_gpu_closed_loop.md), with a checked-in
-[GPU result](results/cudanav_gpu_closed_loop_2026-07-29.md). Its commands are
-applied to the simulated plant, but it remains distinct from the ROS 2
-release-profile gate and from real-data evidence.
+[30-traversal GPU release result](results/cudanav_gpu_closed_loop_release_2026-07-29.md).
+Its commands are applied continuously to the simulated plant for 1059.4
+simulated seconds, but it remains distinct from the ROS 2 release-profile gate
+with retained MCAP/video and from real-data evidence.
 The aggregate release workflow is documented in
 [`cudanav_autonomy_suite.md`](cudanav_autonomy_suite.md).
 

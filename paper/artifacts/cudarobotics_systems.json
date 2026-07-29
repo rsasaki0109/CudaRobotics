@@ -60,15 +60,17 @@
     },
     {
       "id": "native_gpu_core_closed_loop",
-      "statement": "The native all-GPU core closes the loop on the deterministic CudaNav S-course: GPU KISS-ICP state drives voxel mapping, ESDF, and CUDA MPPI commands that move the plant to within 0.277 m of the goal with zero collisions and 0.221 percent final odometry drift.",
+      "statement": "The native all-GPU core completes 30 continuous alternating S-course traversals over 1059.4 simulated seconds and 352.75 m: GPU KISS-ICP state drives voxel mapping, ESDF, and CUDA MPPI commands with zero collisions, 0.0035 percent final odometry drift, and zero deadline misses.",
       "submission_required": true,
       "status": "supported",
       "evidence": [
         "native_gpu_closed_loop_smoke",
-        "native_gpu_closed_loop_report"
+        "native_gpu_closed_loop_report",
+        "native_gpu_closed_loop_release",
+        "native_gpu_closed_loop_release_report"
       ],
       "limitations": [
-        "This is a 22.5-second deterministic native simulation on one GPU model, not the ten-minute ROS 2 release profile or a multi-GPU result.",
+        "This is a continuous native simulation on one GPU model, not a ROS 2 runtime or multi-GPU result.",
         "The plant and LiDAR are synthetic; this does not upgrade the separate real-data shadow evidence into a real-world closed-loop claim."
       ]
     },
@@ -89,12 +91,13 @@
       "id": "closed_loop_autonomy",
       "statement": "CudaNav completes the deterministic S-course for at least ten minutes with zero collisions, less than one percent odometry drift, and less than one percent controller deadline misses.",
       "submission_required": true,
-      "status": "planned",
+      "status": "partial",
       "evidence": [
+        "native_gpu_closed_loop_release",
         "closed_loop_release"
       ],
       "limitations": [
-        "No release-profile ROS 2 GPU run is currently attached."
+        "The native GPU core passes the 30-traversal and ten-minute numerical contract, but no release-profile ROS 2 GPU run with retained MCAP and video is currently attached."
       ]
     },
     {
@@ -649,6 +652,119 @@
           "path": "docs/results/cudanav_gpu_closed_loop_2026-07-29.md",
           "normalization": "text_lf",
           "sha256": "6f77c88d5b0e0bf49687c815a5c81e9deec94bae87ffb8febb69b50bf2679a81"
+        }
+      ]
+    },
+    {
+      "id": "native_gpu_closed_loop_release",
+      "status": "complete",
+      "kind": "json_assertions",
+      "generator_command": [
+        "python3",
+        "scripts/run_cudanav_gpu_closed_loop.py",
+        "--profile",
+        "release",
+        "--output-dir",
+        "build/cudanav_gpu_closed_loop_release_b2c4907",
+        "--publish-json",
+        "docs/results/cudanav_gpu_closed_loop_release_2026-07-29.json",
+        "--publish-markdown",
+        "docs/results/cudanav_gpu_closed_loop_release_2026-07-29.md"
+      ],
+      "artifacts": [
+        {
+          "path": "docs/results/cudanav_gpu_closed_loop_release_2026-07-29.json",
+          "normalization": "text_lf",
+          "sha256": "d183566cf8f15979ddebfffff0287f974f4dc7d3d1125c5e9c02a911c7766919"
+        }
+      ],
+      "assertions": [
+        {
+          "json_path": "source_commit",
+          "op": "eq",
+          "value": "b2c490799ad098c5cc0f26127c18c8d8d186ccf2"
+        },
+        {
+          "json_path": "profile",
+          "op": "eq",
+          "value": "release"
+        },
+        {
+          "json_path": "claims.native_gpu_core_closed_loop",
+          "op": "eq",
+          "value": true
+        },
+        {
+          "json_path": "claims.ros2_runtime",
+          "op": "eq",
+          "value": false
+        },
+        {
+          "json_path": "metrics.traversals_requested",
+          "op": "eq",
+          "value": 30
+        },
+        {
+          "json_path": "metrics.traversals_completed",
+          "op": "eq",
+          "value": 30
+        },
+        {
+          "json_path": "metrics.simulated_duration_s",
+          "op": "ge",
+          "value": 600.0
+        },
+        {
+          "json_path": "metrics.collision_count",
+          "op": "eq",
+          "value": 0
+        },
+        {
+          "json_path": "metrics.odometry_drift_percent",
+          "op": "lt",
+          "value": 1.0
+        },
+        {
+          "json_path": "metrics.command_deadline_miss_rate",
+          "op": "lt",
+          "value": 0.01
+        },
+        {
+          "json_path": "metrics.causal_command_effect",
+          "op": "eq",
+          "value": true
+        },
+        {
+          "json_path": "metrics.all_colliding_evaluations",
+          "op": "le",
+          "value": 90
+        },
+        {
+          "json_path": "metrics.quality_pass",
+          "op": "eq",
+          "value": true
+        }
+      ]
+    },
+    {
+      "id": "native_gpu_closed_loop_release_report",
+      "status": "complete",
+      "kind": "file_set",
+      "generator_command": [
+        "python3",
+        "scripts/run_cudanav_gpu_closed_loop.py",
+        "--profile",
+        "release",
+        "--output-dir",
+        "build/cudanav_gpu_closed_loop_release_b2c4907",
+        "--publish-markdown",
+        "docs/results/cudanav_gpu_closed_loop_release_2026-07-29.md"
+      ],
+      "artifacts": [
+        {
+          "path": "docs/results/cudanav_gpu_closed_loop_release_2026-07-29.md",
+          "normalization": "text_lf",
+          "sha256": "07c9959fa364718eec66d6943ed44277d686aa289b9939be08fecc44a8730f53"
         }
       ]
     },
