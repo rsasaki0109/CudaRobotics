@@ -89,6 +89,41 @@ class ContactSubmissionBundleTest(unittest.TestCase):
         finally:
             manuscript.write_bytes(original)
 
+    def test_anonymous_ieee_source_is_packaged(self) -> None:
+        source = self.output / "paper/latex/contact_rich_diff_mppi.tex"
+        bibliography = self.output / "paper/latex/references.bib"
+        text = source.read_text(encoding="utf-8")
+        self.assertIn(r"\documentclass[conference]{IEEEtran}", text)
+        self.assertIn(r"\author{\IEEEauthorblockN{Anonymous Authors}}", text)
+        self.assertIn("32,400-episode", text)
+        self.assertIn("p=0.000305", text.replace(r"\(", "").replace(r"\)", ""))
+        self.assertTrue(bibliography.is_file())
+        categories = {
+            item["path"]: item["category"] for item in self.manifest["files"]
+        }
+        self.assertEqual(
+            categories["paper/latex/contact_rich_diff_mppi.tex"],
+            "manuscript_source",
+        )
+        self.assertEqual(
+            categories["paper/latex/references.bib"], "bibliography"
+        )
+
+    def test_tampered_latex_source_is_rejected(self) -> None:
+        source = self.output / "paper/latex/contact_rich_diff_mppi.tex"
+        original = source.read_bytes()
+        try:
+            source.write_bytes(original + b"\n% tampered\n")
+            gate = load_bundle(self.manifest_path, COMMIT)
+            self.assertFalse(gate["valid"])
+            self.assertFalse(
+                gate["file_checks"][
+                    "paper/latex/contact_rich_diff_mppi.tex"
+                ]
+            )
+        finally:
+            source.write_bytes(original)
+
     def test_editorial_placeholders_are_valid_but_not_ready(self) -> None:
         diagnostic = dict(self.manifest)
         diagnostic.pop("validation", None)

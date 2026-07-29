@@ -21,6 +21,8 @@ ROOT = Path(__file__).resolve().parents[1]
 LEDGER = ROOT / "paper" / "artifacts" / "contact_rich_diff_mppi.json"
 PRIMARY_FILES = {
     "paper/diff_mppi_submission_draft.md": "manuscript",
+    "paper/latex/contact_rich_diff_mppi.tex": "manuscript_source",
+    "paper/latex/references.bib": "bibliography",
     "paper/contact_rich_diff_mppi_results.md": "generated_results",
     "paper/contact_rich_diff_mppi_plan.md": "plan",
     "docs/contact_diff_mppi_robustness.md": "protocol",
