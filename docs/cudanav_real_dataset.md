@@ -98,6 +98,25 @@ checks, and dataset-spec digest to the source-bag identity. The actual
 public-bag GPU shadow replay remains outstanding; the selection alone is
 intentionally `valid: true, ready: false`.
 
+After a clean-commit materialization passes, publish a portable summary without
+redistributing the bag or leaking machine-local paths:
+
+```bash
+python3 scripts/publish_cudanav_dataset_evidence.py \
+  --spec docs/cudanav_real_dataset_smoke.json \
+  --materialization build/cudanav_real_dataset/materialization.json \
+  --result-id cudanav_istanbul_materialization_2026-07-29 \
+  --output-json docs/results/cudanav_istanbul_materialization_2026-07-29.json \
+  --output-markdown \
+    docs/results/cudanav_istanbul_materialization_2026-07-29.md
+```
+
+The publisher refuses a dirty worktree or existing output. Its JSON retains
+the commit, public file identity, database digest, topic counts, derived
+sidecar digests and pose statistics, every materialization check, and hashes
+of the generating contracts. It explicitly records `gpu_controller_run:
+false` and `closed_loop: false`.
+
 For the quality gate, the dependency-free decoder reads PointCloud2 fields by
 name and datatype. It measures horizontal clearance inside the declared
 front ±30 degree, z `[-0.5, 2.5]` metre, and range `[0.05, 50]` metre filter.

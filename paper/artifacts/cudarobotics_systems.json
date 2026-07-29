@@ -139,7 +139,7 @@
         {
           "path": ".github/workflows/ros2_cuda_mppi.yml",
           "normalization": "text_lf",
-          "sha256": "a17b19eddd47b9d48a0b4917fe0146c75bee307324f7be2207989b74e64698db"
+          "sha256": "97c87a65452e710212f563a4d274a6767bddadd698239ee3b4f56294b19672f4"
         },
         {
           "path": "scripts/cudanav_ros_ci_evidence.py",
@@ -160,6 +160,16 @@
           "path": "scripts/run_cudanav_real_dataset_pipeline.py",
           "normalization": "text_lf",
           "sha256": "622596dadc1c5ce667ac9d829c8b3335df5e816eeb25c329dcab58e68dc74a4a"
+        },
+        {
+          "path": "scripts/publish_cudanav_dataset_evidence.py",
+          "normalization": "text_lf",
+          "sha256": "a2d87f9b35c93fb2579f59a8da5274f2fadfc79ddbd779a3efc98030a5aa7b4c"
+        },
+        {
+          "path": "scripts/test_publish_cudanav_dataset_evidence.py",
+          "normalization": "text_lf",
+          "sha256": "c5b722c116908da7970bdaebd94fb9fde5d02ce5a6e72fa868c00c59024ad63e"
         },
         {
           "path": "scripts/export_rosbag_motion.py",
