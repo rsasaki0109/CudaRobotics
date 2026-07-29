@@ -52,7 +52,13 @@ def evaluate_spec(spec: dict[str, Any]) -> dict[str, bool]:
         ).startswith("https://autowarefoundation.github.io/"),
         "acquisition_uri": (
             isinstance(acquisition, dict)
-            and str(acquisition.get("uri", "")).startswith("https://")
+            and acquisition.get("method") == "gdown_file"
+            and acquisition.get("file_id")
+            == "1uta5Xr_ftV4jERxPNVqooDvWerK0dn89"
+            and acquisition.get("uri")
+            == "https://drive.google.com/uc?id=1uta5Xr_ftV4jERxPNVqooDvWerK0dn89"
+            and acquisition.get("expected_database")
+            == "rosbag2_2024_09_11-17_53_54_0.db3"
             and acquisition.get("redistribution_authorized") is False
         ),
         "recorded_topics": (

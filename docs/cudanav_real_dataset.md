@@ -21,7 +21,9 @@ translation and yaw transform so the resulting trajectory starts in CudaNav's
   tree hashes.
 
 The source documentation does not grant this repository redistribution rights.
-Download a bag from the official folder and keep it outside release artifacts.
+The selected raw urban-evaluation file is fixed to Google Drive ID
+`1uta5Xr_ftV4jERxPNVqooDvWerK0dn89` and database
+`rosbag2_2024_09_11-17_53_54_0.db3`; keep it outside release artifacts.
 
 Validate the selection before downloading:
 
@@ -29,13 +31,27 @@ Validate the selection before downloading:
 python3 scripts/validate_cudanav_real_dataset.py
 ```
 
-Generate the rosbag2 sidecar and freeze both local inputs in a ROS 2 Jazzy
-environment:
+Download, inspect the SQLite topic table, and regenerate rosbag2 metadata in a
+ROS 2 Jazzy environment:
+
+```bash
+python3 -m pip install gdown
+python3 scripts/prepare_cudanav_istanbul_dataset.py \
+  --output-dir build/datasets/cudanav_istanbul \
+  --download \
+  --reindex
+```
+
+The inspection report records the exact DB size/SHA-256 and refuses missing,
+zero-count, or wrong-type PointCloud2, Odometry, and static-TF topics.
+
+Then generate the rosbag2 sidecar and freeze both local inputs:
 
 ```bash
 python3 scripts/derive_cudanav_path_sidecar.py \
-  --source-bag /data/istanbul_mapping_bag \
-  --database /data/istanbul_mapping_bag/rosbag2_0.db3 \
+  --source-bag build/datasets/cudanav_istanbul \
+  --database \
+    build/datasets/cudanav_istanbul/rosbag2_2024_09_11-17_53_54_0.db3 \
   --output-bag build/cudanav_real_dataset/path_sidecar \
   --report build/cudanav_real_dataset/path_generator.json \
   --materialization build/cudanav_real_dataset/materialization.json
