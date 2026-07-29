@@ -23,12 +23,14 @@ on:
       - scripts/run_cudanav_multi_gpu.py
       - scripts/run_cudanav_rosbag_replay.py
       - scripts/run_autonomy_suite.py
+      - scripts/publish_cudanav_systems_evidence.py
       - scripts/render_cudanav_trajectory.py
       - scripts/test_cudanav_autonomy_suite.py
       - scripts/test_cudanav_evidence.py
       - scripts/test_cudanav_multi_gpu.py
       - scripts/test_cudanav_rosbag_evidence.py
       - scripts/test_cudanav_ros_ci_evidence.py
+      - scripts/test_publish_cudanav_systems_evidence.py
       - scripts/validate_cudanav_closed_loop.py
       - scripts/validate_cudanav_multi_gpu.py
       - scripts/validate_cudanav_rosbag.py
@@ -62,12 +64,14 @@ on:
       - scripts/run_cudanav_multi_gpu.py
       - scripts/run_cudanav_rosbag_replay.py
       - scripts/run_autonomy_suite.py
+      - scripts/publish_cudanav_systems_evidence.py
       - scripts/render_cudanav_trajectory.py
       - scripts/test_cudanav_autonomy_suite.py
       - scripts/test_cudanav_evidence.py
       - scripts/test_cudanav_multi_gpu.py
       - scripts/test_cudanav_rosbag_evidence.py
       - scripts/test_cudanav_ros_ci_evidence.py
+      - scripts/test_publish_cudanav_systems_evidence.py
       - scripts/validate_cudanav_closed_loop.py
       - scripts/validate_cudanav_multi_gpu.py
       - scripts/validate_cudanav_rosbag.py
@@ -158,6 +162,7 @@ jobs:
           python ../scripts/test_cudanav_rosbag_evidence.py
           python ../scripts/test_cudanav_autonomy_suite.py
           python ../scripts/test_cudanav_ros_ci_evidence.py
+          python ../scripts/test_publish_cudanav_systems_evidence.py
           ros2 run cuda_voxel_costmap_layer plugin_load_test
           ros2 run cuda_mppi_controller plugin_load_test
           ros2 run cuda_mppi_controller parameter_validation_test

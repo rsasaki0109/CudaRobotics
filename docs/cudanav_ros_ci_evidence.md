@@ -54,3 +54,7 @@ its workflow run URL, record its SHA-256 in
 The systems ledger must remain `ready: false` until the release-profile
 closed-loop, real-rosbag shadow, and two-model physical GPU artifacts also
 validate on that same commit and controller configuration.
+
+When they do, use the systems publisher described in
+[`cudanav_autonomy_suite.md`](cudanav_autonomy_suite.md) to generate the
+portable summary, provenance, and report before updating the ledger.
