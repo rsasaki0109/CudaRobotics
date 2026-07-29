@@ -201,7 +201,7 @@
         {
           "path": ".github/workflows/ros2_cuda_mppi.yml",
           "normalization": "text_lf",
-          "sha256": "6426620bbbd7cc130274187fa330d5616295ce66a764e35ae16e4f63a2f70933"
+          "sha256": "cb67b0c350dc0300ca80c37dbfbf7850f121996217fedd56fe6595f862869e5e"
         },
         {
           "path": "scripts/cudanav_ros_ci_evidence.py",
