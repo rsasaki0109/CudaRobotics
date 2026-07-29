@@ -129,10 +129,11 @@
       "kind": "json_assertions",
       "generator_command": [
         "gh",
+        "workflow",
         "run",
-        "view",
-        "--json",
-        "conclusion,headSha,jobs"
+        "ros2_cuda_mppi.yml",
+        "--ref",
+        "PAPER_COMMIT"
       ]
     },
     {

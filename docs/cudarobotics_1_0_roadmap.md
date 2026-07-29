@@ -147,12 +147,20 @@ python3 scripts/run_cudanav_rosbag_replay.py \
   --profile release --output-dir build/cudanav_rosbag ...
 python3 scripts/run_cudanav_multi_gpu.py \
   --output-dir build/cudanav_multi_gpu ...
+gh workflow run ros2_cuda_mppi.yml --ref PAPER_COMMIT
+python3 scripts/validate_cudanav_ros_ci.py \
+  build/paper/ros_jazzy_ci/ros_jazzy_ci_evidence.json
 ```
 
 `run_autonomy_suite.py` orchestrates these three commands while preserving
 their separate evidence modes. Its aggregate validator refuses to collapse
 shadow replay into a closed-loop claim and requires one commit and controller
 configuration across the complete release suite.
+
+The ROS 2 workflow independently emits a downloadable, commit-bound Jazzy CI
+attestation after the build, plugin-load, parameter-validation, contract, and
+package-test gates pass. See
+[`cudanav_ros_ci_evidence.md`](cudanav_ros_ci_evidence.md).
 
 Each run must produce:
 

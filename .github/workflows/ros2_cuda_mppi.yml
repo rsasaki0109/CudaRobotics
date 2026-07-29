@@ -1,6 +1,7 @@
 name: ROS2 CUDA MPPI
 
 on:
+  workflow_dispatch:
   push:
     branches: [master]
     paths:
@@ -16,16 +17,22 @@ on:
       - scripts/cudanav_evidence.py
       - scripts/cudanav_multi_gpu.py
       - scripts/cudanav_rosbag_evidence.py
+      - scripts/cudanav_ros_ci_evidence.py
+      - scripts/cudanav_autonomy_suite.py
       - scripts/run_cudanav_closed_loop.py
       - scripts/run_cudanav_multi_gpu.py
       - scripts/run_cudanav_rosbag_replay.py
+      - scripts/run_autonomy_suite.py
       - scripts/render_cudanav_trajectory.py
+      - scripts/test_cudanav_autonomy_suite.py
       - scripts/test_cudanav_evidence.py
       - scripts/test_cudanav_multi_gpu.py
       - scripts/test_cudanav_rosbag_evidence.py
+      - scripts/test_cudanav_ros_ci_evidence.py
       - scripts/validate_cudanav_closed_loop.py
       - scripts/validate_cudanav_multi_gpu.py
       - scripts/validate_cudanav_rosbag.py
+      - scripts/validate_cudanav_ros_ci.py
       - include/cudarobotics/kiss_icp_gpu.hpp
       - src/gpu_kiss_icp.cu
       - include/cudarobotics/voxel_mapping_gpu.hpp
@@ -49,16 +56,22 @@ on:
       - scripts/cudanav_evidence.py
       - scripts/cudanav_multi_gpu.py
       - scripts/cudanav_rosbag_evidence.py
+      - scripts/cudanav_ros_ci_evidence.py
+      - scripts/cudanav_autonomy_suite.py
       - scripts/run_cudanav_closed_loop.py
       - scripts/run_cudanav_multi_gpu.py
       - scripts/run_cudanav_rosbag_replay.py
+      - scripts/run_autonomy_suite.py
       - scripts/render_cudanav_trajectory.py
+      - scripts/test_cudanav_autonomy_suite.py
       - scripts/test_cudanav_evidence.py
       - scripts/test_cudanav_multi_gpu.py
       - scripts/test_cudanav_rosbag_evidence.py
+      - scripts/test_cudanav_ros_ci_evidence.py
       - scripts/validate_cudanav_closed_loop.py
       - scripts/validate_cudanav_multi_gpu.py
       - scripts/validate_cudanav_rosbag.py
+      - scripts/validate_cudanav_ros_ci.py
       - include/cudarobotics/kiss_icp_gpu.hpp
       - src/gpu_kiss_icp.cu
       - include/cudarobotics/voxel_mapping_gpu.hpp
@@ -143,9 +156,48 @@ jobs:
           python ../scripts/test_cudanav_evidence.py
           python ../scripts/test_cudanav_multi_gpu.py
           python ../scripts/test_cudanav_rosbag_evidence.py
+          python ../scripts/test_cudanav_autonomy_suite.py
+          python ../scripts/test_cudanav_ros_ci_evidence.py
           ros2 run cuda_voxel_costmap_layer plugin_load_test
           ros2 run cuda_mppi_controller plugin_load_test
           ros2 run cuda_mppi_controller parameter_validation_test
           colcon test --packages-select cuda_robotics_common cuda_kiss_icp cuda_voxel_mapping cuda_esdf cuda_voxel_costmap_layer cuda_nav_bringup \
             --event-handlers console_direct+
           colcon test-result --verbose
+
+      - name: Create ROS 2 Jazzy evidence attestation
+        shell: bash
+        run: |
+          set -eo pipefail
+          test -z "$(git status --porcelain)"
+          CUDA_COMPILER=$(/usr/local/cuda-12.6/bin/nvcc --version | tail -n 1)
+          python scripts/cudanav_ros_ci_evidence.py \
+            --output build/ros_jazzy_ci_evidence.json \
+            --runner-image ubuntu-24.04 \
+            --ros-distro jazzy \
+            --cuda-toolkit 12.6 \
+            --cuda-compiler "$CUDA_COMPILER" \
+            --package cuda_robotics_msgs \
+            --package cuda_robotics_common \
+            --package cuda_kiss_icp \
+            --package cuda_voxel_mapping \
+            --package cuda_esdf \
+            --package cuda_voxel_costmap_layer \
+            --package cuda_mppi_controller \
+            --package cuda_nav_bringup \
+            --check clean_checkout \
+            --check colcon_build \
+            --check python_evidence_contracts \
+            --check costmap_plugin_load \
+            --check controller_plugin_load \
+            --check controller_parameter_validation \
+            --check colcon_tests
+          python scripts/validate_cudanav_ros_ci.py \
+            build/ros_jazzy_ci_evidence.json
+
+      - name: Upload ROS 2 Jazzy evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: ros-jazzy-ci-evidence-${{ github.sha }}
+          path: build/ros_jazzy_ci_evidence.json
+          if-no-files-found: error
