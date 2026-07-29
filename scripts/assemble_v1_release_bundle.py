@@ -11,15 +11,7 @@ import shutil
 from typing import Any
 
 from v1_release_attestation import MODES, sha256_file
-from v1_release_bundle import evaluate_bundle
-
-
-FILENAMES = {
-    "quickstart_15_minute_evidence": "quickstart.json",
-    "cudanav_release_evidence": "cudanav.json",
-    "docker_gpu_evidence": "docker_gpu.json",
-    "documentation_deployment": "documentation.json",
-}
+from v1_release_bundle import FILENAMES, evaluate_bundle
 
 
 def encoded(payload: dict[str, Any]) -> str:

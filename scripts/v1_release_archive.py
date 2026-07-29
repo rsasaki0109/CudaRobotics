@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Create and validate canonical ZIPs of v0.2.0 release evidence bundles."""
+"""Create and validate canonical ZIPs of post-tag v1 release evidence."""
 
 from __future__ import annotations
 
@@ -7,25 +7,32 @@ from pathlib import Path
 from typing import Any
 
 from canonical_evidence_archive import (
-    ARCHIVE_TIMESTAMP,
     MAX_TOTAL_BYTES,
-    REGULAR_FILE_MODE,
     create_archive as create_canonical_archive,
     evaluate_archive as evaluate_canonical_archive,
     load_archive as load_canonical_archive,
     read_checksum,
-    sha256_file,
     write_checksum,
 )
-from v0_2_release_bundle import load_bundle
+from v1_release_bundle import load_bundle
 
 
-ARCHIVE_ROOT = "cudarobotics-v0.2.0-evidence"
+ARCHIVE_ROOT = "cudarobotics-v1.0.0-evidence"
 
 
-def _bundle_loader(expected_commit: str):
+def _bundle_loader(
+    *,
+    target_version: str,
+    target_tag: str,
+    expected_commit: str,
+):
     def load(path: Path) -> dict[str, Any]:
-        return load_bundle(path, expected_commit)
+        return load_bundle(
+            path,
+            target_version=target_version,
+            target_tag=target_tag,
+            expected_commit=expected_commit,
+        )
 
     return load
 
@@ -33,14 +40,21 @@ def _bundle_loader(expected_commit: str):
 def create_archive(
     bundle_path: Path,
     archive_path: Path,
+    *,
+    target_version: str,
+    target_tag: str,
     expected_commit: str,
 ) -> dict[str, Any]:
     bundle = bundle_path.resolve()
     if bundle.name != "bundle.json":
         raise ValueError("bundle manifest must be named bundle.json")
-    loader = _bundle_loader(expected_commit)
+    loader = _bundle_loader(
+        target_version=target_version,
+        target_tag=target_tag,
+        expected_commit=expected_commit,
+    )
     gate = loader(bundle)
-    if not gate["valid"] or not gate["ready"]:
+    if not gate["passed"]:
         failed = [
             name for name, passed in gate.get("checks", {}).items() if not passed
         ]
@@ -56,9 +70,7 @@ def create_archive(
         archive_root=ARCHIVE_ROOT,
         manifest_relative="bundle.json",
         validate_manifest=loader,
-        manifest_passes=lambda payload: bool(
-            payload.get("valid") and payload.get("ready")
-        ),
+        manifest_passes=lambda payload: payload.get("passed") is True,
     )
     if not validation["valid"]:
         failed = [
@@ -72,20 +84,24 @@ def create_archive(
 
 def evaluate_archive(
     archive_path: Path,
-    expected_commit: str,
     *,
+    target_version: str,
+    target_tag: str,
+    expected_commit: str,
     expected_sha256: str | None = None,
     max_total_bytes: int = MAX_TOTAL_BYTES,
 ) -> dict[str, Any]:
-    loader = _bundle_loader(expected_commit)
+    loader = _bundle_loader(
+        target_version=target_version,
+        target_tag=target_tag,
+        expected_commit=expected_commit,
+    )
     return evaluate_canonical_archive(
         archive_path,
         archive_root=ARCHIVE_ROOT,
         manifest_relative="bundle.json",
         validate_manifest=loader,
-        manifest_passes=lambda payload: bool(
-            payload.get("valid") and payload.get("ready")
-        ),
+        manifest_passes=lambda payload: payload.get("passed") is True,
         expected_sha256=expected_sha256,
         max_total_bytes=max_total_bytes,
     )
@@ -93,20 +109,24 @@ def evaluate_archive(
 
 def load_archive(
     archive_path: Path,
-    expected_commit: str,
     *,
+    target_version: str,
+    target_tag: str,
+    expected_commit: str,
     checksum_path: Path | None = None,
     max_total_bytes: int = MAX_TOTAL_BYTES,
 ) -> dict[str, Any]:
-    loader = _bundle_loader(expected_commit)
+    loader = _bundle_loader(
+        target_version=target_version,
+        target_tag=target_tag,
+        expected_commit=expected_commit,
+    )
     return load_canonical_archive(
         archive_path,
         archive_root=ARCHIVE_ROOT,
         manifest_relative="bundle.json",
         validate_manifest=loader,
-        manifest_passes=lambda payload: bool(
-            payload.get("valid") and payload.get("ready")
-        ),
+        manifest_passes=lambda payload: payload.get("passed") is True,
         checksum_path=checksum_path,
         max_total_bytes=max_total_bytes,
     )
@@ -114,13 +134,9 @@ def load_archive(
 
 __all__ = [
     "ARCHIVE_ROOT",
-    "ARCHIVE_TIMESTAMP",
-    "MAX_TOTAL_BYTES",
-    "REGULAR_FILE_MODE",
     "create_archive",
     "evaluate_archive",
     "load_archive",
     "read_checksum",
-    "sha256_file",
     "write_checksum",
 ]

@@ -127,9 +127,34 @@ python3 scripts/validate_v1_support_matrix.py \
   --require-ready \
   --evidence-bundle build/v1_release_bundle/bundle.json \
   --release-commit "$RELEASE_COMMIT"
+python3 scripts/archive_v1_release_bundle.py \
+  build/v1_release_bundle/bundle.json \
+  --output build/cudarobotics-v1.0.0-evidence.zip \
+  --commit "$RELEASE_COMMIT"
+python3 scripts/validate_v1_release_archive.py \
+  build/cudarobotics-v1.0.0-evidence.zip \
+  --checksum build/cudarobotics-v1.0.0-evidence.zip.sha256 \
+  --commit "$RELEASE_COMMIT"
 ```
 
-Attach the complete bundle directory to the GitHub Release. The validator
-requires all four hashes, all four subject commits, and the bundle commit to
-equal the immutable `v1.0.0` commit. This avoids an impossible Git
-self-reference while keeping the tagged source and its evidence inseparable.
+The bundle validator requires its exact five-file inventory, all four hashes,
+all four subject commits, and the bundle commit to equal the immutable
+`v1.0.0` commit. The canonical ZIP uses sorted members, fixed timestamps and
+permissions, and stored payloads. Attach it and its checksum, then re-download
+and validate the public bytes:
+
+```bash
+gh release upload v1.0.0 \
+  build/cudarobotics-v1.0.0-evidence.zip \
+  build/cudarobotics-v1.0.0-evidence.zip.sha256
+gh release download v1.0.0 \
+  --pattern 'cudarobotics-v1.0.0-evidence.zip*' \
+  --dir build/v1_downloaded_evidence
+python3 scripts/validate_v1_release_archive.py \
+  build/v1_downloaded_evidence/cudarobotics-v1.0.0-evidence.zip \
+  --checksum build/v1_downloaded_evidence/cudarobotics-v1.0.0-evidence.zip.sha256 \
+  --commit "$RELEASE_COMMIT"
+```
+
+This avoids an impossible Git self-reference while keeping the tagged source
+and its post-tag evidence inseparable and independently downloadable.

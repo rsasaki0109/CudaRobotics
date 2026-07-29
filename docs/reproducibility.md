@@ -275,3 +275,12 @@ members, fixed timestamps and permissions, and stored payloads make the ZIP
 byte-reproducible. `scripts/validate_v0_2_release_archive.py` verifies the
 sidecar, rejects duplicate, unsafe, oversized, or non-canonical members,
 extracts only through checked paths, and reruns the full bundle validator.
+
+The same canonical archive core is used by the post-tag v1 evidence path.
+After the four immutable-tag attestations pass
+`scripts/assemble_v1_release_bundle.py`,
+`scripts/archive_v1_release_bundle.py` produces
+`cudarobotics-v1.0.0-evidence.zip` and its checksum.
+`scripts/validate_v1_release_archive.py` reopens the exact public attachment,
+enforces the five-file bundle inventory, and proves all four attestations name
+the same `v1.0.0` commit.
