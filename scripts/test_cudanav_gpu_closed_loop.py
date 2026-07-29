@@ -31,6 +31,10 @@ def passing_result() -> dict:
         "minimum_inliers": 100,
         "final_observed_voxels": 1000,
         "maximum_occupied_cells": 100,
+        "all_colliding_evaluations": 0,
+        "minimum_nonzero_valid_rollout_ratio": 0.1,
+        "ground_truth_distance_m": 10.0,
+        "frames": 220,
         "gpu": {"name": "GPU fixture", "driver_version": 12000},
         "quality_pass": True,
     }

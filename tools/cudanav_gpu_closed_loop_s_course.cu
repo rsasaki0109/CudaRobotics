@@ -276,11 +276,12 @@ int main(int argc, char** argv) {
     mppi_params.v_max = 0.55f;
     mppi_params.v_min = 0.0f;
     mppi_params.w_max = 1.9f;
-    mppi_params.costmap_weight = 5.0f;
-    mppi_params.path_weight = 14.0f;
-    mppi_params.path_follow_weight = 7.0f;
-    mppi_params.path_angle_weight = 0.5f;
-    mppi_params.distance_field_weight = 0.0f;
+    mppi_params.costmap_weight = 8.0f;
+    mppi_params.path_weight = 25.0f;
+    mppi_params.path_follow_weight = 10.0f;
+    mppi_params.path_angle_weight = 0.75f;
+    mppi_params.distance_field_weight = 3.0f;
+    mppi_params.distance_field_cutoff = 0.75f;
     cuda_mppi_controller::MppiGpu mppi(mppi_params);
 
     std::ofstream csv(run.csv);
@@ -429,7 +430,9 @@ int main(int argc, char** argv) {
       goal_reached && collisions == 0 && goal_distance <= 0.30 &&
       drift_percent < 5.0 && deadline_miss_rate < 0.05 && causal &&
       invalid_commands == 0 && final_observed_voxels >= 500 &&
-      maximum_occupied_cells >= 10 && minimum_inliers >= 30;
+      maximum_occupied_cells >= 10 && minimum_inliers >= 30 &&
+      all_colliding <= 3 && minimum_nonzero_valid_ratio >= 0.01f &&
+      truth_distance <= 13.0 && frames <= 400;
 
     std::ofstream json(run.json);
     if (!json) throw std::runtime_error("cannot open JSON");
