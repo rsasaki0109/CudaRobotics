@@ -16,6 +16,22 @@ MPPI commands are evaluated against the live map but are not applied to the
 recorded vehicle or a simulator. This is therefore real-data all-GPU shadow
 evidence, not ROS 2 runtime or closed-loop evidence.
 
+## Timed scan contract
+
+The native stack accepts version-1 XYZ sequences for smoke testing and
+version-2 XYZT sequences for motion-compensated evidence. For version 2, the
+KISS-ICP stage normalizes each frame's recorded point timestamps, applies the
+previous scan-to-scan SE(3) motion on the GPU, and passes the same deskewed
+points to voxel mapping. The report binds the sequence version, number of
+deskewed frames, point-time-span p95, and deskew GPU time.
+
+Release mode requires a dataset specification with a real scalar per-point
+time field and unit, valid timing on every selected frame, version-2 export,
+and deskew on every processed frame. The current localization-only Istanbul
+smoke PointCloud2 is XYZ-only, so it remains valid smoke evidence but is an
+intentional negative input for the release timing gate. No timestamp is
+inferred from point ordering.
+
 ## Run
 
 Build the reusable cores and native runner:
@@ -84,9 +100,10 @@ at most 0.05 m/s. Non-blocked evaluations must retain at least a 1% valid
 rollout ratio. The report preserves the number of all-colliding and retreating
 evaluations rather than silently removing them.
 
-The 120-second release profile requires at least 100 MPPI evaluations, tightens
-ATE and drift gates to 3 m and 5%, and permits at most six bounded safety
-interventions. A smoke PASS is not a release-profile claim.
+The 120-second release profile requires timed version-2 scans, deskew on every
+frame, at least 100 MPPI evaluations, tightens ATE and drift gates to 3 m and
+5%, and permits at most six bounded safety interventions. A smoke PASS is not
+a release-profile claim.
 
 The checked-in smoke result is
 [`results/cudanav_real_gpu_stack_2026-07-29.md`](results/cudanav_real_gpu_stack_2026-07-29.md);

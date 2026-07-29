@@ -14,24 +14,50 @@ from test_export_rosbag_motion import Writer
 
 
 def pointcloud(
-    points: list[tuple[float, float, float]], sec: int = 12
+    points: list[tuple[float, float, float]],
+    sec: int = 12,
+    *,
+    point_times: list[float] | None = None,
+    rings: list[int] | None = None,
 ) -> bytes:
+    if point_times is not None and len(point_times) != len(points):
+        raise ValueError("point_times length mismatch")
+    if rings is not None and len(rings) != len(points):
+        raise ValueError("rings length mismatch")
     writer = Writer()
     writer.add("i", 4, sec)
     writer.add("I", 4, 345)
     writer.string("pandar")
     writer.add("I", 4, 1)
     writer.add("I", 4, len(points))
-    writer.add("I", 4, 3)
-    for name, offset in (("x", 0), ("y", 4), ("z", 8)):
+    fields = [("x", 0, 7), ("y", 4, 7), ("z", 8, 7)]
+    point_step = 12
+    if point_times is not None:
+        fields.append(("time", point_step, 7))
+        point_step += 4
+    if rings is not None:
+        fields.append(("ring", point_step, 4))
+        point_step += 2
+    point_step = (point_step + 3) // 4 * 4
+    writer.add("I", 4, len(fields))
+    for name, offset, datatype in fields:
         writer.string(name)
         writer.add("I", 4, offset)
-        writer.add("B", 1, 7)
+        writer.add("B", 1, datatype)
         writer.add("I", 4, 1)
     writer.add("B", 1, 0)
-    writer.add("I", 4, 12)
-    writer.add("I", 4, 12 * len(points))
-    payload = b"".join(struct.pack("<3f", *item) for item in points)
+    writer.add("I", 4, point_step)
+    writer.add("I", 4, point_step * len(points))
+    payload = bytearray(point_step * len(points))
+    for index, item in enumerate(points):
+        base = index * point_step
+        struct.pack_into("<3f", payload, base, *item)
+        offset = 12
+        if point_times is not None:
+            struct.pack_into("<f", payload, base + offset, point_times[index])
+            offset += 4
+        if rings is not None:
+            struct.pack_into("<H", payload, base + offset, rings[index])
     writer.add("I", 4, len(payload))
     writer.data.extend(payload)
     writer.add("B", 1, 1)

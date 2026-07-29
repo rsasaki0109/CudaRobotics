@@ -8,6 +8,27 @@ GNSS `PoseStamped` sequence without requiring a ROS installation.
 The result is real-sensor GPU odometry evidence. It is not a CUDA MPPI
 controller run, a ROS integration result, or closed-loop autonomy evidence.
 
+## Point timing and deskew contract
+
+The exporter has two explicit sequence formats:
+
+- version 1 stores XYZ only and is accepted by the smoke profile;
+- version 2 stores XYZ plus a finite per-point relative timestamp in seconds.
+
+The release profile is fail-closed: its dataset specification must name a
+scalar PointCloud2 time field and unit, every selected frame must have a time
+span between 1 microsecond and 1 second, the exporter must emit version 2, and
+the native runner must GPU-deskew every frame. A scalar ring field may also be
+declared and is preserved in the evidence contract, although the current
+deskew kernel does not require it.
+
+The localization-only Istanbul smoke topic contains only `x`, `y`, and `z` in
+`base_link`; it has no per-point time or ring field. It is therefore useful
+for the bounded version-1 smoke result but cannot satisfy the release-profile
+deskew gate. A release run requires a raw PointCloud2 source with recorded
+per-point timing. The harness reports this limitation instead of inventing
+timestamps from point order.
+
 ## Build and run
 
 Configure and build the native sequence runner:
@@ -42,7 +63,8 @@ The smoke profile uses 300 frames over 30 seconds and requires:
 - final XY drift at most 10% of the reference distance;
 - at least 30 scan-to-map inliers on every aligned frame.
 
-The 120-second release profile tightens those gates to 3 m, 5%, and 100
+The 120-second release profile additionally requires timed version-2 input and
+GPU deskew on every frame, and tightens those gates to 3 m, 5%, and 100
 inliers respectively. A passing smoke result is not a release-profile claim.
 
 Validate a retained local run against its source commit:

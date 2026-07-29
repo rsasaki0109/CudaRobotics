@@ -13,13 +13,24 @@ import statistics
 import struct
 from typing import Any
 
-from analyze_pointcloud2_clearance import parse_pointcloud2, xyz_points
+from analyze_pointcloud2_clearance import (
+    parse_pointcloud2,
+    point_field_values,
+    xyz_points,
+)
 from cudanav_rosbag_evidence import sha256_file
 from export_rosbag_motion import messages, pose_parser, topic_type
 
 
 MAGIC = b"CRKICP1\x00"
 VERSION = 1
+TIMED_VERSION = 2
+TIME_UNIT_SECONDS = {
+    "seconds": 1.0,
+    "milliseconds": 1e-3,
+    "microseconds": 1e-6,
+    "nanoseconds": 1e-9,
+}
 
 
 def wrap_angle(value: float) -> float:
@@ -88,6 +99,11 @@ def export_sequence(
     maximum_pose_age_ms: float,
     minimum_range_m: float,
     maximum_range_m: float,
+    point_time_field: str | None = None,
+    point_time_unit: str = "seconds",
+    require_point_time: bool = False,
+    ring_field: str | None = None,
+    require_ring: bool = False,
 ) -> dict[str, Any]:
     if start_offset_s < 0.0 or maximum_duration_s <= 0.0 or maximum_frames < 2:
         raise ValueError("duration and frame count limits must be positive")
@@ -97,6 +113,13 @@ def export_sequence(
         or maximum_range_m <= minimum_range_m
     ):
         raise ValueError("pose-age and range limits are invalid")
+    if point_time_unit not in TIME_UNIT_SECONDS:
+        raise ValueError("unsupported point time unit")
+    if require_point_time and not point_time_field:
+        raise ValueError("point_time_field is required by the timing contract")
+    if require_ring and not ring_field:
+        raise ValueError("ring_field is required by the ring contract")
+    sequence_version = TIMED_VERSION if point_time_field else VERSION
     connection = sqlite3.connect(
         f"file:{database.resolve().as_posix()}?mode=ro", uri=True
     )
@@ -115,10 +138,12 @@ def export_sequence(
         pose_ages_ms: list[float] = []
         point_counts: list[int] = []
         reference_xy: list[tuple[float, float]] = []
+        point_time_spans_s: list[float] = []
+        point_field_schema: dict[str, dict[str, int]] | None = None
         output.parent.mkdir(parents=True, exist_ok=True)
         with output.open("wb") as stream:
             stream.write(MAGIC)
-            stream.write(struct.pack("<II", VERSION, 0))
+            stream.write(struct.pack("<II", sequence_version, 0))
             for _, payload in messages(connection, pointcloud_topic):
                 cloud = parse_pointcloud2(payload)
                 stamp_ns = int(cloud["stamp_ns"])
@@ -142,13 +167,64 @@ def export_sequence(
                     frame_id = str(cloud["frame_id"])
                 elif cloud["frame_id"] != frame_id:
                     raise ValueError("PointCloud2 frame_id changed inside sequence")
+                if point_field_schema is None:
+                    point_field_schema = cloud["fields"]
+                elif cloud["fields"] != point_field_schema:
+                    raise ValueError("PointCloud2 field schema changed inside sequence")
+                if ring_field:
+                    # Decode once to validate scalar datatype, stride, and presence.
+                    next(point_field_values(cloud, (ring_field,)), None)
                 xyz = []
-                for x, y, z in xyz_points(cloud):
-                    distance = math.sqrt(x * x + y * y + z * z)
-                    if minimum_range_m <= distance <= maximum_range_m:
-                        xyz.extend((float(x), float(y), float(z)))
+                point_times_s: list[float] = []
+                point_time_span_s: float | None = None
+                if point_time_field:
+                    scale = TIME_UNIT_SECONDS[point_time_unit]
+                    records = point_field_values(
+                        cloud, ("x", "y", "z", point_time_field)
+                    )
+                    selected = []
+                    frame_point_times_s = []
+                    for x, y, z, raw_time in records:
+                        point_time_s = float(raw_time) * scale
+                        if math.isfinite(point_time_s):
+                            frame_point_times_s.append(point_time_s)
+                        values = (float(x), float(y), float(z))
+                        if not all(math.isfinite(value) for value in values):
+                            continue
+                        distance = math.sqrt(x * x + y * y + z * z)
+                        if (
+                            math.isfinite(point_time_s)
+                            and minimum_range_m <= distance <= maximum_range_m
+                        ):
+                            selected.append(
+                                (float(x), float(y), float(z), point_time_s)
+                            )
+                    if len(frame_point_times_s) >= 2:
+                        first_point_time = min(frame_point_times_s)
+                        point_time_span_s = (
+                            max(frame_point_times_s) - first_point_time
+                        )
+                        for x, y, z, point_time in selected:
+                            xyz.extend((x, y, z))
+                            point_times_s.append(point_time - first_point_time)
+                        if not 1e-6 <= point_time_span_s <= 1.0:
+                            raise ValueError(
+                                "point time span must be in [1 us, 1 s]; "
+                                "check point_time_unit"
+                            )
+                else:
+                    for x, y, z in xyz_points(cloud):
+                        distance = math.sqrt(x * x + y * y + z * z)
+                        if minimum_range_m <= distance <= maximum_range_m:
+                            xyz.extend((float(x), float(y), float(z)))
                 if len(xyz) < 30:
                     continue
+                if point_time_field:
+                    if point_time_span_s is None:
+                        raise ValueError(
+                            "selected frame has no valid point time span"
+                        )
+                    point_time_spans_s.append(point_time_span_s)
                 if first_stamp is None:
                     first_stamp = stamp_ns
                 normalized = normalized_reference(first_reference, reference)
@@ -160,7 +236,23 @@ def export_sequence(
                         len(xyz) // 3,
                     )
                 )
-                stream.write(struct.pack(f"<{len(xyz)}f", *xyz))
+                if sequence_version == TIMED_VERSION:
+                    stream.write(struct.pack("<ff", 0.0, point_time_span_s))
+                    timed_points = []
+                    for point_index, point_time in enumerate(point_times_s):
+                        timed_points.extend(
+                            (
+                                xyz[point_index * 3],
+                                xyz[point_index * 3 + 1],
+                                xyz[point_index * 3 + 2],
+                                point_time,
+                            )
+                        )
+                    stream.write(
+                        struct.pack(f"<{len(timed_points)}f", *timed_points)
+                    )
+                else:
+                    stream.write(struct.pack(f"<{len(xyz)}f", *xyz))
                 pose_ages_ms.append(pose_age_ns / 1e6)
                 point_counts.append(len(xyz) // 3)
                 reference_xy.append((normalized[0], normalized[1]))
@@ -183,9 +275,21 @@ def export_sequence(
         len(ordered_ages) - 1,
         math.ceil(0.95 * len(ordered_ages)) - 1,
     )
+    ordered_time_spans = sorted(point_time_spans_s)
+    point_time_p95_s = (
+        ordered_time_spans[
+            min(
+                len(ordered_time_spans) - 1,
+                math.ceil(0.95 * len(ordered_time_spans)) - 1,
+            )
+        ]
+        if ordered_time_spans
+        else None
+    )
     return {
         "schema_version": 1,
-        "format": "cudarobotics.kiss_icp_sequence.v1",
+        "format": f"cudarobotics.kiss_icp_sequence.v{sequence_version}",
+        "sequence_version": sequence_version,
         "database": {
             "filename": database.name,
             "bytes": database.stat().st_size,
@@ -195,6 +299,21 @@ def export_sequence(
         "pose_topic": pose_topic,
         "pose_type": pose_type,
         "frame_id": frame_id,
+        "point_fields": point_field_schema,
+        "point_time": {
+            "present": point_time_field is not None,
+            "field": point_time_field,
+            "unit": point_time_unit if point_time_field else None,
+            "frames_with_valid_span": len(point_time_spans_s),
+            "minimum_span_s": min(point_time_spans_s)
+            if point_time_spans_s
+            else None,
+            "p95_span_s": point_time_p95_s,
+        },
+        "ring": {
+            "present": ring_field is not None,
+            "field": ring_field,
+        },
         "frames": frame_count,
         "first_stamp_ns": first_stamp,
         "last_stamp_ns": last_stamp,
@@ -229,6 +348,15 @@ def main() -> int:
     parser.add_argument("--maximum-pose-age-ms", type=float, default=50.0)
     parser.add_argument("--minimum-range-m", type=float, default=0.5)
     parser.add_argument("--maximum-range-m", type=float, default=80.0)
+    parser.add_argument("--point-time-field")
+    parser.add_argument(
+        "--point-time-unit",
+        choices=tuple(TIME_UNIT_SECONDS),
+        default="seconds",
+    )
+    parser.add_argument("--require-point-time", action="store_true")
+    parser.add_argument("--ring-field")
+    parser.add_argument("--require-ring", action="store_true")
     args = parser.parse_args()
     report = export_sequence(
         args.database,
@@ -242,6 +370,11 @@ def main() -> int:
         maximum_pose_age_ms=args.maximum_pose_age_ms,
         minimum_range_m=args.minimum_range_m,
         maximum_range_m=args.maximum_range_m,
+        point_time_field=args.point_time_field,
+        point_time_unit=args.point_time_unit,
+        require_point_time=args.require_point_time,
+        ring_field=args.ring_field,
+        require_ring=args.require_ring,
     )
     args.report.parent.mkdir(parents=True, exist_ok=True)
     args.report.write_text(

@@ -13,13 +13,19 @@ import unittest
 
 from cudanav_real_dataset import read_json
 from cudanav_rosbag_evidence import sha256_file
-from export_cudanav_kiss_icp_sequence import MAGIC, export_sequence
+from export_cudanav_kiss_icp_sequence import (
+    MAGIC,
+    TIMED_VERSION,
+    export_sequence,
+)
 from run_cudanav_kiss_icp_real import (
+    PROFILES,
     evaluate_manifest,
     evaluate_portable_evidence,
     make_manifest,
     make_portable_evidence,
     render_portable_markdown,
+    resolve_pointcloud_auxiliary_fields,
 )
 from test_analyze_pointcloud2_clearance import pointcloud
 from test_export_rosbag_motion import Writer
@@ -41,7 +47,7 @@ def pose(sec: int, x: float, y: float, yaw: float = 0.0) -> bytes:
     return bytes(writer.data)
 
 
-def sequence_database(path: Path) -> None:
+def sequence_database(path: Path, *, timed: bool = False) -> None:
     connection = sqlite3.connect(path)
     connection.executescript(
         "CREATE TABLE topics(id INTEGER PRIMARY KEY, name TEXT, type TEXT);"
@@ -54,13 +60,32 @@ def sequence_database(path: Path) -> None:
         "2, '/pose', 'geometry_msgs/msg/PoseStamped');"
     )
     points = [
-        (1.0 + 0.01 * index, 0.2 * (index % 5), 0.1)
+        (
+            1.0 + 0.25 * (index % 8),
+            0.25 * (index // 8),
+            0.03 * ((index * 7) % 5),
+        )
         for index in range(40)
     ]
     for index, sec in enumerate((12, 13, 14)):
+        point_times = (
+            [0.1 * point_index / (len(points) - 1) for point_index in range(len(points))]
+            if timed
+            else None
+        )
         connection.execute(
             "INSERT INTO messages(topic_id, timestamp, data) VALUES(1, ?, ?)",
-            (sec * 1_000_000_000 + 345, pointcloud(points, sec)),
+            (
+                sec * 1_000_000_000 + 345,
+                pointcloud(
+                    points,
+                    sec,
+                    point_times=point_times,
+                    rings=[point_index % 16 for point_index in range(len(points))]
+                    if timed
+                    else None,
+                ),
+            ),
         )
         connection.execute(
             "INSERT INTO messages(topic_id, timestamp, data) VALUES(2, ?, ?)",
@@ -71,6 +96,27 @@ def sequence_database(path: Path) -> None:
 
 
 class CudaNavKissIcpRealTest(unittest.TestCase):
+    def test_release_rejects_xyz_only_dataset_contract(self) -> None:
+        spec = read_json(SMOKE_SPEC)
+        with self.assertRaisesRegex(
+            ValueError, "selected dataset is XYZ-only"
+        ):
+            resolve_pointcloud_auxiliary_fields(spec, PROFILES["release"])
+        point_time, ring = resolve_pointcloud_auxiliary_fields(
+            spec, PROFILES["smoke"]
+        )
+        self.assertIsNone(point_time)
+        self.assertIsNone(ring)
+        malformed = deepcopy(spec)
+        malformed["recorded_inputs"]["pointcloud"]["point_time"] = {
+            "field": "time",
+            "unit": "ticks",
+        }
+        with self.assertRaisesRegex(ValueError, "supported unit"):
+            resolve_pointcloud_auxiliary_fields(
+                malformed, PROFILES["release"]
+            )
+
     def test_export_sequence_binds_clouds_and_normalized_reference(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -101,6 +147,77 @@ class CudaNavKissIcpRealTest(unittest.TestCase):
                 second = struct.unpack("<QffffI", stream.read(28))
             self.assertEqual(first[1:5], (0.0, 0.0, 0.0, 0.0))
             self.assertEqual(second[1], 1.0)
+
+    def test_timed_sequence_preserves_relative_point_time(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            database = root / "timed.db3"
+            sequence_database(database, timed=True)
+            sequence = root / "timed.bin"
+            report = export_sequence(
+                database,
+                sequence,
+                pointcloud_topic="/points",
+                pose_topic="/pose",
+                pose_type="geometry_msgs/msg/PoseStamped",
+                start_offset_s=0.0,
+                maximum_duration_s=5.0,
+                maximum_frames=3,
+                maximum_pose_age_ms=1.0,
+                minimum_range_m=1.1,
+                maximum_range_m=2.6,
+                point_time_field="time",
+                point_time_unit="seconds",
+                require_point_time=True,
+                ring_field="ring",
+                require_ring=True,
+            )
+            self.assertEqual(report["sequence_version"], TIMED_VERSION)
+            self.assertEqual(
+                report["format"], "cudarobotics.kiss_icp_sequence.v2"
+            )
+            self.assertTrue(report["point_time"]["present"])
+            self.assertEqual(report["point_time"]["frames_with_valid_span"], 3)
+            self.assertAlmostEqual(report["point_time"]["minimum_span_s"], 0.1)
+            self.assertEqual(report["ring"], {"present": True, "field": "ring"})
+            with sequence.open("rb") as stream:
+                self.assertEqual(stream.read(8), MAGIC)
+                self.assertEqual(
+                    struct.unpack("<II", stream.read(8)),
+                    (TIMED_VERSION, 3),
+                )
+                header = struct.unpack("<QffffI", stream.read(28))
+                scan_bounds = struct.unpack("<2f", stream.read(8))
+                points = [
+                    struct.unpack("<4f", stream.read(16))
+                    for _ in range(header[-1])
+                ]
+            self.assertGreater(points[0][3], 0.0)
+            self.assertLess(points[-1][3], 0.1)
+            self.assertEqual(scan_bounds[0], 0.0)
+            self.assertAlmostEqual(scan_bounds[1], 0.1)
+
+    def test_required_point_time_rejects_xyz_only_cloud(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            database = root / "xyz_only.db3"
+            sequence_database(database)
+            with self.assertRaisesRegex(ValueError, "scalar field: time"):
+                export_sequence(
+                    database,
+                    root / "sequence.bin",
+                    pointcloud_topic="/points",
+                    pose_topic="/pose",
+                    pose_type="geometry_msgs/msg/PoseStamped",
+                    start_offset_s=0.0,
+                    maximum_duration_s=5.0,
+                    maximum_frames=3,
+                    maximum_pose_age_ms=1.0,
+                    minimum_range_m=0.1,
+                    maximum_range_m=10.0,
+                    point_time_field="time",
+                    require_point_time=True,
+                )
 
     def test_manifest_is_content_bound_and_rejects_relabel(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -145,6 +262,21 @@ class CudaNavKissIcpRealTest(unittest.TestCase):
                 "mean_points": 40.0,
                 "maximum_points": 40,
                 "reference_path_length_m": 1.0,
+                "sequence_version": 1,
+                "point_fields": {
+                    "x": {"offset": 0, "datatype": 7, "count": 1},
+                    "y": {"offset": 4, "datatype": 7, "count": 1},
+                    "z": {"offset": 8, "datatype": 7, "count": 1},
+                },
+                "point_time": {
+                    "present": False,
+                    "field": None,
+                    "unit": None,
+                    "frames_with_valid_span": 0,
+                    "minimum_span_s": None,
+                    "p95_span_s": None,
+                },
+                "ring": {"present": False, "field": None},
             }
             result = {
                 "frames": 2,
@@ -169,6 +301,10 @@ class CudaNavKissIcpRealTest(unittest.TestCase):
                 "inliers_median": 100,
                 "alignment_rmse_p95": 0.1,
                 "nn_ms_p95": 0.1,
+                "sequence_version": 1,
+                "deskewed_frames": 0,
+                "point_time_span_s_p95": 0.0,
+                "deskew_gpu_ms": 0.0,
                 "thresholds": {},
                 "quality_pass": True,
             }

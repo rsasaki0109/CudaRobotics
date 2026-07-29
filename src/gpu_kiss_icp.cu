@@ -116,6 +116,37 @@ static inline void pose_delta_mag(const Pose& A,const Pose& B,float& dtrans,floa
     dtrans=std::sqrt(D.t[0]*D.t[0]+D.t[1]*D.t[1]+D.t[2]*D.t[2]);
     float tr=D.R.m[0]+D.R.m[4]+D.R.m[8]; drot=std::acos(std::min(1.f,std::max(-1.f,(tr-1.f)*0.5f)));
 }
+static inline void se3_log(const Pose& T,float* xi){
+    float cosine=std::min(1.f,std::max(-1.f,(T.R.m[0]+T.R.m[4]+T.R.m[8]-1.f)*0.5f));
+    float theta=std::acos(cosine);
+    float w[3];
+    if(theta<1e-6f){
+        w[0]=0.5f*(T.R.m[7]-T.R.m[5]);
+        w[1]=0.5f*(T.R.m[2]-T.R.m[6]);
+        w[2]=0.5f*(T.R.m[3]-T.R.m[1]);
+    }else{
+        float scale=theta/(2.f*std::sin(theta));
+        w[0]=scale*(T.R.m[7]-T.R.m[5]);
+        w[1]=scale*(T.R.m[2]-T.R.m[6]);
+        w[2]=scale*(T.R.m[3]-T.R.m[1]);
+    }
+    float wx_t[3]={
+        -w[2]*T.t[1]+w[1]*T.t[2],
+        w[2]*T.t[0]-w[0]*T.t[2],
+        -w[1]*T.t[0]+w[0]*T.t[1]};
+    float wx2_t[3]={
+        -w[2]*wx_t[1]+w[1]*wx_t[2],
+        w[2]*wx_t[0]-w[0]*wx_t[2],
+        -w[1]*wx_t[0]+w[0]*wx_t[1]};
+    float coefficient=1.f/12.f;
+    if(theta>=1e-4f){
+        coefficient=1.f/(theta*theta)-
+            (1.f+std::cos(theta))/(2.f*theta*std::sin(theta));
+    }
+    for(int axis=0;axis<3;++axis)
+        xi[axis]=T.t[axis]-0.5f*wx_t[axis]+coefficient*wx2_t[axis];
+    xi[3]=w[0];xi[4]=w[1];xi[5]=w[2];
+}
 
 // ============================ synthetic structured world ============================
 // Ground + axis-aligned building boxes (walls only) + thin poles.  Distinctive,
@@ -196,6 +227,43 @@ __global__ void transform_kernel(const float* __restrict__ S,int n,const float* 
     int i=blockIdx.x*blockDim.x+threadIdx.x; if(i>=n)return;
     float x=S[i*3],y=S[i*3+1],z=S[i*3+2];
     W[i*3]=R[0]*x+R[1]*y+R[2]*z+t[0]; W[i*3+1]=R[3]*x+R[4]*y+R[5]*z+t[1]; W[i*3+2]=R[6]*x+R[7]*y+R[8]*z+t[2]; }
+
+__global__ void deskew_kernel(
+    const float* __restrict__ points,
+    const float* __restrict__ times,
+    int count,
+    float minimum_time,
+    float inverse_span,
+    const float* __restrict__ motion_twist,
+    float* __restrict__ output)
+{
+    int index=blockIdx.x*blockDim.x+threadIdx.x;if(index>=count)return;
+    float beta=(times[index]-minimum_time)*inverse_span-1.f;
+    float xi[6];
+    for(int axis=0;axis<6;++axis)xi[axis]=beta*motion_twist[axis];
+    float wx=xi[3],wy=xi[4],wz=xi[5];
+    float theta=sqrtf(wx*wx+wy*wy+wz*wz);
+    float A=1.f,B=0.5f,C=1.f/6.f;
+    if(theta>1e-5f){
+        float theta2=theta*theta;
+        A=sinf(theta)/theta;
+        B=(1.f-cosf(theta))/theta2;
+        C=(theta-sinf(theta))/(theta2*theta);
+    }
+    float x=points[index*3],y=points[index*3+1],z=points[index*3+2];
+    float cross_x=wy*z-wz*y,cross_y=wz*x-wx*z,cross_z=wx*y-wy*x;
+    float cross2_x=wy*cross_z-wz*cross_y;
+    float cross2_y=wz*cross_x-wx*cross_z;
+    float cross2_z=wx*cross_y-wy*cross_x;
+    float vx=xi[0],vy=xi[1],vz=xi[2];
+    float vcross_x=wy*vz-wz*vy,vcross_y=wz*vx-wx*vz,vcross_z=wx*vy-wy*vx;
+    float vcross2_x=wy*vcross_z-wz*vcross_y;
+    float vcross2_y=wz*vcross_x-wx*vcross_z;
+    float vcross2_z=wx*vcross_y-wy*vcross_x;
+    output[index*3]=x+A*cross_x+B*cross2_x+vx+B*vcross_x+C*vcross2_x;
+    output[index*3+1]=y+A*cross_y+B*cross2_y+vy+B*vcross_y+C*vcross2_y;
+    output[index*3+2]=z+A*cross_z+B*cross2_z+vz+B*vcross_z+C*vcross2_z;
+}
 
 // Signed 21-bit coordinates packed into a non-negative 63-bit key. The local
 // map window is tiny compared with the representable range.
@@ -450,6 +518,9 @@ struct KissIcpOdometry::Impl {
         vmap.reserve(config.max_map_points);
         try {
             CUDA_CHECK(cudaMalloc(&dS,config.max_scan_points*3*sizeof(float)));
+            CUDA_CHECK(cudaMalloc(&dTimes,config.max_scan_points*sizeof(float)));
+            CUDA_CHECK(cudaMalloc(&dDeskew,config.max_scan_points*3*sizeof(float)));
+            CUDA_CHECK(cudaMalloc(&dMotionTwist,6*sizeof(float)));
             CUDA_CHECK(cudaMalloc(&dPw,config.max_scan_points*3*sizeof(float)));
             CUDA_CHECK(cudaMalloc(&dQ,config.max_scan_points*3*sizeof(float)));
             CUDA_CHECK(cudaMalloc(&dNQ,config.max_scan_points*3*sizeof(float)));
@@ -466,6 +537,8 @@ struct KissIcpOdometry::Impl {
             CUDA_CHECK(cudaEventCreate(&normal_stop));
             CUDA_CHECK(cudaEventCreate(&hash_start));
             CUDA_CHECK(cudaEventCreate(&hash_stop));
+            CUDA_CHECK(cudaEventCreate(&deskew_start));
+            CUDA_CHECK(cudaEventCreate(&deskew_stop));
         } catch (...) {
             release();
             throw;
@@ -482,23 +555,59 @@ struct KissIcpOdometry::Impl {
         if(normal_stop) cudaEventDestroy(normal_stop);
         if(hash_start) cudaEventDestroy(hash_start);
         if(hash_stop) cudaEventDestroy(hash_stop);
+        if(deskew_start) cudaEventDestroy(deskew_start);
+        if(deskew_stop) cudaEventDestroy(deskew_stop);
         cudaFree(dS); cudaFree(dPw); cudaFree(dQ); cudaFree(dNQ); cudaFree(dD2);
+        cudaFree(dTimes); cudaFree(dDeskew); cudaFree(dMotionTwist);
         cudaFree(dMap); cudaFree(dMapN); cudaFree(dR); cudaFree(dt); cudaFree(dHg);
         cudaFree(dHashKeys); cudaFree(dHashHeads); cudaFree(dPointNext);
-        normal_start=normal_stop=hash_start=hash_stop=nullptr;
+        normal_start=normal_stop=hash_start=hash_stop=deskew_start=deskew_stop=nullptr;
         dS=dPw=dQ=dNQ=dD2=dMap=dMapN=dR=dt=dHg=nullptr;
+        dTimes=dDeskew=dMotionTwist=nullptr;
         dHashKeys=nullptr;
         dHashHeads=dPointNext=nullptr;
     }
 
     void reset(const Pose& initial) {
         current_pose = initial;
+        last_delta = KissIcpPose{};
         frames = 0;
         deviation_ema = 0.0;
         deviation_initialized = false;
         vmap.clear();
         localmap.clear();
         accumulated_timing = {};
+    }
+
+    std::vector<float> deskew(
+        const std::vector<float>& scan,
+        const float* point_times,
+        float minimum_time,
+        float maximum_time)
+    {
+        const int count=static_cast<int>(scan.size()/3);
+        float twist[6];
+        se3_log(last_delta,twist);
+        CUDA_CHECK(cudaMemcpy(
+            dS,scan.data(),scan.size()*sizeof(float),cudaMemcpyHostToDevice));
+        CUDA_CHECK(cudaMemcpy(
+            dTimes,point_times,count*sizeof(float),cudaMemcpyHostToDevice));
+        CUDA_CHECK(cudaMemcpy(
+            dMotionTwist,twist,sizeof(twist),cudaMemcpyHostToDevice));
+        CUDA_CHECK(cudaEventRecord(deskew_start));
+        deskew_kernel<<<(count+255)/256,256>>>(
+            dS,dTimes,count,minimum_time,1.f/(maximum_time-minimum_time),
+            dMotionTwist,dDeskew);
+        CUDA_CHECK(cudaGetLastError());
+        CUDA_CHECK(cudaEventRecord(deskew_stop));
+        CUDA_CHECK(cudaEventSynchronize(deskew_stop));
+        float elapsed=0.0f;
+        CUDA_CHECK(cudaEventElapsedTime(&elapsed,deskew_start,deskew_stop));
+        accumulated_timing.deskew_ms+=elapsed;
+        std::vector<float> output(scan.size());
+        CUDA_CHECK(cudaMemcpy(
+            output.data(),dDeskew,output.size()*sizeof(float),cudaMemcpyDeviceToHost));
+        return output;
     }
 
     int64_t voxel_key(float x,float y,float z) const {
@@ -542,7 +651,9 @@ struct KissIcpOdometry::Impl {
         }
     }
 
-    KissIcpFrameResult register_scan(const float* xyz,std::size_t point_count) {
+    KissIcpFrameResult register_scan(
+        const float* xyz,std::size_t point_count,const float* point_times,
+        float declared_minimum_time,float declared_maximum_time) {
         if(!xyz) throw std::invalid_argument("scan pointer must not be null");
         if(point_count==0) throw std::invalid_argument("scan must contain at least one point");
         if(point_count>config.max_scan_points)
@@ -550,7 +661,25 @@ struct KissIcpOdometry::Impl {
         std::vector<float> raw(xyz,xyz+point_count*3);
         for(float value:raw)
             if(!std::isfinite(value)) throw std::invalid_argument("scan contains a non-finite coordinate");
-        std::vector<float> scan=voxel_downsample(raw,config.scan_voxel_size);
+        float minimum_time=declared_minimum_time;
+        float maximum_time=declared_maximum_time;
+        if(point_times){
+            if(!std::isfinite(minimum_time) || !std::isfinite(maximum_time) ||
+               !(maximum_time>minimum_time) || maximum_time-minimum_time>1.0f)
+                throw std::invalid_argument(
+                    "scan time bounds must be finite, increasing, and at most one second");
+            for(std::size_t index=0;index<point_count;++index){
+                const float value=point_times[index];
+                if(!std::isfinite(value))
+                    throw std::invalid_argument("point times must be finite");
+                if(value<minimum_time-1e-6f || value>maximum_time+1e-6f)
+                    throw std::invalid_argument("point time lies outside scan bounds");
+            }
+        }
+        std::vector<float> working=point_times
+            ? deskew(raw,point_times,minimum_time,maximum_time)
+            : std::move(raw);
+        std::vector<float> scan=voxel_downsample(working,config.scan_voxel_size);
         if(scan.size()/3>config.max_scan_points)
             throw std::length_error("downsampled scan exceeds configured max_scan_points");
 
@@ -604,6 +733,7 @@ struct KissIcpOdometry::Impl {
             if(!deviation_initialized){deviation_ema=squared;deviation_initialized=true;}
             else deviation_ema=0.7*deviation_ema+0.3*squared;
         }
+        last_delta=pose_mul(pose_inv(current_pose),estimate);
         current_pose=estimate;
         insert_map(to_world(scan,current_pose),current_pose.t);
         ++frames;
@@ -614,11 +744,15 @@ struct KissIcpOdometry::Impl {
         result.sampled_points=scan.size()/3;
         result.map_points=localmap.size()/3;
         result.map_initialized=true;
+        result.deskewed=point_times!=nullptr;
+        result.point_time_span_s=maximum_time-minimum_time;
+        if(point_times) result.deskewed_xyz=std::move(working);
         return result;
     }
 
     KissIcpConfig config;
     Pose current_pose;
+    Pose last_delta;
     std::size_t frames=0;
     double deviation_ema=0.0;
     bool deviation_initialized=false;
@@ -626,10 +760,12 @@ struct KissIcpOdometry::Impl {
     std::vector<float> localmap;
     KissIcpTiming accumulated_timing;
     float *dS=nullptr,*dPw=nullptr,*dQ=nullptr,*dNQ=nullptr,*dD2=nullptr;
+    float *dTimes=nullptr,*dDeskew=nullptr,*dMotionTwist=nullptr;
     float *dMap=nullptr,*dMapN=nullptr,*dR=nullptr,*dt=nullptr,*dHg=nullptr;
     unsigned long long* dHashKeys=nullptr;
     int *dHashHeads=nullptr,*dPointNext=nullptr;
     cudaEvent_t normal_start=nullptr,normal_stop=nullptr,hash_start=nullptr,hash_stop=nullptr;
+    cudaEvent_t deskew_start=nullptr,deskew_stop=nullptr;
 };
 
 KissIcpOdometry::KissIcpOdometry(const KissIcpConfig& config)
@@ -639,11 +775,37 @@ KissIcpOdometry::KissIcpOdometry(KissIcpOdometry&&) noexcept = default;
 KissIcpOdometry& KissIcpOdometry::operator=(KissIcpOdometry&&) noexcept = default;
 void KissIcpOdometry::reset(const KissIcpPose& pose) { impl_->reset(pose); }
 KissIcpFrameResult KissIcpOdometry::register_scan(const float* xyz,std::size_t count) {
-    return impl_->register_scan(xyz,count);
+    return impl_->register_scan(xyz,count,nullptr,0.0f,0.0f);
+}
+KissIcpFrameResult KissIcpOdometry::register_scan(
+    const float* xyz,std::size_t count,const float* point_times) {
+    if(!point_times) throw std::invalid_argument("point times pointer must not be null");
+    if(count==0) throw std::invalid_argument("scan must contain at least one point");
+    float minimum_time=point_times[0],maximum_time=point_times[0];
+    for(std::size_t index=1;index<count;++index){
+        minimum_time=std::min(minimum_time,point_times[index]);
+        maximum_time=std::max(maximum_time,point_times[index]);
+    }
+    return impl_->register_scan(
+        xyz,count,point_times,minimum_time,maximum_time);
+}
+KissIcpFrameResult KissIcpOdometry::register_scan(
+    const float* xyz,std::size_t count,const float* point_times,
+    float scan_start_time,float scan_end_time) {
+    if(!point_times) throw std::invalid_argument("point times pointer must not be null");
+    return impl_->register_scan(
+        xyz,count,point_times,scan_start_time,scan_end_time);
 }
 KissIcpFrameResult KissIcpOdometry::register_scan(const std::vector<float>& xyz) {
     if(xyz.size()%3!=0) throw std::invalid_argument("xyz vector size must be divisible by three");
     return register_scan(xyz.data(),xyz.size()/3);
+}
+KissIcpFrameResult KissIcpOdometry::register_scan(
+    const std::vector<float>& xyz,const std::vector<float>& point_times) {
+    if(xyz.size()%3!=0) throw std::invalid_argument("xyz vector size must be divisible by three");
+    if(point_times.size()!=xyz.size()/3)
+        throw std::invalid_argument("point times must match the point count");
+    return register_scan(xyz.data(),xyz.size()/3,point_times.data());
 }
 const KissIcpConfig& KissIcpOdometry::config() const noexcept { return impl_->config; }
 const KissIcpPose& KissIcpOdometry::pose() const noexcept { return impl_->current_pose; }

@@ -34,6 +34,9 @@ struct Frame {
     std::uint64_t stamp_ns = 0;
     float reference[4]{};
     std::vector<float> xyz;
+    std::vector<float> point_times;
+    float scan_start_time_s = 0.0f;
+    float scan_end_time_s = 0.0f;
 };
 
 template <typename T>
@@ -44,7 +47,7 @@ T read_value(std::ifstream& stream) {
     return value;
 }
 
-Frame read_frame(std::ifstream& stream) {
+Frame read_frame(std::ifstream& stream, std::uint32_t version) {
     Frame frame;
     frame.stamp_ns = read_value<std::uint64_t>(stream);
     stream.read(reinterpret_cast<char*>(frame.reference), sizeof(frame.reference));
@@ -53,9 +56,21 @@ Frame read_frame(std::ifstream& stream) {
         throw std::runtime_error("invalid sequence point count");
     }
     frame.xyz.resize(static_cast<std::size_t>(point_count) * 3u);
-    stream.read(
-        reinterpret_cast<char*>(frame.xyz.data()),
-        static_cast<std::streamsize>(frame.xyz.size() * sizeof(float)));
+    if (version == 2) {
+        frame.scan_start_time_s = read_value<float>(stream);
+        frame.scan_end_time_s = read_value<float>(stream);
+        frame.point_times.resize(point_count);
+        for (std::uint32_t index = 0; index < point_count; ++index) {
+            frame.xyz[index * 3] = read_value<float>(stream);
+            frame.xyz[index * 3 + 1] = read_value<float>(stream);
+            frame.xyz[index * 3 + 2] = read_value<float>(stream);
+            frame.point_times[index] = read_value<float>(stream);
+        }
+    } else {
+        stream.read(
+            reinterpret_cast<char*>(frame.xyz.data()),
+            static_cast<std::streamsize>(frame.xyz.size() * sizeof(float)));
+    }
     if (!stream) throw std::runtime_error("truncated sequence point payload");
     return frame;
 }
@@ -180,7 +195,7 @@ int main(int argc, char** argv) {
         }
         const auto version = read_value<std::uint32_t>(input);
         const auto declared_frames = read_value<std::uint32_t>(input);
-        if (version != 1 || declared_frames < 2) {
+        if ((version != 1 && version != 2) || declared_frames < 2) {
             throw std::runtime_error("unsupported sequence header");
         }
         const std::uint32_t frame_limit =
@@ -215,6 +230,8 @@ int main(int argc, char** argv) {
         std::vector<double> inliers;
         std::vector<double> rmse;
         std::vector<double> nn_ms;
+        std::vector<double> point_time_spans;
+        std::size_t deskewed_frames = 0;
         double reference_distance = 0.0;
         double estimated_distance = 0.0;
         double previous_reference_x = 0.0;
@@ -227,8 +244,19 @@ int main(int argc, char** argv) {
 
         const auto started = std::chrono::steady_clock::now();
         for (std::uint32_t frame_index = 0; frame_index < frame_limit; ++frame_index) {
-            Frame frame = read_frame(input);
-            KissIcpFrameResult result = odometry.register_scan(frame.xyz);
+            Frame frame = read_frame(input, version);
+            KissIcpFrameResult result = frame.point_times.empty()
+                ? odometry.register_scan(frame.xyz)
+                : odometry.register_scan(
+                      frame.xyz.data(),
+                      frame.xyz.size() / 3,
+                      frame.point_times.data(),
+                      frame.scan_start_time_s,
+                      frame.scan_end_time_s);
+            if (result.deskewed) {
+                ++deskewed_frames;
+                point_time_spans.push_back(result.point_time_span_s);
+            }
             const double estimated_yaw =
                 std::atan2(result.pose.R.m[3], result.pose.R.m[0]);
             const double dx = static_cast<double>(result.pose.t[0]) -
@@ -292,7 +320,12 @@ int main(int argc, char** argv) {
         json << std::setprecision(10)
              << "{\n"
              << "  \"schema_version\": 1,\n"
-             << "  \"algorithm\": \"cudarobotics.gpu_kiss_icp_real_sequence.v1\",\n"
+             << "  \"sequence_version\": " << version << ",\n"
+             << "  \"deskewed_frames\": " << deskewed_frames << ",\n"
+             << "  \"point_time_span_s_p95\": "
+             << percentile(point_time_spans, 0.95) << ",\n"
+             << "  \"deskew_gpu_ms\": " << odometry.timing().deskew_ms << ",\n"
+             << "  \"algorithm\": \"cudarobotics.gpu_kiss_icp_real_sequence.v2\",\n"
              << "  \"sequence\": " << json_string(options.sequence) << ",\n"
              << "  \"trajectory_csv\": " << json_string(options.csv) << ",\n"
              << "  \"gpu\": {\n"

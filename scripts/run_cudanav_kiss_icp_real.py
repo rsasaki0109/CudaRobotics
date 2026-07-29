@@ -28,6 +28,7 @@ RUNNER_NAME = (
 )
 PROFILES = {
     "smoke": {
+        "require_point_time": False,
         "start_offset_s": 1.0,
         "maximum_duration_s": 30.0,
         "maximum_frames": 300,
@@ -36,6 +37,7 @@ PROFILES = {
         "minimum_inliers": 30,
     },
     "release": {
+        "require_point_time": True,
         "start_offset_s": 1.0,
         "maximum_duration_s": 120.0,
         "maximum_frames": 1200,
@@ -54,6 +56,47 @@ CONTRACT_SOURCES = (
     "scripts/export_cudanav_kiss_icp_sequence.py",
     "scripts/run_cudanav_kiss_icp_real.py",
 )
+POINT_TIME_UNITS = {"seconds", "milliseconds", "microseconds", "nanoseconds"}
+
+
+def resolve_pointcloud_auxiliary_fields(
+    spec: dict[str, Any], profile: dict[str, Any]
+) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
+    pointcloud_contract = spec["recorded_inputs"]["pointcloud"]
+    point_time_contract = pointcloud_contract.get("point_time")
+    ring_contract = pointcloud_contract.get("ring")
+    if profile["require_point_time"] and not isinstance(
+        point_time_contract, dict
+    ):
+        raise ValueError(
+            "release profile requires a PointCloud2 point_time contract; "
+            "the selected dataset is XYZ-only"
+        )
+    if point_time_contract is not None and not isinstance(
+        point_time_contract, dict
+    ):
+        raise ValueError("PointCloud2 point_time contract must be an object")
+    if isinstance(point_time_contract, dict):
+        if (
+            not isinstance(point_time_contract.get("field"), str)
+            or not point_time_contract["field"]
+            or point_time_contract.get("unit") not in POINT_TIME_UNITS
+        ):
+            raise ValueError(
+                "PointCloud2 point_time contract requires a nonempty field "
+                "and a supported unit"
+            )
+    if ring_contract is not None:
+        if not isinstance(ring_contract, dict):
+            raise ValueError("PointCloud2 ring contract must be an object")
+        if (
+            not isinstance(ring_contract.get("field"), str)
+            or not ring_contract["field"]
+        ):
+            raise ValueError(
+                "PointCloud2 ring contract requires a nonempty field"
+            )
+    return point_time_contract, ring_contract
 
 
 def git_identity() -> tuple[str, bool]:
@@ -107,6 +150,7 @@ def make_manifest(
     commands: dict[str, list[str]],
 ) -> dict[str, Any]:
     spec = read_json(spec_path)
+    expected = PROFILES[profile]
     sequence = output / "sequence.bin"
     export_json = output / "export.json"
     result_json = output / "result.json"
@@ -127,6 +171,19 @@ def make_manifest(
         "pose_topic": export_report["pose_topic"]
         == spec["recorded_inputs"]["odometry"]["topic"],
         "frame_count": result.get("frames") == export_report.get("frames"),
+        "point_time_contract": (
+            not expected["require_point_time"]
+            or (
+                export_report.get("sequence_version") == 2
+                and export_report.get("point_time", {}).get("present") is True
+                and export_report.get("point_time", {}).get(
+                    "frames_with_valid_span"
+                )
+                == result.get("frames")
+                and result.get("sequence_version") == 2
+                and result.get("deskewed_frames") == result.get("frames")
+            )
+        ),
         "start_offset": export_report.get("start_offset_s")
         == PROFILES[profile]["start_offset_s"],
         "duration_limit": (
@@ -200,6 +257,10 @@ def make_manifest(
                 "mean_points",
                 "maximum_points",
                 "reference_path_length_m",
+                "sequence_version",
+                "point_fields",
+                "point_time",
+                "ring",
             )
         },
         "gpu": result["gpu"],
@@ -220,6 +281,10 @@ def make_manifest(
                 "inliers_median",
                 "alignment_rmse_p95",
                 "nn_ms_p95",
+                "sequence_version",
+                "deskewed_frames",
+                "point_time_span_s_p95",
+                "deskew_gpu_ms",
                 "thresholds",
                 "quality_pass",
             )
@@ -617,9 +682,15 @@ def main() -> int:
     runner = args.runner.resolve()
     if not runner.is_file():
         raise SystemExit(f"GPU runner not found: {runner}")
-    output.mkdir(parents=True)
     spec = read_json(args.spec)
     profile = PROFILES[args.profile]
+    try:
+        point_time_contract, ring_contract = (
+            resolve_pointcloud_auxiliary_fields(spec, profile)
+        )
+    except ValueError as error:
+        raise SystemExit(str(error)) from error
+    output.mkdir(parents=True)
     sequence = output / "sequence.bin"
     export_json = output / "export.json"
     result_json = output / "result.json"
@@ -647,6 +718,21 @@ def main() -> int:
         "--maximum-frames",
         str(profile["maximum_frames"]),
     ]
+    if isinstance(point_time_contract, dict):
+        export_command.extend(
+            [
+                "--point-time-field",
+                point_time_contract["field"],
+                "--point-time-unit",
+                point_time_contract["unit"],
+            ]
+        )
+        if profile["require_point_time"]:
+            export_command.append("--require-point-time")
+    if isinstance(ring_contract, dict):
+        export_command.extend(["--ring-field", ring_contract["field"]])
+        if ring_contract.get("required", False):
+            export_command.append("--require-ring")
     subprocess.run(export_command, cwd=ROOT, check=True)
     runner_command = [
         str(runner),
