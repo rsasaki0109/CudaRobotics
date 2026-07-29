@@ -303,9 +303,28 @@ def inspect(
         "required_topic_checks": checks,
         "passed": all(checks.values()),
     }
+    expected_database_sha = acquisition.get("expected_database_sha256")
+    if expected_database_sha is not None:
+        database_contract_checks = {
+            "database_bytes": (
+                report["database"]["bytes"]
+                == acquisition["expected_database_bytes"]
+            ),
+            "database_sha256": (
+                report["database"]["sha256"] == expected_database_sha
+            ),
+        }
+        report["database_contract_checks"] = database_contract_checks
+        report["passed"] = report["passed"] and all(
+            database_contract_checks.values()
+        )
     if remote_probe is not None:
         report["remote_probe"] = remote_probe
-    for key in ("metadata_file_id", "expected_metadata"):
+    for key in (
+        "metadata_file_id",
+        "expected_metadata",
+        "expected_database_sha256",
+    ):
         if key in acquisition:
             report["acquisition"][key] = acquisition[key]
     return report

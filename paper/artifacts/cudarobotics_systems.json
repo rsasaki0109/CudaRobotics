@@ -19,7 +19,7 @@
       "id": "real_dataset_materialization",
       "statement": "A content-addressed public Istanbul localization bag is acquired, inspected, and converted into a bounded deterministic Path sidecar with portable validation evidence.",
       "submission_required": true,
-      "status": "supported",
+      "status": "partial",
       "evidence": [
         "istanbul_materialization_smoke"
       ],
@@ -112,7 +112,7 @@
         {
           "path": "scripts/validate_cudanav_real_dataset.py",
           "normalization": "text_lf",
-          "sha256": "6d26db6cc49e3fc7995529bd7ae3b318dee664a1ee2792042010f70b41f550dd"
+          "sha256": "5f59751a02313bce042165897a75db743f31beb20b94197812ce4900520f7269"
         },
         {
           "path": "scripts/derive_cudanav_path_sidecar.py",
@@ -147,7 +147,7 @@
         {
           "path": "docs/cudanav_real_dataset_smoke.json",
           "normalization": "text_lf",
-          "sha256": "d1637ebc56445935acc18de4701cf067449ab78534690e97aa209bfb0e897248"
+          "sha256": "d4fb9efc53d2b52f72d58fda7b80da5661b8cb43844f3cb6fa76a6f0e0385672"
         },
         {
           "path": ".github/workflows/ros2_cuda_mppi.yml",
@@ -167,7 +167,7 @@
         {
           "path": "scripts/prepare_cudanav_istanbul_dataset.py",
           "normalization": "text_lf",
-          "sha256": "b4acc657cd03262e7db922c1245cc005fc6f96c73646589a2fa2a96f729f8fae"
+          "sha256": "054dfcad64c85a8ec275db15efdc838b3ed46321defc05ff454971cd0889c64d"
         },
         {
           "path": "scripts/run_cudanav_real_dataset_pipeline.py",
@@ -177,12 +177,12 @@
         {
           "path": "scripts/publish_cudanav_dataset_evidence.py",
           "normalization": "text_lf",
-          "sha256": "a2d87f9b35c93fb2579f59a8da5274f2fadfc79ddbd779a3efc98030a5aa7b4c"
+          "sha256": "5d5365e9e8b28dcfa59f82aa2d1031e169bed82f21301e47029d6dcf59779321"
         },
         {
           "path": "scripts/test_publish_cudanav_dataset_evidence.py",
           "normalization": "text_lf",
-          "sha256": "c5b722c116908da7970bdaebd94fb9fde5d02ce5a6e72fa868c00c59024ad63e"
+          "sha256": "db76124344b73f6e4829fd0133b355daa230f073218a39fb8038049f83352c16"
         },
         {
           "path": "scripts/export_rosbag_motion.py",
@@ -193,27 +193,13 @@
     },
     {
       "id": "istanbul_materialization_smoke",
-      "status": "complete",
-      "kind": "file_set",
+      "status": "pending",
+      "kind": "json_assertions",
       "generator_command": [
         "python3",
         "scripts/publish_cudanav_dataset_evidence.py",
-        "--validate",
-        "docs/results/cudanav_istanbul_materialization_2026-07-29.json",
-        "--commit",
-        "589732155794d10d1c3ec86481145af557d11b6f"
-      ],
-      "artifacts": [
-        {
-          "path": "docs/results/cudanav_istanbul_materialization_2026-07-29.json",
-          "normalization": "text_lf",
-          "sha256": "3ccbc452390f1539f29cb3a44952814d49145556bc99f80e07faaa9585fcdb08"
-        },
-        {
-          "path": "docs/results/cudanav_istanbul_materialization_2026-07-29.md",
-          "normalization": "text_lf",
-          "sha256": "357d4073b9d2f4e155f665001b92245def605813977abec3681bcd7e352a0e39"
-        }
+        "--materialization",
+        "build/cudanav_real_dataset/materialization.json"
       ]
     },
     {

@@ -56,6 +56,9 @@ EXPECTED_DATASETS = {
             ),
             "expected_database": "rosbag2_2024_09_12-14_59_58_0.db3",
             "expected_database_bytes": 1009799168,
+            "expected_database_sha256": (
+                "eb80d649a41fd557ff3af5df4424051191fb696d0ebecbeb36b385702d2b4c8d"
+            ),
             "redistribution_authorized": False,
         },
         "recorded": {
@@ -468,6 +471,7 @@ def evaluate_materialization(
         "generator_report_content": False,
         "acquisition_inspection_bound": False,
         "acquisition_inspection_content": False,
+        "source_database_contract": False,
     }
     try:
         report_path = Path(generator["source"]).resolve()
@@ -522,6 +526,23 @@ def evaluate_materialization(
                 for contract in spec["recorded_inputs"].values()
             )
             and inspection.get("passed") is True
+        )
+        expected_database_sha = spec["acquisition"].get(
+            "expected_database_sha256"
+        )
+        checks["source_database_contract"] = (
+            expected_database_sha is None
+            or not verify_source
+            or (
+                inspection.get("database_contract_checks")
+                == {
+                    "database_bytes": True,
+                    "database_sha256": True,
+                }
+                and database["bytes"]
+                == spec["acquisition"]["expected_database_bytes"]
+                and database["sha256"] == expected_database_sha
+            )
         )
         checks["acquisition_inspection_content"] = (
             inspection_path.is_file()

@@ -4,20 +4,17 @@ from __future__ import annotations
 
 from copy import deepcopy
 import json
-import math
 from pathlib import Path
 import tempfile
 import unittest
 
-from cudanav_real_dataset import make_materialization, read_json
-from derive_cudanav_path_sidecar import derive_path, write_sqlite_rosbag
+from cudanav_real_dataset import DEFAULT_SPEC, make_materialization, read_json
 from publish_cudanav_dataset_evidence import (
     evaluate_portable_evidence,
     make_portable_evidence,
     render_markdown,
 )
 from test_cudanav_real_dataset import (
-    SMOKE_SPEC,
     write_bag,
     write_inspection,
     write_report,
@@ -26,7 +23,7 @@ from test_cudanav_real_dataset import (
 
 class PublishCudaNavDatasetEvidenceTest(unittest.TestCase):
     def test_portable_evidence_strips_paths_and_preserves_scope(self) -> None:
-        spec = read_json(SMOKE_SPEC)
+        spec = read_json(DEFAULT_SPEC)
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             source = write_bag(
@@ -37,55 +34,32 @@ class PublishCudaNavDatasetEvidenceTest(unittest.TestCase):
                 ],
                 spec["acquisition"]["expected_database"],
             )
-            poses = derive_path(
+            derived = write_bag(
+                root / "derived",
                 [
-                    {
-                        "stamp_ns": 1_000_000_000,
-                        "x": 2.0,
-                        "y": 3.0,
-                        "z": 1.0,
-                        "yaw": math.pi / 2,
-                    },
-                    {
-                        "stamp_ns": 2_000_000_000,
-                        "x": 2.0,
-                        "y": 4.0,
-                        "z": 1.0,
-                        "yaw": math.pi / 2,
-                    },
+                    (
+                        spec["path_derivation"]["output_topic"],
+                        spec["path_derivation"]["output_type"],
+                        1,
+                    )
                 ],
-                0.05,
-                120.0,
             )
-            derived = root / "derived"
-            write_sqlite_rosbag(
-                derived,
-                spec["path_derivation"]["output_topic"],
-                "odom",
-                poses,
-                5_000_000_000,
-            )
-            report = write_report(
-                root,
-                spec,
-                storage_id="sqlite3",
-                poses=poses,
-            )
+            report = write_report(root, spec)
             materialization = root / "materialization.json"
             materialization.write_text(
                 json.dumps(
                     make_materialization(
-                        SMOKE_SPEC,
+                        DEFAULT_SPEC,
                         source,
                         derived,
                         report,
-                        write_inspection(source, spec, SMOKE_SPEC),
+                        write_inspection(source, spec),
                     )
                 )
                 + "\n"
             )
             payload = make_portable_evidence(
-                SMOKE_SPEC,
+                DEFAULT_SPEC,
                 materialization,
                 result_id="fixture",
                 git_commit="a" * 40,
