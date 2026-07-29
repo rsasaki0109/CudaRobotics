@@ -160,9 +160,18 @@ def main() -> int:
         )
     dataset_gate = None
     materialization_payload = None
+    dataset_spec = None
     if dataset_materialization is not None:
+        from cudanav_real_dataset import resolve_materialization_spec
+
+        materialization_payload = json.loads(
+            dataset_materialization.read_text(encoding="utf-8")
+        )
+        dataset_spec_path, dataset_spec = resolve_materialization_spec(
+            materialization_payload
+        )
         dataset_gate = evaluate_real_dataset(
-            ROOT / "docs" / "cudanav_real_dataset.json",
+            dataset_spec_path,
             dataset_materialization,
         )
         if not dataset_gate["ready"]:
@@ -203,9 +212,6 @@ def main() -> int:
         describe_input(derived_path_bag) if derived_path_bag is not None else None
     )
     if dataset_gate is not None:
-        materialization_payload = json.loads(
-            materialization_copy.read_text(encoding="utf-8")
-        )
         if (
             materialization_payload["source_bag"]["tree_sha256"]
             != input_identity["tree_sha256"]
@@ -257,11 +263,6 @@ def main() -> int:
         str(args.minimum_valid_ratio),
     ]
     if materialization_payload is not None:
-        dataset_spec = json.loads(
-            (ROOT / "docs" / "cudanav_real_dataset.json").read_text(
-                encoding="utf-8"
-            )
-        )
         quality_filter = dataset_spec["quality_evaluation"]["filter"]
         evaluate_command.extend(
             [

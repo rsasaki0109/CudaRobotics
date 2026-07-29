@@ -56,6 +56,23 @@ def main() -> int:
     assert abs(odom["qz"] - math.sin(0.25)) < 1e-12
     assert abs(odom["qw"] - math.cos(0.25)) < 1e-12
     assert odom["linear_x"] == 0.4
+
+    writer = Writer()
+    writer.add("i", 4, 15)
+    writer.add("I", 4, 678)
+    writer.string("map")
+    writer.doubles([4.0, 5.0, 6.0])
+    writer.doubles([0.0, 0.0, math.sin(-0.1), math.cos(-0.1)])
+    pose = MODULE.parse_pose_stamped(bytes(writer.data))
+    assert pose["stamp_ns"] == 15_000_000_678
+    assert pose["frame_id"] == "map"
+    assert pose["x"] == 4.0
+    assert pose["z"] == 6.0
+    assert abs(pose["yaw"] + 0.2) < 1e-12
+    assert (
+        MODULE.pose_parser("geometry_msgs/msg/PoseStamped")
+        is MODULE.parse_pose_stamped
+    )
     print("offline CDR motion decoder checks passed")
     return 0
 

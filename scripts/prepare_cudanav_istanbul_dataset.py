@@ -42,7 +42,6 @@ def remote_file_metadata(file_id: str) -> dict[str, Any]:
 
 def probe_acquisition(acquisition: dict[str, Any]) -> dict[str, Any]:
     database = remote_file_metadata(acquisition["file_id"])
-    metadata = remote_file_metadata(acquisition["metadata_file_id"])
     checks = {
         "database_filename": (
             database["filename"] == acquisition["expected_database"]
@@ -50,26 +49,54 @@ def probe_acquisition(acquisition: dict[str, Any]) -> dict[str, Any]:
         "database_bytes": (
             database["bytes"] == acquisition["expected_database_bytes"]
         ),
-        "metadata_filename": (
-            metadata["filename"] == acquisition["expected_metadata"]
-        ),
-        "metadata_bytes": (
-            metadata["bytes"] == acquisition["expected_metadata_bytes"]
-        ),
     }
     result = {
         "schema_version": 1,
         "database": database,
-        "metadata": metadata,
         "checks": checks,
-        "passed": all(checks.values()),
     }
+    if "metadata_file_id" in acquisition:
+        metadata = remote_file_metadata(acquisition["metadata_file_id"])
+        checks.update(
+            {
+                "metadata_filename": (
+                    metadata["filename"] == acquisition["expected_metadata"]
+                ),
+                "metadata_bytes": (
+                    metadata["bytes"]
+                    == acquisition["expected_metadata_bytes"]
+                ),
+            }
+        )
+        result["metadata"] = metadata
+    result["passed"] = all(checks.values())
     if not result["passed"]:
         raise ValueError(f"remote acquisition contract changed: {result}")
     return result
 
 
-def download_command(file_id: str, output: Path) -> list[str]:
+def download_command(
+    file_id: str, output: Path, backend: str = "curl"
+) -> list[str]:
+    if backend == "curl":
+        return [
+            "curl",
+            "--fail",
+            "--location",
+            "--continue-at",
+            "-",
+            "--retry",
+            "20",
+            "--retry-all-errors",
+            "--output",
+            str(output),
+            (
+                "https://drive.usercontent.google.com/download"
+                f"?id={file_id}&export=download&confirm=t"
+            ),
+        ]
+    if backend != "gdown":
+        raise ValueError(f"unsupported download backend: {backend}")
     return [
         sys.executable,
         "-m",
@@ -103,6 +130,71 @@ def database_topics(database: Path) -> dict[str, dict[str, Any]]:
         }
     finally:
         connection.close()
+
+
+def write_metadata(database: Path, output: Path) -> dict[str, Any]:
+    connection = sqlite3.connect(
+        f"file:{database.resolve().as_posix()}?mode=ro", uri=True
+    )
+    try:
+        bounds = connection.execute(
+            "SELECT MIN(timestamp), MAX(timestamp), COUNT(*) FROM messages"
+        ).fetchone()
+        topics = database_topics(database)
+    finally:
+        connection.close()
+    start, end, total = (int(value) for value in bounds)
+    duration = max(0, end - start)
+    lines = [
+        "rosbag2_bagfile_information:",
+        "  version: 5",
+        "  storage_identifier: sqlite3",
+        "  duration:",
+        f"    nanoseconds: {duration}",
+        "  starting_time:",
+        f"    nanoseconds_since_epoch: {start}",
+        f"  message_count: {total}",
+        "  topics_with_message_count:",
+    ]
+    for name, entry in topics.items():
+        lines.extend(
+            [
+                "    - topic_metadata:",
+                f"        name: {name}",
+                f"        type: {entry['type']}",
+                "        serialization_format: cdr",
+                '        offered_qos_profiles: ""',
+                f"      message_count: {entry['count']}",
+            ]
+        )
+    lines.extend(
+        [
+            '  compression_format: ""',
+            '  compression_mode: ""',
+            "  relative_file_paths:",
+            f"    - {database.name}",
+            "  files:",
+            f"    - path: {database.name}",
+            "      starting_time:",
+            f"        nanoseconds_since_epoch: {start}",
+            "      duration:",
+            f"        nanoseconds: {duration}",
+            f"      message_count: {total}",
+        ]
+    )
+    output.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return {
+        "schema_version": 1,
+        "algorithm": "cudarobotics.sqlite_rosbag_metadata.v1",
+        "database": str(database.resolve()),
+        "database_sha256": sha256_file(database),
+        "metadata": str(output.resolve()),
+        "metadata_sha256": sha256_file(output),
+        "starting_time_ns": start,
+        "duration_ns": duration,
+        "message_count": total,
+        "topic_count": len(topics),
+    }
 
 
 def find_database(root: Path, expected_name: str) -> Path:
@@ -146,8 +238,6 @@ def inspect(
             "file_id": acquisition["file_id"],
             "expected_database": acquisition["expected_database"],
             "expected_database_bytes": acquisition["expected_database_bytes"],
-            "metadata_file_id": acquisition["metadata_file_id"],
-            "expected_metadata": acquisition["expected_metadata"],
         },
         "database": {
             "source": str(database),
@@ -160,6 +250,9 @@ def inspect(
     }
     if remote_probe is not None:
         report["remote_probe"] = remote_probe
+    for key in ("metadata_file_id", "expected_metadata"):
+        if key in acquisition:
+            report["acquisition"][key] = acquisition[key]
     return report
 
 
@@ -172,14 +265,21 @@ def main() -> int:
     )
     parser.add_argument("--spec", type=Path, default=DEFAULT_SPEC)
     parser.add_argument("--download", action="store_true")
+    parser.add_argument(
+        "--download-backend",
+        choices=("curl", "gdown"),
+        default="curl",
+    )
+    parser.add_argument("--probe", action="store_true")
     parser.add_argument("--probe-only", action="store_true")
     parser.add_argument("--reindex", action="store_true")
+    parser.add_argument("--generate-metadata", action="store_true")
     parser.add_argument("--report", type=Path)
     args = parser.parse_args()
     spec = read_json(args.spec)
     acquisition = spec["acquisition"]
     remote_probe = None
-    if args.download or args.probe_only:
+    if args.download or args.probe or args.probe_only:
         remote_probe = probe_acquisition(acquisition)
     if args.probe_only:
         print(json.dumps(remote_probe, indent=2, sort_keys=True))
@@ -187,24 +287,37 @@ def main() -> int:
     output = args.output_dir.resolve()
     output.mkdir(parents=True, exist_ok=True)
     if args.download:
-        for file_id, filename in (
-            (acquisition["file_id"], acquisition["expected_database"]),
-            (
-                acquisition["metadata_file_id"],
-                acquisition["expected_metadata"],
-            ),
-        ):
+        downloads = [
+            (acquisition["file_id"], acquisition["expected_database"])
+        ]
+        if "metadata_file_id" in acquisition:
+            downloads.append(
+                (
+                    acquisition["metadata_file_id"],
+                    acquisition["expected_metadata"],
+                )
+            )
+        for file_id, filename in downloads:
             subprocess.run(
-                download_command(file_id, output / filename),
+                download_command(
+                    file_id,
+                    output / filename,
+                    args.download_backend,
+                ),
                 check=True,
             )
     database = find_database(output, acquisition["expected_database"])
     metadata = database.parent / "metadata.yaml"
+    metadata_report = None
+    if args.generate_metadata:
+        metadata_report = write_metadata(database, metadata)
     if args.reindex and not metadata.is_file():
         subprocess.run(
             ["ros2", "bag", "reindex", str(database.parent)], check=True
         )
     report = inspect(output, args.spec, remote_probe)
+    if metadata_report is not None:
+        report["generated_metadata"] = metadata_report
     report_path = (args.report or output / "inspection.json").resolve()
     report_path.parent.mkdir(parents=True, exist_ok=True)
     report_path.write_text(

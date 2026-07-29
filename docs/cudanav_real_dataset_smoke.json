@@ -1,30 +1,26 @@
 {
   "schema_version": 1,
-  "dataset_id": "autoware_istanbul_mapping_kit",
+  "dataset_id": "autoware_istanbul_localization_smoke",
   "status": "selected_unmaterialized",
   "canonical_documentation": "https://autowarefoundation.github.io/autoware-documentation/main/datasets/#istanbul-open-dataset",
+  "source_documentation": "https://ros.ncnynl.com/en/autoware/tutorials/components_evaluation/localization_evaluation/urban-environment-evaluation/",
   "acquisition": {
-    "method": "gdown_file",
-    "file_id": "1uta5Xr_ftV4jERxPNVqooDvWerK0dn89",
-    "uri": "https://drive.google.com/uc?id=1uta5Xr_ftV4jERxPNVqooDvWerK0dn89",
-    "collection_uri": "https://drive.google.com/drive/folders/17zXiBeYlM90gQ5hV6EAWaoBTnNFoVPML?usp=drive_link",
-    "folder_id": "1BMPcUhjq_BCLi521X88WpujoOiEi3_CJ",
-    "expected_database": "test_20240930_134039_0.db3",
-    "expected_database_bytes": 60179423232,
-    "metadata_file_id": "10tw3sBZzVAiu9gWbB4mMclGuzY2-86In",
-    "expected_metadata": "metadata.yaml",
-    "expected_metadata_bytes": 4854,
+    "method": "google_drive_file",
+    "file_id": "1yEB5j74gPLLbkkf87cuCxUgHXTkgSZbn",
+    "uri": "https://drive.google.com/uc?id=1yEB5j74gPLLbkkf87cuCxUgHXTkgSZbn",
+    "expected_database": "rosbag2_2024_09_12-14_59_58_0.db3",
+    "expected_database_bytes": 1009799168,
     "redistribution_authorized": false,
-    "note": "Current contents of the official Istanbul ROS 2 bag folder, probed 2026-07-29. Download the raw bag and metadata sidecar. Do not mirror them in release artifacts without separate permission."
+    "note": "Localization-only Istanbul evaluation bag. This is a smaller real-data smoke input and is not the current full raw mapping-kit bag."
   },
   "recorded_inputs": {
     "pointcloud": {
-      "topic": "/pandar_points",
+      "topic": "/localization/util/downsample/pointcloud",
       "type": "sensor_msgs/msg/PointCloud2"
     },
     "odometry": {
-      "topic": "/applanix/lvx_client/odom",
-      "type": "nav_msgs/msg/Odometry"
+      "topic": "/sensing/gnss/pose",
+      "type": "geometry_msgs/msg/PoseStamped"
     },
     "static_transforms": {
       "topic": "/tf_static",
@@ -32,17 +28,18 @@
     }
   },
   "path_derivation": {
-    "kind": "deterministic_sidecar_from_recorded_odometry",
-    "algorithm": "cudarobotics.recorded_odometry_path.v1",
-    "source_topic": "/applanix/lvx_client/odom",
-    "source_type": "nav_msgs/msg/Odometry",
+    "kind": "deterministic_sidecar_from_recorded_pose",
+    "algorithm": "cudarobotics.recorded_pose_path.v1",
+    "source_topic": "/sensing/gnss/pose",
+    "source_type": "geometry_msgs/msg/PoseStamped",
     "output_topic": "/cuda_nav/derived_plan",
     "output_type": "nav_msgs/msg/Path",
     "parameters": {
       "coordinate_frame": "first_pose_se2_normalized_to_odom",
       "ordering": "header_stamp_then_record_order",
       "duplicate_stamp_policy": "keep_first",
-      "minimum_translation_m": 0.05
+      "minimum_translation_m": 0.2,
+      "maximum_duration_s": 120.0
     },
     "claims": {
       "recorded_path": false,
@@ -52,7 +49,7 @@
   },
   "quality_evaluation": {
     "kind": "pointcloud2_front_clearance_with_shadow_diagnostics",
-    "pointcloud_topic": "/pandar_points",
+    "pointcloud_topic": "/localization/util/downsample/pointcloud",
     "command_source": "cuda_mppi_diagnostics_csv",
     "timestamp_basis": "pointcloud_header_stamp",
     "filter": {

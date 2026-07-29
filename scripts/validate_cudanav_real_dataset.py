@@ -15,6 +15,61 @@ from cudanav_rosbag_evidence import describe_input, sha256_file
 
 SHA256 = re.compile(r"[0-9a-f]{64}")
 EVIDENCE_MODE = "real_sensor_shadow_with_derived_path"
+EXPECTED_DATASETS = {
+    "autoware_istanbul_mapping_kit": {
+        "acquisition": {
+            "method": "gdown_file",
+            "file_id": "1uta5Xr_ftV4jERxPNVqooDvWerK0dn89",
+            "uri": (
+                "https://drive.google.com/uc"
+                "?id=1uta5Xr_ftV4jERxPNVqooDvWerK0dn89"
+            ),
+            "folder_id": "1BMPcUhjq_BCLi521X88WpujoOiEi3_CJ",
+            "expected_database": "test_20240930_134039_0.db3",
+            "expected_database_bytes": 60179423232,
+            "metadata_file_id": "10tw3sBZzVAiu9gWbB4mMclGuzY2-86In",
+            "expected_metadata": "metadata.yaml",
+            "expected_metadata_bytes": 4854,
+            "redistribution_authorized": False,
+        },
+        "recorded": {
+            "pointcloud": ("/pandar_points", "sensor_msgs/msg/PointCloud2"),
+            "odometry": (
+                "/applanix/lvx_client/odom",
+                "nav_msgs/msg/Odometry",
+            ),
+            "static_transforms": ("/tf_static", "tf2_msgs/msg/TFMessage"),
+        },
+        "path_kind": "deterministic_sidecar_from_recorded_odometry",
+        "path_algorithm": "cudarobotics.recorded_odometry_path.v1",
+    },
+    "autoware_istanbul_localization_smoke": {
+        "acquisition": {
+            "method": "google_drive_file",
+            "file_id": "1yEB5j74gPLLbkkf87cuCxUgHXTkgSZbn",
+            "uri": (
+                "https://drive.google.com/uc"
+                "?id=1yEB5j74gPLLbkkf87cuCxUgHXTkgSZbn"
+            ),
+            "expected_database": "rosbag2_2024_09_12-14_59_58_0.db3",
+            "expected_database_bytes": 1009799168,
+            "redistribution_authorized": False,
+        },
+        "recorded": {
+            "pointcloud": (
+                "/localization/util/downsample/pointcloud",
+                "sensor_msgs/msg/PointCloud2",
+            ),
+            "odometry": (
+                "/sensing/gnss/pose",
+                "geometry_msgs/msg/PoseStamped",
+            ),
+            "static_transforms": ("/tf_static", "tf2_msgs/msg/TFMessage"),
+        },
+        "path_kind": "deterministic_sidecar_from_recorded_pose",
+        "path_algorithm": "cudarobotics.recorded_pose_path.v1",
+    },
+}
 
 
 def identity_schema(value: Any) -> bool:
@@ -36,15 +91,15 @@ def evaluate_spec(spec: dict[str, Any]) -> dict[str, bool]:
     path = spec.get("path_derivation", {})
     claims = path.get("claims", {}) if isinstance(path, dict) else {}
     quality = spec.get("quality_evaluation", {})
-    required = {
-        "pointcloud": ("/pandar_points", "sensor_msgs/msg/PointCloud2"),
-        "odometry": ("/applanix/lvx_client/odom", "nav_msgs/msg/Odometry"),
-        "static_transforms": ("/tf_static", "tf2_msgs/msg/TFMessage"),
-    }
+    expected = EXPECTED_DATASETS.get(spec.get("dataset_id"), {})
+    required = expected.get("recorded", {})
+    expected_acquisition = expected.get("acquisition", {})
+    expected_odometry = required.get("odometry", (None, None))
+    expected_pointcloud = required.get("pointcloud", (None, None))
     return {
         "schema": spec.get("schema_version") == 1,
         "dataset_selected": (
-            spec.get("dataset_id") == "autoware_istanbul_mapping_kit"
+            bool(expected)
             and spec.get("status") in {"selected_unmaterialized", "materialized"}
         ),
         "canonical_primary_source": str(
@@ -52,21 +107,11 @@ def evaluate_spec(spec: dict[str, Any]) -> dict[str, bool]:
         ).startswith("https://autowarefoundation.github.io/"),
         "acquisition_uri": (
             isinstance(acquisition, dict)
-            and acquisition.get("method") == "gdown_file"
-            and acquisition.get("file_id")
-            == "1uta5Xr_ftV4jERxPNVqooDvWerK0dn89"
-            and acquisition.get("uri")
-            == "https://drive.google.com/uc?id=1uta5Xr_ftV4jERxPNVqooDvWerK0dn89"
-            and acquisition.get("folder_id")
-            == "1BMPcUhjq_BCLi521X88WpujoOiEi3_CJ"
-            and acquisition.get("expected_database")
-            == "test_20240930_134039_0.db3"
-            and acquisition.get("expected_database_bytes") == 60179423232
-            and acquisition.get("metadata_file_id")
-            == "10tw3sBZzVAiu9gWbB4mMclGuzY2-86In"
-            and acquisition.get("expected_metadata") == "metadata.yaml"
-            and acquisition.get("expected_metadata_bytes") == 4854
-            and acquisition.get("redistribution_authorized") is False
+            and bool(expected_acquisition)
+            and all(
+                acquisition.get(key) == value
+                for key, value in expected_acquisition.items()
+            )
         ),
         "recorded_topics": (
             isinstance(recorded, dict)
@@ -78,11 +123,10 @@ def evaluate_spec(spec: dict[str, Any]) -> dict[str, bool]:
         ),
         "derived_path_contract": (
             isinstance(path, dict)
-            and path.get("kind")
-            == "deterministic_sidecar_from_recorded_odometry"
-            and path.get("algorithm")
-            == "cudarobotics.recorded_odometry_path.v1"
-            and path.get("source_topic") == required["odometry"][0]
+            and path.get("kind") == expected.get("path_kind")
+            and path.get("algorithm") == expected.get("path_algorithm")
+            and path.get("source_topic") == expected_odometry[0]
+            and path.get("source_type") == expected_odometry[1]
             and path.get("output_topic") == "/cuda_nav/derived_plan"
             and path.get("output_type") == "nav_msgs/msg/Path"
             and isinstance(path.get("parameters"), dict)
@@ -98,7 +142,7 @@ def evaluate_spec(spec: dict[str, Any]) -> dict[str, bool]:
             isinstance(quality, dict)
             and quality.get("kind")
             == "pointcloud2_front_clearance_with_shadow_diagnostics"
-            and quality.get("pointcloud_topic") == "/pandar_points"
+            and quality.get("pointcloud_topic") == expected_pointcloud[0]
             and quality.get("command_source") == "cuda_mppi_diagnostics_csv"
             and quality.get("timestamp_basis") == "pointcloud_header_stamp"
             and quality.get("filter")
@@ -142,6 +186,54 @@ def _metadata_bound(identity: Any, metadata: Any) -> bool:
             for entry in identity["files"]
             if isinstance(entry, dict)
         )
+    )
+
+
+def _remote_probe_bound(
+    expected: dict[str, Any],
+    reported: dict[str, Any],
+    probe: dict[str, Any],
+) -> bool:
+    expected_checks = {
+        "database_filename": True,
+        "database_bytes": True,
+    }
+    database = probe.get("database", {})
+    valid = (
+        probe.get("schema_version") == 1
+        and probe.get("passed") is True
+        and reported.get("method") == expected.get("method")
+        and reported.get("file_id") == expected.get("file_id")
+        and reported.get("expected_database")
+        == expected.get("expected_database")
+        and reported.get("expected_database_bytes")
+        == expected.get("expected_database_bytes")
+        and database.get("file_id") == expected.get("file_id")
+        and database.get("filename") == expected.get("expected_database")
+        and database.get("bytes") == expected.get("expected_database_bytes")
+    )
+    if "metadata_file_id" in expected:
+        expected_checks.update(
+            {
+                "metadata_filename": True,
+                "metadata_bytes": True,
+            }
+        )
+        metadata = probe.get("metadata", {})
+        valid = (
+            valid
+            and reported.get("metadata_file_id")
+            == expected.get("metadata_file_id")
+            and reported.get("expected_metadata")
+            == expected.get("expected_metadata")
+            and metadata.get("file_id") == expected.get("metadata_file_id")
+            and metadata.get("filename") == expected.get("expected_metadata")
+            and metadata.get("bytes") == expected.get("expected_metadata_bytes")
+        )
+    return (
+        valid
+        and isinstance(probe.get("checks"), dict)
+        and probe["checks"] == expected_checks
     )
 
 
@@ -204,6 +296,7 @@ def evaluate_materialization(
             and provenance.get("derived_tree_sha256")
             == derived.get("tree_sha256")
             and provenance.get("source_topic") == path["source_topic"]
+            and provenance.get("source_type") == path["source_type"]
             and provenance.get("output_topic") == path["output_topic"]
             and provenance.get("output_type") == path["output_type"]
             and provenance.get("algorithm") == path["algorithm"]
@@ -217,6 +310,7 @@ def evaluate_materialization(
             and generator.get("schema_version") == 1
             and generator.get("algorithm") == path["algorithm"]
             and generator.get("source_topic") == path["source_topic"]
+            and generator.get("source_type") == path["source_type"]
             and generator.get("output_topic") == path["output_topic"]
             and generator.get("parameters") == path["parameters"]
             and isinstance(input_samples, int)
@@ -252,45 +346,14 @@ def evaluate_materialization(
         acquisition = inspection["acquisition"]
         inspection_topics = inspection["topics"]
         remote_probe = inspection["remote_probe"]
-        remote_database = remote_probe["database"]
-        remote_metadata = remote_probe["metadata"]
         checks["acquisition_inspection_bound"] = (
             inspection.get("schema_version") == 1
             and inspection.get("dataset_id") == spec["dataset_id"]
             and inspection.get("dataset_spec", {}).get("sha256")
             == sha256_file(spec_path)
-            and acquisition.get("method") == spec["acquisition"]["method"]
-            and acquisition.get("file_id") == spec["acquisition"]["file_id"]
-            and acquisition.get("expected_database")
-            == spec["acquisition"]["expected_database"]
-            and acquisition.get("expected_database_bytes")
-            == spec["acquisition"]["expected_database_bytes"]
-            and acquisition.get("metadata_file_id")
-            == spec["acquisition"]["metadata_file_id"]
-            and acquisition.get("expected_metadata")
-            == spec["acquisition"]["expected_metadata"]
-            and remote_probe.get("schema_version") == 1
-            and remote_probe.get("passed") is True
-            and isinstance(remote_probe.get("checks"), dict)
-            and remote_probe["checks"]
-            == {
-                "database_filename": True,
-                "database_bytes": True,
-                "metadata_filename": True,
-                "metadata_bytes": True,
-            }
-            and remote_database.get("file_id")
-            == spec["acquisition"]["file_id"]
-            and remote_database.get("filename")
-            == spec["acquisition"]["expected_database"]
-            and remote_database.get("bytes")
-            == spec["acquisition"]["expected_database_bytes"]
-            and remote_metadata.get("file_id")
-            == spec["acquisition"]["metadata_file_id"]
-            and remote_metadata.get("filename")
-            == spec["acquisition"]["expected_metadata"]
-            and remote_metadata.get("bytes")
-            == spec["acquisition"]["expected_metadata_bytes"]
+            and _remote_probe_bound(
+                spec["acquisition"], acquisition, remote_probe
+            )
             and database_path.name == spec["acquisition"]["expected_database"]
             and isinstance(database.get("bytes"), int)
             and database["bytes"] > 0

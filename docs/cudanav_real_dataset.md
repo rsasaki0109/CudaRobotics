@@ -40,7 +40,6 @@ Download, inspect the SQLite topic table, and regenerate rosbag2 metadata in a
 ROS 2 Jazzy environment:
 
 ```bash
-python3 -m pip install gdown
 python3 scripts/prepare_cudanav_istanbul_dataset.py \
   --output-dir build/datasets/cudanav_istanbul \
   --download \
@@ -101,3 +100,37 @@ The ROS 2 Jazzy workflow also builds an actual MCAP Path sidecar from a
 synthetic DB3, reopens it with `ros2 bag info`, and reruns the materialization
 validator. Its attestation cannot pass unless the
 `derived_path_sidecar_roundtrip` check ran successfully.
+
+## Smaller real-data smoke contract
+
+The localization-only Istanbul evaluation bag is kept as a separate smoke
+contract in `docs/cudanav_real_dataset_smoke.json`. It is not relabelled as
+the current full raw mapping-kit bag. The downloaded artifact is
+`rosbag2_2024_09_12-14_59_58_0.db3` (1,009,799,168 bytes, SHA-256
+`eb80d649a41fd557ff3af5df4424051191fb696d0ebecbeb36b385702d2b4c8d`).
+Its SQLite `quick_check` passes and it contains:
+
+- 34,375 `/localization/util/downsample/pointcloud` PointCloud2 messages;
+- 343,730 `/sensing/gnss/pose` PoseStamped messages;
+- 4 `/tf_static` messages.
+
+The source bag spans about 57 minutes and contains 343,730 recorded poses.
+The smoke contract intentionally selects the first 120 seconds and applies a
+0.2 m translation threshold, producing 2,778 SE(2)-normalized Path poses in a
+222,268-byte message. The dependency-free backend writes that bounded Path as
+a standard rosbag2 SQLite sidecar so it remains practical for DDS/controller
+smoke tests. Materialize it in one command:
+
+```bash
+python3 scripts/run_cudanav_real_dataset_pipeline.py \
+  --spec docs/cudanav_real_dataset_smoke.json \
+  --dataset-dir build/datasets/cudanav_localization_smoke \
+  --work-dir build/cudanav_real_dataset_smoke \
+  --download --generate-metadata \
+  --sidecar-storage sqlite3
+```
+
+This proves real-file acquisition, topic inspection, PoseStamped decoding,
+Path derivation, and content-addressed materialization. It does not by itself
+prove a GPU controller run; that requires `--run-autonomy` in a sourced ROS 2
+CUDA environment.

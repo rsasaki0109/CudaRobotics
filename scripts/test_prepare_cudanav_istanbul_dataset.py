@@ -13,13 +13,20 @@ from prepare_cudanav_istanbul_dataset import (
     download_command,
     inspect,
     probe_acquisition,
+    write_metadata,
 )
 
 
 class PrepareCudaNavIstanbulDatasetTest(unittest.TestCase):
-    def test_gdown_v6_uses_positional_file_id(self) -> None:
+    def test_download_commands_are_resumable_and_gdown_v6_compatible(
+        self,
+    ) -> None:
         output = Path("dataset.db3")
-        command = download_command("drive-id", output)
+        curl = download_command("drive-id", output)
+        self.assertEqual(curl[0], "curl")
+        self.assertIn("--continue-at", curl)
+        self.assertEqual(curl[curl.index("--continue-at") + 1], "-")
+        command = download_command("drive-id", output, "gdown")
         self.assertEqual(command[3], "drive-id")
         self.assertNotIn("--id", command)
         self.assertEqual(command[-2:], ["-O", str(output)])
@@ -105,6 +112,14 @@ class PrepareCudaNavIstanbulDatasetTest(unittest.TestCase):
             self.assertTrue(report["passed"], report)
             self.assertEqual(report["database"]["source"], str(database.resolve()))
             self.assertEqual(len(report["database"]["sha256"]), 64)
+            metadata = root / "metadata.yaml"
+            generated = write_metadata(database, metadata)
+            self.assertEqual(generated["message_count"], 3)
+            self.assertEqual(generated["topic_count"], 3)
+            self.assertIn(
+                "storage_identifier: sqlite3",
+                metadata.read_text(encoding="utf-8"),
+            )
 
     def test_missing_required_messages_fail(self) -> None:
         spec = read_json(DEFAULT_SPEC)

@@ -249,11 +249,12 @@ def evaluate_manifest(
     checks["dataset_materialization_semantics"] = not derived_mode
     if derived_mode and dataset_path is not None:
         try:
-            from cudanav_real_dataset import DEFAULT_SPEC
+            from cudanav_real_dataset import resolve_materialization_spec
             from validate_cudanav_real_dataset import evaluate as evaluate_dataset
 
             dataset_payload = json.loads(dataset_path.read_text(encoding="utf-8"))
-            dataset_gate = evaluate_dataset(DEFAULT_SPEC, dataset_path)
+            dataset_spec_path, _ = resolve_materialization_spec(dataset_payload)
+            dataset_gate = evaluate_dataset(dataset_spec_path, dataset_path)
             checks["dataset_materialization_semantics"] = (
                 dataset_gate["ready"]
                 and dataset_payload["source_bag"]["tree_sha256"]
@@ -491,9 +492,12 @@ def evaluate_manifest(
         checks["pointcloud_evaluate_command_bound"] = not derived_mode
         if derived_mode:
             try:
-                from cudanav_real_dataset import DEFAULT_SPEC, read_json
+                from cudanav_real_dataset import resolve_materialization_spec
 
-                spec = read_json(DEFAULT_SPEC)
+                dataset_payload = json.loads(
+                    dataset_path.read_text(encoding="utf-8")
+                )
+                _, spec = resolve_materialization_spec(dataset_payload)
                 expected_options = {
                     "--pointcloud-topic": spec["recorded_inputs"][
                         "pointcloud"

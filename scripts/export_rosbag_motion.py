@@ -77,6 +77,51 @@ def parse_odometry(data: bytes) -> dict[str, object]:
     }
 
 
+def parse_pose_stamped(data: bytes) -> dict[str, object]:
+    reader = CdrReader(data)
+    stamp_sec, stamp_nanosec = reader.int32(), reader.uint32()
+    frame_id = reader.string()
+    position = reader.doubles(3)
+    quaternion = reader.doubles(4)
+    qx, qy, qz, qw = quaternion
+    yaw = math.atan2(
+        2.0 * (qw * qz + qx * qy),
+        1.0 - 2.0 * (qy * qy + qz * qz),
+    )
+    return {
+        "stamp_ns": stamp_sec * 1_000_000_000 + stamp_nanosec,
+        "frame_id": frame_id,
+        "x": position[0],
+        "y": position[1],
+        "z": position[2],
+        "yaw": yaw,
+        "qx": qx,
+        "qy": qy,
+        "qz": qz,
+        "qw": qw,
+    }
+
+
+def pose_parser(message_type: str):
+    parsers = {
+        "nav_msgs/msg/Odometry": parse_odometry,
+        "geometry_msgs/msg/PoseStamped": parse_pose_stamped,
+    }
+    try:
+        return parsers[message_type]
+    except KeyError as exception:
+        raise ValueError(f"unsupported recorded pose type: {message_type}") from exception
+
+
+def topic_type(connection: sqlite3.Connection, topic: str) -> str:
+    row = connection.execute(
+        "SELECT type FROM topics WHERE name = ?", (topic,)
+    ).fetchone()
+    if row is None:
+        raise ValueError(f"topic not found: {topic}")
+    return str(row[0])
+
+
 def messages(connection: sqlite3.Connection, topic: str):
     row = connection.execute("SELECT id FROM topics WHERE name = ?", (topic,)).fetchone()
     if row is None:

@@ -47,7 +47,19 @@ def parse_args() -> argparse.Namespace:
         default=Path("build/cudanav_real_dataset"),
     )
     parser.add_argument("--download", action="store_true")
+    parser.add_argument(
+        "--download-backend",
+        choices=("curl", "gdown"),
+        default="curl",
+    )
+    parser.add_argument("--probe", action="store_true")
     parser.add_argument("--reindex", action="store_true")
+    parser.add_argument("--generate-metadata", action="store_true")
+    parser.add_argument(
+        "--sidecar-storage",
+        choices=("mcap", "sqlite3"),
+        default="mcap",
+    )
     parser.add_argument("--run-autonomy", action="store_true")
     parser.add_argument("--profile", choices=("smoke", "release"), default="smoke")
     parser.add_argument(
@@ -114,9 +126,15 @@ def command_plan(args: argparse.Namespace) -> dict[str, Any]:
         str(inspection),
     ]
     if args.download:
-        prepare.append("--download")
+        prepare.extend(
+            ["--download", "--download-backend", args.download_backend]
+        )
+    if args.probe:
+        prepare.append("--probe")
     if args.reindex:
         prepare.append("--reindex")
+    if args.generate_metadata:
+        prepare.append("--generate-metadata")
     derive = [
         sys.executable,
         str(ROOT / "scripts" / "derive_cudanav_path_sidecar.py"),
@@ -134,6 +152,8 @@ def command_plan(args: argparse.Namespace) -> dict[str, Any]:
         str(inspection),
         "--materialization",
         str(materialization),
+        "--storage",
+        args.sidecar_storage,
     ]
     validate = [
         sys.executable,

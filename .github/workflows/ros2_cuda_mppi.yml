@@ -49,6 +49,7 @@ on:
       - scripts/validate_cudanav_ros_ci.py
       - scripts/validate_cudanav_real_dataset.py
       - docs/cudanav_real_dataset.json
+      - docs/cudanav_real_dataset_smoke.json
       - include/cudarobotics/kiss_icp_gpu.hpp
       - src/gpu_kiss_icp.cu
       - include/cudarobotics/voxel_mapping_gpu.hpp
@@ -104,6 +105,7 @@ on:
       - scripts/validate_cudanav_ros_ci.py
       - scripts/validate_cudanav_real_dataset.py
       - docs/cudanav_real_dataset.json
+      - docs/cudanav_real_dataset_smoke.json
       - include/cudarobotics/kiss_icp_gpu.hpp
       - src/gpu_kiss_icp.cu
       - include/cudarobotics/voxel_mapping_gpu.hpp
