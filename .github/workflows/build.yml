@@ -14,6 +14,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Verify clean checkout
+        run: test -z "$(git status --porcelain)"
+
       - name: Install CUDA toolkit
         uses: Jimver/cuda-toolkit@v0.2.16
         with:
@@ -48,7 +51,8 @@ jobs:
       - name: Create commit-bound Build evidence
         if: github.event_name != 'pull_request'
         run: |
-          test -z "$(git status --porcelain)"
+          git diff --exit-code
+          git diff --cached --exit-code
           python scripts/release_ci_evidence.py \
             --output build/github_build_ci_evidence.json \
             --gate github_build \
