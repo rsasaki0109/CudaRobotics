@@ -49,11 +49,11 @@ downloaded and materialized. A derived Path always uses the distinct
 `real_sensor_shadow_with_derived_path` label; it cannot be relabelled as a
 recorded Path or closed-loop execution.
 
-The existing offline quality evaluator consumes Twist, Odometry, and
-LaserScan from a DB3. The selected PointCloud2 dataset therefore still needs a
-PointCloud2/ESDF clearance evaluator before its release-profile run can pass;
-the sidecar and multi-input replay contract do not conceal that remaining
-gate.
+The runner selects the PointCloud2 quality evaluator when a dataset
+materialization is supplied. It pairs recorded cloud header stamps with actual
+CUDA MPPI diagnostics commands and retains the result as
+`real_sensor_shadow_with_derived_path`. The older Twist/Odometry/LaserScan
+path remains available for compatible DB3 bags.
 
 The local release closed-loop directory is automatically included in the
 cross-machine GPU aggregate. Repeat `--multi-gpu-run` for more imported

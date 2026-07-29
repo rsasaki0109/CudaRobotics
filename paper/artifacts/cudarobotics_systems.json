@@ -50,7 +50,7 @@
       ],
       "limitations": [
         "Rosbag replay is shadow-controller evidence and is not a closed-loop success claim.",
-        "The selected public PointCloud2 dataset has a deterministic odometry-derived Path contract, but its PointCloud2/ESDF clearance evaluator and release-profile GPU run remain pending."
+        "The selected public PointCloud2 dataset has deterministic Path and PointCloud2-clearance contracts, but its release-profile GPU run remains pending."
       ]
     },
     {
@@ -89,7 +89,7 @@
         {
           "path": "scripts/cudanav_rosbag_evidence.py",
           "normalization": "text_lf",
-          "sha256": "cd231c95837dafc016cfc9338ef138c3d8627d50346ba5dbe61637305d983f0b"
+          "sha256": "f80c605a31c6d0678d3412d8450565448c94d2bc4084d0bb1ebd7fa8a514d9ec"
         },
         {
           "path": "scripts/cudanav_real_dataset.py",
@@ -99,7 +99,7 @@
         {
           "path": "scripts/validate_cudanav_real_dataset.py",
           "normalization": "text_lf",
-          "sha256": "7ce4e83bd2dcc5b3efac34cfb9d8695945f75c2abf0fb1c4e507b46170317d25"
+          "sha256": "3e7ccb35e27f70ca9e58ab7362835feaa1c8edf60397c7bf888e298cdac3a43e"
         },
         {
           "path": "scripts/derive_cudanav_path_sidecar.py",
@@ -109,7 +109,17 @@
         {
           "path": "scripts/run_cudanav_rosbag_replay.py",
           "normalization": "text_lf",
-          "sha256": "9a3fa126eff323a27a3a6033fd23c882a755d4d40799736bf4c8a5f8463d2bc0"
+          "sha256": "a92addc40d8739daed601d2d3b34316bc8d292309d56ee27826a73aae82f8726"
+        },
+        {
+          "path": "scripts/analyze_pointcloud2_clearance.py",
+          "normalization": "text_lf",
+          "sha256": "f80b5e87c992abfe18a11916c95d4a7fa81c3639af8166f96e6e003ee53c1f49"
+        },
+        {
+          "path": "scripts/evaluate_mppi_rosbag.py",
+          "normalization": "text_lf",
+          "sha256": "8c7fa0def93b2d5f02f72998c5662e5ccc9f51734a2bcd67d80d87f4a8247d5e"
         },
         {
           "path": "scripts/run_autonomy_suite.py",
@@ -119,7 +129,7 @@
         {
           "path": "docs/cudanav_real_dataset.json",
           "normalization": "text_lf",
-          "sha256": "e11d2ee69dd0ba0139c4537bc7b3023b853ac858b6bfb806795af01599fbe29e"
+          "sha256": "016f18dcd552097567749ca84c6feb788eaa68951caead1bd6f5ce6bed48ccb6"
         }
       ]
     },

@@ -436,6 +436,24 @@ class CudaNavAutonomySuiteTest(unittest.TestCase):
             manifest["evidence_mode"] = (
                 "real_sensor_shadow_with_derived_path"
             )
+            evaluation_path = run / manifest["artifacts"]["evaluation"]
+            evaluation = json.loads(evaluation_path.read_text())
+            evaluation["evidence_mode"] = (
+                "real_sensor_shadow_with_derived_path"
+            )
+            evaluation["clearance"].update(
+                {
+                    "pointcloud_topic": spec["quality_evaluation"][
+                        "pointcloud_topic"
+                    ],
+                    "diagnostics_source": str(
+                        (run / "diagnostics.csv").resolve()
+                    ),
+                    "filter": spec["quality_evaluation"]["filter"],
+                }
+            )
+            evaluation_path.write_text(json.dumps(evaluation) + "\n")
+            manifest["evaluation_sha256"] = sha256_file(evaluation_path)
             manifest["derived_path_bag"] = describe_input(derived)
             manifest["dataset_materialization_sha256"] = sha256_file(
                 materialization
@@ -452,6 +470,27 @@ class CudaNavAutonomySuiteTest(unittest.TestCase):
                 "-i",
                 str(derived.resolve()),
             ]
+            quality_filter = spec["quality_evaluation"]["filter"]
+            manifest["commands"]["evaluate"].extend(
+                [
+                    "--pointcloud-topic",
+                    spec["recorded_inputs"]["pointcloud"]["topic"],
+                    "--odometry-topic",
+                    spec["recorded_inputs"]["odometry"]["topic"],
+                    "--pointcloud-half-angle-rad",
+                    str(quality_filter["half_angle_rad"]),
+                    "--pointcloud-minimum-z-m",
+                    str(quality_filter["minimum_z_m"]),
+                    "--pointcloud-maximum-z-m",
+                    str(quality_filter["maximum_z_m"]),
+                    "--pointcloud-minimum-range-m",
+                    str(quality_filter["minimum_range_m"]),
+                    "--pointcloud-maximum-range-m",
+                    str(quality_filter["maximum_range_m"]),
+                    "--pointcloud-maximum-command-age-ms",
+                    str(quality_filter["maximum_command_age_ms"]),
+                ]
+            )
             (run / "manifest.json").write_text(json.dumps(manifest) + "\n")
             result = validate_rosbag(run, "release")
             self.assertTrue(result["passed"], result)

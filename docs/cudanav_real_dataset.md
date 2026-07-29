@@ -49,3 +49,11 @@ recorded input and for the derived Path. It rehashes both local bag trees and
 the generator report by default. The actual public-bag GPU shadow replay
 remains outstanding; the selection alone is intentionally
 `valid: true, ready: false`.
+
+For the quality gate, the dependency-free decoder reads PointCloud2 fields by
+name and datatype. It measures horizontal clearance inside the declared
+front ±30 degree, z `[-0.5, 2.5]` metre, and range `[0.05, 50]` metre filter.
+Cloud header timestamps are paired to the nearest real CUDA MPPI diagnostics
+command within 200 ms; at least 90% of valid clouds must pair. This replaces
+the LaserScan-only evaluator for this dataset without claiming that commands
+altered the recorded vehicle motion.
