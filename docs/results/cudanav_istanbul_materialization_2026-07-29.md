@@ -2,14 +2,14 @@
 
 Portable real-file acquisition and derived-Path evidence. This is not a GPU controller or closed-loop result.
 
-- Commit: `589732155794d10d1c3ec86481145af557d11b6f`
+- Commit: `1cbd74285044de066a6ed48cd80c240221800e52`
 - Dataset: `autoware_istanbul_localization_smoke`
 - Database: `rosbag2_2024_09_12-14_59_58_0.db3` (1009799168 bytes)
 - Database SHA-256: `eb80d649a41fd557ff3af5df4424051191fb696d0ebecbeb36b385702d2b4c8d`
 - Derived poses: 2778 from 343730 recorded samples
 - Derived storage: `sqlite3`
 - Derived tree SHA-256: `c0090d392d575a250642964dff7a1ed767667d4adfa39daaf0ffb559f71f2806`
-- Validation checks: 28 / 28 passed
+- Validation checks: 29 / 29 passed
 
 ## Recorded topics
 

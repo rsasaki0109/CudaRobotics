@@ -19,7 +19,7 @@
       "id": "real_dataset_materialization",
       "statement": "A content-addressed public Istanbul localization bag is acquired, inspected, and converted into a bounded deterministic Path sidecar with portable validation evidence.",
       "submission_required": true,
-      "status": "partial",
+      "status": "supported",
       "evidence": [
         "istanbul_materialization_smoke"
       ],
@@ -193,13 +193,27 @@
     },
     {
       "id": "istanbul_materialization_smoke",
-      "status": "pending",
-      "kind": "json_assertions",
+      "status": "complete",
+      "kind": "file_set",
       "generator_command": [
         "python3",
         "scripts/publish_cudanav_dataset_evidence.py",
-        "--materialization",
-        "build/cudanav_real_dataset/materialization.json"
+        "--validate",
+        "docs/results/cudanav_istanbul_materialization_2026-07-29.json",
+        "--commit",
+        "1cbd74285044de066a6ed48cd80c240221800e52"
+      ],
+      "artifacts": [
+        {
+          "path": "docs/results/cudanav_istanbul_materialization_2026-07-29.json",
+          "normalization": "text_lf",
+          "sha256": "a78f8133d0fd1dd37795dad90acd54ccd584879d035966cdac4063c4ecfe4229"
+        },
+        {
+          "path": "docs/results/cudanav_istanbul_materialization_2026-07-29.md",
+          "normalization": "text_lf",
+          "sha256": "d0cd80c94c43b2e89b00b98eebd96e6e9b8c3380abfdd019ef9f89e8ed7443bb"
+        }
       ]
     },
     {
