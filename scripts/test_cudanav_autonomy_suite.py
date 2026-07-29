@@ -498,6 +498,7 @@ class CudaNavAutonomySuiteTest(unittest.TestCase):
                         "first_stamp_ns": 1,
                         "last_stamp_ns": 5,
                         "frame_id": "odom",
+                        "storage_id": "mcap",
                         "recorded_path": False,
                         "closed_loop": False,
                     }

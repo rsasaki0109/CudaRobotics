@@ -130,6 +130,13 @@ python3 scripts/run_cudanav_real_dataset_pipeline.py \
   --sidecar-storage sqlite3
 ```
 
+Materialization validation independently reopens the SQLite database and
+decodes the complete `nav_msgs/msg/Path` CDR payload. It checks the declared
+pose count and first/last stamps, strict timestamp ordering, frame IDs, finite
+positions, unit quaternions, normalized origin, duration cap, and absence of
+trailing bytes. This catches a corrupt or structurally valid but semantically
+different sidecar before ROS playback.
+
 This proves real-file acquisition, topic inspection, PoseStamped decoding,
 Path derivation, and content-addressed materialization. It does not by itself
 prove a GPU controller run; that requires `--run-autonomy` in a sourced ROS 2

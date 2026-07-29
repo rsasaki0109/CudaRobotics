@@ -4,7 +4,9 @@ from __future__ import annotations
 
 from copy import deepcopy
 import json
+import math
 from pathlib import Path
+import sqlite3
 import tempfile
 import unittest
 
@@ -15,6 +17,7 @@ from cudanav_real_dataset import (
     resolve_materialization_spec,
 )
 from cudanav_rosbag_evidence import sha256_file
+from derive_cudanav_path_sidecar import derive_path, write_sqlite_rosbag
 from run_cudanav_rosbag_replay import play_argv
 from validate_cudanav_real_dataset import evaluate, evaluate_materialization
 
@@ -43,8 +46,18 @@ def write_bag(
     return root
 
 
-def write_report(root: Path, spec: dict, input_samples: int = 5) -> Path:
+def write_report(
+    root: Path,
+    spec: dict,
+    input_samples: int = 5,
+    *,
+    storage_id: str = "mcap",
+    poses: list[dict] | None = None,
+) -> Path:
     contract = spec["path_derivation"]
+    first_stamp = poses[0]["stamp_ns"] if poses else 1
+    last_stamp = poses[-1]["stamp_ns"] if poses else 2
+    output_poses = len(poses) if poses else 2
     path = root / "generator_report.json"
     path.write_text(
         json.dumps(
@@ -56,12 +69,13 @@ def write_report(root: Path, spec: dict, input_samples: int = 5) -> Path:
                 "output_topic": contract["output_topic"],
                 "parameters": contract["parameters"],
                 "input_samples": input_samples,
-                "output_poses": 2,
-                "first_stamp_ns": 1,
-                "last_stamp_ns": 2,
+                "output_poses": output_poses,
+                "first_stamp_ns": first_stamp,
+                "last_stamp_ns": last_stamp,
                 "frame_id": "odom",
                 "recorded_path": False,
                 "closed_loop": False,
+                "storage_id": storage_id,
             }
         )
         + "\n"
@@ -69,7 +83,9 @@ def write_report(root: Path, spec: dict, input_samples: int = 5) -> Path:
     return path
 
 
-def write_inspection(source: Path, spec: dict) -> Path:
+def write_inspection(
+    source: Path, spec: dict, spec_path: Path = DEFAULT_SPEC
+) -> Path:
     database = source / spec["acquisition"]["expected_database"]
     topics = {
         contract["topic"]: {"type": contract["type"], "count": 5}
@@ -83,8 +99,8 @@ def write_inspection(source: Path, spec: dict) -> Path:
                 "dataset_id": spec["dataset_id"],
                 "inspected_at": "2026-07-29T00:00:00+00:00",
                 "dataset_spec": {
-                    "path": str(DEFAULT_SPEC.resolve()),
-                    "sha256": sha256_file(DEFAULT_SPEC),
+                    "path": str(spec_path.resolve()),
+                    "sha256": sha256_file(spec_path),
                 },
                 "acquisition": {
                     "method": spec["acquisition"]["method"],
@@ -95,12 +111,18 @@ def write_inspection(source: Path, spec: dict) -> Path:
                     "expected_database_bytes": spec["acquisition"][
                         "expected_database_bytes"
                     ],
-                    "metadata_file_id": spec["acquisition"][
-                        "metadata_file_id"
-                    ],
-                    "expected_metadata": spec["acquisition"][
-                        "expected_metadata"
-                    ],
+                    **(
+                        {
+                            "metadata_file_id": spec["acquisition"][
+                                "metadata_file_id"
+                            ],
+                            "expected_metadata": spec["acquisition"][
+                                "expected_metadata"
+                            ],
+                        }
+                        if "metadata_file_id" in spec["acquisition"]
+                        else {}
+                    ),
                 },
                 "database": {
                     "source": str(database.resolve()),
@@ -120,18 +142,34 @@ def write_inspection(source: Path, spec: dict) -> Path:
                             "expected_database_bytes"
                         ],
                     },
-                    "metadata": {
-                        "file_id": spec["acquisition"]["metadata_file_id"],
-                        "filename": spec["acquisition"]["expected_metadata"],
-                        "bytes": spec["acquisition"][
-                            "expected_metadata_bytes"
-                        ],
-                    },
+                    **(
+                        {
+                            "metadata": {
+                                "file_id": spec["acquisition"][
+                                    "metadata_file_id"
+                                ],
+                                "filename": spec["acquisition"][
+                                    "expected_metadata"
+                                ],
+                                "bytes": spec["acquisition"][
+                                    "expected_metadata_bytes"
+                                ],
+                            }
+                        }
+                        if "metadata_file_id" in spec["acquisition"]
+                        else {}
+                    ),
                     "checks": {
                         "database_filename": True,
                         "database_bytes": True,
-                        "metadata_filename": True,
-                        "metadata_bytes": True,
+                        **(
+                            {
+                                "metadata_filename": True,
+                                "metadata_bytes": True,
+                            }
+                            if "metadata_file_id" in spec["acquisition"]
+                            else {}
+                        ),
                     },
                     "passed": True,
                 },
@@ -216,6 +254,87 @@ class CudaNavRealDatasetTest(unittest.TestCase):
             result = evaluate(DEFAULT_SPEC, evidence_path)
             self.assertTrue(result["valid"], result)
             self.assertTrue(result["ready"])
+
+    def test_sqlite_path_cdr_is_semantically_reopened_and_validated(self) -> None:
+        spec = read_json(SMOKE_SPEC)
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = write_bag(
+                root / "source",
+                [
+                    (entry["topic"], entry["type"], 5)
+                    for entry in spec["recorded_inputs"].values()
+                ],
+                spec["acquisition"]["expected_database"],
+            )
+            poses = derive_path(
+                [
+                    {
+                        "stamp_ns": 1_000_000_000,
+                        "x": 2.0,
+                        "y": 3.0,
+                        "z": 1.0,
+                        "yaw": math.pi / 2,
+                    },
+                    {
+                        "stamp_ns": 2_000_000_000,
+                        "x": 2.0,
+                        "y": 4.0,
+                        "z": 1.0,
+                        "yaw": math.pi / 2,
+                    },
+                ],
+                0.05,
+                120.0,
+            )
+            derived = root / "derived"
+            write_sqlite_rosbag(
+                derived,
+                spec["path_derivation"]["output_topic"],
+                "odom",
+                poses,
+                5_000_000_000,
+            )
+            report = write_report(
+                root,
+                spec,
+                storage_id="sqlite3",
+                poses=poses,
+            )
+            evidence = make_materialization(
+                SMOKE_SPEC,
+                source,
+                derived,
+                report,
+                write_inspection(source, spec, SMOKE_SPEC),
+            )
+            checks = evaluate_materialization(
+                spec, SMOKE_SPEC.resolve(), evidence
+            )
+            self.assertTrue(checks["derived_sqlite_path_semantics"], checks)
+
+            database = derived / "path_sidecar_0.db3"
+            connection = sqlite3.connect(database)
+            try:
+                payload = bytearray(
+                    connection.execute("SELECT data FROM messages").fetchone()[
+                        0
+                    ]
+                )
+                payload[-1] ^= 0x01
+                connection.execute(
+                    "UPDATE messages SET data = ?", (bytes(payload),)
+                )
+                connection.commit()
+            finally:
+                connection.close()
+            checks = evaluate_materialization(
+                spec,
+                SMOKE_SPEC.resolve(),
+                evidence,
+                verify_source=False,
+            )
+            self.assertFalse(checks["derived_sqlite_path_semantics"])
 
     def test_zero_count_and_closed_loop_relabel_are_rejected(self) -> None:
         spec = read_json(DEFAULT_SPEC)
