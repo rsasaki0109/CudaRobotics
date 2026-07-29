@@ -241,6 +241,18 @@ The smaller two-scenario smoke artifact from 2026-06-05 remains at
 
 Requires NVIDIA Container Toolkit and a CUDA-capable GPU.
 
+End-to-end CudaNav smoke (GPU KISS-ICP, voxel map, ESDF, Nav2 CUDA MPPI,
+and command-driven simulator):
+
+```bash
+docker build -f docker/Dockerfile -t cudarobotics .
+docker run --rm --gpus all -v "$PWD/out:/out" cudarobotics cudanav
+```
+
+The command exits non-zero unless `/out/cudanav_closed_loop.json` passes the
+short integration gate. The 10-minute retained release run remains a separate
+v1.0 evidence requirement.
+
 Quick smoke:
 
 ```bash
