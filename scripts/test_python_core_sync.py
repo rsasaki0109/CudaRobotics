@@ -5,6 +5,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from python_source_provenance import serialized_payload
+
 
 REPO = Path(__file__).resolve().parents[1]
 
@@ -74,9 +76,22 @@ def main() -> int:
     for source in source_headers:
         assert_same(source, bundled_header_dir / source.name)
 
+    provenance = (
+        REPO / "python" / "src" / "cudarobotics" / "_source_provenance.json"
+    )
+    assert provenance.is_file(), (
+        "Python source provenance is missing; run "
+        "python scripts/python_source_provenance.py"
+    )
+    assert provenance.read_bytes() == serialized_payload(), (
+        "Python source provenance is stale; run "
+        "python scripts/python_source_provenance.py"
+    )
+
     print(
         "Python bundled CUDA core is synchronized: "
-        f"{len(CUDA_SOURCES)} sources, {len(source_headers) + 2} headers"
+        f"{len(CUDA_SOURCES)} sources, {len(source_headers) + 2} headers; "
+        "source provenance is current"
     )
     return 0
 
