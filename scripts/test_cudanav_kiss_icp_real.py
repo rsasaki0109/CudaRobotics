@@ -131,9 +131,20 @@ class CudaNavKissIcpRealTest(unittest.TestCase):
                     "topic"
                 ],
                 "pose_topic": spec["recorded_inputs"]["odometry"]["topic"],
+                "pose_type": spec["recorded_inputs"]["odometry"]["type"],
                 "frames": 2,
                 "first_stamp_ns": 1,
                 "last_stamp_ns": 2,
+                "frame_id": "base_link",
+                "duration_s": 1.0,
+                "start_offset_s": 1.0,
+                "maximum_duration_s": 30.0,
+                "maximum_pose_age_ms": 50.0,
+                "pose_age_p95_ms": 0.1,
+                "minimum_points": 40,
+                "mean_points": 40.0,
+                "maximum_points": 40,
+                "reference_path_length_m": 1.0,
             }
             result = {
                 "frames": 2,
@@ -193,6 +204,7 @@ class CudaNavKissIcpRealTest(unittest.TestCase):
             )
             rendered = render_portable_markdown(portable)
             self.assertIn("Real PointCloud2 GPU odometry: yes", rendered)
+            self.assertIn("startup offset: `smoke` / 1.000 s", rendered)
             self.assertIn("GPU controller run: no", rendered)
             self.assertIn("Closed-loop evidence: no", rendered)
             relabeled = deepcopy(portable)
