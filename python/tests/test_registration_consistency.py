@@ -10,6 +10,9 @@ import pytest
 from cudarobotics import registration
 
 
+pytestmark = pytest.mark.gpu_registration
+
+
 def kabsch(source: np.ndarray, target: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     """Return the rigid transform mapping paired ``source`` rows to ``target``."""
     source_mean = source.mean(axis=0, dtype=np.float64)

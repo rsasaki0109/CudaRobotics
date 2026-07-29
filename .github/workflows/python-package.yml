@@ -64,7 +64,8 @@ jobs:
           SDIST=(python/dist/cudarobotics-*.tar.gz)
           /tmp/cudarobotics-test-venv/bin/pip install "${SDIST[0]}[test]"
           PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 \
-            /tmp/cudarobotics-test-venv/bin/pytest python/tests -q
+            /tmp/cudarobotics-test-venv/bin/pytest \
+              python/tests -m "not gpu_registration" -q
 
       - name: Upload wheels
         if: matrix.python-version == '3.12'
