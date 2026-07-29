@@ -172,6 +172,7 @@ jobs:
           sudo apt-get install -y --no-install-recommends \
             build-essential \
             cmake \
+            python3-matplotlib \
             python3-pil \
             python3-colcon-common-extensions \
             ros-jazzy-ros-base \
