@@ -17,44 +17,41 @@
     },
     {
       "id": "real_dataset_materialization",
-      "statement": "A content-addressed public Istanbul localization bag is acquired, inspected, and converted into a bounded deterministic Path sidecar with portable validation evidence.",
+      "statement": "The content-addressed MCD NTU Day 02 Ouster sequence is deterministically converted from ROS 1 into a 1,200-frame ROS 2 timed-LiDAR bag with paired sensor-frame ground truth and full-window timing admission.",
       "submission_required": true,
       "status": "supported",
       "evidence": [
-        "istanbul_materialization_smoke"
+        "mcd_timed_materialization"
       ],
       "limitations": [
-        "This proves real-file acquisition and derived-Path materialization only; it is neither a GPU controller run nor closed-loop evidence.",
-        "The 120-second localization smoke is distinct from the 56 GB raw mapping-kit release dataset."
+        "MCD is CC BY-NC-SA 4.0 and the 7.56 GB derived bag is not redistributed by this repository.",
+        "Materialization and timing admission are input-integrity evidence; the GPU results are separate claims."
       ]
     },
     {
       "id": "real_gpu_odometry",
-      "statement": "The reusable GPU KISS-ICP core processes a content-addressed 300-frame real PointCloud2 sequence with 0.778 m ATE RMSE and 2.961 percent final drift on an NVIDIA GeForce GTX 1660 Ti.",
+      "statement": "The reusable timed GPU KISS-ICP core processes 1,190 MCD Ouster frames over 118.902 seconds with 0.815 m ATE RMSE and 0.472 percent final drift on an NVIDIA GeForce GTX 1660 Ti.",
       "submission_required": true,
       "status": "supported",
       "evidence": [
-        "istanbul_kiss_icp_gpu_smoke",
-        "istanbul_kiss_icp_gpu_report"
+        "mcd_kiss_icp_gpu_release"
       ],
       "limitations": [
-        "This is a 29.9-second smoke profile on one GPU model, not the 120-second release profile or a multi-GPU result.",
-        "A declared one-second startup offset excludes a documented GNSS initialization discontinuity of roughly 1.9 m and 146 degrees.",
+        "This is a release-profile result on one GPU model, not a multi-GPU result.",
         "This proves real-sensor GPU odometry only; it is neither a GPU controller run nor closed-loop evidence."
       ]
     },
     {
       "id": "real_gpu_core_shadow",
-      "statement": "A content-addressed 300-frame real PointCloud2 sequence passes through GPU KISS-ICP, rolling voxel mapping, GPU ESDF inflation, and CUDA MPPI in one native shadow run with a 9.999 ms mean frame time.",
+      "statement": "A content-addressed 1,190-frame MCD timed PointCloud2 sequence passes through GPU KISS-ICP, rolling voxel mapping, GPU ESDF inflation, and two-iteration CUDA MPPI in one 118.902-second native shadow run.",
       "submission_required": true,
       "status": "supported",
       "evidence": [
-        "istanbul_all_gpu_core_smoke",
-        "istanbul_all_gpu_core_report"
+        "mcd_all_gpu_core_release"
       ],
       "limitations": [
-        "This is a 29.9-second smoke profile on one GPU model, not the 120-second release profile or a multi-GPU result.",
-        "Two of 31 MPPI evaluations reported all rollouts colliding; both were retained as bounded safety interventions with zero linear speed.",
+        "This is a release-profile result on one GPU model, not a multi-GPU result.",
+        "The minimum nonzero valid-rollout ratio was 0.1284; all-colliding evaluations and invalid commands were zero.",
         "The native process does not prove ROS 2 runtime, applied commands, vehicle response, or closed-loop autonomy."
       ]
     },
@@ -108,12 +105,12 @@
       "submission_required": true,
       "status": "partial",
       "evidence": [
-        "istanbul_all_gpu_core_smoke",
+        "mcd_all_gpu_core_release",
         "real_rosbag_release"
       ],
       "limitations": [
         "Rosbag replay is shadow-controller evidence and is not a closed-loop success claim.",
-        "The selected public PointCloud2 dataset now has a passing native all-GPU core smoke, but a ROS 2 release-profile replay and its runtime attestation remain pending."
+        "The selected public timed PointCloud2 dataset now has a passing native all-GPU release profile, but a ROS 2 release-profile replay and its runtime attestation remain pending."
       ]
     },
     {
@@ -179,7 +176,7 @@
         {
           "path": "scripts/analyze_pointcloud2_clearance.py",
           "normalization": "text_lf",
-          "sha256": "f80b5e87c992abfe18a11916c95d4a7fa81c3639af8166f96e6e003ee53c1f49"
+          "sha256": "80a22fdd4d09b2d05337bbd7dbe39b92311d12003ee861443e578141103849ba"
         },
         {
           "path": "scripts/evaluate_mppi_rosbag.py",
@@ -199,7 +196,7 @@
         {
           "path": "docs/cudanav_real_dataset_smoke.json",
           "normalization": "text_lf",
-          "sha256": "d4fb9efc53d2b52f72d58fda7b80da5661b8cb43844f3cb6fa76a6f0e0385672"
+          "sha256": "02fe9ffe20ed1bb3615f76bd125e65a0af1bba1c9f9f00c570efdb259c3b47e3"
         },
         {
           "path": ".github/workflows/ros2_cuda_mppi.yml",
@@ -244,37 +241,264 @@
         {
           "path": "scripts/export_cudanav_kiss_icp_sequence.py",
           "normalization": "text_lf",
-          "sha256": "d38bb602bae978d81a5892255cf957f2af667f5027f8970da5af04fa7f125c8f"
+          "sha256": "8abd90e542c9edc78e4266536d6149de8ab50c9aa11f3f6641a5813fdffe3fab"
         },
         {
           "path": "scripts/run_cudanav_kiss_icp_real.py",
           "normalization": "text_lf",
-          "sha256": "3662d20caaea38c63686ee71a81a237f19c06b72b096ce012f195b874def66da"
+          "sha256": "a8747dd06cb19fe98143361c3dc9b60abbdedc310fc25ee64f406f5c99c90574"
         },
         {
           "path": "scripts/test_cudanav_kiss_icp_real.py",
           "normalization": "text_lf",
-          "sha256": "ee99b075b6597f2c18b41db0ef10b41992f94a4788c700136837ad69a8eb21cb"
+          "sha256": "e14fa2a42bb87c83e6b4334281a93ab3af11c05758d2ae1d2600be8b284a04d7"
         },
         {
           "path": "tools/cudanav_kiss_icp_sequence.cu",
           "normalization": "text_lf",
-          "sha256": "8fc5fe98e2d54043115af34cfdc72f557324c1a9538e3a35ebda931b6d36b035"
+          "sha256": "b06f4d13a3977be1c97aded525db6bc5e912b19efa32f72ee6b82a22b9bab089"
         },
         {
           "path": "scripts/run_cudanav_real_gpu_stack.py",
           "normalization": "text_lf",
-          "sha256": "3fd36f1851c2dfefd4a4ba0d1f0e505575445db263e6b551f82ae9a29b165e84"
+          "sha256": "4b10de634dcc83b4c35c92fed03263669c7f64676d44ea9808356fc3033eb0c2"
         },
         {
           "path": "scripts/test_cudanav_real_gpu_stack.py",
           "normalization": "text_lf",
-          "sha256": "0cfee5ddee73dd626bccd9bfef5a1f6c97b6e12ec03290823664343c502b3a6a"
+          "sha256": "3508831b7a521ed56b320c047b8a01dfcc42aaa93f086ca1d43b5acac1155935"
         },
         {
           "path": "tools/cudanav_real_gpu_stack_sequence.cu",
           "normalization": "text_lf",
-          "sha256": "dd60145c02da87c845ffbfab8d7bbe93a5d0ae112c5b8e5e628f684839e16f3c"
+          "sha256": "c052df602f76575173c707e8be934a21d8b5b4f480f9077aa41286e6b1bb99a7"
+        },
+        {
+          "path": "scripts/materialize_mcd_timed_rosbag.py",
+          "normalization": "text_lf",
+          "sha256": "b4e833c8d9a2e6947be4085f4047d685fa2ed3ea68ae43dd65ccc5cb8ccc4585"
+        },
+        {
+          "path": "scripts/inspect_pointcloud2_timing.py",
+          "normalization": "text_lf",
+          "sha256": "c65498eae0b95b88d9c28bb926abc533d2e543ca4019652d3026fe7764b60c92"
+        },
+        {
+          "path": "docs/cudanav_timed_dataset_mcd_ntu_day_02_materialized.json",
+          "normalization": "text_lf",
+          "sha256": "ddbdb8bb7ef5b4d1cc90a4b804b964ec0f41319c67230839ed87e457e86714c4"
+        }
+      ]
+    },
+    {
+      "id": "mcd_timed_materialization",
+      "status": "complete",
+      "kind": "json_assertions",
+      "generator_command": [
+        "python3",
+        "scripts/test_materialize_mcd_timed_rosbag.py"
+      ],
+      "artifacts": [
+        {
+          "path": "docs/cudanav_timed_dataset_mcd_ntu_day_02_materialized.json",
+          "normalization": "text_lf",
+          "sha256": "ddbdb8bb7ef5b4d1cc90a4b804b964ec0f41319c67230839ed87e457e86714c4"
+        }
+      ],
+      "assertions": [
+        {
+          "json_path": "status",
+          "op": "eq",
+          "value": "timing_admitted_pending_gpu_release_benchmarks"
+        },
+        {
+          "json_path": "selection.frames",
+          "op": "eq",
+          "value": 1200
+        },
+        {
+          "json_path": "ros2_bag.database_sha256",
+          "op": "eq",
+          "value": "69595af33297924ef36f1cdd0507d4e868d784337bd1249a41e4d4131c30614c"
+        },
+        {
+          "json_path": "timing_admission.valid",
+          "op": "eq",
+          "value": true
+        },
+        {
+          "json_path": "timing_admission.frames",
+          "op": "eq",
+          "value": 1200
+        },
+        {
+          "json_path": "timing_admission.point_time.plausible_units.0",
+          "op": "eq",
+          "value": "nanoseconds"
+        },
+        {
+          "json_path": "readiness.timing_admission_passed_all_frames",
+          "op": "eq",
+          "value": true
+        }
+      ]
+    },
+    {
+      "id": "mcd_kiss_icp_gpu_release",
+      "status": "complete",
+      "kind": "json_assertions",
+      "generator_command": [
+        "python3",
+        "scripts/run_cudanav_kiss_icp_real.py",
+        "--validate-portable",
+        "docs/results/cudanav_kiss_icp_mcd_ntu_day_02_2026-07-29.json",
+        "--commit",
+        "d240161ec1a42eb128023f891e82a5bbff1407e0"
+      ],
+      "artifacts": [
+        {
+          "path": "docs/results/cudanav_kiss_icp_mcd_ntu_day_02_2026-07-29.json",
+          "normalization": "text_lf",
+          "sha256": "5321207ed165bc51f9c91088fc683fd2c2e4cb7999338314ce5a125f952a8186"
+        }
+      ],
+      "assertions": [
+        {
+          "json_path": "source_commit",
+          "op": "eq",
+          "value": "d240161ec1a42eb128023f891e82a5bbff1407e0"
+        },
+        {
+          "json_path": "profile",
+          "op": "eq",
+          "value": "release"
+        },
+        {
+          "json_path": "claims.real_pointcloud_gpu_odometry",
+          "op": "eq",
+          "value": true
+        },
+        {
+          "json_path": "metrics.frames",
+          "op": "eq",
+          "value": 1190
+        },
+        {
+          "json_path": "metrics.deskewed_frames",
+          "op": "eq",
+          "value": 1190
+        },
+        {
+          "json_path": "metrics.ate_rmse_m",
+          "op": "lt",
+          "value": 3.0
+        },
+        {
+          "json_path": "metrics.final_drift_percent",
+          "op": "lt",
+          "value": 5.0
+        },
+        {
+          "json_path": "metrics.inliers_min",
+          "op": "gt",
+          "value": 100
+        },
+        {
+          "json_path": "metrics.quality_pass",
+          "op": "eq",
+          "value": true
+        }
+      ]
+    },
+    {
+      "id": "mcd_all_gpu_core_release",
+      "status": "complete",
+      "kind": "json_assertions",
+      "generator_command": [
+        "python3",
+        "scripts/run_cudanav_real_gpu_stack.py",
+        "--validate-portable",
+        "docs/results/cudanav_all_gpu_mcd_ntu_day_02_2026-07-29.json",
+        "--commit",
+        "541a53d36f9dd600646ffcf921d06fab404d67f3"
+      ],
+      "artifacts": [
+        {
+          "path": "docs/results/cudanav_all_gpu_mcd_ntu_day_02_2026-07-29.json",
+          "normalization": "text_lf",
+          "sha256": "c412a22f41647ba90ee87fc238da83b6394ee9b37d10c922598d7e7bb0ae04fa"
+        }
+      ],
+      "assertions": [
+        {
+          "json_path": "source_commit",
+          "op": "eq",
+          "value": "541a53d36f9dd600646ffcf921d06fab404d67f3"
+        },
+        {
+          "json_path": "profile",
+          "op": "eq",
+          "value": "release"
+        },
+        {
+          "json_path": "stages.3",
+          "op": "eq",
+          "value": "cuda_mppi"
+        },
+        {
+          "json_path": "metrics.frames",
+          "op": "eq",
+          "value": 1190
+        },
+        {
+          "json_path": "metrics.deskew.frames",
+          "op": "eq",
+          "value": 1190
+        },
+        {
+          "json_path": "metrics.mapping.frames_with_integrated_rays",
+          "op": "eq",
+          "value": 1190
+        },
+        {
+          "json_path": "metrics.mapping.final_observed_voxels",
+          "op": "ge",
+          "value": 1000
+        },
+        {
+          "json_path": "metrics.esdf.gpu_ms_p95",
+          "op": "lt",
+          "value": 5.0
+        },
+        {
+          "json_path": "metrics.mppi_config.iteration_count",
+          "op": "eq",
+          "value": 2
+        },
+        {
+          "json_path": "metrics.mppi.evaluations",
+          "op": "ge",
+          "value": 100
+        },
+        {
+          "json_path": "metrics.mppi.minimum_nonzero_valid_rollout_ratio",
+          "op": "ge",
+          "value": 0.01
+        },
+        {
+          "json_path": "metrics.mppi.all_colliding_evaluations",
+          "op": "eq",
+          "value": 0
+        },
+        {
+          "json_path": "metrics.mppi.invalid_commands",
+          "op": "eq",
+          "value": 0
+        },
+        {
+          "json_path": "metrics.quality_pass",
+          "op": "eq",
+          "value": true
         }
       ]
     },
@@ -868,7 +1092,7 @@
         {
           "path": "include/cudarobotics/kiss_icp_gpu.hpp",
           "normalization": "text_lf",
-          "sha256": "d7abdc921536ff6283ee7fef0dee020aa6f28fdd69a305865e000df1332ee0f4"
+          "sha256": "cb5d094334c5050a01207c21a2ff16ca10de77d94d9730fcf31a19e2153d6575"
         },
         {
           "path": "include/cudarobotics/voxel_mapping_gpu.hpp",

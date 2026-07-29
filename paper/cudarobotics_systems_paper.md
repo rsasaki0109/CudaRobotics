@@ -24,9 +24,11 @@ shadow execution, and cross-device reproduction. In a continuous native
 closed loop on an NVIDIA GeForce GTX 1660 Ti, CudaNav completes 30 alternating
 S-course traversals over 1,059.4 simulated seconds and 352.75 m with zero
 collisions, 0.0035% final odometry drift, and zero 150 ms frame-deadline
-misses. On a content-addressed real PointCloud2 sequence, the GPU KISS-ICP core
-processes 300 frames with 0.778 m ATE RMSE and 2.961% final drift; the full
-odometry-mapping-ESDF-MPPI shadow pipeline averages 9.999 ms per frame. Every
+misses. On a content-addressed MCD Ouster sequence, the timed GPU KISS-ICP core
+processes 1,190 frames over 118.902 seconds with 0.815 m ATE RMSE and 0.472%
+final drift. The full odometry-mapping-ESDF-MPPI shadow pipeline processes the
+same window with 0.819 m ATE RMSE, integrates every scan, and executes 120
+finite shadow-control evaluations without an all-colliding event. Every
 reported artifact is tied to source, dataset, hardware, thresholds, and raw
 outputs by a machine-checked manifest. A release-profile ROS 2 run with MCAP
 and video, and reproduction on a second GPU model, remain required before the
@@ -114,10 +116,11 @@ persist across frames. Diagnostics include correspondence count, inliers,
 nearest-neighbour time, frame time, position error when reference poses are
 available, and hash-capacity failures.
 
-The public real-data profile deliberately applies a one-second startup offset.
-The excluded region contains a documented GNSS initialization discontinuity
-of approximately 1.9 m and 146 degrees. This is declared in the profile and
-evidence rather than selected after observing the final metric.
+The public real-data benchmark deliberately applies a one-second startup
+offset after deterministic materialization. The offset is fixed by the
+release profile and excludes ten initial scans as an odometry warm-up; it is
+declared in the evidence rather than selected after observing the final
+metric.
 
 ### 3.2 Rolling voxel map and ESDF
 
@@ -179,13 +182,13 @@ The following IDs are authoritative and are checked against the manuscript:
 | Claim ID | Current status | Evidence boundary |
 |---|---|---|
 | `reproducibility_contracts` | Supported | Contract sources and validators exist and are hashed |
-| `real_dataset_materialization` | Supported | Public bag and deterministic derived Path are content-addressed |
-| `real_gpu_odometry` | Supported | 300-frame GPU KISS-ICP real-data smoke |
-| `real_gpu_core_shadow` | Supported | 300-frame native all-GPU shadow smoke |
+| `real_dataset_materialization` | Supported | MCD ROS 1 inputs and 1,200-frame timed ROS 2 artifact are content-addressed |
+| `real_gpu_odometry` | Supported | 1,190-frame timed GPU KISS-ICP release profile |
+| `real_gpu_core_shadow` | Supported | 1,190-frame native all-GPU shadow release profile |
 | `native_gpu_core_closed_loop` | Supported | 30-traversal native release plus bound visual |
 | `integrated_gpu_stack` | Partial | Sources exist; final-commit ROS 2 runtime attestation pending |
 | `closed_loop_autonomy` | Partial | Native release passes; ROS 2 MCAP/video release pending |
-| `real_data_shadow` | Partial | Native smoke passes; ROS 2 release replay pending |
+| `real_data_shadow` | Partial | Native release passes; ROS 2 release replay pending |
 | `multi_gpu_reproduction` | Partial | One UUID-bound GTX 1660 Ti node; second model pending |
 
 ## 5. Experimental protocol
@@ -211,16 +214,20 @@ and stale-map failure visible.
 
 ### 5.2 Public recorded data
 
-The real-data source is a content-addressed Autoware Istanbul localization bag.
-The retained 1,009,799,168-byte SQLite database contains 34,375 downsampled
-PointCloud2 messages and 343,730 GNSS pose messages. A bounded 120-second
-selection and deterministic Path sidecar are derived without relabelling
-recorded motion as control output.
+The real-data source is the content-addressed MCD `ntu_day_02` Ouster OS1-128
+bag, discrete and continuous ground truth, and calibration. A deterministic
+adapter verifies all four source hashes, maps one-based ground-truth indices
+to zero-based LiDAR scans, composes `world_T_body * body_T_os_sensor`, and
+writes a 7,559,663,616-byte ROS 2 SQLite/CDR bag. The materialized artifact
+contains 1,200 PointCloud2 messages paired with 1,200 sensor poses over
+119.902 seconds.
 
-The current GPU smoke consumes 300 frames over 29.9 seconds. It evaluates
-odometry alone and the complete native GPU core shadow path separately. The
-release profile remains pending because the full ROS 2 replay and runtime
-attestation have not been acquired.
+Full-window admission checks all 1,200 scans. The `t:uint32` spans range from
+99.380 to 100.522 ms and `nanoseconds` is the only physically plausible unit;
+the `ring:uint8` field covers 0 through 127. The release benchmark then uses
+the declared one-second warm-up and consumes 1,190 scans over 118.902 seconds.
+Odometry alone and the complete native GPU core shadow path are evaluated
+separately. ROS 2 replay and runtime attestation remain pending.
 
 ### 5.3 Hardware and reproducibility
 
@@ -270,21 +277,25 @@ required second-model result.
 
 | Metric | GPU odometry | Full GPU shadow stack |
 |---|---:|---:|
-| Frames / duration | 300 / 29.9 s | 300 / 29.9 s |
-| ATE RMSE | 0.778 m | 0.779 m |
-| Final drift | 2.961% | 2.985% |
-| Mean frame time | 9.669 ms | 9.999 ms |
-| GPU NN p95 | 5.582 ms | included in full frame |
-| ESDF p95 | not run | 1.153 ms |
-| MPPI solve p95 | not run | 0.532 ms |
-| Final observed voxels | not run | 107,737 |
-| Peak occupied cells | not run | 1,789 |
+| Frames / duration | 1,190 / 118.902 s | 1,190 / 118.902 s |
+| ATE RMSE | 0.815 m | 0.819 m |
+| Final drift | 0.472% | 0.475% |
+| Mean frame time | 327.148 ms | 249.434 ms |
+| GPU NN p95 | 177.821 ms | 184.110 ms |
+| ESDF p95 | not run | 1.147 ms |
+| MPPI solve p95 | not run | 0.836 ms |
+| Final observed voxels | not run | 1,778,523 |
+| Peak occupied cells | not run | 8,162 |
 | Quality gate | Pass | Pass |
 
-The shadow stack performs 31 MPPI evaluations. Two evaluations report all
-rollouts colliding; the retained safety behavior commands zero linear speed.
-This is a bounded positive diagnostic, not proof of vehicle obstacle avoidance,
-because commands are not applied to the recorded sequence.
+The shadow stack performs 120 two-iteration MPPI evaluations. The minimum
+nonzero valid-rollout ratio is 0.1284 against a 0.01 gate; all-colliding
+evaluations and invalid commands are both zero. A retained one-iteration
+negative run exposed one sharp-turn evaluation with only 4/2,048 valid
+rollouts. The second iteration allows the nominal sequence to adapt inside the
+same control evaluation without lowering the gate. These are controller
+diagnostics, not proof of vehicle obstacle avoidance, because commands are not
+applied to the recorded sequence.
 
 ### 6.3 Current readiness
 
@@ -317,12 +328,24 @@ python3 scripts/render_cudanav_gpu_closed_loop.py \
   --manifest gif/cudanav_gpu_closed_loop_release.json
 ```
 
-The public dataset and native real-data pipeline are materialized with:
+The public timed dataset and native real-data release profiles are reproduced
+with:
 
 ```bash
-python3 scripts/run_cudanav_real_dataset_pipeline.py \
-  --download --reindex --run-autonomy --profile smoke \
-  --output-dir build/cudanav_real_dataset
+python3 -m pip install -r scripts/requirements-mcd-materialization.txt
+python3 scripts/materialize_mcd_timed_rosbag.py \
+  --source-dir build/datasets/mcd_ntu_day_02 \
+  --output build/datasets/mcd_ntu_day_02/ros2_timed_120s
+python3 scripts/run_cudanav_kiss_icp_real.py \
+  --profile release \
+  --database build/datasets/mcd_ntu_day_02/ros2_timed_120s/mcd_ntu_day_02_timed_0.db3 \
+  --spec docs/cudanav_timed_dataset_mcd_ntu_day_02_materialized.json \
+  --output-dir build/mcd_kiss_release
+python3 scripts/run_cudanav_real_gpu_stack.py \
+  --profile release \
+  --database build/datasets/mcd_ntu_day_02/ros2_timed_120s/mcd_ntu_day_02_timed_0.db3 \
+  --spec docs/cudanav_timed_dataset_mcd_ntu_day_02_materialized.json \
+  --output-dir build/mcd_all_gpu_release
 ```
 
 Paper claims and retained hashes are checked with:
@@ -363,10 +386,10 @@ The complete command and threshold documentation is in
 The simulator is deterministic and uses synthetic LiDAR geometry. It is a
 strong regression oracle for causality, accumulated state, deadlines, and
 collision policy, but it does not model all real sensor failure modes or
-vehicle dynamics. The Istanbul sequence supplies real PointCloud2 geometry and
-reference poses, but shadow commands cannot influence future scans. The
-current 29.9-second real-data run is a smoke profile, not the declared
-120-second release profile.
+vehicle dynamics. The MCD sequence supplies real timed PointCloud2 geometry
+and calibrated sensor-frame reference poses, but shadow commands cannot
+influence future scans. The native real-data release profile passes; the
+remaining real-data gap is ROS 2 runtime replay rather than native duration.
 
 The architecture has ROS 2/Nav2 adapters, but source presence and unit tests
 are weaker evidence than a release-profile runtime on the exact paper commit.
