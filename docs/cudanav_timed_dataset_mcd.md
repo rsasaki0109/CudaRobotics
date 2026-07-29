@@ -99,17 +99,17 @@ separate.
 
 ## All-GPU shadow-stack release result
 
-The four-stage shadow gate passed on commit `541a53d` with the same MCD
-sequence:
+The four-stage shadow gate was regenerated on 2026-07-30 from master commit
+`724d05c` with the same MCD sequence:
 
 - GPU KISS-ICP deskewed all 1,190 selected frames;
-- ATE RMSE was 0.819 m and final drift was 0.475%;
+- ATE RMSE was 0.812 m and final drift was 0.471%;
 - rolling voxel mapping integrated rays on all frames and finished with
-  1,778,523 observed voxels;
-- the peak occupancy projection contained 8,162 occupied cells;
-- GPU ESDF p95 was 1.147 ms;
-- CUDA MPPI evaluated 120 controls at 0.836 ms solve p95;
-- its minimum nonzero valid-rollout ratio was 0.1284 against the 0.01 gate;
+  1,791,642 observed voxels;
+- the peak occupancy projection contained 8,120 occupied cells;
+- GPU ESDF p95 was 1.068 ms;
+- CUDA MPPI evaluated 120 controls at 0.715 ms solve p95;
+- its minimum nonzero valid-rollout ratio was 0.1362 against the 0.01 gate;
 - all-colliding evaluations and invalid commands were both zero.
 
 The MPPI shadow configuration uses two optimization iterations per control
@@ -118,7 +118,7 @@ real sharp-turn negative result (4/2,048 valid rollouts at one evaluation)
 without lowering the release threshold.
 
 The content-bound portable result is
-[`results/cudanav_all_gpu_mcd_ntu_day_02_2026-07-29.md`](results/cudanav_all_gpu_mcd_ntu_day_02_2026-07-29.md).
+[`results/cudanav_all_gpu_mcd_ntu_day_02_2026-07-30.md`](results/cudanav_all_gpu_mcd_ntu_day_02_2026-07-30.md).
 Its scope is real-sensor all-GPU shadow execution: commands are evaluated but
 not applied, so it is not ROS 2 runtime or closed-loop evidence.
 

@@ -186,7 +186,7 @@ The following IDs are authoritative and are checked against the manuscript:
 | `real_gpu_odometry` | Supported | 1,190-frame timed GPU KISS-ICP release profile |
 | `real_gpu_core_shadow` | Supported | 1,190-frame native all-GPU shadow release profile |
 | `native_gpu_core_closed_loop` | Supported | 30-traversal native release plus bound visual |
-| `integrated_gpu_stack` | Partial | Sources exist; final-commit ROS 2 runtime attestation pending |
+| `integrated_gpu_stack` | Partial | Jazzy compile/plugin CI passes at `724d05c`; GPU runtime attestation pending |
 | `closed_loop_autonomy` | Partial | Native release passes; ROS 2 MCAP/video release pending |
 | `real_data_shadow` | Partial | Native release passes; ROS 2 release replay pending |
 | `multi_gpu_reproduction` | Partial | One UUID-bound GTX 1660 Ti node; second model pending |
@@ -227,7 +227,10 @@ Full-window admission checks all 1,200 scans. The `t:uint32` spans range from
 the `ring:uint8` field covers 0 through 127. The release benchmark then uses
 the declared one-second warm-up and consumes 1,190 scans over 118.902 seconds.
 Odometry alone and the complete native GPU core shadow path are evaluated
-separately. ROS 2 replay and runtime attestation remain pending.
+separately. Exact-commit ROS 2 Jazzy CI builds all eight packages, loads the
+controller and costmap plugins, and passes their parameter, package, and
+evidence-contract tests. ROS 2 GPU replay and runtime attestation remain
+pending.
 
 ### 5.3 Hardware and reproducibility
 
@@ -278,18 +281,19 @@ required second-model result.
 | Metric | GPU odometry | Full GPU shadow stack |
 |---|---:|---:|
 | Frames / duration | 1,190 / 118.902 s | 1,190 / 118.902 s |
-| ATE RMSE | 0.815 m | 0.819 m |
-| Final drift | 0.472% | 0.475% |
-| Mean frame time | 327.148 ms | 249.434 ms |
-| GPU NN p95 | 177.821 ms | 184.110 ms |
-| ESDF p95 | not run | 1.147 ms |
-| MPPI solve p95 | not run | 0.836 ms |
-| Final observed voxels | not run | 1,778,523 |
-| Peak occupied cells | not run | 8,162 |
+| ATE RMSE | 0.815 m | 0.812 m |
+| Final drift | 0.472% | 0.471% |
+| Mean frame time | 327.148 ms | 232.294 ms |
+| GPU NN p95 | 177.821 ms | 180.835 ms |
+| ESDF p95 | not run | 1.068 ms |
+| MPPI solve p95 | not run | 0.715 ms |
+| Final observed voxels | not run | 1,791,642 |
+| Peak occupied cells | not run | 8,120 |
 | Quality gate | Pass | Pass |
 
-The shadow stack performs 120 two-iteration MPPI evaluations. The minimum
-nonzero valid-rollout ratio is 0.1284 against a 0.01 gate; all-colliding
+The current full-stack row was regenerated from commit `724d05c`. The shadow
+stack performs 120 two-iteration MPPI evaluations. The minimum nonzero
+valid-rollout ratio is 0.1362 against a 0.01 gate; all-colliding
 evaluations and invalid commands are both zero. A retained one-iteration
 negative run exposed one sharp-turn evaluation with only 4/2,048 valid
 rollouts. The second iteration allows the nominal sequence to adapt inside the
@@ -300,8 +304,8 @@ applied to the recorded sequence.
 ### 6.3 Current readiness
 
 Supported evidence establishes a coherent native GPU core, causal continuous
-simulation, real PointCloud2 execution, and one physical consumer-GPU node. It
-does not yet establish:
+simulation, real PointCloud2 execution, exact-commit ROS 2 Jazzy compile/plugin
+CI, and one physical consumer-GPU node. It does not yet establish:
 
 - a release-profile ROS 2 Jazzy GPU run with positive MCAP topic counts and a
   retained video;

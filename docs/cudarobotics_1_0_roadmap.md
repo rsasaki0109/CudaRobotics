@@ -35,10 +35,10 @@ explicit failure reporting across the complete loop.
 | Area | Implemented | Evidence still required |
 |---|---|---|
 | v0.2 closure | Published `v0.2.0` at `417e28e2ce7dfb3e1033e9c19bd3731b309cefb0`; public evidence ZIP revalidated; Build, Python manylinux, ROS 2, Docker/GHCR, CPU, and GTX 1660 Ti gates pass | Complete |
-| GPU odometry | Reusable voxel-hash KISS-ICP core and lifecycle ROS component | ROS 2 Jazzy compile plus recorded-stream runtime evidence |
-| Mapping | Rolling voxel map, exact typed ESDF, lifecycle nodes | ROS 2 Jazzy stream latency/correctness evidence |
+| GPU odometry | Reusable voxel-hash KISS-ICP core, lifecycle ROS component, and exact-master Jazzy compile/package CI | Recorded-stream ROS 2 GPU runtime evidence |
+| Mapping | Rolling voxel map, exact typed ESDF, lifecycle nodes, and exact-master Jazzy compile/plugin CI | ROS 2 GPU stream latency/correctness evidence |
 | Nav2 integration | Voxel costmap plugin, CUDA MPPI, deterministic closed-loop bringup; native GPU core passes 30 traversals / 1059.4 simulated seconds | Plugin-load CI and ROS 2 release-profile 10-minute GPU run with MCAP/video |
-| Reproducibility | Closed-loop, real-rosbag shadow, and multi-GPU manifest gates; GTX 1660 Ti native release node is UUID-bound; all four v1 external gates now have fail-closed attestation producers and a post-tag release bundle | Execute the ROS release/real-bag runs, add one physical GPU model, and acquire the fresh-clone, published-image, and deployed-docs attestations from one immutable tag |
+| Reproducibility | Exact-master Jazzy CI passes; MCD 1,190-scan all-GPU release was regenerated on the UUID-bound GTX 1660 Ti; native closed-loop, real-rosbag shadow, multi-GPU, and all four v1 external gates have fail-closed producers | Execute the ROS GPU release/real-bag runs, add one physical GPU model, and acquire the fresh-clone, published-image, and deployed-docs attestations from one immutable tag |
 | Contact paper | Published 32,400-episode robustness, exact 10 ms matched-compute, 3,150-episode closed-loop MuJoCo evidence, ready ledger, anonymous IEEE conference source, generated figures, and content-bound bundle/archive contracts | Select the final venue mode and real anonymous artifact URL; optional independent-hardware replication |
 | Papers | Contact-rich Diff-MPPI ledger is `ready: true`; frozen Markdown and anonymous IEEE source are machine-checked and CI-compilable. CudaNav systems draft is synchronized to its machine-checked ledger | Complete CudaNav ROS 2 closed-loop, recorded-shadow, and second-model GPU evidence; publish the final contact bundle after URL selection |
 
