@@ -265,5 +265,13 @@ SHA-256/size inventory of every file other than its own top-level manifest.
 `scripts/validate_v0_2_release_bundle.py` independently reruns the release
 decision, verifies all source bindings and categories, requires an exact
 inventory, and rejects missing, extra, path-escaping, or modified evidence.
-The resulting directory can therefore be moved intact and attached to the
-release without depending on the machine that assembled it.
+The resulting directory can therefore be moved intact without depending on
+the machine that assembled it.
+
+`scripts/archive_v0_2_release_bundle.py` turns a ready directory into the
+single GitHub Release attachment
+`cudarobotics-0.2.0-evidence.zip` plus a canonical SHA-256 sidecar. Sorted
+members, fixed timestamps and permissions, and stored payloads make the ZIP
+byte-reproducible. `scripts/validate_v0_2_release_archive.py` verifies the
+sidecar, rejects duplicate, unsafe, oversized, or non-canonical members,
+extracts only through checked paths, and reruns the full bundle validator.
