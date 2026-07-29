@@ -48,6 +48,10 @@ THRESHOLDS = {
     "minimum_inliers": 30,
     "minimum_observed_voxels": 500,
     "minimum_occupied_cells": 10,
+    "maximum_all_colliding_evaluations": 3,
+    "minimum_nonzero_valid_rollout_ratio": 0.01,
+    "maximum_ground_truth_distance_m": 13.0,
+    "maximum_frames": 400,
 }
 CONTRACT_SOURCES = [
     "CMakeLists.txt",
@@ -116,6 +120,18 @@ def evaluate_result(result: dict[str, Any]) -> dict[str, bool]:
         >= THRESHOLDS["minimum_observed_voxels"],
         "occupied_cells": result.get("maximum_occupied_cells", 0)
         >= THRESHOLDS["minimum_occupied_cells"],
+        "bounded_safety_interventions": result.get(
+            "all_colliding_evaluations", 1e9
+        )
+        <= THRESHOLDS["maximum_all_colliding_evaluations"],
+        "valid_rollouts": result.get(
+            "minimum_nonzero_valid_rollout_ratio", 0.0
+        )
+        >= THRESHOLDS["minimum_nonzero_valid_rollout_ratio"],
+        "bounded_path_length": result.get("ground_truth_distance_m", 1e9)
+        <= THRESHOLDS["maximum_ground_truth_distance_m"],
+        "bounded_completion": result.get("frames", 1e9)
+        <= THRESHOLDS["maximum_frames"],
         "gpu_identity": bool(result.get("gpu", {}).get("name"))
         and result.get("gpu", {}).get("driver_version", 0) > 0,
         "native_quality_gate": result.get("quality_pass") is True,

@@ -24,7 +24,10 @@ python scripts/run_cudanav_gpu_closed_loop.py \
 The gate requires a reached goal within 0.30 m, zero collisions, less than 5%
 final odometry drift, fewer than 5% 150 ms frame-deadline misses, at least 5 m
 of command-caused motion, finite commands, and healthy localization/mapping
-signals.
+signals. It also rejects runs with more than three all-colliding recovery
+events, a minimum nonzero valid-rollout ratio below 1%, more than 13 m of plant
+travel, or more than 400 control frames. These bounds keep a safe but unstable
+retreat-heavy run from being reported as the reference result.
 
 This is native GPU-core closed-loop evidence. It is neither a ROS 2 runtime
 result nor real-world recorded-data evidence; those gates remain separate.
