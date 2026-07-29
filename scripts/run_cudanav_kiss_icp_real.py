@@ -127,6 +127,22 @@ def make_manifest(
         "pose_topic": export_report["pose_topic"]
         == spec["recorded_inputs"]["odometry"]["topic"],
         "frame_count": result.get("frames") == export_report.get("frames"),
+        "start_offset": export_report.get("start_offset_s")
+        == PROFILES[profile]["start_offset_s"],
+        "duration_limit": (
+            0.0 < export_report.get("duration_s", 0.0)
+            <= PROFILES[profile]["maximum_duration_s"]
+        ),
+        "point_counts": (
+            export_report.get("minimum_points", 0) >= 30
+            and export_report.get("minimum_points", 0)
+            <= export_report.get("mean_points", 0.0)
+            <= export_report.get("maximum_points", 0)
+        ),
+        "pose_age": (
+            0.0 <= export_report.get("pose_age_p95_ms", -1.0)
+            <= export_report.get("maximum_pose_age_ms", -1.0)
+        ),
         "timestamps": (
             result.get("first_stamp_ns") == export_report.get("first_stamp_ns")
             and result.get("last_stamp_ns") == export_report.get("last_stamp_ns")
@@ -166,6 +182,25 @@ def make_manifest(
             "filename": database.name,
             "bytes": database.stat().st_size,
             "sha256": export_report["database"]["sha256"],
+        },
+        "sequence_contract": {
+            key: export_report[key]
+            for key in (
+                "pointcloud_topic",
+                "pose_topic",
+                "pose_type",
+                "frame_id",
+                "frames",
+                "duration_s",
+                "start_offset_s",
+                "maximum_duration_s",
+                "maximum_pose_age_ms",
+                "pose_age_p95_ms",
+                "minimum_points",
+                "mean_points",
+                "maximum_points",
+                "reference_path_length_m",
+            )
         },
         "gpu": result["gpu"],
         "metrics": {
@@ -237,6 +272,22 @@ def evaluate_manifest(
         ),
         "artifacts": False,
         "metrics": payload.get("metrics", {}).get("quality_pass") is True,
+        "sequence_contract": (
+            isinstance(payload.get("sequence_contract"), dict)
+            and payload["sequence_contract"].get("frames")
+            == payload.get("metrics", {}).get("frames")
+            and payload["sequence_contract"].get("start_offset_s")
+            == PROFILES.get(payload.get("profile"), {}).get("start_offset_s")
+            and 0.0
+            < payload["sequence_contract"].get("duration_s", 0.0)
+            <= payload["sequence_contract"].get("maximum_duration_s", 0.0)
+            and payload["sequence_contract"].get("minimum_points", 0) >= 30
+            and 0.0
+            <= payload["sequence_contract"].get("pose_age_p95_ms", -1.0)
+            <= payload["sequence_contract"].get(
+                "maximum_pose_age_ms", -1.0
+            )
+        ),
     }
     artifacts = payload.get("artifacts")
     if isinstance(artifacts, dict):
@@ -309,11 +360,13 @@ def make_portable_evidence(
         "schema_version": 1,
         "result_id": result_id,
         "evidence_mode": manifest["evidence_mode"],
+        "profile": manifest["profile"],
         "source_commit": manifest["git_commit"],
         "publisher_commit": publisher_commit,
         "dataset_id": manifest["dataset_id"],
         "dataset_spec_sha256": manifest["dataset_spec_sha256"],
         "database": manifest["database"],
+        "sequence_contract": manifest["sequence_contract"],
         "gpu": manifest["gpu"],
         "metrics": manifest["metrics"],
         "retained_artifacts": retained,
@@ -344,6 +397,7 @@ def evaluate_portable_evidence(
         and bool(payload["result_id"]),
         "evidence_mode": payload.get("evidence_mode")
         == "real_sensor_gpu_odometry_with_reference",
+        "profile": payload.get("profile") in PROFILES,
         "source_commit": (
             bool(COMMIT.fullmatch(str(payload.get("source_commit", ""))))
             and (
@@ -378,6 +432,22 @@ def evaluate_portable_evidence(
             and payload["metrics"].get("quality_pass") is True
             and payload["metrics"].get("frames", 0) >= 2
             and payload["metrics"].get("reference_path_length_m", 0.0) > 0.0
+        ),
+        "sequence_contract": (
+            isinstance(payload.get("sequence_contract"), dict)
+            and payload["sequence_contract"].get("frames")
+            == payload.get("metrics", {}).get("frames")
+            and payload["sequence_contract"].get("start_offset_s")
+            == PROFILES.get(payload.get("profile"), {}).get("start_offset_s")
+            and 0.0
+            < payload["sequence_contract"].get("duration_s", 0.0)
+            <= payload["sequence_contract"].get("maximum_duration_s", 0.0)
+            and payload["sequence_contract"].get("minimum_points", 0) >= 30
+            and 0.0
+            <= payload["sequence_contract"].get("pose_age_p95_ms", -1.0)
+            <= payload["sequence_contract"].get(
+                "maximum_pose_age_ms", -1.0
+            )
         ),
         "source_validation": (
             payload.get("source_validation", {}).get("valid") is True
@@ -440,6 +510,7 @@ def evaluate_portable_evidence(
 def render_portable_markdown(payload: dict[str, Any]) -> str:
     metrics = payload["metrics"]
     gpu = payload["gpu"]
+    sequence = payload["sequence_contract"]
     return (
         f"# {payload['result_id']}\n\n"
         "GPU KISS-ICP odometry on a content-addressed real PointCloud2 "
@@ -449,6 +520,12 @@ def render_portable_markdown(payload: dict[str, Any]) -> str:
         f"- GPU: `{gpu['name']}` (`{gpu['uuid']}`)\n"
         f"- Frames / duration: {metrics['frames']} / "
         f"{metrics['duration_s']:.3f} s\n"
+        f"- Declared profile / startup offset: `{payload['profile']}` / "
+        f"{sequence['start_offset_s']:.3f} s\n"
+        f"- Points per frame (min / mean / max): "
+        f"{sequence['minimum_points']} / {sequence['mean_points']:.2f} / "
+        f"{sequence['maximum_points']}\n"
+        f"- Reference pose age p95: {sequence['pose_age_p95_ms']:.6f} ms\n"
         f"- Reference path: {metrics['reference_path_length_m']:.3f} m\n"
         f"- ATE RMSE: {metrics['ate_rmse_m']:.3f} m\n"
         f"- Final drift: {metrics['final_drift_percent']:.3f}%\n"

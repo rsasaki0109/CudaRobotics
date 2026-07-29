@@ -197,12 +197,12 @@
         {
           "path": "scripts/run_cudanav_kiss_icp_real.py",
           "normalization": "text_lf",
-          "sha256": "270d4fe2aaa7f8cb824ea503b1d628a6a4679be4d257a59d98e72362a4c7a7eb"
+          "sha256": "3662d20caaea38c63686ee71a81a237f19c06b72b096ce012f195b874def66da"
         },
         {
           "path": "scripts/test_cudanav_kiss_icp_real.py",
           "normalization": "text_lf",
-          "sha256": "f0dcb1ff2e75e0a8cba8239d8154f6fb75caa42fe6d152c9b10b651a9771714e"
+          "sha256": "ee99b075b6597f2c18b41db0ef10b41992f94a4788c700136837ad69a8eb21cb"
         },
         {
           "path": "tools/cudanav_kiss_icp_sequence.cu",
