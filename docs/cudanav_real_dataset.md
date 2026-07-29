@@ -45,6 +45,21 @@ python3 scripts/prepare_cudanav_istanbul_dataset.py \
 The inspection report records the exact DB size/SHA-256 and refuses missing,
 zero-count, or wrong-type PointCloud2, Odometry, and static-TF topics.
 
+The same acquisition, derivation, materialization gate, and optional autonomy
+run can be planned or executed from one entry point. Dry-run performs no
+dataset writes:
+
+```bash
+python3 scripts/run_cudanav_real_dataset_pipeline.py \
+  --download --reindex --run-autonomy --dry-run
+
+python3 scripts/run_cudanav_real_dataset_pipeline.py \
+  --download --reindex --run-autonomy
+```
+
+For a release profile, also supply either prior evidence with
+`--multi-gpu-run` or distinct local devices with `--multi-gpu-devices`.
+
 Then generate the rosbag2 sidecar and freeze both local inputs:
 
 ```bash
