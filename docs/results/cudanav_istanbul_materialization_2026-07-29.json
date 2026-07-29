@@ -1,0 +1,152 @@
+{
+  "acquisition": {
+    "database": {
+      "bytes": 1009799168,
+      "filename": "rosbag2_2024_09_12-14_59_58_0.db3",
+      "sha256": "eb80d649a41fd557ff3af5df4424051191fb696d0ebecbeb36b385702d2b4c8d"
+    },
+    "file_id": "1yEB5j74gPLLbkkf87cuCxUgHXTkgSZbn",
+    "method": "google_drive_file",
+    "remote_probe": {
+      "bytes": 1009799168,
+      "file_id": "1yEB5j74gPLLbkkf87cuCxUgHXTkgSZbn",
+      "filename": "rosbag2_2024_09_12-14_59_58_0.db3",
+      "passed": true,
+      "reused": false
+    }
+  },
+  "claims": {
+    "closed_loop": false,
+    "derived_path": true,
+    "gpu_controller_run": false,
+    "real_file_acquisition": true
+  },
+  "contract_sources": [
+    {
+      "path": "scripts/prepare_cudanav_istanbul_dataset.py",
+      "sha256": "b4acc657cd03262e7db922c1245cc005fc6f96c73646589a2fa2a96f729f8fae"
+    },
+    {
+      "path": "scripts/derive_cudanav_path_sidecar.py",
+      "sha256": "5bf83d0b0f2de1b6359b1855545abae97204e32fe8a55e622a4b56e9df70cf66"
+    },
+    {
+      "path": "scripts/validate_cudanav_real_dataset.py",
+      "sha256": "6d26db6cc49e3fc7995529bd7ae3b318dee664a1ee2792042010f70b41f550dd"
+    },
+    {
+      "path": "scripts/run_cudanav_real_dataset_pipeline.py",
+      "sha256": "622596dadc1c5ce667ac9d829c8b3335df5e816eeb25c329dcab58e68dc74a4a"
+    },
+    {
+      "path": "scripts/publish_cudanav_dataset_evidence.py",
+      "sha256": "a2d87f9b35c93fb2579f59a8da5274f2fadfc79ddbd779a3efc98030a5aa7b4c"
+    }
+  ],
+  "dataset": {
+    "canonical_documentation": "https://autowarefoundation.github.io/autoware-documentation/main/datasets/#istanbul-open-dataset",
+    "dataset_id": "autoware_istanbul_localization_smoke",
+    "spec_sha256": "d1637ebc56445935acc18de4701cf067449ab78534690e97aa209bfb0e897248"
+  },
+  "derived_path": {
+    "algorithm": "cudarobotics.recorded_pose_path.v1",
+    "files": [
+      {
+        "bytes": 696,
+        "path": "metadata.yaml",
+        "sha256": "f816879f00aa655956374cdfdc5050cdcf28a3ef138d5e3987dd51727ae933b2"
+      },
+      {
+        "bytes": 241664,
+        "path": "path_sidecar_0.db3",
+        "sha256": "9d120b4fff40413c8ad21e21ca39ddc75ce660b20e62350eae950996c31b31c7"
+      }
+    ],
+    "first_stamp_ns": 1723770873170000000,
+    "frame_id": "odom",
+    "input_samples": 343730,
+    "last_stamp_ns": 1723770993170000000,
+    "metadata_sha256": "f816879f00aa655956374cdfdc5050cdcf28a3ef138d5e3987dd51727ae933b2",
+    "output_poses": 2778,
+    "output_topic": "/cuda_nav/derived_plan",
+    "output_type": "nav_msgs/msg/Path",
+    "parameters": {
+      "coordinate_frame": "first_pose_se2_normalized_to_odom",
+      "duplicate_stamp_policy": "keep_first",
+      "maximum_duration_s": 120.0,
+      "minimum_translation_m": 0.2,
+      "ordering": "header_stamp_then_record_order"
+    },
+    "source_topic": "/sensing/gnss/pose",
+    "source_type": "geometry_msgs/msg/PoseStamped",
+    "storage_id": "sqlite3",
+    "total_bytes": 242360,
+    "tree_sha256": "c0090d392d575a250642964dff7a1ed767667d4adfa39daaf0ffb559f71f2806"
+  },
+  "evidence_mode": "real_sensor_shadow_with_derived_path",
+  "git_commit": "589732155794d10d1c3ec86481145af557d11b6f",
+  "recorded_topics": {
+    "/clock": {
+      "count": 137491,
+      "type": "rosgraph_msgs/msg/Clock"
+    },
+    "/localization/twist_estimator/twist_with_covariance": {
+      "count": 343739,
+      "type": "geometry_msgs/msg/TwistWithCovarianceStamped"
+    },
+    "/localization/util/downsample/pointcloud": {
+      "count": 34375,
+      "type": "sensor_msgs/msg/PointCloud2"
+    },
+    "/sensing/gnss/pose": {
+      "count": 343730,
+      "type": "geometry_msgs/msg/PoseStamped"
+    },
+    "/sensing/gnss/pose_with_covariance": {
+      "count": 343730,
+      "type": "geometry_msgs/msg/PoseWithCovarianceStamped"
+    },
+    "/tf_static": {
+      "count": 4,
+      "type": "tf2_msgs/msg/TFMessage"
+    }
+  },
+  "result_id": "cudanav_istanbul_materialization_2026-07-29",
+  "schema_version": 1,
+  "status": "materialized",
+  "validation": {
+    "checks": {
+      "acquisition_inspection_bound": true,
+      "acquisition_inspection_content": true,
+      "acquisition_uri": true,
+      "canonical_primary_source": true,
+      "claims_are_shadow_only": true,
+      "dataset_id_matches": true,
+      "dataset_selected": true,
+      "derived_content_unchanged": true,
+      "derived_identity": true,
+      "derived_metadata_bound": true,
+      "derived_path_contract": true,
+      "derived_path_present": true,
+      "derived_sqlite_path_semantics": true,
+      "generator_report_bound": true,
+      "generator_report_content": true,
+      "materialization_mode": true,
+      "materialization_schema": true,
+      "pointcloud_quality_contract": true,
+      "provenance_bound": true,
+      "recorded_odometry": true,
+      "recorded_pointcloud": true,
+      "recorded_static_tf": true,
+      "recorded_topics": true,
+      "schema": true,
+      "source_content_unchanged": true,
+      "source_identity": true,
+      "source_metadata_bound": true,
+      "spec_content_bound": true
+    },
+    "ready": true,
+    "status": "materialized",
+    "valid": true
+  }
+}
