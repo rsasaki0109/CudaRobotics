@@ -35,6 +35,10 @@ def passing_result() -> dict:
         "minimum_nonzero_valid_rollout_ratio": 0.1,
         "ground_truth_distance_m": 10.0,
         "frames": 220,
+        "simulated_duration_s": 22.0,
+        "traversals_requested": 1,
+        "traversals_completed": 1,
+        "traversal_frames": [220],
         "gpu": {"name": "GPU fixture", "driver_version": 12000},
         "quality_pass": True,
     }
@@ -68,6 +72,23 @@ class CudaNavGpuClosedLoopTest(unittest.TestCase):
         result = deepcopy(passing_result())
         result["claims"]["ros2_runtime"] = True
         self.assertFalse(evaluate_result(result)["claims"])
+
+    def test_release_requires_continuous_thirty_traversal_duration(self) -> None:
+        result = passing_result()
+        result.update(
+            {
+                "frames": 7000,
+                "simulated_duration_s": 700.0,
+                "ground_truth_distance_m": 330.0,
+                "odometry_drift_percent": 0.5,
+                "traversals_requested": 30,
+                "traversals_completed": 30,
+                "traversal_frames": [233] * 30,
+            }
+        )
+        self.assertTrue(all(evaluate_result(result, "release").values()))
+        result["simulated_duration_s"] = 599.9
+        self.assertFalse(evaluate_result(result, "release")["release_duration"])
 
 
 if __name__ == "__main__":

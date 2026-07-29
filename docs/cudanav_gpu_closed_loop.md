@@ -21,6 +21,22 @@ python scripts/run_cudanav_gpu_closed_loop.py \
   --output-dir build/cudanav_gpu_closed_loop
 ```
 
+The continuous release profile alternates the same path for 30 traversals
+without resetting the plant, KISS-ICP, voxel map, or ESDF:
+
+```bash
+python scripts/run_cudanav_gpu_closed_loop.py \
+  --profile release \
+  --output-dir build/cudanav_gpu_closed_loop_release
+```
+
+The MPPI warm start is reset at each new mission path. A forward-only planner
+is used when the estimated heading agrees with the first path tangent; a
+bidirectional planner is selected when the robot must initially reverse. Both
+consume the same estimated pose and GPU-produced costmap. Release evidence
+requires all 30 traversals, at least 600 simulated seconds, zero collisions,
+less than 1% final drift, and less than 1% 150 ms frame-deadline misses.
+
 The gate requires a reached goal within 0.30 m, zero collisions, less than 5%
 final odometry drift, fewer than 5% 150 ms frame-deadline misses, at least 5 m
 of command-caused motion, finite commands, and healthy localization/mapping
