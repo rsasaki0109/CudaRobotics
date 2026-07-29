@@ -174,3 +174,10 @@ CUDA environment.
 The checked-in portable result is
 [`results/cudanav_istanbul_materialization_2026-07-29.md`](results/cudanav_istanbul_materialization_2026-07-29.md);
 its adjacent JSON is the machine-verifiable source.
+
+The same content-addressed bag can also drive the reusable CUDA KISS-ICP core
+directly, without ROS. See
+[`cudanav_kiss_icp_real.md`](cudanav_kiss_icp_real.md) for the bounded
+PointCloud2 exporter, GPU quality gates, documented one-second GNSS startup
+warmup, and portable evidence workflow. That result proves real-sensor GPU
+odometry only; it does not prove a controller or closed-loop run.
