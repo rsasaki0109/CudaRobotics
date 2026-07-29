@@ -235,7 +235,8 @@ jobs:
         shell: bash
         run: |
           set -eo pipefail
-          test -z "$(git status --porcelain)"
+          git status --short
+          test -z "$(git status --porcelain --untracked-files=no)"
           CUDA_COMPILER=$(/usr/local/cuda-12.6/bin/nvcc --version | tail -n 1)
           python scripts/cudanav_ros_ci_evidence.py \
             --output build/ros_jazzy_ci_evidence.json \
