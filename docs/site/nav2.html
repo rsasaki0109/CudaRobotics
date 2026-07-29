@@ -34,6 +34,26 @@
     </div>
 
     <div class="content">
+      <section class="section">
+        <div class="section-head">
+          <h2>End-to-End CudaNav Development Smoke</h2>
+          <p>Run the complete command-driven loop from the current source checkout.</p>
+        </div>
+        <div class="card">
+          <div class="code">
+<pre><code>docker build -f docker/Dockerfile -t cudarobotics .
+docker run --rm --gpus all -v "$PWD/out:/out" cudarobotics cudanav</code></pre>
+          </div>
+          <p>
+            The image connects GPU KISS-ICP, rolling voxel mapping, typed ESDF,
+            the Nav2 costmap layer, CUDA MPPI, and the simulator. The command
+            exits non-zero unless `/out/cudanav_closed_loop.json` passes its
+            short smoke gate. Release evidence still uses the separate
+            10-minute retained harness.
+          </p>
+        </div>
+      </section>
+
       <section class="section split">
         <div>
           <h2>Build and Smoke Test</h2>

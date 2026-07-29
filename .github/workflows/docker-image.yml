@@ -42,3 +42,23 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+
+      - name: Verify end-to-end CudaNav packages in pushed image
+        env:
+          IMAGE: ghcr.io/${{ github.repository_owner }}/cuda-mppi-controller-demo:${{ steps.meta.outputs.version }}
+        run: |
+          docker run --rm --entrypoint bash "$IMAGE" -lc '
+            set -e
+            source /opt/ros/jazzy/setup.bash
+            source /ws/install/setup.bash
+            for package in \
+              cuda_robotics_msgs cuda_robotics_common cuda_kiss_icp \
+              cuda_voxel_mapping cuda_esdf cuda_voxel_costmap_layer \
+              cuda_mppi_controller cuda_nav_bringup; do
+              ros2 pkg prefix "$package"
+            done
+            test -x \
+              /ws/install/cuda_mppi_controller/lib/cuda_mppi_controller/plugin_load_test
+            test -f \
+              /ws/install/cuda_nav_bringup/share/cuda_nav_bringup/launch/cudanav_closed_loop.launch.py
+          '

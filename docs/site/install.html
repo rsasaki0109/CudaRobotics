@@ -111,16 +111,22 @@ python examples/python/registration_quickstart.py</code></pre>
       <section class="section" id="docker-demo">
         <div class="section-head">
           <h2>Docker Demo</h2>
-          <p>The published image loads the Nav2 plugin and runs the controller benchmark.</p>
+          <p>The published image loads the Nav2 plugin and runs the controller benchmark. The development image also contains the complete short CudaNav loop.</p>
         </div>
         <div class="card">
           <div class="code">
 <pre><code>docker run --rm --gpus all ghcr.io/rsasaki0109/cuda-mppi-controller-demo:v0.1.0
 
-# optional local build
-docker build -f docker/Dockerfile -t cuda-mppi-demo .
-docker run --rm --gpus all cuda-mppi-demo</code></pre>
+# current source checkout: end-to-end CudaNav development smoke
+docker build -f docker/Dockerfile -t cudarobotics .
+docker run --rm --gpus all -v "$PWD/out:/out" cudarobotics cudanav</code></pre>
           </div>
+          <p>
+            The `cudanav` mode runs GPU KISS-ICP, voxel mapping, typed ESDF,
+            the Nav2 CUDA MPPI controller, and the command-driven simulator.
+            It writes a machine-checked JSON summary and is a short integration
+            smoke, not the retained 10-minute v1.0 result.
+          </p>
           <p>
             See the
             <a href="https://github.com/rsasaki0109/CudaRobotics/blob/master/docker/README.md">Docker README</a>
