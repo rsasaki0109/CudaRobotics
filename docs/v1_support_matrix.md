@@ -56,11 +56,11 @@ every declared artifact before writing anything:
 ```bash
 python3 scripts/publish_v1_quickstart_attestation.py \
   --evidence-dir build/v1_quickstart \
-  --output docs/results/v1_quickstart_release.json
+  --output build/v1_evidence_inputs/v1_quickstart_release.json
 ```
 
-The printed `{path, sha256}` object is the exact value to place in
-`release_readiness.quickstart_15_minute_evidence`.
+The publisher prints the content reference later incorporated into the
+post-tag release bundle.
 
 After `docker-image.yml` publishes the immutable `v1.0.0` tag, dispatch the
 separate self-hosted GPU gate:
@@ -74,17 +74,30 @@ The runner pulls the published image rather than rebuilding it, requires the
 OCI source revision to equal the checked-out tag commit, records the GHCR
 digest and physical GPU UUID, runs `cudanav`, and uploads the content-bound
 logs, result, manifest, and `v1_docker_gpu_release.json`. Copy the downloaded
-attestation into `docs/results/` without editing it and use its SHA-256 for
-`release_readiness.docker_gpu_evidence`.
+attestation without editing it.
+
+Deploy and re-fetch the documentation with the preserved gallery tree:
+
+```bash
+gh workflow run v1-docs-deploy.yml \
+  --ref v1.0.0 -f tag=v1.0.0
+```
+
+The workflow starts from the complete existing `gh-pages` tree, replaces only
+its `/docs/` subtree, writes a tag/commit deployment manifest, deploys the
+complete tree through GitHub Pages, and then re-fetches the public index,
+install, Nav2, and release-manifest URLs. The uploaded
+`v1_docs_release.json` is rejected unless all public bodies describe the same
+tag commit.
 
 ## Release attestation references
 
-The four `release_readiness` evidence fields are not inline pass/fail claims.
-At release freeze, each must be a reference with exactly:
+The four evidence values are not inline pass/fail claims. Each reference has
+exactly:
 
 ```json
 {
-  "path": "docs/results/<v1-attestation>.json",
+  "path": "<attestation>.json",
   "sha256": "<64 lowercase hex characters>"
 }
 ```
@@ -97,8 +110,26 @@ GPU container, and deployed documentation. They must all identify one release
 commit. A legacy inline object containing only `status`, `version`, and
 `git_commit` is rejected.
 
-At release freeze, require every readiness field:
+The evidence is necessarily produced after testing the immutable tag, so it
+cannot be committed back into that same Git tree. Assemble the four downloaded
+attestations into a portable post-tag bundle instead:
 
 ```bash
-python3 scripts/validate_v1_support_matrix.py --require-ready
+RELEASE_COMMIT="$(git rev-list -n 1 v1.0.0)"
+python3 scripts/assemble_v1_release_bundle.py \
+  --quickstart build/v1_inputs/quickstart.json \
+  --cudanav build/v1_inputs/cudanav.json \
+  --docker-gpu build/v1_inputs/docker_gpu.json \
+  --documentation build/v1_inputs/documentation.json \
+  --output-dir build/v1_release_bundle \
+  --commit "$RELEASE_COMMIT"
+python3 scripts/validate_v1_support_matrix.py \
+  --require-ready \
+  --evidence-bundle build/v1_release_bundle/bundle.json \
+  --release-commit "$RELEASE_COMMIT"
 ```
+
+Attach the complete bundle directory to the GitHub Release. The validator
+requires all four hashes, all four subject commits, and the bundle commit to
+equal the immutable `v1.0.0` commit. This avoids an impossible Git
+self-reference while keeping the tagged source and its evidence inseparable.

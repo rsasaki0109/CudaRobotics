@@ -65,16 +65,33 @@ def attestations_share_release_commit(
     ) == 1
 
 
-def evaluate(matrix: dict[str, Any]) -> dict[str, Any]:
+def evaluate(
+    matrix: dict[str, Any],
+    *,
+    attestation_root: Path = ROOT,
+    readiness_evidence: dict[str, Any] | None = None,
+    expected_release_commit: str | None = None,
+) -> dict[str, Any]:
     surfaces = matrix.get("surfaces", {})
     main = matrix.get("main_demo", {})
     readiness = matrix.get("release_readiness", {})
+    if not isinstance(readiness, dict):
+        readiness = {}
+    evidence = (
+        readiness_evidence
+        if isinstance(readiness_evidence, dict)
+        else readiness
+    )
     target = matrix.get("target_version")
     actual_python = python_version()
     actual_ros = ros_versions()
     declared_ros = surfaces.get("ros2", {}).get("package_versions")
     command = main.get("run_command")
     build_command = main.get("build_command")
+    status = matrix.get("status")
+    published_version = readiness.get("published_version")
+    install_page = read("docs/site/install.html")
+    index_page = read("docs/site/index.html")
     command_surfaces = (
         "README.md",
         "docker/README.md",
@@ -84,7 +101,7 @@ def evaluate(matrix: dict[str, Any]) -> dict[str, Any]:
     )
     checks = {
         "schema": matrix.get("schema_version") == 1,
-        "status": matrix.get("status") in {"development", "release"},
+        "status": status in {"development", "release"},
         "target_version": target == "1.0.0",
         "target_tag": matrix.get("target_tag") == "v1.0.0",
         "surface_table": isinstance(surfaces, dict)
@@ -151,27 +168,42 @@ def evaluate(matrix: dict[str, Any]) -> dict[str, Any]:
         == "docs/site/install.html"
         and surfaces.get("documentation", {}).get("nav2_page")
         == "docs/site/nav2.html",
-        "published_version": readiness.get("published_version") == "0.1.0"
-        and "v0.1.0 remains the latest published release"
-        in read("docs/site/install.html"),
+        "published_version": (
+            status == "development"
+            and published_version == "0.1.0"
+            and "v0.1.0 remains the latest published release"
+            in install_page
+        )
+        or (
+            status == "release"
+            and published_version == target
+            and str(target) in install_page
+            and str(target) in index_page
+            and f"releases/tag/{matrix.get('target_tag')}" in install_page
+        ),
     }
     target_tag = str(matrix.get("target_tag", ""))
     attestation_gates = {
         key: load_reference(
-            readiness.get(key),
-            repo_root=ROOT,
+            evidence.get(key),
+            repo_root=attestation_root,
             key=key,
             target_version=str(target),
             target_tag=target_tag,
         )
         for key in MODES
     }
+    attestation_commits = {
+        gate.get("git_commit")
+        for gate in attestation_gates.values()
+        if gate.get("passed") is True
+    }
     readiness_checks = {
         "contract_valid": all(checks.values()),
-        "release_status": matrix.get("status") == "release",
+        "release_status": status == "release",
         "python_at_target": actual_python == target,
         "ros_at_target": set(actual_ros.values()) == {target},
-        "published_target": readiness.get("published_version") == target,
+        "published_target": published_version == target,
         "quickstart_evidence": attestation_gates[
             "quickstart_15_minute_evidence"
         ]["passed"],
@@ -187,6 +219,8 @@ def evaluate(matrix: dict[str, Any]) -> dict[str, Any]:
         "same_release_commit": attestations_share_release_commit(
             attestation_gates
         ),
+        "release_commit_binding": expected_release_commit is not None
+        and attestation_commits == {expected_release_commit},
         "colab_target_ref": (
             f"/blob/{matrix.get('target_tag')}/"
             in str(surfaces.get("colab", {}).get("url", ""))

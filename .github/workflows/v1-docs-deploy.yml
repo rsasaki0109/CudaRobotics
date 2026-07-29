@@ -1,0 +1,88 @@
+name: v1-docs-deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Immutable v1 source tag to deploy
+        required: true
+        default: v1.0.0
+        type: string
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy-and-attest:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Check out immutable source tag
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag }}
+          path: source
+          fetch-depth: 1
+
+      - name: Check out existing gallery tree
+        uses: actions/checkout@v4
+        with:
+          ref: gh-pages
+          path: pages
+          fetch-depth: 1
+
+      - name: Stage docs without replacing gallery root
+        run: |
+          test "${{ inputs.tag }}" = "v1.0.0"
+          SOURCE_COMMIT="$(git -C source rev-parse HEAD)"
+          rsync -a --delete source/docs/site/ pages/docs/
+          python3 source/scripts/write_v1_docs_release_manifest.py \
+            --output pages/docs/release.json \
+            --tag "${{ inputs.tag }}" \
+            --commit "$SOURCE_COMMIT"
+          python3 source/scripts/validate_v1_docs_source.py \
+            pages/docs \
+            --tag "${{ inputs.tag }}" \
+            --commit "$SOURCE_COMMIT"
+          rm -rf -- pages/.git
+
+      - uses: actions/configure-pages@v5
+
+      - name: Upload complete preserved Pages tree
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: pages
+
+      - name: Deploy Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
+
+      - name: Re-fetch deployed v1 pages
+        run: |
+          SOURCE_COMMIT="$(git -C source rev-parse HEAD)"
+          python3 source/scripts/run_v1_docs_deployment_check.py \
+            --output-dir source/build/v1_docs_deployment \
+            --tag "${{ inputs.tag }}" \
+            --commit "$SOURCE_COMMIT"
+
+      - name: Publish matrix attestation
+        run: |
+          python3 source/scripts/publish_v1_docs_attestation.py \
+            --evidence-dir source/build/v1_docs_deployment \
+            --output source/build/v1_docs_deployment/v1_docs_release.json
+
+      - name: Upload content-bound deployment evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: v1-docs-deployment-evidence-${{ github.sha }}
+          path: source/build/v1_docs_deployment
+          if-no-files-found: error
+          retention-days: 30
