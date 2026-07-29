@@ -21,6 +21,8 @@ struct VoxelMappingConfig {
     float log_odds_min = -4.0f;
     float log_odds_max = 4.0f;
     float occupied_threshold = 0.0f;
+    float projection_min_z = -1000.0f;
+    float projection_max_z = 1000.0f;
     int rolling_margin_cells = 48;
     std::size_t max_scan_points = 200000;
 };

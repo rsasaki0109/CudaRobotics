@@ -197,7 +197,8 @@ __global__ void project_occupancy_kernel(
     signed char* output,
     int width,
     int height,
-    int depth,
+    int minimum_z,
+    int maximum_z,
     float occupied_threshold)
 {
     const int index_2d = blockIdx.x * blockDim.x + threadIdx.x;
@@ -206,7 +207,7 @@ __global__ void project_occupancy_kernel(
     const int y = index_2d / width;
     bool any_observed = false;
     bool occupied = false;
-    for (int z = 0; z < depth; ++z) {
+    for (int z = minimum_z; z < maximum_z; ++z) {
         const int index = (z * height + y) * width + x;
         if (!observed[index]) continue;
         any_observed = true;
@@ -252,6 +253,13 @@ std::string validate_voxel_mapping_config(const VoxelMappingConfig& c)
         c.occupied_threshold < c.log_odds_min ||
         c.occupied_threshold > c.log_odds_max)
         return "invalid log-odds bounds or occupied threshold";
+    const float grid_max_z = c.origin_z + c.depth * c.resolution;
+    if (!std::isfinite(c.projection_min_z) ||
+        !std::isfinite(c.projection_max_z) ||
+        !(c.projection_min_z < c.projection_max_z) ||
+        c.projection_max_z <= c.origin_z ||
+        c.projection_min_z >= grid_max_z)
+        return "projection height band must be finite, ordered, and overlap the grid";
     if (c.rolling_margin_cells < 1 ||
         c.rolling_margin_cells > (std::min(c.width, c.height) - 1) / 2)
         return "rolling_margin_cells must fit inside the XY grid";
@@ -485,9 +493,19 @@ OccupancyProjection VoxelMapperGpu::occupancy_projection()
         static_cast<std::size_t>(impl_->config.width) * impl_->config.height);
     VOXEL_CUDA_CHECK(cudaEventRecord(impl_->event_start));
     const int cells_2d = impl_->config.width * impl_->config.height;
+    const int minimum_z = std::max(
+        0,
+        static_cast<int>(std::floor(
+            (impl_->config.projection_min_z - impl_->config.origin_z) /
+            impl_->config.resolution)));
+    const int maximum_z = std::min(
+        impl_->config.depth,
+        static_cast<int>(std::ceil(
+            (impl_->config.projection_max_z - impl_->config.origin_z) /
+            impl_->config.resolution)));
     project_occupancy_kernel<<<(cells_2d + 255) / 256, 256>>>(
         impl_->log_odds, impl_->observed, impl_->projection,
-        impl_->config.width, impl_->config.height, impl_->config.depth,
+        impl_->config.width, impl_->config.height, minimum_z, maximum_z,
         impl_->config.occupied_threshold);
     VOXEL_CUDA_CHECK(cudaGetLastError());
     VOXEL_CUDA_CHECK(cudaEventRecord(impl_->event_stop));

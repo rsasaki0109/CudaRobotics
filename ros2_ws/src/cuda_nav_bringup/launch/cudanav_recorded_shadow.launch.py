@@ -60,6 +60,8 @@ def generate_launch_description():
                     "depth": 24,
                     "resolution": 0.10,
                     "origin_z": -1.2,
+                    "projection_min_z": -0.5,
+                    "projection_max_z": 2.0,
                     "max_range": 12.0,
                     "rolling_margin_cells": 30,
                     "max_scan_age_sec": 0.5,

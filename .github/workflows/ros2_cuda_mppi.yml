@@ -30,6 +30,7 @@ on:
       - scripts/run_cudanav_rosbag_replay.py
       - scripts/run_cudanav_real_dataset_pipeline.py
       - scripts/run_cudanav_kiss_icp_real.py
+      - scripts/run_cudanav_real_gpu_stack.py
       - scripts/run_autonomy_suite.py
       - scripts/publish_cudanav_systems_evidence.py
       - scripts/publish_cudanav_dataset_evidence.py
@@ -46,6 +47,7 @@ on:
       - scripts/test_run_cudanav_real_dataset_pipeline.py
       - scripts/test_analyze_pointcloud2_clearance.py
       - scripts/test_cudanav_kiss_icp_real.py
+      - scripts/test_cudanav_real_gpu_stack.py
       - scripts/test_publish_cudanav_systems_evidence.py
       - scripts/test_publish_cudanav_dataset_evidence.py
       - scripts/validate_cudanav_closed_loop.py
@@ -58,6 +60,7 @@ on:
       - include/cudarobotics/kiss_icp_gpu.hpp
       - src/gpu_kiss_icp.cu
       - tools/cudanav_kiss_icp_sequence.cu
+      - tools/cudanav_real_gpu_stack_sequence.cu
       - include/cudarobotics/voxel_mapping_gpu.hpp
       - src/voxel_mapping_gpu.cu
       - include/cudarobotics/esdf_2d_gpu.hpp
@@ -92,6 +95,7 @@ on:
       - scripts/run_cudanav_rosbag_replay.py
       - scripts/run_cudanav_real_dataset_pipeline.py
       - scripts/run_cudanav_kiss_icp_real.py
+      - scripts/run_cudanav_real_gpu_stack.py
       - scripts/run_autonomy_suite.py
       - scripts/publish_cudanav_systems_evidence.py
       - scripts/publish_cudanav_dataset_evidence.py
@@ -108,6 +112,7 @@ on:
       - scripts/test_run_cudanav_real_dataset_pipeline.py
       - scripts/test_analyze_pointcloud2_clearance.py
       - scripts/test_cudanav_kiss_icp_real.py
+      - scripts/test_cudanav_real_gpu_stack.py
       - scripts/test_publish_cudanav_systems_evidence.py
       - scripts/test_publish_cudanav_dataset_evidence.py
       - scripts/validate_cudanav_closed_loop.py
@@ -120,6 +125,7 @@ on:
       - include/cudarobotics/kiss_icp_gpu.hpp
       - src/gpu_kiss_icp.cu
       - tools/cudanav_kiss_icp_sequence.cu
+      - tools/cudanav_real_gpu_stack_sequence.cu
       - include/cudarobotics/voxel_mapping_gpu.hpp
       - src/voxel_mapping_gpu.cu
       - include/cudarobotics/esdf_2d_gpu.hpp
@@ -215,6 +221,7 @@ jobs:
           python ../scripts/test_publish_cudanav_systems_evidence.py
           python ../scripts/test_publish_cudanav_dataset_evidence.py
           python ../scripts/test_cudanav_kiss_icp_real.py
+          python ../scripts/test_cudanav_real_gpu_stack.py
           ros2 run cuda_voxel_costmap_layer plugin_load_test
           ros2 run cuda_mppi_controller plugin_load_test
           ros2 run cuda_mppi_controller parameter_validation_test

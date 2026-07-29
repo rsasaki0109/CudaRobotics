@@ -20,6 +20,11 @@ The 2D projection has deliberately strict standard semantics:
 - `0`: observed and no occupied voxel;
 - `100`: at least one occupied voxel.
 
+`projection_min_z` and `projection_max_z` select the half-open world-Z band
+used by this 2D projection without discarding the rest of the 3D map. Their
+wide defaults preserve the full-column behavior. CudaNav bringup narrows the
+band to exclude ground and overhead returns from the navigation costmap.
+
 ## Verification
 
 ```bash
@@ -28,5 +33,5 @@ ctest --test-dir build -R voxel_mapping_gpu_smoke --output-on-failure
 ```
 
 The smoke test checks free-space ray traversal, endpoint occupancy, unknown
-preservation, rolling-window shifting, retained obstacles, snapshot shape, and
-malformed input rejection.
+preservation, rolling-window shifting, retained obstacles, projection height
+filtering, snapshot shape, and malformed input rejection.
