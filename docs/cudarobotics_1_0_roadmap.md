@@ -38,7 +38,7 @@ explicit failure reporting across the complete loop.
 | GPU odometry | Reusable voxel-hash KISS-ICP core and lifecycle ROS component | ROS 2 Jazzy compile plus recorded-stream runtime evidence |
 | Mapping | Rolling voxel map, exact typed ESDF, lifecycle nodes | ROS 2 Jazzy stream latency/correctness evidence |
 | Nav2 integration | Voxel costmap plugin, CUDA MPPI, deterministic closed-loop bringup; native GPU core passes 30 traversals / 1059.4 simulated seconds | Plugin-load CI and ROS 2 release-profile 10-minute GPU run with MCAP/video |
-| Reproducibility | Closed-loop, real-rosbag shadow, and multi-GPU manifest gates; GTX 1660 Ti native release node is UUID-bound | ROS release run, ROS real-bag run, and one additional physical GPU model at the same commit/digest |
+| Reproducibility | Closed-loop, real-rosbag shadow, and multi-GPU manifest gates; GTX 1660 Ti native release node is UUID-bound; all four v1 external gates now have fail-closed attestation producers and a post-tag release bundle | Execute the ROS release/real-bag runs, add one physical GPU model, and acquire the fresh-clone, published-image, and deployed-docs attestations from one immutable tag |
 | Contact paper | Published 32,400-episode robustness, exact 10 ms matched-compute, 3,150-episode closed-loop MuJoCo evidence, and ledger-synchronized submission draft | Venue-template packaging, artifact URLs/anonymization, and optional independent-hardware replication |
 | Papers | Contact-rich Diff-MPPI ledger is `ready: true` with a frozen draft; CudaNav systems draft is synchronized to its machine-checked ledger | Complete CudaNav ROS 2 closed-loop, recorded-shadow, and second-model GPU evidence |
 
@@ -223,6 +223,22 @@ The four tag-bound attestations are assembled after the immutable tag is
 executed and retained as a GitHub Release evidence bundle. This explicitly
 avoids trying to commit a file containing the tag commit hash back into the
 same immutable Git tree.
+
+The release-evidence sequence is now:
+
+```text
+immutable v1.0.0 tag
+  -> fresh-clone/no-cache quickstart attestation
+  -> CudaNav ROS 2 + real-bag + multi-GPU attestation
+  -> published GHCR digest + GPU smoke attestation
+  -> deployed public documentation attestation
+  -> content-bound bundle.json
+  -> validate_v1_support_matrix.py --require-ready
+  -> attach the complete bundle to the GitHub Release
+```
+
+No producer can turn missing Docker, GPU, ROS 2, second-model, HTTP, or source
+commit evidence into a skipped pass.
 
 Publication split:
 
