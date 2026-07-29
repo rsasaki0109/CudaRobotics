@@ -25,3 +25,13 @@ git push origin HEAD:gh-pages
 
 Do not run a Pages workflow that replaces the whole `gh-pages` branch unless
 the gallery assets have been migrated first.
+
+For the v1 release, use the manual `v1-docs-deploy.yml` workflow. It checks
+out the complete existing `gh-pages` tree, updates only `pages/docs/`, adds a
+source-tag deployment manifest, and deploys the preserved complete tree. It
+then re-fetches the public pages and uploads content-bound release evidence:
+
+```bash
+gh workflow run v1-docs-deploy.yml \
+  --ref v1.0.0 -f tag=v1.0.0
+```
