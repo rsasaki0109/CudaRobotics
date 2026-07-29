@@ -1,0 +1,49 @@
+{
+  "checks": {
+    "clean_checkout": "passed",
+    "colcon_build": "passed",
+    "colcon_tests": "passed",
+    "controller_parameter_validation": "passed",
+    "controller_plugin_load": "passed",
+    "costmap_plugin_load": "passed",
+    "derived_path_sidecar_roundtrip": "passed",
+    "python_evidence_contracts": "passed"
+  },
+  "cuda": {
+    "compiler": "Cuda compilation tools, release 12.6, V12.6.85",
+    "toolkit": "12.6"
+  },
+  "evidence_mode": "ros_jazzy_ci",
+  "generated_at": "2026-07-29T23:00:32.374593+00:00",
+  "git_commit": "724d05caae07896a9ebab1a71980f0993f279335",
+  "git_dirty": false,
+  "github": {
+    "event": "workflow_dispatch",
+    "ref": "refs/heads/master",
+    "repository": "rsasaki0109/CudaRobotics",
+    "run_attempt": 1,
+    "run_id": 30497894277,
+    "run_url": "https://github.com/rsasaki0109/CudaRobotics/actions/runs/30497894277",
+    "workflow": "ROS2 CUDA MPPI"
+  },
+  "packages": [
+    "cuda_esdf",
+    "cuda_kiss_icp",
+    "cuda_mppi_controller",
+    "cuda_nav_bringup",
+    "cuda_robotics_common",
+    "cuda_robotics_msgs",
+    "cuda_voxel_costmap_layer",
+    "cuda_voxel_mapping"
+  ],
+  "platform": {
+    "arch": "X64",
+    "image": "ubuntu-24.04",
+    "os": "Linux"
+  },
+  "ros": {
+    "distro": "jazzy"
+  },
+  "schema_version": 1,
+  "status": "passed"
+}
