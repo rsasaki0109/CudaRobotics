@@ -10,6 +10,7 @@ import re
 from typing import Any
 
 from cudanav_ros_ci_evidence import evaluate as evaluate_ros_ci
+from python_source_provenance import expected_payload
 from release_ci_evidence import evaluate as evaluate_release_ci
 from release_preflight_evidence import evaluate_manifest as evaluate_preflight
 from verify_python_release_artifacts import (
@@ -134,6 +135,9 @@ def evaluate_python_artifacts(
         "version": manifest.get("package_version") == VERSION,
         "git_commit": manifest.get("git_commit") == expected_commit,
         "clean_checkout": manifest.get("git_dirty") is False,
+        "source_provenance": (
+            manifest.get("source_provenance") == expected_payload()
+        ),
         "unique_names": unique_names,
         "complete_directory": unique_names and name_set == actual_names,
         "sdist": f"{PACKAGE}-{VERSION}.tar.gz" in name_set,

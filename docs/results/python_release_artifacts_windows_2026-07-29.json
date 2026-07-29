@@ -1,0 +1,54 @@
+{
+  "schema_version": 1,
+  "package": "cudarobotics",
+  "package_version": "0.2.0",
+  "git_commit": "1273468f2fe429b4797f225a2a6e3339b535b935",
+  "git_dirty": false,
+  "platform": "Windows-11-10.0.26300-SP0",
+  "python": "3.12.10",
+  "source_provenance": {
+    "schema_version": 1,
+    "algorithm": "sha256-text-lf",
+    "source_digest": "4c56949ba56ad33f01512323175faf9b96929ddec3e9068d1010f0006248e6c9",
+    "sources": {
+      "CMakeLists.txt": "d661f49cf50e486b338f2f1b01f121189295824d722dd76e4f852044494ba1b0",
+      "pyproject.toml": "9547ade7c1d22b8d585475f79b92c8be79136566effd1bfa03aa93d18f1ac167",
+      "README.md": "82585990094db47a5f8733645dd63e87376e1d6fbb48bdcadee1cc69cbcf42ec",
+      "src/cudarobotics/__init__.py": "d7b0eebe28f0a89a22e0cd175783a3ce41f602d58e749af703536a55da1c744b",
+      "src/cudarobotics/bindings.cpp": "78e7fc889155e1511f67b01186b869c3de50e09c759fe3a35a6a4af78c10e824",
+      "src/cudarobotics/registration/__init__.py": "f01e0602ce4c90c163a01eb03f68bcb14040084b8740d07a63677ba08ec9a6fb",
+      "core/include/cuda_check.cuh": "f358ad19e3b83228d39f1980ce386fa1af52bcb0b0e3e1acfd7967a59375fe96",
+      "core/include/cuda_mppi_controller/mppi_gpu.hpp": "4dda021b7dbf6247ebefa668e524a0053e6dd89303048bd4e281f2f26ea32627",
+      "core/include/cudarobotics/bcpd_gpu.hpp": "daaf27328f65b42c67288c5387041acfda50c0a4dd0bb2883dd6807b203d4537",
+      "core/include/cudarobotics/esdf_2d_gpu.hpp": "325ed5c8afd23a87eac668d80d70374af099d8ba472c566bf5bf5ca0ee97e782",
+      "core/include/cudarobotics/fgr_gpu.hpp": "3216716f6d27d21f071b39db9002bad0afea21339575b9fef97660f5ebe42816",
+      "core/include/cudarobotics/filterreg_gpu.hpp": "2d36917f9c9f433cde22944172b7cf106fa7a76583b0e4c9d72db863c069e78f",
+      "core/include/cudarobotics/kiss_icp_gpu.hpp": "d7abdc921536ff6283ee7fef0dee020aa6f28fdd69a305865e000df1332ee0f4",
+      "core/include/cudarobotics/robust_p2plane_gpu.hpp": "74af2a8c8b94866140ce68797a4c8aed64f78874e92fdae0e99bc79caab5e7c4",
+      "core/include/cudarobotics/robust_treg_gpu.hpp": "78f1c434344f6281ca8b9cbb74544d14ee4d215ba9b4eb309b354cf58438aa60",
+      "core/include/cudarobotics/sinkhorn_reg_gpu.hpp": "f384450bdc8878bc04478d78df97b5ac954e6f172294ede0ced8c142e0a8ffc8",
+      "core/include/cudarobotics/voxel_mapping_gpu.hpp": "36e5638815089bcb30cfd119959d4f94dfa0405e875e1203d92e6172e30849de",
+      "core/src/bcpd_gpu.cu": "6f2354e24ff01437013c1f1a9c19a20f31fba11889a8dcb7be212d0d498828af",
+      "core/src/fgr_gpu.cu": "8a7def8fcf2e7dce0cf949b5b928ff81a9d89f5bc11ce9bd2b81e6ee8c0c92aa",
+      "core/src/filterreg_gpu.cu": "fb5995d2d80c1df5709e49e825d7a1bd0d07f9d7c399a131a375112ce540773e",
+      "core/src/mppi_gpu.cu": "0376e1c880a5aae5fc3abd6d6ed6a631aeb77213d605c21a85b9e568db609ac5",
+      "core/src/robust_p2plane_gpu.cu": "636086b0cf6c3d0c9fc78e8f1798df6dc79a22e86af06e8836b6ffdeaea63545",
+      "core/src/robust_treg_gpu.cu": "d28246e367a2a34cc3cafd8136415e01be697b93a98d93073544dd00c3d6daa9",
+      "core/src/sinkhorn_gpu.cu": "7866ff758b09e9a6f3115dc14f1b638db0fb550982b76602bde0b1159e716411"
+    }
+  },
+  "artifacts": [
+    {
+      "name": "cudarobotics-0.2.0.tar.gz",
+      "kind": "sdist",
+      "bytes": 46827,
+      "sha256": "df457ec7982cbcbe4121a378f89414a668a611a7d2bd7bda9fe8a2d5357e8d84"
+    },
+    {
+      "name": "cudarobotics-0.2.0-cp312-cp312-win_amd64.whl",
+      "kind": "wheel",
+      "bytes": 787896,
+      "sha256": "a2c2a6179b4a22e15b7ea1fe206a7576dfb8eb4125667674699eafea773e802a"
+    }
+  ]
+}
