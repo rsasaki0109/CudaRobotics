@@ -18,7 +18,7 @@ docker run --rm --gpus all cuda-mppi-demo
 Run the end-to-end short closed loop:
 
 ```bash
-docker build -f docker/Dockerfile -t cudarobotics .
+docker build --pull --no-cache -f docker/Dockerfile -t cudarobotics .
 docker run --rm --gpus all \
   -v "$PWD/out:/out" \
   cudarobotics cudanav

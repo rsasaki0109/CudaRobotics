@@ -6,7 +6,7 @@
   "main_demo": {
     "surface": "docker_source",
     "time_budget_seconds": 900,
-    "build_command": "docker build -f docker/Dockerfile -t cudarobotics .",
+    "build_command": "docker build --pull --no-cache -f docker/Dockerfile -t cudarobotics .",
     "run_command": "docker run --rm --gpus all -v \"$PWD/out:/out\" cudarobotics cudanav",
     "result": "out/cudanav_closed_loop.json",
     "gate": "smoke_pass"

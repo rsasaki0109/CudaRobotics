@@ -246,7 +246,7 @@ End-to-end CudaNav smoke (GPU KISS-ICP, voxel map, ESDF, Nav2 CUDA MPPI,
 and command-driven simulator):
 
 ```bash
-docker build -f docker/Dockerfile -t cudarobotics .
+docker build --pull --no-cache -f docker/Dockerfile -t cudarobotics .
 docker run --rm --gpus all -v "$PWD/out:/out" cudarobotics cudanav
 ```
 

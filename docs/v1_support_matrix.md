@@ -17,7 +17,7 @@ release-ready only when:
 The target 15-minute path is:
 
 ```bash
-docker build -f docker/Dockerfile -t cudarobotics .
+docker build --pull --no-cache -f docker/Dockerfile -t cudarobotics .
 docker run --rm --gpus all -v "$PWD/out:/out" cudarobotics cudanav
 ```
 
@@ -29,6 +29,25 @@ Validate consistency without claiming readiness:
 ```bash
 python3 scripts/validate_v1_support_matrix.py
 ```
+
+Acquire the 900-second evidence on a clean Docker/NVIDIA host. The timer starts
+before a depth-one clone and includes a `--pull --no-cache` image build plus
+the CudaNav run:
+
+```bash
+python3 scripts/run_v1_quickstart.py \
+  --output-dir build/v1_quickstart \
+  --ref v1.0.0 \
+  --profile release
+python3 scripts/validate_v1_quickstart.py \
+  build/v1_quickstart \
+  --profile release --commit <full-40-character-commit>
+```
+
+The runner refuses an existing local `cudarobotics` image. Its manifest binds
+the clone/build/run logs, Docker image ID, GPU/driver identity, support matrix,
+and CudaNav JSON/log. Missing Docker or NVIDIA tooling is an unavailable gate,
+not a skipped pass.
 
 At release freeze, require every readiness field:
 

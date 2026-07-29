@@ -40,7 +40,7 @@ and renders the recorded truth/odometry trajectory as a GIF.
 The development Docker image exposes the same short integration path:
 
 ```bash
-docker build -f docker/Dockerfile -t cudarobotics .
+docker build --pull --no-cache -f docker/Dockerfile -t cudarobotics .
 docker run --rm --gpus all -v "$PWD/out:/out" cudarobotics cudanav
 ```
 
