@@ -44,6 +44,21 @@
       ]
     },
     {
+      "id": "real_gpu_core_shadow",
+      "statement": "A content-addressed 300-frame real PointCloud2 sequence passes through GPU KISS-ICP, rolling voxel mapping, GPU ESDF inflation, and CUDA MPPI in one native shadow run with a 9.999 ms mean frame time.",
+      "submission_required": true,
+      "status": "supported",
+      "evidence": [
+        "istanbul_all_gpu_core_smoke",
+        "istanbul_all_gpu_core_report"
+      ],
+      "limitations": [
+        "This is a 29.9-second smoke profile on one GPU model, not the 120-second release profile or a multi-GPU result.",
+        "Two of 31 MPPI evaluations reported all rollouts colliding; both were retained as bounded safety interventions with zero linear speed.",
+        "The native process does not prove ROS 2 runtime, applied commands, vehicle response, or closed-loop autonomy."
+      ]
+    },
+    {
       "id": "integrated_gpu_stack",
       "statement": "GPU KISS-ICP, rolling voxel mapping, exact typed ESDF, a Nav2 costmap bridge, and CUDA MPPI build and run as one ROS 2 Jazzy stack.",
       "submission_required": true,
@@ -72,13 +87,14 @@
       "id": "real_data_shadow",
       "statement": "The same CUDA controller stack meets its declared latency, rollout-validity, and clearance gates on a content-addressed public real rosbag.",
       "submission_required": true,
-      "status": "planned",
+      "status": "partial",
       "evidence": [
+        "istanbul_all_gpu_core_smoke",
         "real_rosbag_release"
       ],
       "limitations": [
         "Rosbag replay is shadow-controller evidence and is not a closed-loop success claim.",
-        "The selected public PointCloud2 dataset has deterministic Path and PointCloud2-clearance contracts, but its release-profile GPU run remains pending."
+        "The selected public PointCloud2 dataset now has a passing native all-GPU core smoke, but a ROS 2 release-profile replay and its runtime attestation remain pending."
       ]
     },
     {
@@ -359,6 +375,142 @@
           "path": "docs/results/cudanav_kiss_icp_real_2026-07-29.md",
           "normalization": "text_lf",
           "sha256": "2dc788ccbed83fda3bebba06c4261586ceff604c05bd97eab4036faa00de8738"
+        }
+      ]
+    },
+    {
+      "id": "istanbul_all_gpu_core_smoke",
+      "status": "complete",
+      "kind": "json_assertions",
+      "generator_command": [
+        "python3",
+        "scripts/run_cudanav_real_gpu_stack.py",
+        "--validate-portable",
+        "docs/results/cudanav_real_gpu_stack_2026-07-29.json",
+        "--commit",
+        "614af5681fd757d298ea835c98988f2cd930de5b"
+      ],
+      "artifacts": [
+        {
+          "path": "docs/results/cudanav_real_gpu_stack_2026-07-29.json",
+          "normalization": "text_lf",
+          "sha256": "9afd2ef7736d9c053e0d4d0da4c51604addf75aa5860a8895ea3d1d842071549"
+        }
+      ],
+      "assertions": [
+        {
+          "json_path": "source_commit",
+          "op": "eq",
+          "value": "614af5681fd757d298ea835c98988f2cd930de5b"
+        },
+        {
+          "json_path": "claims.real_cuda_mppi_shadow",
+          "op": "eq",
+          "value": true
+        },
+        {
+          "json_path": "claims.ros2_runtime",
+          "op": "eq",
+          "value": false
+        },
+        {
+          "json_path": "claims.closed_loop",
+          "op": "eq",
+          "value": false
+        },
+        {
+          "json_path": "stages.0",
+          "op": "eq",
+          "value": "gpu_kiss_icp"
+        },
+        {
+          "json_path": "stages.1",
+          "op": "eq",
+          "value": "gpu_voxel_mapping"
+        },
+        {
+          "json_path": "stages.2",
+          "op": "eq",
+          "value": "gpu_esdf"
+        },
+        {
+          "json_path": "stages.3",
+          "op": "eq",
+          "value": "cuda_mppi"
+        },
+        {
+          "json_path": "metrics.frames",
+          "op": "eq",
+          "value": 300
+        },
+        {
+          "json_path": "metrics.mapping.final_observed_voxels",
+          "op": "ge",
+          "value": 500
+        },
+        {
+          "json_path": "metrics.esdf.gpu_ms_p95",
+          "op": "lt",
+          "value": 5.0
+        },
+        {
+          "json_path": "metrics.mppi.evaluations",
+          "op": "ge",
+          "value": 20
+        },
+        {
+          "json_path": "metrics.mppi.minimum_nonzero_valid_rollout_ratio",
+          "op": "ge",
+          "value": 0.01
+        },
+        {
+          "json_path": "metrics.mppi.all_colliding_evaluations",
+          "op": "le",
+          "value": 3
+        },
+        {
+          "json_path": "metrics.mppi.maximum_all_colliding_abs_v",
+          "op": "le",
+          "value": 0.05
+        },
+        {
+          "json_path": "metrics.mppi.invalid_commands",
+          "op": "eq",
+          "value": 0
+        },
+        {
+          "json_path": "metrics.mean_frame_ms",
+          "op": "lt",
+          "value": 30.0
+        },
+        {
+          "json_path": "metrics.quality_pass",
+          "op": "eq",
+          "value": true
+        }
+      ]
+    },
+    {
+      "id": "istanbul_all_gpu_core_report",
+      "status": "complete",
+      "kind": "file_set",
+      "generator_command": [
+        "python3",
+        "scripts/run_cudanav_real_gpu_stack.py",
+        "--publish",
+        "build/cudanav_real_gpu_stack_614af56/manifest.json",
+        "--result-id",
+        "cudanav_real_gpu_stack_2026-07-29",
+        "--output-json",
+        "docs/results/cudanav_real_gpu_stack_2026-07-29.json",
+        "--output-markdown",
+        "docs/results/cudanav_real_gpu_stack_2026-07-29.md"
+      ],
+      "artifacts": [
+        {
+          "path": "docs/results/cudanav_real_gpu_stack_2026-07-29.md",
+          "normalization": "text_lf",
+          "sha256": "947cad893db3ce9621b5acde7d176e7c8b591efdd80680d0cacf0c4614e4d68a"
         }
       ]
     },

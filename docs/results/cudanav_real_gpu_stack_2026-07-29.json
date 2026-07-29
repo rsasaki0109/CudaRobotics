@@ -1,0 +1,225 @@
+{
+  "claims": {
+    "closed_loop": false,
+    "real_cuda_mppi_shadow": true,
+    "real_esdf": true,
+    "real_pointcloud_gpu_odometry": true,
+    "real_voxel_mapping": true,
+    "ros2_runtime": false
+  },
+  "contract_sources": [
+    {
+      "normalization": "text_lf",
+      "path": "docs/cudanav_real_dataset_smoke.json",
+      "sha256": "d4fb9efc53d2b52f72d58fda7b80da5661b8cb43844f3cb6fa76a6f0e0385672"
+    },
+    {
+      "normalization": "text_lf",
+      "path": "include/cudarobotics/kiss_icp_gpu.hpp",
+      "sha256": "d7abdc921536ff6283ee7fef0dee020aa6f28fdd69a305865e000df1332ee0f4"
+    },
+    {
+      "normalization": "text_lf",
+      "path": "include/cudarobotics/voxel_mapping_gpu.hpp",
+      "sha256": "36e5638815089bcb30cfd119959d4f94dfa0405e875e1203d92e6172e30849de"
+    },
+    {
+      "normalization": "text_lf",
+      "path": "include/cudarobotics/esdf_2d_gpu.hpp",
+      "sha256": "325ed5c8afd23a87eac668d80d70374af099d8ba472c566bf5bf5ca0ee97e782"
+    },
+    {
+      "normalization": "text_lf",
+      "path": "include/cuda_mppi_controller/mppi_gpu.hpp",
+      "sha256": "4dda021b7dbf6247ebefa668e524a0053e6dd89303048bd4e281f2f26ea32627"
+    },
+    {
+      "normalization": "text_lf",
+      "path": "src/gpu_kiss_icp.cu",
+      "sha256": "cd62b6bfc0c1e6b321906ccd4a44bdc78846b26a417622e233a6f218a3626f45"
+    },
+    {
+      "normalization": "text_lf",
+      "path": "src/voxel_mapping_gpu.cu",
+      "sha256": "071c2af40b69c9a2d2e77af711c697f6c5c5a2e8686ddcddf2e7146ebaafd900"
+    },
+    {
+      "normalization": "text_lf",
+      "path": "src/esdf_2d_gpu.cu",
+      "sha256": "b9ee820b92e67e4caacac6a727e9d4f7315d7f321f683e08ec22b9b0000cf7b7"
+    },
+    {
+      "normalization": "text_lf",
+      "path": "src/mppi_gpu.cu",
+      "sha256": "0376e1c880a5aae5fc3abd6d6ed6a631aeb77213d605c21a85b9e568db609ac5"
+    },
+    {
+      "normalization": "text_lf",
+      "path": "tools/cudanav_real_gpu_stack_sequence.cu",
+      "sha256": "dd60145c02da87c845ffbfab8d7bbe93a5d0ae112c5b8e5e628f684839e16f3c"
+    },
+    {
+      "normalization": "text_lf",
+      "path": "scripts/export_cudanav_kiss_icp_sequence.py",
+      "sha256": "d38bb602bae978d81a5892255cf957f2af667f5027f8970da5af04fa7f125c8f"
+    },
+    {
+      "normalization": "text_lf",
+      "path": "scripts/run_cudanav_real_gpu_stack.py",
+      "sha256": "3fd36f1851c2dfefd4a4ba0d1f0e505575445db263e6b551f82ae9a29b165e84"
+    },
+    {
+      "normalization": "text_lf",
+      "path": "ros2_ws/src/cuda_voxel_mapping/src/cuda_voxel_mapper_node.cpp",
+      "sha256": "354382003750f6938db0ccbbddf3b05a379d851d568880a308a2a3a6761a7d9a"
+    },
+    {
+      "normalization": "text_lf",
+      "path": "ros2_ws/src/cuda_voxel_costmap_layer/src/cuda_voxel_costmap_layer.cpp",
+      "sha256": "179cc0e955c11b81e47b874b942262a66e94aa444c445edf19faeaf35a37aafb"
+    },
+    {
+      "normalization": "text_lf",
+      "path": "ros2_ws/src/cuda_nav_bringup/config/controller.yaml",
+      "sha256": "eb1efd71a66b8ead97cfd0ce1322ad74ba5b88784fd54dd123144526f3279c68"
+    }
+  ],
+  "database": {
+    "bytes": 1009799168,
+    "filename": "rosbag2_2024_09_12-14_59_58_0.db3",
+    "sha256": "eb80d649a41fd557ff3af5df4424051191fb696d0ebecbeb36b385702d2b4c8d"
+  },
+  "dataset_id": "autoware_istanbul_localization_smoke",
+  "dataset_spec_sha256": "d4fb9efc53d2b52f72d58fda7b80da5661b8cb43844f3cb6fa76a6f0e0385672",
+  "evidence_mode": "real_sensor_all_gpu_core_shadow",
+  "gpu": {
+    "compute_capability": "7.5",
+    "device": 0,
+    "driver_version": 13020,
+    "name": "NVIDIA GeForce GTX 1660 Ti",
+    "uuid": "GPU-f635286a-d68f-5039-cbc9-22d7f295b3a3"
+  },
+  "metrics": {
+    "ate_rmse_m": 0.7791187221,
+    "duration_s": 29.90000717,
+    "esdf": {
+      "footprint_clearing_radius_m": 0.3,
+      "gpu_ms_p95": 1.152735949,
+      "max_distance_m": 2.0,
+      "unknown_policy": "free"
+    },
+    "estimated_path_length_m": 72.83265499,
+    "final_drift_percent": 2.984920437,
+    "final_xy_error_m": 2.157647469,
+    "frame_ms_p95": 21.365,
+    "frames": 300,
+    "inliers_min": 417,
+    "mapping": {
+      "final_observed_voxels": 107737,
+      "map_shifts": 8,
+      "maximum_occupied_cells": 1789,
+      "maximum_unknown_cells": 30809,
+      "projection_ms_p95": 0.0684799999,
+      "raycast_ms_p95": 0.3082239926,
+      "total_integrated_rays": 357253
+    },
+    "mean_frame_ms": 9.998749333,
+    "mppi": {
+      "all_colliding_evaluations": 2,
+      "control_stride": 10,
+      "evaluations": 31,
+      "invalid_commands": 0,
+      "maximum_all_colliding_abs_v": 0,
+      "maximum_robot_cost": 228,
+      "minimum_nonzero_valid_rollout_ratio": 0.04443359375,
+      "minimum_robot_clearance_m": 0.2828427255,
+      "retreating_evaluations": 2,
+      "solve_ms_p95": 0.5321
+    },
+    "nn_ms_p95": 5.782848358,
+    "quality_pass": true,
+    "reference_path_length_m": 72.28492398,
+    "thresholds": {
+      "maximum_all_colliding_evaluations": 3,
+      "maximum_ate_rmse_m": 5,
+      "maximum_final_drift_percent": 10,
+      "maximum_safety_stop_speed": 0.05,
+      "minimum_control_evaluations": 20,
+      "minimum_inliers": 30,
+      "minimum_observed_voxels": 500,
+      "minimum_occupied_cells": 10,
+      "minimum_valid_rollout_ratio": 0.01
+    },
+    "wall_time_ms": 2999.6248,
+    "yaw_error_p95_rad": 0.003436189145
+  },
+  "profile": "smoke",
+  "publisher_commit": "614af5681fd757d298ea835c98988f2cd930de5b",
+  "result_id": "cudanav_real_gpu_stack_2026-07-29",
+  "retained_artifacts": {
+    "export_report": {
+      "bytes": 1001,
+      "sha256": "42d8608ea7076ff93205557ee7d42b7906b7b825bbed9f427cf13dab8304b847"
+    },
+    "result": {
+      "bytes": 2202,
+      "sha256": "44576d628fb9ce16ec114cffffb2a6d1a1a820777df7fd89a4967fbc56302e68"
+    },
+    "runner": {
+      "bytes": 1336832,
+      "sha256": "4c786c8e245d5b4a943bb5e4ce46fb5463f6e499b7b67600ff3b8e05a52be3ef"
+    },
+    "runner_log": {
+      "bytes": 120,
+      "sha256": "481e3e6a2ce5fa8221a60e946e3ff10f3ebabd500f6be9a59954b6c2deaab047"
+    },
+    "sequence": {
+      "bytes": 4378828,
+      "sha256": "693d74dd784511d830e8640c3e369bacfb2ac517c841ab9b3cce082fa2abcb98"
+    },
+    "trajectory": {
+      "bytes": 38548,
+      "sha256": "d979d1cf35282fac2383656c376a01fd64b22cdf6e278e37bc3f8515e94f8469"
+    }
+  },
+  "schema_version": 1,
+  "sequence_contract": {
+    "duration_s": 29.900007168,
+    "frame_id": "base_link",
+    "frames": 300,
+    "maximum_duration_s": 30.0,
+    "maximum_points": 1281,
+    "maximum_pose_age_ms": 50.0,
+    "mean_points": 1214.0033333333333,
+    "minimum_points": 932,
+    "pointcloud_topic": "/localization/util/downsample/pointcloud",
+    "pose_age_p95_ms": 0.357888,
+    "pose_topic": "/sensing/gnss/pose",
+    "pose_type": "geometry_msgs/msg/PoseStamped",
+    "reference_path_length_m": 72.28492121683614,
+    "start_offset_s": 1.0
+  },
+  "source_commit": "614af5681fd757d298ea835c98988f2cd930de5b",
+  "source_validation": {
+    "checks": {
+      "artifacts": true,
+      "checks": true,
+      "claims": true,
+      "clean": true,
+      "commit": true,
+      "evidence_mode": true,
+      "metrics": true,
+      "profile": true,
+      "schema": true,
+      "sequence": true,
+      "stages": true
+    },
+    "valid": true
+  },
+  "stages": [
+    "gpu_kiss_icp",
+    "gpu_voxel_mapping",
+    "gpu_esdf",
+    "cuda_mppi"
+  ]
+}
