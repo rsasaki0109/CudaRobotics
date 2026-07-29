@@ -155,7 +155,8 @@ python3 scripts/validate_cudanav_ros_ci.py \
 python3 scripts/publish_cudanav_systems_evidence.py \
   --suite-dir build/cudanav_autonomy_release \
   --ros-ci build/paper/ros_jazzy_ci/ros_jazzy_ci_evidence.json \
-  --output-dir docs/results --prefix cudanav_systems_YYYY-MM-DD
+  --output-dir docs/results --prefix cudanav_systems_YYYY-MM-DD \
+  --v1-attestation-name v1_cudanav_systems_release.json
 ```
 
 `run_autonomy_suite.py` orchestrates these three commands while preserving
@@ -169,6 +170,10 @@ package-test gates pass. See
 [`cudanav_ros_ci_evidence.md`](cudanav_ros_ci_evidence.md).
 The systems publisher then independently revalidates both sources and emits
 portable JSON summary/provenance plus a Markdown report for the paper ledger.
+For a passing release suite, the same invocation can also emit the
+content-bound `cudanav_release_evidence` attestation consumed by the v1
+support matrix; it cannot be emitted from smoke-only, dirty, single-model, or
+non-Jazzy evidence.
 
 Each run must produce:
 

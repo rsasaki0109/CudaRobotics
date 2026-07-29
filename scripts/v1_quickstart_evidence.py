@@ -10,8 +10,6 @@ import re
 import shlex
 from typing import Any
 
-from v1_support_matrix import evaluate as evaluate_support_matrix
-
 
 REQUIRED_ARTIFACTS = {
     "clone.log",
@@ -21,6 +19,71 @@ REQUIRED_ARTIFACTS = {
     "result/cudanav_closed_loop.log",
     "support_matrix.json",
 }
+
+
+def evaluate_matrix_snapshot(
+    matrix: dict[str, Any],
+    component_versions: Any,
+) -> dict[str, Any]:
+    surfaces = matrix.get("surfaces", {})
+    main = matrix.get("main_demo", {})
+    if not isinstance(surfaces, dict):
+        surfaces = {}
+    if not isinstance(main, dict):
+        main = {}
+    python_source = surfaces.get("python_source", {})
+    python_wheels = surfaces.get("python_wheels", {})
+    ros2 = surfaces.get("ros2", {})
+    if not isinstance(python_source, dict):
+        python_source = {}
+    if not isinstance(python_wheels, dict):
+        python_wheels = {}
+    if not isinstance(ros2, dict):
+        ros2 = {}
+    python_version = (
+        component_versions.get("python_version")
+        if isinstance(component_versions, dict)
+        else None
+    )
+    ros_versions = (
+        component_versions.get("ros_package_versions")
+        if isinstance(component_versions, dict)
+        else None
+    )
+    checks = {
+        "schema": matrix.get("schema_version") == 1,
+        "status": matrix.get("status") in {"development", "release"},
+        "target_version": matrix.get("target_version") == "1.0.0",
+        "target_tag": matrix.get("target_tag") == "v1.0.0",
+        "surfaces": isinstance(surfaces, dict),
+        "main_surface": main.get("surface") == "docker_source",
+        "time_budget": main.get("time_budget_seconds") == 900,
+        "build_command": isinstance(main.get("build_command"), str)
+        and bool(main["build_command"]),
+        "run_command": isinstance(main.get("run_command"), str)
+        and bool(main["run_command"]),
+        "result": main.get("result") == "out/cudanav_closed_loop.json"
+        and main.get("gate") == "smoke_pass",
+        "component_schema": isinstance(python_version, str)
+        and bool(python_version)
+        and isinstance(ros_versions, dict)
+        and bool(ros_versions)
+        and all(
+            isinstance(package, str)
+            and bool(package)
+            and isinstance(version, str)
+            and bool(version)
+            for package, version in ros_versions.items()
+        ),
+        "python_versions": python_source.get("version") == python_version
+        and python_wheels.get("version") == python_version,
+        "ros_versions": ros2.get("package_versions") == ros_versions,
+    }
+    return {
+        "valid": all(checks.values()),
+        "checks": checks,
+        "actual": component_versions,
+    }
 
 
 def sha256_file(path: Path) -> str:
@@ -61,10 +124,11 @@ def evaluate_manifest(
     commit = manifest.get("git_commit")
     artifacts = manifest.get("artifacts")
     matrix_path = root / "support_matrix.json"
+    component_versions = manifest.get("component_versions")
     try:
         matrix = json.loads(matrix_path.read_text(encoding="utf-8"))
         matrix_gate = (
-            evaluate_support_matrix(matrix)
+            evaluate_matrix_snapshot(matrix, component_versions)
             if isinstance(matrix, dict)
             else {"valid": False, "actual": {}}
         )
@@ -105,14 +169,30 @@ def evaluate_manifest(
         pass
 
     commands = manifest.get("commands", {})
+    if not isinstance(commands, dict):
+        commands = {}
     build_command = commands.get("build")
     run_command = commands.get("run")
     clone_command = commands.get("clone")
     matrix_main = matrix.get("main_demo", {}) if isinstance(matrix, dict) else {}
+    if not isinstance(matrix_main, dict):
+        matrix_main = {}
     returncodes = manifest.get("returncodes", {})
     phase_seconds = manifest.get("phase_seconds", {})
     gpu = manifest.get("gpu")
     docker = manifest.get("docker", {})
+    if not isinstance(returncodes, dict):
+        returncodes = {}
+    if not isinstance(phase_seconds, dict):
+        phase_seconds = {}
+    if not isinstance(docker, dict):
+        docker = {}
+    matrix_actual = matrix_gate.get("actual", {})
+    if not isinstance(matrix_actual, dict):
+        matrix_actual = {}
+    matrix_ros_versions = matrix_actual.get("ros_package_versions", {})
+    if not isinstance(matrix_ros_versions, dict):
+        matrix_ros_versions = {}
     elapsed = manifest.get("duration_seconds")
     checks = {
         "schema": manifest.get("schema_version") == 1,
@@ -186,8 +266,7 @@ def evaluate_manifest(
         "matrix_hash": matrix_path.is_file()
         and manifest.get("support_matrix_sha256") == sha256_file(matrix_path),
         "matrix_valid": bool(matrix_gate.get("valid")),
-        "component_versions": manifest.get("component_versions")
-        == matrix_gate.get("actual"),
+        "component_versions": component_versions == matrix_actual,
         "result_contract": manifest.get("result")
         == matrix_main.get("result"),
         "result": summary.get("schema_version") == 1
@@ -197,14 +276,8 @@ def evaluate_manifest(
     release_checks = {
         "matrix_release_status": matrix.get("status") == "release",
         "source_tag": manifest.get("source_ref") == matrix.get("target_tag"),
-        "python_at_target": matrix_gate.get("actual", {}).get("python_version")
-        == target,
-        "ros_at_target": set(
-            matrix_gate.get("actual", {})
-            .get("ros_package_versions", {})
-            .values()
-        )
-        == {target},
+        "python_at_target": matrix_actual.get("python_version") == target,
+        "ros_at_target": set(matrix_ros_versions.values()) == {target},
     }
     if profile == "release":
         checks.update(release_checks)

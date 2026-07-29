@@ -1,0 +1,51 @@
+name: v1-docker-gpu-evidence
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Immutable v1 release tag to pull and verify
+        required: true
+        default: v1.0.0
+        type: string
+
+permissions:
+  contents: read
+  packages: read
+
+jobs:
+  published-image-gpu-smoke:
+    runs-on: [self-hosted, Linux, X64, gpu]
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag }}
+          fetch-depth: 1
+
+      - name: Authenticate to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Run immutable published-image GPU smoke
+        run: |
+          python3 scripts/run_v1_docker_gpu_smoke.py \
+            --tag "${{ inputs.tag }}" \
+            --output-dir build/v1_docker_gpu_evidence
+
+      - name: Publish matrix attestation
+        run: |
+          python3 scripts/publish_v1_docker_attestation.py \
+            --evidence-dir build/v1_docker_gpu_evidence \
+            --output build/v1_docker_gpu_evidence/v1_docker_gpu_release.json
+
+      - name: Upload content-bound evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: v1-docker-gpu-evidence-${{ github.sha }}
+          path: build/v1_docker_gpu_evidence
+          if-no-files-found: error
+          retention-days: 30

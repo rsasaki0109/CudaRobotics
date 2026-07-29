@@ -168,6 +168,63 @@ class V1QuickstartEvidenceTest(unittest.TestCase):
             self.assertFalse(result["checks"]["fresh_image"])
             self.assertFalse(result["passed"])
 
+    def test_retained_evidence_uses_content_bound_version_snapshot(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest = fixture(root)
+            matrix_path = root / "support_matrix.json"
+            matrix = json.loads(matrix_path.read_text(encoding="utf-8"))
+            matrix["surfaces"]["python_source"]["version"] = "9.9.9"
+            matrix["surfaces"]["python_wheels"]["version"] = "9.9.9"
+            for package in matrix["surfaces"]["ros2"]["package_versions"]:
+                matrix["surfaces"]["ros2"]["package_versions"][
+                    package
+                ] = "9.9.9"
+            matrix_path.write_text(
+                json.dumps(matrix) + "\n", encoding="utf-8"
+            )
+            manifest["component_versions"] = {
+                "python_version": "9.9.9",
+                "ros_package_versions": matrix["surfaces"]["ros2"][
+                    "package_versions"
+                ],
+            }
+            manifest["support_matrix_sha256"] = sha256_file(matrix_path)
+            manifest["artifacts"] = describe_artifacts(
+                root, set(REQUIRED_ARTIFACTS)
+            )
+            result = evaluate_manifest(
+                manifest,
+                root,
+                expected_profile="development",
+                expected_commit=COMMIT,
+            )
+            self.assertTrue(result["checks"]["matrix_valid"], result)
+            self.assertTrue(result["checks"]["component_versions"], result)
+            self.assertTrue(result["passed"], result)
+
+    def test_malformed_snapshot_is_rejected_without_exception(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest = fixture(root)
+            matrix_path = root / "support_matrix.json"
+            matrix = json.loads(matrix_path.read_text(encoding="utf-8"))
+            matrix["main_demo"] = ["not", "an", "object"]
+            matrix_path.write_text(
+                json.dumps(matrix) + "\n", encoding="utf-8"
+            )
+            manifest["commands"] = ["not", "an", "object"]
+            manifest["support_matrix_sha256"] = sha256_file(matrix_path)
+            manifest["artifacts"] = describe_artifacts(
+                root, set(REQUIRED_ARTIFACTS)
+            )
+            result = evaluate_manifest(manifest, root)
+            self.assertFalse(result["checks"]["matrix_valid"])
+            self.assertFalse(result["checks"]["build_command"])
+            self.assertFalse(result["passed"])
+
 
 if __name__ == "__main__":
     unittest.main()
