@@ -44,8 +44,19 @@ python3 scripts/assemble_contact_submission_bundle.py \
 python3 scripts/validate_contact_submission_bundle.py \
   build/contact_submission_bundle/submission_manifest.json \
   --commit "$(git rev-parse HEAD)" --require-ready
+python3 scripts/archive_contact_submission_bundle.py \
+  build/contact_submission_bundle/submission_manifest.json \
+  --output build/contact-rich-diff-mppi-submission.zip \
+  --commit "$(git rev-parse HEAD)"
+python3 scripts/validate_contact_submission_archive.py \
+  build/contact-rich-diff-mppi-submission.zip \
+  --checksum build/contact-rich-diff-mppi-submission.zip.sha256 \
+  --commit "$(git rev-parse HEAD)"
 ```
 
 This does not replace the source ledger. It produces an anonymous copy whose
 machine-specific absolute paths are redacted and rehashed, then reruns the same
-claim assertions against the copied evidence.
+claim assertions against the copied evidence. The final canonical ZIP and its
+SHA-256 sidecar are the submission artifacts. The archive validator checks the
+anonymous manifest, exact inventory, source commit, checksum, CRC, canonical
+metadata, and safe paths before extracting any member.

@@ -69,6 +69,14 @@ python3 scripts/assemble_contact_submission_bundle.py \
 python3 scripts/validate_contact_submission_bundle.py \
   build/contact_submission_bundle/submission_manifest.json \
   --commit "$(git rev-parse HEAD)" --require-ready
+python3 scripts/archive_contact_submission_bundle.py \
+  build/contact_submission_bundle/submission_manifest.json \
+  --output build/contact-rich-diff-mppi-submission.zip \
+  --commit "$(git rev-parse HEAD)"
+python3 scripts/validate_contact_submission_archive.py \
+  build/contact-rich-diff-mppi-submission.zip \
+  --checksum build/contact-rich-diff-mppi-submission.zip.sha256 \
+  --commit "$(git rev-parse HEAD)"
 ```
 
 The assembler copies the frozen manuscript, generated results, protocols,
@@ -78,7 +86,10 @@ an anonymous ledger, and reruns every claim assertion inside the portable
 bundle. The validator then reopens every file, checks its size and SHA-256,
 revalidates the anonymous ledger, binds the figure sources, scans for identity
 leaks, and refuses `ready: true` until the venue, clean commit, and HTTPS
-artifact entry point are final.
+artifact entry point are final. The archive step accepts only `ready: true`,
+uses deterministic ZIP metadata and a fixed anonymous root name, emits a
+canonical checksum sidecar, and reruns the complete anonymous-bundle validator
+after safe extraction.
 
 No new broad-performance claim should be added without first extending the
 artifact ledger and its statistical contract.

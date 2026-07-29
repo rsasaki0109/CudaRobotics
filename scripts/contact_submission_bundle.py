@@ -25,6 +25,22 @@ FORBIDDEN_IDENTITY_TOKENS = (
     b"sasaki",
     b"rsasa",
 )
+MANIFEST_KEYS = {
+    "schema_version",
+    "evidence_mode",
+    "paper_id",
+    "title",
+    "source_commit",
+    "git_dirty",
+    "anonymous",
+    "venue",
+    "artifact_url",
+    "source_ledger_sha256",
+    "anonymous_ledger",
+    "figure_manifest",
+    "redactions",
+    "files",
+}
 
 
 def sha256_file(path: Path) -> str:
@@ -98,7 +114,8 @@ def evaluate_bundle(
     actual_paths = {
         path.relative_to(root).as_posix()
         for path in root.rglob("*")
-        if path.is_file() and path.name != "submission_manifest.json"
+        if path.is_file()
+        and path.relative_to(root).as_posix() != "submission_manifest.json"
     }
 
     ledger_path = _safe_file(
@@ -169,6 +186,17 @@ def evaluate_bundle(
                 and item["replacements"] > 0
             )
 
+    serialized_manifest = json.dumps(
+        manifest,
+        sort_keys=True,
+        ensure_ascii=False,
+    ).encode("utf-8").lower()
+    manifest_identity_clean = not any(
+        token in serialized_manifest for token in FORBIDDEN_IDENTITY_TOKENS
+    ) and not re.search(
+        rb"[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}",
+        serialized_manifest,
+    )
     identity_clean = True
     for path in paths:
         try:
@@ -184,10 +212,17 @@ def evaluate_bundle(
         ):
             identity_clean = False
             break
+        relative = path.relative_to(root).as_posix().lower().encode("utf-8")
+        if any(token in relative for token in FORBIDDEN_IDENTITY_TOKENS):
+            identity_clean = False
+            break
 
     source_commit = manifest.get("source_commit")
+    manifest_keys = set(manifest)
     structural_checks = {
         "schema": manifest.get("schema_version") == 1,
+        "manifest_schema": manifest_keys
+        in (MANIFEST_KEYS, MANIFEST_KEYS | {"validation"}),
         "mode": manifest.get("evidence_mode") == MODE,
         "paper_id": manifest.get("paper_id") == PAPER_ID,
         "anonymous": manifest.get("anonymous") is True,
@@ -237,6 +272,7 @@ def evaluate_bundle(
         ),
         "redactions": redactions_valid,
         "identity_clean": identity_clean,
+        "manifest_identity_clean": manifest_identity_clean,
     }
     readiness_checks = {
         "clean_commit": manifest.get("git_dirty") is False,
@@ -245,6 +281,18 @@ def evaluate_bundle(
         not in {"", "unselected", "tbd", "todo"},
         "artifact_url": _artifact_url_ready(manifest.get("artifact_url")),
     }
+    base_valid = all(structural_checks.values())
+    base_ready = base_valid and all(readiness_checks.values())
+    expected_validation = {
+        "valid": base_valid,
+        "ready": base_ready,
+        "checks": structural_checks.copy(),
+        "readiness_checks": readiness_checks,
+    }
+    if "validation" in manifest:
+        structural_checks["validation_record"] = (
+            manifest["validation"] == expected_validation
+        )
     valid = all(structural_checks.values())
     return {
         "valid": valid,
