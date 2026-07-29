@@ -1,0 +1,205 @@
+#!/usr/bin/env python3
+"""Validate cross-surface support claims for the v1.0 release target."""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
+import re
+from typing import Any
+import xml.etree.ElementTree as ET
+
+
+ROOT = Path(__file__).resolve().parents[1]
+MATRIX_PATH = ROOT / "docs" / "v1_support_matrix.json"
+
+ROS_PACKAGES = (
+    "cuda_robotics_msgs",
+    "cuda_robotics_common",
+    "cuda_kiss_icp",
+    "cuda_voxel_mapping",
+    "cuda_esdf",
+    "cuda_voxel_costmap_layer",
+    "cuda_mppi_controller",
+    "cuda_nav_bringup",
+)
+
+
+def read(relative: str) -> str:
+    return (ROOT / relative).read_text(encoding="utf-8")
+
+
+def normalized_shell(text: str) -> str:
+    return " ".join(text.replace("\\\n", " ").split())
+
+
+def python_version() -> str:
+    text = read("python/pyproject.toml")
+    match = re.search(r'(?m)^version\s*=\s*"([^"]+)"', text)
+    if match is None:
+        raise ValueError("Python package version is missing")
+    return match.group(1)
+
+
+def ros_versions() -> dict[str, str]:
+    versions = {}
+    for package in ROS_PACKAGES:
+        root = ET.parse(
+            ROOT / "ros2_ws" / "src" / package / "package.xml"
+        ).getroot()
+        value = root.findtext("version")
+        if value is None:
+            raise ValueError(f"ROS package version is missing: {package}")
+        versions[package] = value
+    return versions
+
+
+def evidence_passed(value: Any, target_version: str) -> bool:
+    return (
+        isinstance(value, dict)
+        and value.get("status") == "passed"
+        and value.get("version") == target_version
+        and bool(re.fullmatch(r"[0-9a-f]{40}", str(value.get("git_commit", ""))))
+    )
+
+
+def quickstart_evidence_passed(value: Any, target_version: str) -> bool:
+    return (
+        evidence_passed(value, target_version)
+        and isinstance(value.get("duration_seconds"), (int, float))
+        and 0 < value["duration_seconds"] <= 900
+        and value.get("surface") == "docker_source"
+        and value.get("result") == "out/cudanav_closed_loop.json"
+    )
+
+
+def evaluate(matrix: dict[str, Any]) -> dict[str, Any]:
+    surfaces = matrix.get("surfaces", {})
+    main = matrix.get("main_demo", {})
+    readiness = matrix.get("release_readiness", {})
+    target = matrix.get("target_version")
+    actual_python = python_version()
+    actual_ros = ros_versions()
+    declared_ros = surfaces.get("ros2", {}).get("package_versions")
+    command = main.get("run_command")
+    build_command = main.get("build_command")
+    command_surfaces = (
+        "README.md",
+        "docker/README.md",
+        "docs/site/install.html",
+        "docs/site/nav2.html",
+        "ros2_ws/src/cuda_nav_bringup/README.md",
+    )
+    checks = {
+        "schema": matrix.get("schema_version") == 1,
+        "status": matrix.get("status") in {"development", "release"},
+        "target_version": target == "1.0.0",
+        "target_tag": matrix.get("target_tag") == "v1.0.0",
+        "surface_table": isinstance(surfaces, dict)
+        and {
+            "python_source",
+            "python_wheels",
+            "ros2",
+            "docker_source",
+            "colab",
+            "documentation",
+        }
+        <= set(surfaces),
+        "time_budget": main.get("time_budget_seconds") == 900,
+        "main_surface": main.get("surface") == "docker_source",
+        "main_result": main.get("result") == "out/cudanav_closed_loop.json"
+        and main.get("gate") == "smoke_pass",
+        "main_command": isinstance(command, str)
+        and bool(command)
+        and all(
+            normalized_shell(command) in normalized_shell(read(relative))
+            for relative in command_surfaces
+        ),
+        "main_build_command": isinstance(build_command, str)
+        and bool(build_command)
+        and all(
+            normalized_shell(build_command)
+            in normalized_shell(read(relative))
+            for relative in command_surfaces
+        ),
+        "python_version": surfaces.get("python_source", {}).get("version")
+        == actual_python
+        and surfaces.get("python_wheels", {}).get("version")
+        == actual_python,
+        "python_requirement": surfaces.get("python_source", {}).get("python")
+        == ">=3.9"
+        and 'requires-python = ">=3.9"' in read("python/pyproject.toml"),
+        "python_cuda": surfaces.get("python_source", {}).get("cuda_toolkit")
+        == ">=12.0"
+        and "CUDA Toolkit >= 12.0" in read("python/README.md"),
+        "wheel_matrix": surfaces.get("python_wheels", {}).get("python")
+        == ["cp310", "cp312"]
+        and 'CIBW_BUILD: cp310-* cp312-*'
+        in read(".github/workflows/python-package.yml"),
+        "ros_versions": declared_ros == actual_ros,
+        "ros_platform": surfaces.get("ros2", {}).get("distribution")
+        == "jazzy"
+        and surfaces.get("ros2", {}).get("platform") == "Ubuntu 24.04"
+        and surfaces.get("ros2", {}).get("cuda_toolkit") == "12.6"
+        and "ubuntu-24.04" in read(".github/workflows/ros2_cuda_mppi.yml")
+        and "--cuda-toolkit 12.6"
+        in read(".github/workflows/ros2_cuda_mppi.yml"),
+        "ros_command": surfaces.get("ros2", {}).get("command")
+        in read("ros2_ws/src/cuda_nav_bringup/README.md"),
+        "docker_runtime": surfaces.get("docker_source", {}).get("cuda_runtime")
+        == "12.6"
+        and "ARG CUDA_VER=12-6" in read("docker/Dockerfile")
+        and "driver (>= 525" in read("docker/README.md"),
+        "colab": surfaces.get("colab", {}).get("requires_gpu_runtime") is True
+        and surfaces.get("colab", {}).get("url") in read("README.md")
+        and "git clone --depth 1" in read(
+            "examples/colab/cudarobotics_quickstart.ipynb"
+        ),
+        "documentation": surfaces.get("documentation", {}).get("install_page")
+        == "docs/site/install.html"
+        and surfaces.get("documentation", {}).get("nav2_page")
+        == "docs/site/nav2.html",
+        "published_version": readiness.get("published_version") == "0.1.0"
+        and "v0.1.0 remains the latest published release"
+        in read("docs/site/install.html"),
+    }
+    readiness_checks = {
+        "contract_valid": all(checks.values()),
+        "release_status": matrix.get("status") == "release",
+        "python_at_target": actual_python == target,
+        "ros_at_target": set(actual_ros.values()) == {target},
+        "published_target": readiness.get("published_version") == target,
+        "quickstart_evidence": quickstart_evidence_passed(
+            readiness.get("quickstart_15_minute_evidence"), str(target)
+        ),
+        "cudanav_release_evidence": evidence_passed(
+            readiness.get("cudanav_release_evidence"), str(target)
+        ),
+        "docker_gpu_evidence": evidence_passed(
+            readiness.get("docker_gpu_evidence"), str(target)
+        ),
+        "documentation_deployment": evidence_passed(
+            readiness.get("documentation_deployment"), str(target)
+        ),
+        "colab_target_ref": (
+            f"/blob/{matrix.get('target_tag')}/"
+            in str(surfaces.get("colab", {}).get("url", ""))
+        ),
+    }
+    return {
+        "valid": all(checks.values()),
+        "ready": all(readiness_checks.values()),
+        "checks": checks,
+        "readiness": readiness_checks,
+        "actual": {
+            "python_version": actual_python,
+            "ros_package_versions": actual_ros,
+        },
+    }
+
+
+def load(path: Path = MATRIX_PATH) -> dict[str, Any]:
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(payload, dict):
+        raise ValueError("support matrix root must be an object")
+    return payload

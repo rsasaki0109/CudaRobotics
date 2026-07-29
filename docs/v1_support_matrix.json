@@ -1,0 +1,71 @@
+{
+  "schema_version": 1,
+  "status": "development",
+  "target_version": "1.0.0",
+  "target_tag": "v1.0.0",
+  "main_demo": {
+    "surface": "docker_source",
+    "time_budget_seconds": 900,
+    "build_command": "docker build -f docker/Dockerfile -t cudarobotics .",
+    "run_command": "docker run --rm --gpus all -v \"$PWD/out:/out\" cudarobotics cudanav",
+    "result": "out/cudanav_closed_loop.json",
+    "gate": "smoke_pass"
+  },
+  "surfaces": {
+    "python_source": {
+      "version": "0.2.0",
+      "python": ">=3.9",
+      "platform": "Linux x86_64",
+      "cuda_toolkit": ">=12.0",
+      "command": "python examples/python/mppi_quickstart.py"
+    },
+    "python_wheels": {
+      "version": "0.2.0",
+      "platform": "manylinux x86_64",
+      "python": [
+        "cp310",
+        "cp312"
+      ],
+      "runtime": "compatible NVIDIA driver"
+    },
+    "ros2": {
+      "distribution": "jazzy",
+      "platform": "Ubuntu 24.04",
+      "cuda_toolkit": "12.6",
+      "command": "ros2 launch cuda_nav_bringup cudanav_closed_loop.launch.py",
+      "package_versions": {
+        "cuda_robotics_msgs": "0.3.0",
+        "cuda_robotics_common": "0.3.0",
+        "cuda_kiss_icp": "0.3.0",
+        "cuda_voxel_mapping": "0.3.0",
+        "cuda_esdf": "0.3.0",
+        "cuda_voxel_costmap_layer": "0.3.0",
+        "cuda_mppi_controller": "0.2.0",
+        "cuda_nav_bringup": "0.3.0"
+      }
+    },
+    "docker_source": {
+      "base": "ROS 2 Jazzy / Ubuntu 24.04",
+      "cuda_runtime": "12.6",
+      "host": "NVIDIA driver >= 525 and NVIDIA Container Toolkit",
+      "mode": "cudanav"
+    },
+    "colab": {
+      "url": "https://colab.research.google.com/github/rsasaki0109/CudaRobotics/blob/master/examples/colab/cudarobotics_quickstart.ipynb",
+      "scope": "Python MPPI and registration GPU quickstart",
+      "requires_gpu_runtime": true
+    },
+    "documentation": {
+      "site": "https://rsasaki0109.github.io/CudaRobotics/docs/",
+      "install_page": "docs/site/install.html",
+      "nav2_page": "docs/site/nav2.html"
+    }
+  },
+  "release_readiness": {
+    "published_version": "0.1.0",
+    "quickstart_15_minute_evidence": null,
+    "cudanav_release_evidence": null,
+    "docker_gpu_evidence": null,
+    "documentation_deployment": null
+  }
+}

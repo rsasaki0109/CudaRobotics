@@ -201,6 +201,14 @@ v1.0 release gates:
 - all headline results are regenerated from the release candidate;
 - the end-to-end CudaNav gate passes.
 
+The cross-surface versions, commands, and evidence slots are authoritative in
+[`v1_support_matrix.json`](v1_support_matrix.json). Its validator may report
+`valid: true` during development, but release requires `ready: true`:
+
+```bash
+python3 scripts/validate_v1_support_matrix.py --require-ready
+```
+
 Publication split:
 
 1. The CudaRobotics systems paper covers the end-to-end stack,
