@@ -6,6 +6,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 import shutil
+import subprocess
+import sys
 import tempfile
 import unittest
 
@@ -60,8 +62,7 @@ def ready_source(root: Path) -> None:
                 r"\author{\IEEEauthorblockN{Anonymous Authors}}",
                 r"\begin{document}",
                 r"\maketitle",
-                "A second distinct physical GPU model is an optional "
-                "extension.",
+                "A second distinct physical GPU model is an optional " "extension.",
                 "It separates recorded-data shadow evidence from "
                 "real-robot closed-loop navigation.",
                 r"\texttt{end\_to\_end}",
@@ -130,9 +131,9 @@ class SystemsPaperBundleTest(unittest.TestCase):
 
     def test_current_repository_ledger_is_ready(self) -> None:
         ledger = json.loads(
-            (
-                ROOT / "paper/artifacts/cudarobotics_systems.json"
-            ).read_text(encoding="utf-8")
+            (ROOT / "paper/artifacts/cudarobotics_systems.json").read_text(
+                encoding="utf-8"
+            )
         )
         gate = validate_manifest(ledger, ROOT)
         self.assertTrue(gate["valid"], gate)
@@ -223,6 +224,23 @@ class SystemsPaperBundleTest(unittest.TestCase):
             )
             with self.assertRaisesRegex(ValueError, "latex_anonymous"):
                 assemble(source, root / "bundle", COMMIT, False)
+
+    def test_cli_rejects_commit_that_is_not_source_head(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(ROOT / "scripts/assemble_systems_paper_bundle.py"),
+                    "--output-dir",
+                    str(Path(directory) / "bundle"),
+                    "--commit",
+                    "0" * 40,
+                ],
+                text=True,
+                capture_output=True,
+            )
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("does not match source HEAD", result.stderr)
 
 
 if __name__ == "__main__":
