@@ -1,0 +1,82 @@
+name: Docs deploy
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [master]
+    paths:
+      - "docs/site/**"
+      - "docs/v1_support_matrix.json"
+      - "scripts/v1_support_matrix.py"
+      - ".github/workflows/docs-deploy.yml"
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}docs/
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+        with:
+          path: source
+          fetch-depth: 1
+
+      - name: Check out existing gallery tree
+        uses: actions/checkout@v4
+        with:
+          ref: gh-pages
+          path: pages
+          fetch-depth: 1
+
+      - name: Validate and stage docs without replacing gallery
+        run: |
+          python3 source/scripts/validate_v1_support_matrix.py
+          test -f pages/index.html
+          test -d pages/gif
+          rsync -a --delete source/docs/site/ pages/docs/
+          for page in index.html install.html nav2.html results.html; do
+            cmp "source/docs/site/$page" "pages/docs/$page"
+          done
+          rm -rf -- pages/.git
+
+      - uses: actions/configure-pages@v5
+
+      - name: Upload complete preserved Pages tree
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: pages
+
+      - name: Deploy Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
+
+      - name: Re-fetch and compare public docs
+        env:
+          PAGE_URL: ${{ steps.deployment.outputs.page_url }}
+          SOURCE_COMMIT: ${{ github.sha }}
+        run: |
+          for attempt in $(seq 1 12); do
+            MATCHED=true
+            for page in index.html install.html nav2.html results.html; do
+              curl --fail --silent --show-error \
+                "${PAGE_URL}docs/${page}?source_commit=${SOURCE_COMMIT}" \
+                --output "/tmp/${page}" || MATCHED=false
+              cmp "source/docs/site/${page}" "/tmp/${page}" || MATCHED=false
+            done
+            if [ "$MATCHED" = true ]; then
+              exit 0
+            fi
+            sleep 10
+          done
+          exit 1

@@ -12,7 +12,18 @@ python3 -m http.server 8080 --directory docs/site
 
 Then open `http://localhost:8080/`.
 
-Deploy manually to the legacy Pages branch:
+The normal source deployment runs automatically when `docs/site/` or its
+support-matrix inputs change on `master`. It can also be dispatched manually:
+
+```bash
+gh workflow run docs-deploy.yml --ref master
+```
+
+The workflow checks out the complete `gh-pages` gallery tree, replaces only
+its `/docs/` subtree in the Pages artifact, deploys it, and then re-fetches and
+byte-compares the four public HTML pages against the source commit.
+
+For emergency manual deployment to the legacy Pages branch:
 
 ```bash
 git worktree add /tmp/cudarobotics-pages origin/gh-pages
