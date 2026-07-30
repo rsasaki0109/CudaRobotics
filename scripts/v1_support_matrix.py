@@ -86,6 +86,7 @@ def evaluate(
     actual_python = python_version()
     actual_ros = ros_versions()
     declared_ros = surfaces.get("ros2", {}).get("package_versions")
+    documentation = surfaces.get("documentation", {})
     command = main.get("run_command")
     build_command = main.get("build_command")
     status = matrix.get("status")
@@ -164,10 +165,16 @@ def evaluate(
         and "git clone --depth 1" in read(
             "examples/colab/cudarobotics_quickstart.ipynb"
         ),
-        "documentation": surfaces.get("documentation", {}).get("install_page")
+        "documentation": documentation.get("install_page")
         == "docs/site/install.html"
-        and surfaces.get("documentation", {}).get("nav2_page")
-        == "docs/site/nav2.html",
+        and documentation.get("nav2_page") == "docs/site/nav2.html"
+        and documentation.get("release_notes")
+        == "docs/releases/v1.0.0_notes.md"
+        and documentation.get("release_checklist")
+        == "docs/releases/v1.0.0_release_checklist.md"
+        and f"# v{target} " in read(str(documentation.get("release_notes")))
+        and f"# v{target} Release Checklist"
+        in read(str(documentation.get("release_checklist"))),
         "published_version": (
             status == "development"
             and isinstance(published_version, str)

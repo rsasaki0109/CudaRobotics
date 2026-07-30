@@ -220,6 +220,10 @@ python3 scripts/validate_v1_support_matrix.py \
   --release-commit "$(git rev-list -n 1 v1.0.0)"
 ```
 
+The human operator sequence and candidate release text are frozen in
+[`releases/v1.0.0_release_checklist.md`](releases/v1.0.0_release_checklist.md)
+and [`releases/v1.0.0_notes.md`](releases/v1.0.0_notes.md).
+
 The four tag-bound attestations are assembled after the immutable tag is
 executed and retained as a GitHub Release evidence bundle. This explicitly
 avoids trying to commit a file containing the tag commit hash back into the
