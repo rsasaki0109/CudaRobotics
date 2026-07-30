@@ -16,6 +16,14 @@ TEXT_SUFFIXES = {".css", ".html", ".js", ".json", ".md", ".txt"}
 def transform_text(text: str, *, tag: str) -> str:
     replacements = (
         (
+            "v0.2.0 adds reproducible registration suites, typed registration\n"
+            "            results, and an evidence-labelled real-rosbag "
+            "evaluation workflow.",
+            "v1.0.0 connects GPU KISS-ICP, rolling voxel mapping, typed ESDF,\n"
+            "            and ROS 2 CUDA MPPI as the quality-gated end-to-end "
+            "CudaNav stack.",
+        ),
+        (
             "docs/releases/v0.2.0_smoke_checklist.md",
             "docs/releases/v1.0.0_release_checklist.md",
         ),
@@ -26,6 +34,26 @@ def transform_text(text: str, *, tag: str) -> str:
         ("CudaRobotics/tree/master/", f"CudaRobotics/tree/{tag}/"),
         ("CudaRobotics/blob/master/", f"CudaRobotics/blob/{tag}/"),
         ("CudaRobotics/master/", f"CudaRobotics/{tag}/"),
+        (
+            "git clone https://github.com/rsasaki0109/CudaRobotics.git",
+            "git clone --depth 1 --branch v1.0.0 "
+            "https://github.com/rsasaki0109/CudaRobotics.git",
+        ),
+        ("Current Source Checkout", "v1.0.0 Source Checkout"),
+        (
+            "End-to-End CudaNav Development Smoke",
+            "v1.0.0 End-to-End CudaNav",
+        ),
+        ("current source checkout", "immutable v1.0.0 tag checkout"),
+        (
+            "The development image also contains",
+            "The v1 image also contains",
+        ),
+        (
+            "tracks when this development path becomes a release-supported "
+            "path.",
+            "records the release-supported surfaces and their evidence gates.",
+        ),
         ("v0.2.0", f"v{VERSION}"),
         ("0.2.0", VERSION),
     )
