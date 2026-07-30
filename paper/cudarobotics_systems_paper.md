@@ -6,9 +6,9 @@ Draft date: 2026-07-29
 
 This draft is synchronized with the machine-readable claim ledger in
 [`artifacts/cudarobotics_systems.json`](artifacts/cudarobotics_systems.json).
-It reports supported native simulation and real-data shadow results, while
-keeping ROS 2 release execution and a second physical GPU as explicit pending
-evidence. The paper is therefore a current working draft, not a
+It reports supported native simulation, ROS 2 command-driven closed-loop, and
+real-data shadow results. A second physical GPU remains explicit pending
+evidence, so the paper is a current working draft rather than a
 submission-ready manuscript.
 
 ## Abstract
@@ -156,9 +156,9 @@ resetting.
 The repository contains lifecycle components for GPU KISS-ICP, voxel mapping,
 and ESDF; a typed distance-field message; a Nav2 voxel costmap layer; and the
 CUDA MPPI controller plugin. Shared launch and configuration files connect the
-components. Source and contract tests are complete. The paper ledger keeps the
-integrated ROS 2 claim partial until a green Jazzy build, plugin-load test, and
-release-profile GPU runtime attestation are attached from the paper commit.
+components. Source and contract tests are complete, exact-commit Jazzy CI is
+green, and a clean GTX 1660 Ti release-profile ROS 2 runtime attestation
+retains the required MCAP topics.
 
 ## 4. Evidence model
 
@@ -188,7 +188,7 @@ The following IDs are authoritative and are checked against the manuscript:
 | `native_gpu_core_closed_loop` | Supported | 30-traversal native release plus bound visual |
 | `integrated_gpu_stack` | Supported | Jazzy compile/plugin CI plus UUID-bound ROS 2 GPU runtime release |
 | `closed_loop_autonomy` | Supported | 30/30 ROS 2 traversals, retained MCAP/video, zero collisions |
-| `real_data_shadow` | Partial | Native release passes; ROS 2 release replay pending |
+| `real_data_shadow` | Supported | Native MCD release plus public Istanbul ROS 2 shadow release |
 | `multi_gpu_reproduction` | Partial | One UUID-bound GTX 1660 Ti node; second model pending |
 
 ## 5. Experimental protocol
@@ -227,10 +227,13 @@ Full-window admission checks all 1,200 scans. The `t:uint32` spans range from
 the `ring:uint8` field covers 0 through 127. The release benchmark then uses
 the declared one-second warm-up and consumes 1,190 scans over 118.902 seconds.
 Odometry alone and the complete native GPU core shadow path are evaluated
-separately. Exact-commit ROS 2 Jazzy CI builds all eight packages, loads the
-controller and costmap plugins, and passes their parameter, package, and
-evidence-contract tests. ROS 2 GPU replay and runtime attestation remain
-pending.
+separately. The ROS 2 shadow release uses the content-addressed public Autoware
+Istanbul localization bag: 34,375 real PointCloud2 messages, four recorded
+static transforms, and a deterministic Path derived from the recorded GNSS
+poses. The source records point-cloud headers in a different epoch from bag
+`/clock`, so diagnostics are paired by immutable bag record timestamp. This
+run remains recorded-data shadow evidence: CUDA MPPI commands do not alter
+future sensor messages.
 
 ### 5.3 Hardware and reproducibility
 
@@ -301,15 +304,21 @@ same control evaluation without lowering the gate. These are controller
 diagnostics, not proof of vehicle obstacle avoidance, because commands are not
 applied to the recorded sequence.
 
+The ROS 2 Istanbul release adds 793 CUDA MPPI diagnostic cycles over 79.025
+seconds. All 790 point clouds in the control window pair with a command within
+the declared 200 ms bound. Solve p95 is 4.801 ms, mean rollout validity is
+0.9907, and measured front clearance is at least 3.535 m. Five all-colliding
+cycles (0.631%) invoke five retreat cycles, below the declared 2% bound. The
+retained 66.98 MB MCAP has positive counts for `/cuda_nav/cmd_vel`,
+`/cuda_nav/odom`, `/cuda_nav/occupancy`, and `/cuda_nav/esdf`.
+
 ### 6.3 Current readiness
 
 Supported evidence establishes a coherent native GPU core, causal continuous
-simulation, real PointCloud2 execution, exact-commit ROS 2 Jazzy compile/plugin
-CI, and one physical consumer-GPU node. It does not yet establish:
+ROS 2 simulation with retained MCAP/video, public real-PointCloud2 shadow
+execution, exact-commit ROS 2 Jazzy compile/plugin CI, and one physical
+consumer-GPU node. It does not yet establish:
 
-- a release-profile ROS 2 Jazzy GPU run with positive MCAP topic counts and a
-  retained video;
-- a release-profile ROS 2 real-bag shadow run;
 - reproduction on a second distinct physical GPU model;
 - real-robot closed-loop navigation.
 
@@ -390,20 +399,17 @@ The complete command and threshold documentation is in
 The simulator is deterministic and uses synthetic LiDAR geometry. It is a
 strong regression oracle for causality, accumulated state, deadlines, and
 collision policy, but it does not model all real sensor failure modes or
-vehicle dynamics. The MCD sequence supplies real timed PointCloud2 geometry
-and calibrated sensor-frame reference poses, but shadow commands cannot
-influence future scans. The native real-data release profile passes; the
-remaining real-data gap is ROS 2 runtime replay rather than native duration.
+vehicle dynamics. The MCD and Istanbul sequences supply real PointCloud2
+geometry, but shadow commands cannot influence future scans. The ROS 2
+Istanbul runtime therefore supports latency, rollout-validity, mapping, and
+clearance claims without becoming a real-robot closed-loop claim.
 
-The architecture has ROS 2/Nav2 adapters, but source presence and unit tests
-are weaker evidence than a release-profile runtime on the exact paper commit.
-That run must retain the MCAP, metadata, required topic counts, parameters,
-metrics, logs, and video. Finally, all physical evidence currently comes from
-one GTX 1660 Ti. The matrix claim requires a second GPU UUID and model at an
-identical source commit and digest.
+Physical GPU release evidence is still limited to one GTX 1660 Ti. The matrix
+claim requires a second GPU UUID and model at an identical source commit and
+digest.
 
 These omissions are release gates, not future-work decoration. The manuscript
-and ledger intentionally keep the affected claims partial.
+and ledger intentionally keep the multi-GPU claim partial.
 
 ## 9. Availability
 
