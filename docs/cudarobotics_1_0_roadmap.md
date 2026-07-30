@@ -34,8 +34,9 @@ explicit failure reporting across the complete loop.
 
 | Area | Implemented | Evidence still required |
 |---|---|---|
-| v0.2 closure | Published `v0.2.0` at `417e28e2ce7dfb3e1033e9c19bd3731b309cefb0`; public evidence ZIP revalidated; Build, Python manylinux, ROS 2, Docker/GHCR, CPU, and GTX 1660 Ti gates pass | Complete |
-| v1 release source | Python and all eight ROS 2 packages are version-aligned at `1.0.0`; the support matrix remains fail-closed in `development` | Immutable-tag fresh-clone, single-GPU CudaNav, published-image, and deployed-docs attestations |
+| v0.3 release | Published `v0.3.0` at `67f134554d054de14f41f86f4a3a800484d886a1`; Build, Python manylinux, ROS 2, systems-paper archive, release-asset re-download, and GHCR publication gates pass | Complete |
+| v0.4 Python CudaNav | ROS 2 CudaNav components and reusable CUDA cores exist, while the Python package currently exposes MPPI and registration | One Python navigation API, CLI, public-dataset quickstart, fixed-seed benchmark, and portable wheels |
+| v1 release target | The support matrix keeps `1.0.0` as the future target while the published Python and ROS 2 source version is `0.3.0`; readiness remains fail-closed in `development` | Promote a proven v0.4 surface, then acquire immutable-tag fresh-clone, physical-GPU, published-image, and deployed-docs attestations |
 | GPU odometry | Reusable voxel-hash KISS-ICP core, lifecycle ROS component, exact-master Jazzy CI, and 804 odometry outputs in the content-addressed Istanbul ROS 2 GPU shadow release | Complete |
 | Mapping | Rolling voxel map, exact typed ESDF, lifecycle nodes, exact-master Jazzy CI, and 796 occupancy plus 794 ESDF outputs in the Istanbul ROS 2 GPU shadow release | Complete |
 | Nav2 integration | Voxel costmap plugin, CUDA MPPI, deterministic closed-loop bringup; ROS 2 GPU release passes 30/30 traversals over 1325.5 seconds; public real-sensor shadow release passes 793 GPU control cycles with retained MCAP | Complete |
@@ -195,7 +196,47 @@ The release matrix should cover:
 - the reference GTX 1660 Ti and at least one newer desktop GPU;
 - Jetson as either a tested target or an explicitly experimental target.
 
-## Epic 4: v1.0 and Publications
+## Epic 4: v0.4 Python CudaNav
+
+Objective: expose the integrated CudaNav path as a small, reusable Python
+surface instead of requiring users to assemble ROS 2 components or standalone
+demos.
+
+Planned public API:
+
+- `cudarobotics.navigation.KissIcpOdometry`;
+- `cudarobotics.navigation.VoxelMap`;
+- `cudarobotics.navigation.Esdf2D`;
+- one pipeline object connecting odometry, mapping, ESDF, and CUDA MPPI;
+- a `cudarobotics-cudanav` CLI for recorded point clouds or rosbag-derived
+  inputs.
+
+The first supported workflow must accept a documented public dataset input and
+produce:
+
+- a trajectory;
+- map and ESDF outputs;
+- timing and accuracy metrics;
+- a machine-readable manifest;
+- a concise visual or replay artifact.
+
+v0.4 exit gates:
+
+- Python API and CLI use the existing tested CUDA cores rather than duplicate
+  implementations;
+- one command runs the complete pipeline with fixed seeds;
+- CPU/no-GPU tests validate schemas and failure handling;
+- GPU tests retain hardware, driver, CUDA, latency, memory, and accuracy data;
+- CPython 3.10 and 3.12 manylinux wheels contain the complete supported API;
+- source distribution, wheels, documentation, and examples report the same
+  version;
+- multi-GPU remains optional and is not a release blocker.
+
+Website expansion is paused during this epic. Update Markdown documentation
+and package examples first; resume site changes only after the Python API and
+CLI contracts are stable.
+
+## Epic 5: v1.0 and Publications
 
 Objective: publish a usable toolkit and two reproducible, narrowly scoped paper
 packages.
@@ -276,11 +317,12 @@ generated from repository manifests rather than maintained by hand.
 
 Work proceeds in dependency order:
 
-1. release v0.2.0;
-2. harden the reusable GPU core;
-3. integrate CudaNav;
-4. make the full loop reproducible;
-5. release v1.0 and freeze the paper artifacts.
+1. publish v0.3.0 with the integrated CudaNav evidence;
+2. define the minimal Python CudaNav API and CLI contracts;
+3. connect the existing odometry, mapping, ESDF, and MPPI cores;
+4. add the public-dataset quickstart and fixed-seed evidence;
+5. publish v0.4.0 without making multi-GPU a blocker;
+6. promote the proven surface toward v1.0 and freeze the paper artifacts.
 
 An epic may prototype a downstream interface early, but it cannot be declared
 complete before its upstream exit gates pass.
