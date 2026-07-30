@@ -26,7 +26,7 @@
       <p class="eyebrow">Getting started</p>
       <h1>Install CudaRobotics</h1>
       <p>
-        Use the published v0.2.0 GitHub assets, build the current source from a
+        Use the published v0.3.0 GitHub assets, build the current source from a
         checkout, or run the Nav2 CUDA MPPI demo from GHCR.
       </p>
     </div>
@@ -37,7 +37,7 @@
           <article class="card">
             <span class="tag amber">Release assets</span>
             <h3>Install a wheel</h3>
-            <p>Download the matching Linux x86_64 wheel from the published v0.2.0 release.</p>
+            <p>Download the matching Linux x86_64 wheel from the published v0.3.0 release.</p>
           </article>
           <article class="card">
             <span class="tag">Source build</span>
@@ -70,16 +70,16 @@
       <section class="section" id="release-assets">
         <div class="section-head">
           <h2>Published Release Assets</h2>
-          <p>The quality-gated v0.2.0 release is the latest published release.</p>
+          <p>The quality-gated v0.3.0 release is the latest published release.</p>
         </div>
         <div class="card">
           <div class="code">
-<pre><code>python -m pip install ./cudarobotics-0.2.0-*.whl
+<pre><code>python -m pip install ./cudarobotics-0.3.0-*.whl
 python -c "import cudarobotics as cr; print(cr.__version__)"</code></pre>
           </div>
           <p>
             Download assets from
-            <a href="https://github.com/rsasaki0109/CudaRobotics/releases/tag/v0.2.0">GitHub Releases</a>.
+            <a href="https://github.com/rsasaki0109/CudaRobotics/releases/tag/v0.3.0">GitHub Releases</a>.
             PyPI publishing is not currently part of the supported distribution path.
           </p>
         </div>
@@ -102,7 +102,7 @@ python examples/python/registration_quickstart.py</code></pre>
             Maintainers should run `./scripts/sync_python_core.sh` before
             building release artifacts so the Python package contains the
             current CUDA core. See the
-            <a href="https://github.com/rsasaki0109/CudaRobotics/blob/master/docs/releases/v0.2.0_smoke_checklist.md">v0.2.0 release checklist</a>
+            <a href="https://github.com/rsasaki0109/CudaRobotics/blob/master/docs/releases/v0.3.0_release_checklist.md">v0.3.0 release checklist</a>
             for the retained release evidence and validation commands.
           </p>
         </div>
@@ -115,7 +115,7 @@ python examples/python/registration_quickstart.py</code></pre>
         </div>
         <div class="card">
           <div class="code">
-<pre><code>docker run --rm --gpus all ghcr.io/rsasaki0109/cuda-mppi-controller-demo:v0.2.0
+<pre><code>docker run --rm --gpus all ghcr.io/rsasaki0109/cuda-mppi-controller-demo:v0.3.0
 
 # current source checkout: end-to-end CudaNav development smoke
 docker build --pull --no-cache -f docker/Dockerfile -t cudarobotics .

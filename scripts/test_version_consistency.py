@@ -25,7 +25,7 @@ def main() -> int:
             encoding="utf-8"
         )
     )
-    target = matrix["target_version"]
+    source = matrix["source_version"]
     declared_ros = matrix["surfaces"]["ros2"]["package_versions"]
     versions = {
         "python_project": capture(
@@ -48,8 +48,9 @@ def main() -> int:
         r'(?m)^\s*version="([^"]+)"',
     )
 
-    assert set(declared_ros.values()) == {target}, declared_ros
-    assert set(versions.values()) == {target}, versions
+    assert matrix["source_tag"] == f"v{source}"
+    assert set(declared_ros.values()) == {source}, declared_ros
+    assert set(versions.values()) == {source}, versions
 
     published = matrix["release_readiness"]["published_version"]
     published_label = f"v{published}"
@@ -67,7 +68,8 @@ def main() -> int:
     assert f"releases/tag/{published_label}" in install
     print(
         "version consistency checks passed: "
-        f"source={target}, published={published}"
+        f"source={source}, published={published}, "
+        f"future_target={matrix['target_version']}"
     )
     return 0
 

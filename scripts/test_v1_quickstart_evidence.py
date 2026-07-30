@@ -132,8 +132,8 @@ class V1QuickstartEvidenceTest(unittest.TestCase):
             manifest["source_ref"] = "v1.0.0"
             result = evaluate_manifest(manifest, root)
             self.assertFalse(result["checks"]["matrix_release_status"])
-            self.assertTrue(result["checks"]["python_at_target"])
-            self.assertTrue(result["checks"]["ros_at_target"])
+            self.assertFalse(result["checks"]["python_at_target"])
+            self.assertFalse(result["checks"]["ros_at_target"])
             self.assertFalse(result["passed"])
 
     def test_quickstart_over_900_seconds_is_rejected(self) -> None:

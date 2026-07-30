@@ -34,7 +34,7 @@ class StageV1DocsTest(unittest.TestCase):
             self.assertTrue(all(checks.values()), checks)
             for name in ("index.html", "install.html", "nav2.html"):
                 text = (output / name).read_text(encoding="utf-8")
-                self.assertNotIn("0.2.0", text)
+                self.assertNotIn("0.3.0", text)
                 self.assertNotIn("CudaRobotics/blob/master/", text)
                 self.assertNotIn("CudaRobotics/tree/master/", text)
             index = (output / "index.html").read_text(encoding="utf-8")
@@ -46,15 +46,15 @@ class StageV1DocsTest(unittest.TestCase):
             )
             self.assertIn("v1.0.0 End-to-End CudaNav", nav2)
 
-    def test_live_site_remains_the_published_v0_2_surface(self) -> None:
+    def test_live_site_remains_the_published_v0_3_surface(self) -> None:
         index = (ROOT / "docs" / "site" / "index.html").read_text(
             encoding="utf-8"
         )
         install = (ROOT / "docs" / "site" / "install.html").read_text(
             encoding="utf-8"
         )
-        self.assertIn("published v0.2.0", index)
-        self.assertIn("releases/tag/v0.2.0", install)
+        self.assertIn("published v0.3.0", index)
+        self.assertIn("releases/tag/v0.3.0", install)
 
     def test_wrong_tag_and_existing_output_are_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
