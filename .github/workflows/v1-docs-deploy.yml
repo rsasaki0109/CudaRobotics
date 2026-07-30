@@ -43,7 +43,11 @@ jobs:
         run: |
           test "${{ inputs.tag }}" = "v1.0.0"
           SOURCE_COMMIT="$(git -C source rev-parse HEAD)"
-          rsync -a --delete source/docs/site/ pages/docs/
+          rm -rf -- pages/docs
+          python3 source/scripts/stage_v1_docs.py \
+            --source-dir source/docs/site \
+            --output-dir pages/docs \
+            --tag "${{ inputs.tag }}"
           rsync -a \
             --include='*.gif' --exclude='*' \
             source/gif/ pages/

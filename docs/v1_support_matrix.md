@@ -15,6 +15,10 @@ release-ready only when:
 - the strict CudaNav release evidence and Docker GPU evidence pass;
 - the documentation deployment is bound to the same release commit.
 
+The Colab surface and its in-notebook clone command are pinned to the
+immutable `v1.0.0` tag. That URL intentionally becomes resolvable only after
+the tag is published; it must not fall back to the moving `master` branch.
+
 The target 15-minute path is:
 
 ```bash

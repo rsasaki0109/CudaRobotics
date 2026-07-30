@@ -42,7 +42,10 @@
         <div class="card">
           <div class="code">
 <pre><code>docker build --pull --no-cache -f docker/Dockerfile -t cudarobotics .
-docker run --rm --gpus all -v "$PWD/out:/out" cudarobotics cudanav</code></pre>
+docker run --rm --gpus all -v "$PWD/out:/out" cudarobotics cudanav
+
+# ROS 2 Jazzy source workspace
+ros2 launch cuda_nav_bringup cudanav_closed_loop.launch.py</code></pre>
           </div>
           <p>
             The image connects GPU KISS-ICP, rolling voxel mapping, typed ESDF,
