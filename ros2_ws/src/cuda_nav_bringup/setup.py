@@ -20,7 +20,14 @@ setup(
                 "launch/cudanav_recorded_shadow.launch.py",
             ],
         ),
-        ("share/" + package_name + "/config", ["config/controller.yaml"]),
+        (
+            "share/" + package_name + "/config",
+            [
+                "config/controller.yaml",
+                "config/controller_recorded_shadow.yaml",
+                "config/rosbag_qos_overrides.yaml",
+            ],
+        ),
     ],
     install_requires=["setuptools"],
     zip_safe=True,

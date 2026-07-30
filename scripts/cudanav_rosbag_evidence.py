@@ -371,16 +371,30 @@ def evaluate_manifest(
     checks["pointcloud_evaluation_contract"] = not derived_mode
     if derived_mode:
         try:
-            from cudanav_real_dataset import DEFAULT_SPEC, read_json
+            from cudanav_real_dataset import resolve_materialization_spec
 
-            quality = read_json(DEFAULT_SPEC)["quality_evaluation"]
+            materialization = json.loads(
+                dataset_path.read_text(encoding="utf-8")
+            )
+            _, selected_spec = resolve_materialization_spec(materialization)
+            quality = selected_spec["quality_evaluation"]
             checks["pointcloud_evaluation_contract"] = (
                 isinstance(evaluation.get("clearance"), dict)
                 and evaluation["clearance"].get("pointcloud_topic")
                 == quality["pointcloud_topic"]
                 and evaluation["clearance"].get("filter") == quality["filter"]
+                and evaluation["clearance"].get("timestamp_basis")
+                == quality["timestamp_basis"]
                 and evaluation["clearance"].get("diagnostics_source")
                 == str(diagnostics_path)
+                and evaluation.get("thresholds", {}).get(
+                    "minimum_command_pair_coverage"
+                )
+                == quality["minimum_command_pair_ratio"]
+                and evaluation.get("thresholds", {}).get(
+                    "maximum_all_colliding_ratio"
+                )
+                == quality.get("maximum_all_colliding_ratio", 0.0)
             )
         except (KeyError, OSError, TypeError, ValueError):
             checks["pointcloud_evaluation_contract"] = False
@@ -525,12 +539,22 @@ def evaluate_manifest(
                             "maximum_command_age_ms"
                         ]
                     ),
+                    "--pointcloud-timestamp-basis": spec[
+                        "quality_evaluation"
+                    ]["timestamp_basis"],
+                    "--maximum-all-colliding-ratio": str(
+                        spec["quality_evaluation"].get(
+                            "maximum_all_colliding_ratio", 0.0
+                        )
+                    ),
                 }
                 command = commands["evaluate"]
                 checks["pointcloud_evaluate_command_bound"] = all(
-                    option in command
-                    and command.index(option) + 1 < len(command)
-                    and command[command.index(option) + 1] == value
+                    any(
+                        command[index] == option
+                        and command[index + 1] == value
+                        for index in range(len(command) - 1)
+                    )
                     for option, value in expected_options.items()
                 )
             except (KeyError, OSError, TypeError, ValueError):

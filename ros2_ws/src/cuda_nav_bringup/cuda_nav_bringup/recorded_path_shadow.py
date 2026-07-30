@@ -30,6 +30,7 @@ class RecordedPathShadow(Node):
             str(self.get_parameter("action_name").value),
         )
         self._pending: Path | None = None
+        self._inflight: Path | None = None
         self._goal_active = False
         self._goals_sent = 0
         self._goals_completed = 0
@@ -63,6 +64,7 @@ class RecordedPathShadow(Node):
             return
         path = self._pending
         self._pending = None
+        self._inflight = path
         goal = FollowPath.Goal()
         goal.path = path
         goal.controller_id = str(self.get_parameter("controller_id").value)
@@ -77,15 +79,25 @@ class RecordedPathShadow(Node):
         future = self._client.send_goal_async(goal)
         future.add_done_callback(self._goal_response)
 
+    def _retain_inflight(self) -> None:
+        if self._pending is None:
+            self._pending = self._inflight
+        self._inflight = None
+
     def _goal_response(self, future) -> None:
         try:
             goal_handle = future.result()
         except Exception as exception:
             self.get_logger().error(f"shadow goal request failed: {exception}")
+            self._retain_inflight()
             self._goal_active = False
             return
         if goal_handle is None or not goal_handle.accepted:
-            self.get_logger().error("shadow FollowPath goal was rejected")
+            self.get_logger().warning(
+                "shadow FollowPath goal was rejected; retaining recorded path "
+                "for retry"
+            )
+            self._retain_inflight()
             self._goal_active = False
             return
         self.get_logger().info(
@@ -105,10 +117,13 @@ class RecordedPathShadow(Node):
         self._goals_completed += 1
         self._goal_active = False
         if status == GoalStatus.STATUS_SUCCEEDED:
+            self._inflight = None
             self.get_logger().info("recorded-path shadow goal completed")
         else:
+            self._retain_inflight()
             self.get_logger().warning(
-                f"recorded-path shadow goal ended with status {status}"
+                f"recorded-path shadow goal ended with status {status}; "
+                "retaining recorded path for retry"
             )
 
 
