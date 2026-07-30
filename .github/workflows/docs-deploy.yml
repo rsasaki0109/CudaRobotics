@@ -7,6 +7,7 @@ on:
     paths:
       - "docs/site/**"
       - "docs/v1_support_matrix.json"
+      - "gif/*.gif"
       - "scripts/v1_support_matrix.py"
       - ".github/workflows/docs-deploy.yml"
 
@@ -45,9 +46,15 @@ jobs:
           test -f pages/index.html
           test -d pages/gif
           rsync -a --delete source/docs/site/ pages/docs/
+          rsync -a \
+            --include='*.gif' --exclude='*' \
+            source/gif/ pages/
           for page in index.html install.html nav2.html results.html; do
             cmp "source/docs/site/$page" "pages/docs/$page"
           done
+          while IFS= read -r -d '' asset; do
+            cmp "$asset" "pages/$(basename "$asset")"
+          done < <(find source/gif -maxdepth 1 -type f -name '*.gif' -print0)
           rm -rf -- pages/.git
 
       - uses: actions/configure-pages@v5
