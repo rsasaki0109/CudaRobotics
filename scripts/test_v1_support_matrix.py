@@ -47,6 +47,13 @@ class V1SupportMatrixTest(unittest.TestCase):
         result = evaluate(load())
         self.assertFalse(result["readiness"]["colab_target_ref"])
 
+    def test_development_published_version_must_match_docs(self) -> None:
+        matrix = deepcopy(load())
+        matrix["release_readiness"]["published_version"] = "0.1.0"
+        result = evaluate(matrix)
+        self.assertFalse(result["checks"]["published_version"])
+        self.assertFalse(result["valid"])
+
     def test_legacy_inline_readiness_self_report_is_rejected(self) -> None:
         matrix = deepcopy(load())
         matrix["release_readiness"]["quickstart_15_minute_evidence"] = {

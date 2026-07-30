@@ -62,7 +62,7 @@
     }
   },
   "release_readiness": {
-    "published_version": "0.1.0",
+    "published_version": "0.2.0",
     "quickstart_15_minute_evidence": null,
     "cudanav_release_evidence": null,
     "docker_gpu_evidence": null,
