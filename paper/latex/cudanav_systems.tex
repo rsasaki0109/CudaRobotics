@@ -28,9 +28,8 @@ odometry--mapping--ESDF--MPPI shadow stack obtains 0.812~m ATE RMSE and
 integrates every scan. A release-profile ROS~2 simulation completes 30/30
 traversals with retained MCAP and video evidence. Every result is bound to
 source, data, hardware identity, thresholds, and raw outputs. Reproduction on
-a second distinct physical GPU model remains a declared submission blocker;
-the present artifact is therefore a candidate manuscript rather than a claim
-of completed multi-GPU validation.
+a second distinct physical GPU model remains an optional extension and is not
+claimed by the present single-GPU evaluation.
 \end{abstract}
 
 \section{Introduction}
@@ -227,17 +226,17 @@ self-hosted runners, then requires two distinct UUIDs and two distinct model
 names at one commit and source digest.
 
 Current evidence contains one NVIDIA GeForce GTX~1660~Ti node. The
-\texttt{multi\_gpu\_reproduction} claim and the systems ledger remain partial
-until a second distinct physical model passes the same release profile.
+\texttt{multi\_gpu\_reproduction} claim remains partial and optional until a
+second distinct physical model passes the same release profile.
 Real-robot closed-loop navigation is also outside the current claim boundary.
-These limitations are release gates, not implied completed results.
+Neither limitation is represented as a completed result.
 
 \section{Conclusion}
 CudaNav demonstrates an end-to-end GPU autonomy path with causal native and
 ROS~2 simulation, real PointCloud2 shadow execution, and content-bound
 evidence. The retained results support the integrated single-GPU stack. The
-anonymous source and PDF are reproducible now; the submission artifact remains
-fail-closed until strict cross-model GPU evidence is complete.
+anonymous source, PDF, and content-bound submission artifact are reproducible
+without claiming cross-model GPU validation.
 
 \bibliographystyle{IEEEtran}
 \bibliography{references}

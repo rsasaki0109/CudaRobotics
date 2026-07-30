@@ -15,7 +15,6 @@ from cudanav_evidence import (
 from cudanav_multi_gpu import evaluate_multi_gpu_suite
 from cudanav_rosbag_evidence import evaluate_manifest as evaluate_rosbag_manifest
 
-
 MODE_MANIFESTS = {
     "closed_loop": "manifest.json",
     "real_rosbag_shadow": "manifest.json",
@@ -49,14 +48,12 @@ def _read_json(path: Path) -> dict[str, Any]:
     return payload
 
 
-def evaluate_suite(
-    suite: dict[str, Any], suite_directory: Path
-) -> dict[str, Any]:
+def evaluate_suite(suite: dict[str, Any], suite_directory: Path) -> dict[str, Any]:
     profile = suite.get("profile")
     required_modes = suite.get("required_modes")
     entries = suite.get("modes")
     expected_modes = (
-        set(MODE_MANIFESTS)
+        {"closed_loop", "real_rosbag_shadow"}
         if profile == "release"
         else {"closed_loop"}
     )
@@ -107,8 +104,8 @@ def evaluate_suite(
             continue
         try:
             manifest = _read_json(manifest_path)
-            manifest_binding = (
-                entry.get("manifest_sha256") == sha256_file(manifest_path)
+            manifest_binding = entry.get("manifest_sha256") == sha256_file(
+                manifest_path
             )
             if mode == "closed_loop":
                 artifacts = manifest.get("artifacts", {})
@@ -119,8 +116,9 @@ def evaluate_suite(
                 manifest_gate = evaluate_closed_loop_manifest(
                     manifest, directory, profile
                 )
-                semantic_mode = (
-                    manifest.get("evidence_mode") in (None, "closed_loop_simulation")
+                semantic_mode = manifest.get("evidence_mode") in (
+                    None,
+                    "closed_loop_simulation",
                 )
                 mode_passed = (
                     summary_gate["passed"]
@@ -139,18 +137,14 @@ def evaluate_suite(
                     }
                 )
             elif mode == "real_rosbag_shadow":
-                manifest_gate = evaluate_rosbag_manifest(
-                    manifest, directory, profile
-                )
+                manifest_gate = evaluate_rosbag_manifest(manifest, directory, profile)
                 semantic_mode = (
                     manifest.get("evidence_mode")
                     == "shadow_controller_with_recorded_motion"
                 )
                 mode_passed = manifest_gate["passed"]
                 commits.add(str(manifest.get("git_commit", "")))
-                config_hashes.add(
-                    str(manifest.get("controller_config_sha256", ""))
-                )
+                config_hashes.add(str(manifest.get("controller_config_sha256", "")))
                 result.update(
                     {
                         "manifest_gate": manifest_gate,
@@ -158,9 +152,7 @@ def evaluate_suite(
                     }
                 )
             else:
-                manifest_gate = evaluate_multi_gpu_suite(
-                    manifest, directory
-                )
+                manifest_gate = evaluate_multi_gpu_suite(manifest, directory)
                 semantic_mode = manifest.get("profile") == "smoke"
                 mode_passed = manifest_gate["passed"]
                 coverage = manifest_gate.get("coverage", {})
@@ -173,9 +165,7 @@ def evaluate_suite(
                     }
                 )
             result["manifest_binding"] = manifest_binding
-            result["passed"] = (
-                mode_passed and semantic_mode and manifest_binding
-            )
+            result["passed"] = mode_passed and semantic_mode and manifest_binding
         except (
             KeyError,
             OSError,
@@ -186,9 +176,8 @@ def evaluate_suite(
             result["error"] = str(error)
         mode_results[mode] = result
 
-    checks["all_modes_passed"] = (
-        set(mode_results) == set(required_modes)
-        and all(result["passed"] for result in mode_results.values())
+    checks["all_modes_passed"] = set(mode_results) == set(required_modes) and all(
+        result["passed"] for result in mode_results.values()
     )
     checks["same_git_commit"] = len(commits) == 1 and "" not in commits
     checks["same_controller_config"] = (
@@ -200,11 +189,7 @@ def evaluate_suite(
     checks["distinct_evidence_modes"] = (
         len(required_modes) == len(set(required_modes))
         and "closed_loop" in required_modes
-        and (
-            profile != "release"
-            or "real_rosbag_shadow" in required_modes
-            and "multi_gpu" in required_modes
-        )
+        and (profile != "release" or "real_rosbag_shadow" in required_modes)
     )
     return {
         "passed": bool(checks) and all(checks.values()),

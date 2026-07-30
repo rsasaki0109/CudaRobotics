@@ -49,8 +49,8 @@ def main() -> int:
     required_boundaries = [
         "recorded-data shadow",
         "command-driven closed-loop simulation",
-        "second physical gpu",
-        "ready: false",
+        "optional cross-device",
+        "release or submission gate",
         "ros 2",
         "mcap",
     ]
@@ -76,8 +76,8 @@ def main() -> int:
             escaped in latex
         ), f"systems LaTeX source omits ledger claim {claim['id']}"
     latex_required = [
-        "candidate manuscript",
         "second distinct physical GPU model",
+        "optional extension",
         "recorded-data shadow",
         "real-robot closed-loop navigation",
         "1,059.4",

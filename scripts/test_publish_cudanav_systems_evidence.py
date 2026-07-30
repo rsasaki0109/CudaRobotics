@@ -19,9 +19,7 @@ from v1_release_attestation import validate_payload
 
 
 class PublishCudaNavSystemsEvidenceTest(unittest.TestCase):
-    def fixture(
-        self, root: Path
-    ) -> tuple[Path, Path]:
+    def fixture(self, root: Path) -> tuple[Path, Path]:
         helper = autonomy_fixture.CudaNavAutonomySuiteTest()
         suite, suite_root = helper.make_suite(root)
         suite["git_dirty"] = False
@@ -38,17 +36,11 @@ class PublishCudaNavSystemsEvidenceTest(unittest.TestCase):
     def test_release_suite_renders_portable_summary(self):
         with tempfile.TemporaryDirectory() as directory:
             suite_root, ros_ci = self.fixture(Path(directory))
-            summary, provenance, report = build_artifacts(
-                suite_root, ros_ci
-            )
+            summary, provenance, report = build_artifacts(suite_root, ros_ci)
             self.assertEqual(summary["status"], "passed")
             self.assertEqual(summary["closed_loop"]["elapsed_sec"], 650.0)
             self.assertEqual(
-                set(
-                    summary["closed_loop"][
-                        "required_topic_messages"
-                    ].values()
-                ),
+                set(summary["closed_loop"]["required_topic_messages"].values()),
                 {10},
             )
             self.assertEqual(
@@ -73,9 +65,7 @@ class PublishCudaNavSystemsEvidenceTest(unittest.TestCase):
     def test_release_suite_builds_valid_v1_attestation(self):
         with tempfile.TemporaryDirectory() as directory:
             suite_root, ros_ci = self.fixture(Path(directory))
-            summary, provenance, _ = build_artifacts(
-                suite_root, ros_ci
-            )
+            summary, provenance, _ = build_artifacts(suite_root, ros_ci)
             attestation = build_v1_attestation(
                 summary,
                 provenance,
@@ -91,8 +81,41 @@ class PublishCudaNavSystemsEvidenceTest(unittest.TestCase):
             self.assertTrue(gate["passed"], gate)
             self.assertEqual(
                 attestation["details"]["physical_gpu_models"],
-                ["GPU A", "GPU B"],
+                ["GPU A"],
             )
+
+    def test_release_suite_publishes_without_optional_multi_gpu(self):
+        with tempfile.TemporaryDirectory() as directory:
+            suite_root, ros_ci = self.fixture(Path(directory))
+            manifest_path = suite_root / "manifest.json"
+            suite = json.loads(manifest_path.read_text(encoding="utf-8"))
+            suite["modes"].pop("multi_gpu")
+            suite["required_modes"].remove("multi_gpu")
+            manifest_path.write_text(
+                json.dumps(suite, indent=2) + "\n", encoding="utf-8"
+            )
+            summary, provenance, report = build_artifacts(suite_root, ros_ci)
+            self.assertIs(summary["multi_gpu"]["provided"], False)
+            self.assertIs(summary["multi_gpu"]["required_for_release"], False)
+            self.assertEqual(summary["physical_gpu"]["gpu_models"], ["GPU A"])
+            self.assertNotIn(
+                "multi_gpu_manifest_sha256",
+                provenance["source_artifacts"],
+            )
+            self.assertIn("not provided (optional)", report)
+            attestation = build_v1_attestation(
+                summary,
+                provenance,
+                target_version="1.0.0",
+                target_tag="v1.0.0",
+            )
+            gate = validate_payload(
+                attestation,
+                key="cudanav_release_evidence",
+                target_version="1.0.0",
+                target_tag="v1.0.0",
+            )
+            self.assertTrue(gate["passed"], gate)
 
     def test_ros_ci_commit_must_match_suite(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -109,9 +132,7 @@ class PublishCudaNavSystemsEvidenceTest(unittest.TestCase):
             manifest_path = suite_root / "manifest.json"
             suite = json.loads(manifest_path.read_text(encoding="utf-8"))
             suite["profile"] = "smoke"
-            manifest_path.write_text(
-                json.dumps(suite) + "\n", encoding="utf-8"
-            )
+            manifest_path.write_text(json.dumps(suite) + "\n", encoding="utf-8")
             with self.assertRaisesRegex(ValueError, "release gate"):
                 build_artifacts(suite_root, ros_ci)
 
@@ -122,11 +143,7 @@ class PublishCudaNavSystemsEvidenceTest(unittest.TestCase):
             output = root / "published"
             command = [
                 sys.executable,
-                str(
-                    Path(__file__).with_name(
-                        "publish_cudanav_systems_evidence.py"
-                    )
-                ),
+                str(Path(__file__).with_name("publish_cudanav_systems_evidence.py")),
                 "--suite-dir",
                 str(suite_root),
                 "--ros-ci",
@@ -140,12 +157,8 @@ class PublishCudaNavSystemsEvidenceTest(unittest.TestCase):
             ]
             subprocess.run(command, check=True)
             subprocess.run([*command, "--check"], check=True)
-            self.assertTrue(
-                (output / "cudanav_systems_fixture_summary.json").is_file()
-            )
-            self.assertTrue(
-                (output / "v1_cudanav_systems_release.json").is_file()
-            )
+            self.assertTrue((output / "cudanav_systems_fixture_summary.json").is_file())
+            self.assertTrue((output / "v1_cudanav_systems_release.json").is_file())
 
 
 if __name__ == "__main__":

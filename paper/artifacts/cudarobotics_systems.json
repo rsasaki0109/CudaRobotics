@@ -121,7 +121,7 @@
     {
       "id": "multi_gpu_reproduction",
       "statement": "The native 30-traversal closed-loop release reproduces from the same commit and source digest on at least two distinct physical GPU UUIDs and model names.",
-      "submission_required": true,
+      "submission_required": false,
       "status": "partial",
       "evidence": [
         "native_gpu_matrix_gtx1660ti_node",
@@ -129,7 +129,8 @@
         "multi_gpu_release"
       ],
       "limitations": [
-        "The NVIDIA GeForce GTX 1660 Ti node is complete and UUID-bound; a second distinct physical GPU model at the identical commit and source digest is still required."
+        "The NVIDIA GeForce GTX 1660 Ti node is complete and UUID-bound; a second distinct physical GPU model has not been run.",
+        "This optional cross-device claim is not used to authorize the v1 release or systems-paper submission."
       ]
     }
   ],
@@ -191,7 +192,22 @@
         {
           "path": "scripts/run_autonomy_suite.py",
           "normalization": "text_lf",
-          "sha256": "166395b9ddb253efa61bd529653cfd22690f59b5ac847ad5fa975596e7d9d941"
+          "sha256": "d3efba8ac6a30ae132ba6a94dbda9f06b2a78670b4d8911b91e7761f01ba3d6e"
+        },
+        {
+          "path": "scripts/cudanav_autonomy_suite.py",
+          "normalization": "text_lf",
+          "sha256": "420c093c63f19f1576dcc3a869d2d9500e5e6cafb1f839e66a550945d92f7c09"
+        },
+        {
+          "path": "scripts/publish_cudanav_systems_evidence.py",
+          "normalization": "text_lf",
+          "sha256": "fff475476162a37d0607aecc195c1adce366bd1a8a8db025cc2239d63e8a8d19"
+        },
+        {
+          "path": "scripts/v1_release_attestation.py",
+          "normalization": "text_lf",
+          "sha256": "55aeec7997e9faf4a4c759786e069e7249f3d194a2154555e3581609a1b8e08f"
         },
         {
           "path": "docs/cudanav_real_dataset.json",

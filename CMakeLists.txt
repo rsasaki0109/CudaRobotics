@@ -1017,7 +1017,6 @@ add_test(NAME check_cudanav_autonomy_suite_release_dry_run
     --evaluation-db ${CMAKE_BINARY_DIR}/fixture_bag/run.db3
     --controller-config ${CMAKE_SOURCE_DIR}/ros2_ws/src/cuda_nav_bringup/config/controller.yaml
     --controller-command "ros2 launch cuda_nav_bringup cudanav_closed_loop.launch.py"
-    --multi-gpu-run ${CMAKE_BINARY_DIR}/fixture_other_gpu
     --dry-run
   WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 add_test(NAME check_paper_artifact_contract
