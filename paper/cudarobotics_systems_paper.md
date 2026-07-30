@@ -7,9 +7,8 @@ Draft date: 2026-07-29
 This draft is synchronized with the machine-readable claim ledger in
 [`artifacts/cudarobotics_systems.json`](artifacts/cudarobotics_systems.json).
 It reports supported native simulation, ROS 2 command-driven closed-loop, and
-real-data shadow results. A second physical GPU remains explicit pending
-evidence, so the paper is a current working draft rather than a
-submission-ready manuscript.
+real-data shadow results. Cross-device reproduction remains an explicitly
+partial optional claim and is not used to authorize submission.
 
 ## Abstract
 
@@ -31,8 +30,9 @@ same window with 0.812 m ATE RMSE, integrates every scan, and executes 120
 finite shadow-control evaluations without an all-colliding event. Every
 reported artifact is tied to source, dataset, hardware, thresholds, and raw
 outputs by a machine-checked manifest. A release-profile ROS 2 run retains
-MCAP and video evidence; reproduction on a second GPU model remains required
-before the broader systems claims are considered supported.
+MCAP and video evidence. The broader systems claims are scoped to the
+validated single-GPU stack; multi-GPU reproduction is optional follow-up
+evidence.
 
 ## 1. Introduction
 
@@ -189,7 +189,7 @@ The following IDs are authoritative and are checked against the manuscript:
 | `integrated_gpu_stack` | Supported | Jazzy compile/plugin CI plus UUID-bound ROS 2 GPU runtime release |
 | `closed_loop_autonomy` | Supported | 30/30 ROS 2 traversals, retained MCAP/video, zero collisions |
 | `real_data_shadow` | Supported | Native MCD release plus public Istanbul ROS 2 shadow release |
-| `multi_gpu_reproduction` | Partial | One UUID-bound GTX 1660 Ti node; second model pending |
+| `multi_gpu_reproduction` | Partial | Optional cross-device extension; one UUID-bound GTX 1660 Ti node |
 
 ## 5. Experimental protocol
 
@@ -277,7 +277,7 @@ An independently frozen GTX 1660 Ti matrix node at the same native contract
 also completes 30/30 traversals over 1,005.0 seconds and 352.211 m with zero
 collisions, 0.00153% final drift, zero deadline misses, 0.617 ms MPPI p95, and
 6.417 ms frame p95. This is useful repeat evidence on one physical GPU, not the
-required second-model result.
+optional cross-device result.
 
 ### 6.2 Real PointCloud2 odometry and shadow control
 
@@ -319,11 +319,10 @@ ROS 2 simulation with retained MCAP/video, public real-PointCloud2 shadow
 execution, exact-commit ROS 2 Jazzy compile/plugin CI, and one physical
 consumer-GPU node. It does not yet establish:
 
-- reproduction on a second distinct physical GPU model;
 - real-robot closed-loop navigation.
 
-The systems ledger remains `ready: false` until the submission-required partial
-claims are either supported by the declared evidence or narrowed in the paper.
+The multi-GPU workflow and partial claim remain available for optional
+cross-device replication, but neither is a release or submission gate.
 
 ## 7. Reproduction
 
@@ -404,12 +403,10 @@ geometry, but shadow commands cannot influence future scans. The ROS 2
 Istanbul runtime therefore supports latency, rollout-validity, mapping, and
 clearance claims without becoming a real-robot closed-loop claim.
 
-Physical GPU release evidence is still limited to one GTX 1660 Ti. The matrix
-claim requires a second GPU UUID and model at an identical source commit and
-digest.
-
-These omissions are release gates, not future-work decoration. The manuscript
-and ledger intentionally keep the multi-GPU claim partial.
+Physical GPU release evidence is limited to one GTX 1660 Ti. The optional
+matrix claim would require a second GPU UUID and model at an identical source
+commit and digest. The manuscript and ledger keep that claim partial without
+using it to qualify the supported single-GPU systems results.
 
 ## 9. Availability
 

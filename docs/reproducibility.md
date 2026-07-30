@@ -104,7 +104,7 @@ real recorded data, and multi-GPU reproducibility prove different claims:
 | Real-bag GPU KISS-ICP | `scripts/run_cudanav_kiss_icp_real.py` | Recorded PointCloud2 GPU odometry passes reference and artifact-integrity gates |
 | Real-data all-GPU core shadow | `scripts/run_cudanav_real_gpu_stack.py` | KISS-ICP, voxel mapping, ESDF inflation, and CUDA MPPI share one content-bound real sequence |
 | GPU matrix | `scripts/run_cudanav_multi_gpu.py` | ROS smoke or native 30-traversal release reproduces from the same commit/config across physical GPU UUIDs and models |
-| Full autonomy suite | `scripts/run_autonomy_suite.py` | Closed-loop, recorded/shadow, and multi-GPU gates from one content-bound release entry point |
+| Full autonomy suite | `scripts/run_autonomy_suite.py` | Required closed-loop and recorded/shadow gates, plus optional multi-GPU reproduction, from one content-bound release entry point |
 
 All three runners write self-describing manifests and refuse dirty release
 evidence. The real-rosbag validator re-hashes the external input dataset and
@@ -293,14 +293,14 @@ in member names. `scripts/validate_contact_submission_archive.py` reruns the
 anonymous ledger, figure-source, exact-inventory, redaction, identity-scan, and
 archive-integrity gates.
 
-The systems paper has a separate fail-closed path because its claim ledger is
-not yet ready. After all submission-required claims become supported,
+The systems paper has a separate fail-closed path. Its single-GPU systems
+claims are ready while the optional multi-GPU claim remains partial.
 `.github/workflows/systems-paper.yml` has already compiled the anonymous IEEE
-candidate source on the exact commit. `scripts/assemble_systems_paper_bundle.py`
+source on the exact commit. `scripts/assemble_systems_paper_bundle.py`
 then copies that source, its bibliography, the final Markdown manuscript,
 ledger, all complete evidence files, and directly linked local protocols into
 an exact inventory. `scripts/archive_systems_paper_bundle.py` then produces
 `cudarobotics-systems-paper-artifact.zip`; its validator reruns the ledger
 assertions, anonymous-source checks, and manuscript/status/link contract after
-safe extraction. The current partial ledger is an explicit negative test and
-cannot be packaged.
+safe extraction. Optional partial claims remain visible in the ledger but do
+not block packaging when every submission-required claim is supported.

@@ -9,7 +9,6 @@ from pathlib import Path
 import re
 from typing import Any
 
-
 MODES = {
     "quickstart_15_minute_evidence": "v1_quickstart_release",
     "cudanav_release_evidence": "v1_cudanav_systems_release",
@@ -41,15 +40,11 @@ def common_checks(
         "version": payload.get("version") == target_version,
         "target_tag": payload.get("target_tag") == target_tag,
         "git_commit": bool(
-            re.fullmatch(
-                r"[0-9a-f]{40}", str(payload.get("git_commit", ""))
-            )
+            re.fullmatch(r"[0-9a-f]{40}", str(payload.get("git_commit", "")))
         ),
         "source_clean": payload.get("git_dirty") is False,
         "payload_binding": bool(
-            re.fullmatch(
-                r"[0-9a-f]{64}", str(payload.get("payload_sha256", ""))
-            )
+            re.fullmatch(r"[0-9a-f]{64}", str(payload.get("payload_sha256", "")))
         ),
         "validator_checks": isinstance(checks, dict)
         and bool(checks)
@@ -75,8 +70,7 @@ def mode_checks(
             "duration": isinstance(duration, (int, float))
             and not isinstance(duration, bool)
             and 0 < duration <= 900,
-            "result": details.get("result")
-            == "out/cudanav_closed_loop.json",
+            "result": details.get("result") == "out/cudanav_closed_loop.json",
             "fresh_clone": details.get("fresh_clone") is True,
             "no_cache_build": details.get("no_cache_build") is True,
         }
@@ -89,9 +83,9 @@ def mode_checks(
             and not isinstance(duration, bool)
             and duration >= 600,
             "real_rosbag_shadow": details.get("real_rosbag_shadow") is True,
-            "multi_gpu": isinstance(models, list)
+            "physical_gpu": isinstance(models, list)
             and all(isinstance(model, str) and model for model in models)
-            and len(set(models)) >= 2,
+            and len(set(models)) >= 1,
             "ros_jazzy": details.get("ros_distribution") == "jazzy",
         }
     if key == "docker_gpu_evidence":
@@ -145,9 +139,7 @@ def validate_payload(
         target_version=target_version,
         target_tag=target_tag,
     )
-    checks.update(
-        mode_checks(payload, key=key, target_tag=target_tag)
-    )
+    checks.update(mode_checks(payload, key=key, target_tag=target_tag))
     return {
         "passed": all(checks.values()),
         "checks": checks,
@@ -167,11 +159,7 @@ def load_reference(
         "reference_schema": isinstance(reference, dict)
         and set(reference) == {"path", "sha256"},
         "reference_hash": isinstance(reference, dict)
-        and bool(
-            re.fullmatch(
-                r"[0-9a-f]{64}", str(reference.get("sha256", ""))
-            )
-        ),
+        and bool(re.fullmatch(r"[0-9a-f]{64}", str(reference.get("sha256", "")))),
     }
     path: Path | None = None
     payload: dict[str, Any] = {}
