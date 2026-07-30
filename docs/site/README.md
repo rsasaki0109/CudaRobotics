@@ -20,8 +20,10 @@ gh workflow run docs-deploy.yml --ref master
 ```
 
 The workflow checks out the complete `gh-pages` gallery tree, replaces only
-its `/docs/` subtree in the Pages artifact, deploys it, and then re-fetches and
-byte-compares the four public HTML pages against the source commit.
+its `/docs/` subtree in the Pages artifact, and synchronizes repository-owned
+`gif/*.gif` files into the gallery root without deleting other gallery assets.
+It then deploys and re-fetches and byte-compares the four public HTML pages
+against the source commit.
 
 For emergency manual deployment to the legacy Pages branch:
 
@@ -38,9 +40,10 @@ Do not run a Pages workflow that replaces the whole `gh-pages` branch unless
 the gallery assets have been migrated first.
 
 For the v1 release, use the manual `v1-docs-deploy.yml` workflow. It checks
-out the complete existing `gh-pages` tree, updates only `pages/docs/`, adds a
-source-tag deployment manifest, and deploys the preserved complete tree. It
-then re-fetches the public pages and uploads content-bound release evidence:
+out the complete existing `gh-pages` tree, updates `pages/docs/`, synchronizes
+the repository-owned GIF inventory, adds a source-tag deployment manifest,
+and deploys the preserved complete tree. It then re-fetches the public pages
+and uploads content-bound release evidence:
 
 ```bash
 gh workflow run v1-docs-deploy.yml \
