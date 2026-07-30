@@ -348,10 +348,14 @@ def main() -> int:
         "/cuda_nav/local_costmap/local_costmap:",
         'plugin: "cuda_mppi_controller::CudaMppiController"',
         'plugin: "cuda_voxel_costmap_layer::CudaVoxelCostmapLayer"',
+        "    width: 12\n",
+        "    height: 6\n",
     ):
         assert term in controller_config, (
             f"missing namespaced controller config term: {term}"
         )
+    assert "    width: 12.0\n" not in controller_config
+    assert "    height: 6.0\n" not in controller_config
     assert "\ncontroller_server:" not in controller_config
     assert "\nlocal_costmap:" not in controller_config
     shadow_launch = (

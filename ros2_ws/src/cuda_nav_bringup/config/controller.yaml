@@ -59,8 +59,8 @@
     global_frame: odom
     robot_base_frame: base_link
     rolling_window: true
-    width: 12.0
-    height: 6.0
+    width: 12
+    height: 6
     resolution: 0.10
     robot_radius: 0.24
     track_unknown_space: true
