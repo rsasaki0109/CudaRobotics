@@ -98,7 +98,7 @@ def collides(
 def mission_waypoints() -> tuple[tuple[float, float], ...]:
     return (
         (0.0, 0.0),
-        (2.7, 0.0),
+        (1.8, 0.0),
         (2.9, 1.4),
         (5.05, 1.4),
         (5.35, -1.4),
