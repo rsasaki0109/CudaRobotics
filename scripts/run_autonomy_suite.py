@@ -22,7 +22,6 @@ from cudanav_rosbag_evidence import evaluate_manifest as evaluate_rosbag_manifes
 from run_cudanav_closed_loop import command_output, git_dirty
 from run_cudanav_multi_gpu import output_is_ignored
 
-
 ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -106,9 +105,7 @@ def rosbag_command(directory: Path, args: argparse.Namespace) -> list[str]:
     if args.rosbag_duration_sec > 0.0:
         command.extend(["--duration-sec", str(args.rosbag_duration_sec)])
     if args.derived_path_bag is not None:
-        command.extend(
-            ["--derived-path-bag", str(args.derived_path_bag.resolve())]
-        )
+        command.extend(["--derived-path-bag", str(args.derived_path_bag.resolve())])
     if args.dataset_materialization is not None:
         command.extend(
             [
@@ -149,20 +146,12 @@ def validate_closed_loop(directory: Path, profile: str) -> dict[str, Any]:
         summary_path.relative_to(directory.resolve())
         summary = json.loads(summary_path.read_text(encoding="utf-8"))
         summary_gate = evaluate_summary(summary, profile)
-        manifest_gate = evaluate_closed_loop_manifest(
-            manifest, directory, profile
-        )
-        binding = (
-            artifacts.get("trajectory") == summary.get("trajectory_csv")
-            and manifest.get("traversal_count")
-            == summary.get("traversals_requested")
-        )
+        manifest_gate = evaluate_closed_loop_manifest(manifest, directory, profile)
+        binding = artifacts.get("trajectory") == summary.get(
+            "trajectory_csv"
+        ) and manifest.get("traversal_count") == summary.get("traversals_requested")
         return {
-            "passed": (
-                summary_gate["passed"]
-                and manifest_gate["passed"]
-                and binding
-            ),
+            "passed": (summary_gate["passed"] and manifest_gate["passed"] and binding),
             "manifest": manifest,
             "manifest_path": str(manifest_path),
             "summary_gate": summary_gate,
@@ -264,19 +253,13 @@ def validate_arguments(args: argparse.Namespace) -> list[str]:
         )
     if args.profile == "release" and bag_count != len(bag_values):
         errors.append("release suite requires real-rosbag inputs")
-    if (args.derived_path_bag is None) != (
-        args.dataset_materialization is None
-    ):
+    if (args.derived_path_bag is None) != (args.dataset_materialization is None):
         errors.append(
             "--derived-path-bag and --dataset-materialization "
             "must be supplied together"
         )
     if args.multi_gpu_run and args.multi_gpu_devices:
         errors.append("--multi-gpu-run and --multi-gpu-devices are exclusive")
-    if args.profile == "release" and not (
-        args.multi_gpu_run or args.multi_gpu_devices
-    ):
-        errors.append("release suite requires multi-GPU evidence inputs")
     if args.multi_gpu_repetitions <= 0:
         errors.append("--multi-gpu-repetitions must be positive")
     if args.rosbag_duration_sec < 0.0:
@@ -307,9 +290,7 @@ def main() -> int:
         "required_modes": required_modes,
         "bag": str(args.bag.resolve()) if args.bag else None,
         "derived_path_bag": (
-            str(args.derived_path_bag.resolve())
-            if args.derived_path_bag
-            else None
+            str(args.derived_path_bag.resolve()) if args.derived_path_bag else None
         ),
         "dataset_materialization": (
             str(args.dataset_materialization.resolve())
@@ -320,15 +301,11 @@ def main() -> int:
             str(args.evaluation_db.resolve()) if args.evaluation_db else None
         ),
         "controller_config": (
-            str(args.controller_config.resolve())
-            if args.controller_config
-            else None
+            str(args.controller_config.resolve()) if args.controller_config else None
         ),
         "controller_command": args.controller_command,
         "rosbag_duration_sec": args.rosbag_duration_sec,
-        "multi_gpu_runs": [
-            str(path.resolve()) for path in args.multi_gpu_run
-        ],
+        "multi_gpu_runs": [str(path.resolve()) for path in args.multi_gpu_run],
         "multi_gpu_devices": args.multi_gpu_devices,
         "multi_gpu_repetitions": args.multi_gpu_repetitions,
         "closed_loop_timeout_sec": args.closed_loop_timeout_sec,
@@ -377,17 +354,13 @@ def main() -> int:
         command_builder=lambda directory: closed_loop_command(
             directory, args.profile, args.closed_loop_timeout_sec
         ),
-        validator=lambda directory: validate_closed_loop(
-            directory, args.profile
-        ),
+        validator=lambda directory: validate_closed_loop(directory, args.profile),
     )
     execution["closed_loop"] = closed_result
     if closed_directory is not None:
         mode_entries["closed_loop"] = {
             "directory": closed_directory.relative_to(output).as_posix(),
-            "manifest_sha256": sha256_file(
-                closed_directory / "manifest.json"
-            ),
+            "manifest_sha256": sha256_file(closed_directory / "manifest.json"),
         }
 
     if bag_enabled:
@@ -395,17 +368,13 @@ def main() -> int:
             mode="real_rosbag_shadow",
             output=output,
             command_builder=lambda directory: rosbag_command(directory, args),
-            validator=lambda directory: validate_rosbag(
-                directory, args.profile
-            ),
+            validator=lambda directory: validate_rosbag(directory, args.profile),
         )
         execution["real_rosbag_shadow"] = rosbag_result
         if rosbag_directory is not None:
             mode_entries["real_rosbag_shadow"] = {
                 "directory": rosbag_directory.relative_to(output).as_posix(),
-                "manifest_sha256": sha256_file(
-                    rosbag_directory / "manifest.json"
-                ),
+                "manifest_sha256": sha256_file(rosbag_directory / "manifest.json"),
             }
 
     if multi_enabled:

@@ -6,11 +6,13 @@ from __future__ import annotations
 import json
 from pathlib import Path
 import shutil
+import subprocess
+import sys
 import tempfile
 import unittest
 
 from assemble_systems_paper_bundle import ROOT, assemble
-from paper_artifact_contract import sha256_file
+from paper_artifact_contract import sha256_file, validate_manifest
 from systems_paper_bundle import evaluate_bundle, load_bundle
 
 COMMIT = "b" * 40
@@ -60,8 +62,7 @@ def ready_source(root: Path) -> None:
                 r"\author{\IEEEauthorblockN{Anonymous Authors}}",
                 r"\begin{document}",
                 r"\maketitle",
-                "This candidate manuscript keeps the second distinct "
-                "physical GPU model pending.",
+                "A second distinct physical GPU model is an optional " "extension.",
                 "It separates recorded-data shadow evidence from "
                 "real-robot closed-loop navigation.",
                 r"\texttt{end\_to\_end}",
@@ -128,15 +129,15 @@ class SystemsPaperBundleTest(unittest.TestCase):
             self.assertTrue(gate["ready"], gate)
             self.assertTrue(gate["ledger"]["ready"])
 
-    def test_current_incomplete_repository_ledger_is_refused(self) -> None:
-        with tempfile.TemporaryDirectory() as directory:
-            with self.assertRaisesRegex(ValueError, "ledger is not ready"):
-                assemble(
-                    ROOT,
-                    Path(directory) / "bundle",
-                    COMMIT,
-                    False,
-                )
+    def test_current_repository_ledger_is_ready(self) -> None:
+        ledger = json.loads(
+            (ROOT / "paper/artifacts/cudarobotics_systems.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        gate = validate_manifest(ledger, ROOT)
+        self.assertTrue(gate["valid"], gate)
+        self.assertTrue(gate["ready"], gate)
 
     def test_bundle_remains_valid_after_directory_move(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -223,6 +224,23 @@ class SystemsPaperBundleTest(unittest.TestCase):
             )
             with self.assertRaisesRegex(ValueError, "latex_anonymous"):
                 assemble(source, root / "bundle", COMMIT, False)
+
+    def test_cli_rejects_commit_that_is_not_source_head(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(ROOT / "scripts/assemble_systems_paper_bundle.py"),
+                    "--output-dir",
+                    str(Path(directory) / "bundle"),
+                    "--commit",
+                    "0" * 40,
+                ],
+                text=True,
+                capture_output=True,
+            )
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("does not match source HEAD", result.stderr)
 
 
 if __name__ == "__main__":

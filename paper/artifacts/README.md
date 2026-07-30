@@ -36,9 +36,9 @@ Negative results should remain declared evidence rather than being removed.
 
 The anonymous IEEE systems-paper source is
 `paper/latex/cudanav_systems.tex`. The `Systems paper` workflow compiles and
-uploads an exact-commit candidate PDF while the ledger is partial. It only
-assembles the release archive after every submission-required claim is
-supported and the Markdown manuscript no longer labels itself non-ready:
+uploads an exact-commit PDF. It assembles the release archive after every
+submission-required claim is supported; optional partial claims remain
+visible without blocking submission:
 
 ```bash
 PAPER_COMMIT="$(git rev-parse HEAD)"
@@ -62,9 +62,9 @@ python3 scripts/validate_systems_paper_archive.py \
 
 The assembler copies the final Markdown manuscript, anonymous IEEE source,
 bibliography, ready ledger, every complete ledger artifact, and every directly
-linked local document. It refuses the current partial ledger, dirty commits,
-identity leaks, stale claim-status rows, non-final manuscript markers, missing
-links, and incomplete inventories.
+linked local document. It refuses dirty commits, identity leaks, stale
+claim-status rows, non-final manuscript markers, missing links, and incomplete
+inventories.
 
 For the ready contact-rich ledger, the submission bundle has a second,
 portable validation layer:

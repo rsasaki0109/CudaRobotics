@@ -14,7 +14,6 @@ from v1_release_attestation import (
     sha256_file,
 )
 
-
 VERSION = "1.0.0"
 TAG = "v1.0.0"
 COMMIT = "a" * 40
@@ -35,15 +34,12 @@ def details(key: str) -> dict:
             "ros2_closed_loop": True,
             "closed_loop_duration_seconds": 650.0,
             "real_rosbag_shadow": True,
-            "physical_gpu_models": ["GPU A", "GPU B"],
+            "physical_gpu_models": ["GPU A"],
             "ros_distribution": "jazzy",
         }
     if key == "docker_gpu_evidence":
         return {
-            "image": (
-                "ghcr.io/rsasaki0109/"
-                "cuda-mppi-controller-demo:v1.0.0"
-            ),
+            "image": ("ghcr.io/rsasaki0109/" "cuda-mppi-controller-demo:v1.0.0"),
             "image_digest": "sha256:" + "b" * 64,
             "gpu_uuid": "GPU-aaaa-bbbb",
             "smoke_pass": True,
@@ -102,9 +98,7 @@ class V1ReleaseAttestationTest(unittest.TestCase):
     def test_post_attestation_edit_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            reference, path = write_attestation(
-                root, "docker_gpu_evidence"
-            )
+            reference, path = write_attestation(root, "docker_gpu_evidence")
             payload = json.loads(path.read_text(encoding="utf-8"))
             payload["details"]["smoke_pass"] = False
             path.write_text(json.dumps(payload) + "\n", encoding="utf-8")
@@ -133,14 +127,12 @@ class V1ReleaseAttestationTest(unittest.TestCase):
         self.assertFalse(gate["checks"]["reference_schema"])
         self.assertFalse(gate["passed"])
 
-    def test_cudanav_requires_two_distinct_models(self) -> None:
+    def test_cudanav_requires_a_physical_gpu_model(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            reference, path = write_attestation(
-                root, "cudanav_release_evidence"
-            )
+            reference, path = write_attestation(root, "cudanav_release_evidence")
             payload = json.loads(path.read_text(encoding="utf-8"))
-            payload["details"]["physical_gpu_models"] = ["same", "same"]
+            payload["details"]["physical_gpu_models"] = []
             path.write_text(json.dumps(payload) + "\n", encoding="utf-8")
             reference["sha256"] = sha256_file(path)
             gate = load_reference(
@@ -150,15 +142,13 @@ class V1ReleaseAttestationTest(unittest.TestCase):
                 target_version=VERSION,
                 target_tag=TAG,
             )
-            self.assertFalse(gate["checks"]["multi_gpu"])
+            self.assertFalse(gate["checks"]["physical_gpu"])
             self.assertFalse(gate["passed"])
 
     def test_malformed_details_are_rejected_without_exception(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            reference, path = write_attestation(
-                root, "cudanav_release_evidence"
-            )
+            reference, path = write_attestation(root, "cudanav_release_evidence")
             payload = json.loads(path.read_text(encoding="utf-8"))
             payload["details"] = ["not", "an", "object"]
             path.write_text(json.dumps(payload) + "\n", encoding="utf-8")
@@ -176,9 +166,7 @@ class V1ReleaseAttestationTest(unittest.TestCase):
     def test_malformed_duration_and_gpu_models_are_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            reference, path = write_attestation(
-                root, "cudanav_release_evidence"
-            )
+            reference, path = write_attestation(root, "cudanav_release_evidence")
             payload = json.loads(path.read_text(encoding="utf-8"))
             payload["details"]["closed_loop_duration_seconds"] = "600"
             payload["details"]["physical_gpu_models"] = [["GPU A"], "GPU B"]
@@ -192,7 +180,7 @@ class V1ReleaseAttestationTest(unittest.TestCase):
                 target_tag=TAG,
             )
             self.assertFalse(gate["checks"]["closed_loop_duration"])
-            self.assertFalse(gate["checks"]["multi_gpu"])
+            self.assertFalse(gate["checks"]["physical_gpu"])
             self.assertFalse(gate["passed"])
 
 

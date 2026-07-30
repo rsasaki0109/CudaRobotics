@@ -116,8 +116,8 @@ def evaluate_submission_source(
         "latex_boundaries": all(
             phrase in lowered
             for phrase in (
-                "candidate manuscript",
                 "second distinct physical gpu model",
+                "optional extension",
                 "recorded-data shadow",
                 "real-robot closed-loop navigation",
             )

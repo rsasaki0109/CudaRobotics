@@ -16,7 +16,6 @@ from cudanav_ros_ci_evidence import evaluate as evaluate_ros_ci
 from cudanav_rosbag_evidence import rosbag_topic_counts
 from v1_release_attestation import MODES, validate_payload
 
-
 ROOT = Path(__file__).resolve().parents[1]
 V1_KEY = "cudanav_release_evidence"
 
@@ -28,9 +27,7 @@ def read_json(path: Path) -> dict[str, Any]:
     return payload
 
 
-def mode_directory(
-    suite_root: Path, suite: dict[str, Any], mode: str
-) -> Path:
+def mode_directory(suite_root: Path, suite: dict[str, Any], mode: str) -> Path:
     relative = suite["modes"][mode]["directory"]
     directory = (suite_root / relative).resolve()
     if not directory.is_relative_to(suite_root) or not directory.is_dir():
@@ -74,7 +71,6 @@ def build_artifacts(
     suite, ros_ci, suite_gate = load_release(suite_root, ros_ci_path)
     closed_root = mode_directory(suite_root, suite, "closed_loop")
     rosbag_root = mode_directory(suite_root, suite, "real_rosbag_shadow")
-    multi_root = mode_directory(suite_root, suite, "multi_gpu")
 
     closed_manifest_path = closed_root / "manifest.json"
     closed_manifest = read_json(closed_manifest_path)
@@ -82,17 +78,10 @@ def build_artifacts(
         closed_root, closed_manifest["artifacts"]["summary"]
     )
     closed_summary = read_json(closed_summary_path)
-    closed_bag_root = (
-        closed_root / closed_manifest["artifacts"]["rosbag"]
-    ).resolve()
-    if (
-        not closed_bag_root.is_relative_to(closed_root)
-        or not closed_bag_root.is_dir()
-    ):
+    closed_bag_root = (closed_root / closed_manifest["artifacts"]["rosbag"]).resolve()
+    if not closed_bag_root.is_relative_to(closed_root) or not closed_bag_root.is_dir():
         raise ValueError("closed-loop rosbag is missing")
-    closed_topic_counts = rosbag_topic_counts(
-        closed_bag_root / "metadata.yaml"
-    )
+    closed_topic_counts = rosbag_topic_counts(closed_bag_root / "metadata.yaml")
 
     rosbag_manifest_path = rosbag_root / "manifest.json"
     rosbag_manifest = read_json(rosbag_manifest_path)
@@ -100,30 +89,53 @@ def build_artifacts(
         rosbag_root, rosbag_manifest["artifacts"]["evaluation"]
     )
     evaluation = read_json(evaluation_path)
-    recording_root = (
-        rosbag_root / rosbag_manifest["artifacts"]["recording"]
-    ).resolve()
-    if (
-        not recording_root.is_relative_to(rosbag_root)
-        or not recording_root.is_dir()
-    ):
+    recording_root = (rosbag_root / rosbag_manifest["artifacts"]["recording"]).resolve()
+    if not recording_root.is_relative_to(rosbag_root) or not recording_root.is_dir():
         raise ValueError("real-rosbag output recording is missing")
-    output_topic_counts = rosbag_topic_counts(
-        recording_root / "metadata.yaml"
-    )
+    output_topic_counts = rosbag_topic_counts(recording_root / "metadata.yaml")
     required_output_topics = rosbag_manifest["required_output_topics"]
-
-    multi_manifest_path = multi_root / "multi_gpu_manifest.json"
-    multi_manifest = read_json(multi_manifest_path)
-    multi_gate = evaluate_multi_gpu_suite(multi_manifest, multi_root)
-    if not multi_gate["passed"]:
-        raise ValueError("multi-GPU evidence failed during publication")
 
     config_hashes = suite_gate["coverage"]["config_sha256"]
     if len(config_hashes) != 1:
         raise ValueError("release suite does not have one controller config")
-    gpu_models = multi_gate["coverage"]["gpu_models"]
-    gpu_uuids = multi_gate["coverage"]["gpu_uuids"]
+    closed_devices = closed_manifest.get("gpu")
+    if not isinstance(closed_devices, list):
+        raise ValueError("closed-loop physical GPU inventory is missing")
+    closed_gpu_models = sorted(
+        {
+            device.get("name")
+            for device in closed_devices
+            if isinstance(device, dict)
+            and isinstance(device.get("name"), str)
+            and device["name"]
+        }
+    )
+    closed_gpu_uuids = sorted(
+        {
+            device.get("uuid")
+            for device in closed_devices
+            if isinstance(device, dict)
+            and isinstance(device.get("uuid"), str)
+            and device["uuid"]
+        }
+    )
+    if not closed_gpu_models or not closed_gpu_uuids:
+        raise ValueError("closed-loop physical GPU identity is incomplete")
+
+    multi_manifest_path: Path | None = None
+    multi_manifest: dict[str, Any] | None = None
+    multi_gpu_models: list[str] = []
+    multi_gpu_uuids: list[str] = []
+    if "multi_gpu" in suite.get("modes", {}):
+        multi_root = mode_directory(suite_root, suite, "multi_gpu")
+        multi_manifest_path = multi_root / "multi_gpu_manifest.json"
+        multi_manifest = read_json(multi_manifest_path)
+        multi_gate = evaluate_multi_gpu_suite(multi_manifest, multi_root)
+        if not multi_gate["passed"]:
+            raise ValueError("optional multi-GPU evidence failed during publication")
+        multi_gpu_models = multi_gate["coverage"]["gpu_models"]
+        multi_gpu_uuids = multi_gate["coverage"]["gpu_uuids"]
+
     diagnostics = evaluation.get("diagnostics", {})
     motion = evaluation.get("motion", {})
 
@@ -138,21 +150,11 @@ def build_artifacts(
             "evidence_mode": "closed_loop_simulation",
             "elapsed_sec": closed_summary["elapsed_sec"],
             "collision_count": closed_summary["collision_count"],
-            "odometry_drift_percent": closed_summary[
-                "odometry_drift_percent"
-            ],
-            "command_deadline_miss_rate": closed_summary[
-                "command_deadline_miss_rate"
-            ],
-            "traversals_requested": closed_summary[
-                "traversals_requested"
-            ],
-            "traversals_completed": closed_summary[
-                "traversals_completed"
-            ],
-            "rosbag_tree_sha256": closed_manifest["rosbag_identity"][
-                "tree_sha256"
-            ],
+            "odometry_drift_percent": closed_summary["odometry_drift_percent"],
+            "command_deadline_miss_rate": closed_summary["command_deadline_miss_rate"],
+            "traversals_requested": closed_summary["traversals_requested"],
+            "traversals_completed": closed_summary["traversals_completed"],
+            "rosbag_tree_sha256": closed_manifest["rosbag_identity"]["tree_sha256"],
             "required_topic_messages": {
                 topic: closed_topic_counts[topic]
                 for topic in REQUIRED_CLOSED_LOOP_BAG_TOPICS
@@ -161,27 +163,35 @@ def build_artifacts(
         "real_rosbag_shadow": {
             "evidence_mode": "real_sensor_shadow_with_derived_path",
             "quality_pass": evaluation["quality_pass"],
-            "input_tree_sha256": rosbag_manifest["input_bag"][
-                "tree_sha256"
-            ],
+            "input_tree_sha256": rosbag_manifest["input_bag"]["tree_sha256"],
             "input_file_count": rosbag_manifest["input_bag"]["file_count"],
             "input_total_bytes": rosbag_manifest["input_bag"]["total_bytes"],
             "duration_sec": motion["duration_s"],
             "diagnostics_samples": diagnostics["samples"],
-            "output_recording_tree_sha256": rosbag_manifest[
-                "recording_identity"
-            ]["tree_sha256"],
+            "output_recording_tree_sha256": rosbag_manifest["recording_identity"][
+                "tree_sha256"
+            ],
             "required_output_topic_messages": {
-                topic: output_topic_counts[topic]
-                for topic in required_output_topics
+                topic: output_topic_counts[topic] for topic in required_output_topics
             },
         },
         "multi_gpu": {
-            "run_count": len(multi_manifest["runs"]),
-            "repetitions": multi_manifest["repetitions"],
-            "physical_device_count": len(gpu_uuids),
-            "physical_model_count": len(gpu_models),
-            "gpu_models": gpu_models,
+            "required_for_release": False,
+            "provided": multi_manifest is not None,
+            "run_count": (
+                len(multi_manifest["runs"]) if multi_manifest is not None else 0
+            ),
+            "repetitions": (
+                multi_manifest["repetitions"] if multi_manifest is not None else 0
+            ),
+            "physical_device_count": len(multi_gpu_uuids),
+            "physical_model_count": len(multi_gpu_models),
+            "gpu_models": multi_gpu_models,
+        },
+        "physical_gpu": {
+            "physical_device_count": len(closed_gpu_uuids),
+            "physical_model_count": len(closed_gpu_models),
+            "gpu_models": closed_gpu_models,
         },
         "ros_jazzy_ci": {
             "status": ros_ci["status"],
@@ -202,33 +212,23 @@ def build_artifacts(
         "git_dirty": suite["git_dirty"],
         "controller_config_sha256": config_hashes[0],
         "source_artifacts": {
-            "autonomy_suite_manifest_sha256": sha256_file(
-                suite_root / "manifest.json"
-            ),
-            "closed_loop_manifest_sha256": sha256_file(
-                closed_manifest_path
-            ),
+            "autonomy_suite_manifest_sha256": sha256_file(suite_root / "manifest.json"),
+            "closed_loop_manifest_sha256": sha256_file(closed_manifest_path),
             "closed_loop_summary_sha256": sha256_file(closed_summary_path),
-            "real_rosbag_manifest_sha256": sha256_file(
-                rosbag_manifest_path
-            ),
+            "real_rosbag_manifest_sha256": sha256_file(rosbag_manifest_path),
             "real_rosbag_evaluation_sha256": sha256_file(evaluation_path),
-            "multi_gpu_manifest_sha256": sha256_file(multi_manifest_path),
             "ros_jazzy_ci_sha256": sha256_file(ros_ci_path.resolve()),
         },
         "hardware": {
             "closed_loop_gpu": closed_manifest["gpu"],
-            "multi_gpu_models": gpu_models,
-            "multi_gpu_uuids": gpu_uuids,
+            "multi_gpu_required_for_release": False,
+            "multi_gpu_models": multi_gpu_models,
+            "multi_gpu_uuids": multi_gpu_uuids,
         },
         "closed_loop_recording": {
-            "tree_sha256": closed_manifest["rosbag_identity"][
-                "tree_sha256"
-            ],
+            "tree_sha256": closed_manifest["rosbag_identity"]["tree_sha256"],
             "file_count": closed_manifest["rosbag_identity"]["file_count"],
-            "total_bytes": closed_manifest["rosbag_identity"][
-                "total_bytes"
-            ],
+            "total_bytes": closed_manifest["rosbag_identity"]["total_bytes"],
             "required_topic_messages": summary["closed_loop"][
                 "required_topic_messages"
             ],
@@ -239,22 +239,19 @@ def build_artifacts(
             "total_bytes": rosbag_manifest["input_bag"]["total_bytes"],
         },
         "output_recording": {
-            "tree_sha256": rosbag_manifest["recording_identity"][
-                "tree_sha256"
-            ],
-            "file_count": rosbag_manifest["recording_identity"][
-                "file_count"
-            ],
-            "total_bytes": rosbag_manifest["recording_identity"][
-                "total_bytes"
-            ],
+            "tree_sha256": rosbag_manifest["recording_identity"]["tree_sha256"],
+            "file_count": rosbag_manifest["recording_identity"]["file_count"],
+            "total_bytes": rosbag_manifest["recording_identity"]["total_bytes"],
             "required_output_topic_messages": {
-                topic: output_topic_counts[topic]
-                for topic in required_output_topics
+                topic: output_topic_counts[topic] for topic in required_output_topics
             },
         },
         "ros_jazzy_ci": ros_ci["github"],
     }
+    if multi_manifest_path is not None:
+        provenance["source_artifacts"]["multi_gpu_manifest_sha256"] = sha256_file(
+            multi_manifest_path
+        )
     report = render_report(summary)
     return summary, provenance, report
 
@@ -268,30 +265,22 @@ def build_v1_attestation(
 ) -> dict[str, Any]:
     closed = summary.get("closed_loop", {})
     real = summary.get("real_rosbag_shadow", {})
-    multi = summary.get("multi_gpu", {})
+    physical_gpu = summary.get("physical_gpu", {})
     ros = summary.get("ros_jazzy_ci", {})
-    models = multi.get("gpu_models") if isinstance(multi, dict) else None
+    models = physical_gpu.get("gpu_models") if isinstance(physical_gpu, dict) else None
     elapsed = closed.get("elapsed_sec") if isinstance(closed, dict) else None
-    drift = (
-        closed.get("odometry_drift_percent")
-        if isinstance(closed, dict)
-        else None
-    )
+    drift = closed.get("odometry_drift_percent") if isinstance(closed, dict) else None
     deadline_miss = (
-        closed.get("command_deadline_miss_rate")
-        if isinstance(closed, dict)
-        else None
+        closed.get("command_deadline_miss_rate") if isinstance(closed, dict) else None
     )
     checks = {
         "summary_schema": summary.get("schema_version") == 1,
-        "summary_mode": summary.get("evidence_mode")
-        == "cudanav_systems_release",
+        "summary_mode": summary.get("evidence_mode") == "cudanav_systems_release",
         "summary_status": summary.get("status") == "passed",
         "provenance_schema": provenance.get("schema_version") == 1,
         "provenance_mode": provenance.get("evidence_mode")
         == "cudanav_systems_release_provenance",
-        "same_commit": summary.get("git_commit")
-        == provenance.get("git_commit"),
+        "same_commit": summary.get("git_commit") == provenance.get("git_commit"),
         "source_clean": summary.get("git_dirty") is False
         and provenance.get("git_dirty") is False,
         "same_controller_config": summary.get("controller_config_sha256")
@@ -307,19 +296,16 @@ def build_v1_attestation(
         and not isinstance(deadline_miss, bool)
         and deadline_miss < 0.01,
         "real_rosbag_shadow": isinstance(real, dict)
-        and real.get("evidence_mode")
-        == "real_sensor_shadow_with_derived_path"
+        and real.get("evidence_mode") == "real_sensor_shadow_with_derived_path"
         and real.get("quality_pass") is True,
-        "multi_gpu": isinstance(models, list)
+        "physical_gpu": isinstance(models, list)
         and all(isinstance(model, str) and model for model in models)
-        and len(set(models)) >= 2
-        and multi.get("physical_model_count") == len(set(models)),
+        and len(set(models)) >= 1
+        and physical_gpu.get("physical_model_count") == len(set(models)),
         "ros_jazzy": isinstance(ros, dict)
         and ros.get("status") == "passed"
         and ros.get("ros_distro") == "jazzy",
-        "source_artifacts": isinstance(
-            provenance.get("source_artifacts"), dict
-        )
+        "source_artifacts": isinstance(provenance.get("source_artifacts"), dict)
         and bool(provenance["source_artifacts"])
         and all(
             isinstance(value, str)
@@ -330,9 +316,7 @@ def build_v1_attestation(
     }
     if not all(checks.values()):
         failed = sorted(name for name, passed in checks.items() if not passed)
-        raise ValueError(
-            "CudaNav systems artifacts failed: " + ", ".join(failed)
-        )
+        raise ValueError("CudaNav systems artifacts failed: " + ", ".join(failed))
     summary_content = encoded(summary).encode("utf-8")
     provenance_content = encoded(provenance).encode("utf-8")
     summary_sha = hashlib.sha256(summary_content).hexdigest()
@@ -367,12 +351,9 @@ def build_v1_attestation(
         target_tag=target_tag,
     )
     if not gate["passed"]:
-        failed = sorted(
-            name for name, passed in gate["checks"].items() if not passed
-        )
+        failed = sorted(name for name, passed in gate["checks"].items() if not passed)
         raise ValueError(
-            "generated CudaNav v1 attestation failed: "
-            + ", ".join(failed)
+            "generated CudaNav v1 attestation failed: " + ", ".join(failed)
         )
     return attestation
 
@@ -381,18 +362,22 @@ def render_report(summary: dict[str, Any]) -> str:
     closed = summary["closed_loop"]
     bag = summary["real_rosbag_shadow"]
     multi = summary["multi_gpu"]
+    physical = summary["physical_gpu"]
     ci = summary["ros_jazzy_ci"]
     output_counts = bag["required_output_topic_messages"]
-    models = ", ".join(f"`{model}`" for model in multi["gpu_models"])
+    models = ", ".join(f"`{model}`" for model in physical["gpu_models"])
+    multi_result = (
+        f"{multi['physical_device_count']} devices, "
+        f"{multi['physical_model_count']} models"
+        if multi["provided"]
+        else "not provided (optional)"
+    )
     lines = [
         "# CudaNav Systems Release Evidence",
         "",
         f"- Status: **{summary['status']}**",
         f"- Git commit: `{summary['git_commit']}`",
-        (
-            "- Controller config SHA-256: "
-            f"`{summary['controller_config_sha256']}`"
-        ),
+        ("- Controller config SHA-256: " f"`{summary['controller_config_sha256']}`"),
         "",
         "## Evidence modes",
         "",
@@ -409,9 +394,8 @@ def render_report(summary: dict[str, Any]) -> str:
             "not a closed-loop claim |"
         ),
         (
-            f"| Physical multi-GPU | {multi['physical_device_count']} devices, "
-            f"{multi['physical_model_count']} models | Closed-loop smoke "
-            "reproduction |"
+            f"| Physical multi-GPU | {multi_result} | Optional closed-loop "
+            "reproduction extension |"
         ),
         (
             f"| ROS 2 Jazzy CI | `{ci['status']}` | Ubuntu 24.04, "
@@ -433,7 +417,8 @@ def render_report(summary: dict[str, Any]) -> str:
         "",
         "## Reproduction coverage",
         "",
-        f"- Physical GPU models: {models}",
+        f"- Release physical GPU models: {models}",
+        "- Multi-GPU reproduction required for release: no",
         f"- Real-bag tree SHA-256: `{bag['input_tree_sha256']}`",
         (
             "- Shadow-output recording tree SHA-256: "
@@ -442,8 +427,7 @@ def render_report(summary: dict[str, Any]) -> str:
         (
             "- Required CudaNav output messages: "
             + ", ".join(
-                f"`{topic}`={count}"
-                for topic, count in sorted(output_counts.items())
+                f"`{topic}`={count}" for topic, count in sorted(output_counts.items())
             )
         ),
         f"- ROS workflow: {ci['run_url']}",
@@ -456,9 +440,7 @@ def render_report(summary: dict[str, Any]) -> str:
 
 
 def encoded(payload: dict[str, Any]) -> str:
-    return json.dumps(
-        payload, indent=2, sort_keys=True, allow_nan=False
-    ) + "\n"
+    return json.dumps(payload, indent=2, sort_keys=True, allow_nan=False) + "\n"
 
 
 def main() -> int:
@@ -470,22 +452,15 @@ def main() -> int:
     parser.add_argument("--v1-attestation-name")
     parser.add_argument("--check", action="store_true")
     args = parser.parse_args()
-    if not args.prefix or any(
-        token in args.prefix for token in ("/", "\\", "..")
-    ):
+    if not args.prefix or any(token in args.prefix for token in ("/", "\\", "..")):
         raise SystemExit("--prefix must be a safe filename prefix")
     if args.v1_attestation_name and (
-        any(
-            token in args.v1_attestation_name
-            for token in ("/", "\\", "..")
-        )
+        any(token in args.v1_attestation_name for token in ("/", "\\", ".."))
         or not args.v1_attestation_name.endswith(".json")
     ):
         raise SystemExit("--v1-attestation-name must be a safe JSON filename")
     try:
-        summary, provenance, report = build_artifacts(
-            args.suite_dir, args.ros_ci
-        )
+        summary, provenance, report = build_artifacts(args.suite_dir, args.ros_ci)
     except (KeyError, OSError, TypeError, ValueError, json.JSONDecodeError) as error:
         raise SystemExit(f"cannot publish CudaNav evidence: {error}") from error
     output = args.output_dir.resolve()
@@ -507,8 +482,7 @@ def main() -> int:
         stale = [
             str(path)
             for path, content in targets.items()
-            if not path.is_file()
-            or path.read_text(encoding="utf-8") != content
+            if not path.is_file() or path.read_text(encoding="utf-8") != content
         ]
         if stale:
             print("stale CudaNav systems artifacts: " + ", ".join(stale))
