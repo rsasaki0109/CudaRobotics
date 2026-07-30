@@ -8,7 +8,7 @@ build-backend = "scikit_build_core.build"
 
 [project]
 name = "cudarobotics"
-version = "0.2.0"
+version = "1.0.0"
 description = "CUDA-accelerated robotics algorithms: GPU MPPI and point-cloud registration"
 readme = "README.md"
 requires-python = ">=3.9"
