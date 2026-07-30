@@ -21,7 +21,6 @@ from run_autonomy_suite import (
     validate_rosbag,
 )
 
-
 COMMIT = "a" * 40
 CONFIG = "controller: cuda\n"
 CONFIG_SHA = hashlib.sha256(CONFIG.encode()).hexdigest()
@@ -89,9 +88,7 @@ def write_closed(
             for topic in REQUIRED_CLOSED_LOOP_BAG_TOPICS
         )
     )
-    (bag / "closed_loop_0.mcap").write_bytes(
-        b"representative closed-loop bytes"
-    )
+    (bag / "closed_loop_0.mcap").write_bytes(b"representative closed-loop bytes")
     (run / "replay.gif").write_bytes(b"GIF89a" + b"\0" * 16)
     manifest = {
         "schema_version": 1,
@@ -146,9 +143,7 @@ def write_closed(
             "video": "replay.gif",
         },
     }
-    (run / "manifest.json").write_text(
-        json.dumps(manifest) + "\n", encoding="utf-8"
-    )
+    (run / "manifest.json").write_text(json.dumps(manifest) + "\n", encoding="utf-8")
     return manifest
 
 
@@ -160,9 +155,7 @@ def write_rosbag(run: Path) -> dict:
     database.write_bytes(b"recorded robot data")
     (run / "evaluation").mkdir(parents=True)
     diagnostics = run / "diagnostics.csv"
-    diagnostics.write_text(
-        "solve_ms,valid_rollout_ratio\n4.0,0.95\n", encoding="utf-8"
-    )
+    diagnostics.write_text("solve_ms,valid_rollout_ratio\n4.0,0.95\n", encoding="utf-8")
     config = run / "controller.yaml"
     config.write_bytes(CONFIG.encode("utf-8"))
     (run / "controller.log").write_text("controller started\n", encoding="utf-8")
@@ -181,9 +174,7 @@ def write_rosbag(run: Path) -> dict:
             for topic in REQUIRED_CUDANAV_OUTPUT_TOPICS
         )
     )
-    (recording / "recording_0.mcap").write_bytes(
-        b"representative shadow output bytes"
-    )
+    (recording / "recording_0.mcap").write_bytes(b"representative shadow output bytes")
     evaluation = {
         "schema_version": 1,
         "evidence_mode": "shadow_controller_with_recorded_motion",
@@ -266,9 +257,7 @@ def write_rosbag(run: Path) -> dict:
             "recording": "recording",
         },
     }
-    (run / "manifest.json").write_text(
-        json.dumps(manifest) + "\n", encoding="utf-8"
-    )
+    (run / "manifest.json").write_text(json.dumps(manifest) + "\n", encoding="utf-8")
     return manifest
 
 
@@ -291,9 +280,7 @@ def write_multi_gpu(root: Path) -> dict:
                 "directory": relative,
                 "returncode": 0,
                 "device": device,
-                "manifest_sha256": sha256_file(
-                    root / relative / "manifest.json"
-                ),
+                "manifest_sha256": sha256_file(root / relative / "manifest.json"),
             }
         )
     manifest = {
@@ -332,9 +319,7 @@ class CudaNavAutonomySuiteTest(unittest.TestCase):
             },
             "multi_gpu": {
                 "directory": "multi_gpu",
-                "manifest_sha256": sha256_file(
-                    multi / "multi_gpu_manifest.json"
-                ),
+                "manifest_sha256": sha256_file(multi / "multi_gpu_manifest.json"),
             },
         }
         suite = {
@@ -353,11 +338,19 @@ class CudaNavAutonomySuiteTest(unittest.TestCase):
             suite, root = self.make_suite(Path(directory))
             result = evaluate_suite(suite, root)
             self.assertTrue(result["passed"], result)
+            self.assertEqual(result["coverage"]["git_commits"], [COMMIT])
+            self.assertEqual(result["coverage"]["config_sha256"], [CONFIG_SHA])
+
+    def test_release_suite_passes_without_optional_multi_gpu_mode(self):
+        with tempfile.TemporaryDirectory() as directory:
+            suite, root = self.make_suite(Path(directory))
+            suite["modes"].pop("multi_gpu")
+            suite["required_modes"].remove("multi_gpu")
+            result = evaluate_suite(suite, root)
+            self.assertTrue(result["passed"], result)
             self.assertEqual(
-                result["coverage"]["git_commits"], [COMMIT]
-            )
-            self.assertEqual(
-                result["coverage"]["config_sha256"], [CONFIG_SHA]
+                set(result["modes"]),
+                {"closed_loop", "real_rosbag_shadow"},
             )
 
     def test_manifest_hash_and_shadow_label_are_enforced(self):
@@ -388,9 +381,7 @@ class CudaNavAutonomySuiteTest(unittest.TestCase):
                         "      message_count: 5",
                     ]
                 )
-            (source / "metadata.yaml").write_text(
-                "\n".join(source_metadata) + "\n"
-            )
+            (source / "metadata.yaml").write_text("\n".join(source_metadata) + "\n")
             database = source / spec["acquisition"]["expected_database"]
             database.write_bytes(b"source database fixture")
             inspection = source / "inspection.json"
@@ -413,9 +404,7 @@ class CudaNavAutonomySuiteTest(unittest.TestCase):
                             "expected_database_bytes": spec["acquisition"][
                                 "expected_database_bytes"
                             ],
-                            "metadata_file_id": spec["acquisition"][
-                                "metadata_file_id"
-                            ],
+                            "metadata_file_id": spec["acquisition"]["metadata_file_id"],
                             "expected_metadata": spec["acquisition"][
                                 "expected_metadata"
                             ],
@@ -439,23 +428,13 @@ class CudaNavAutonomySuiteTest(unittest.TestCase):
                             "schema_version": 1,
                             "database": {
                                 "file_id": spec["acquisition"]["file_id"],
-                                "filename": spec["acquisition"][
-                                    "expected_database"
-                                ],
-                                "bytes": spec["acquisition"][
-                                    "expected_database_bytes"
-                                ],
+                                "filename": spec["acquisition"]["expected_database"],
+                                "bytes": spec["acquisition"]["expected_database_bytes"],
                             },
                             "metadata": {
-                                "file_id": spec["acquisition"][
-                                    "metadata_file_id"
-                                ],
-                                "filename": spec["acquisition"][
-                                    "expected_metadata"
-                                ],
-                                "bytes": spec["acquisition"][
-                                    "expected_metadata_bytes"
-                                ],
+                                "file_id": spec["acquisition"]["metadata_file_id"],
+                                "filename": spec["acquisition"]["expected_metadata"],
+                                "bytes": spec["acquisition"]["expected_metadata_bytes"],
                             },
                             "checks": {
                                 "database_filename": True,
@@ -514,47 +493,33 @@ class CudaNavAutonomySuiteTest(unittest.TestCase):
                 )
                 + "\n"
             )
-            manifest["evidence_mode"] = (
-                "real_sensor_shadow_with_derived_path"
-            )
+            manifest["evidence_mode"] = "real_sensor_shadow_with_derived_path"
             evaluation_path = run / manifest["artifacts"]["evaluation"]
             evaluation = json.loads(evaluation_path.read_text())
-            evaluation["evidence_mode"] = (
-                "real_sensor_shadow_with_derived_path"
-            )
+            evaluation["evidence_mode"] = "real_sensor_shadow_with_derived_path"
             evaluation["clearance"].update(
                 {
-                    "pointcloud_topic": spec["quality_evaluation"][
-                        "pointcloud_topic"
-                    ],
-                    "diagnostics_source": str(
-                        (run / "diagnostics.csv").resolve()
-                    ),
-                    "timestamp_basis": spec["quality_evaluation"][
-                        "timestamp_basis"
-                    ],
+                    "pointcloud_topic": spec["quality_evaluation"]["pointcloud_topic"],
+                    "diagnostics_source": str((run / "diagnostics.csv").resolve()),
+                    "timestamp_basis": spec["quality_evaluation"]["timestamp_basis"],
                     "filter": spec["quality_evaluation"]["filter"],
                 }
             )
             evaluation.setdefault("thresholds", {}).update(
                 {
-                    "minimum_command_pair_coverage": spec[
-                        "quality_evaluation"
-                    ]["minimum_command_pair_ratio"],
-                    "maximum_all_colliding_ratio": spec[
-                        "quality_evaluation"
-                    ].get("maximum_all_colliding_ratio", 0.0),
+                    "minimum_command_pair_coverage": spec["quality_evaluation"][
+                        "minimum_command_pair_ratio"
+                    ],
+                    "maximum_all_colliding_ratio": spec["quality_evaluation"].get(
+                        "maximum_all_colliding_ratio", 0.0
+                    ),
                 }
             )
             evaluation_path.write_text(json.dumps(evaluation) + "\n")
             manifest["evaluation_sha256"] = sha256_file(evaluation_path)
             manifest["derived_path_bag"] = describe_input(derived)
-            manifest["dataset_materialization_sha256"] = sha256_file(
-                materialization
-            )
-            manifest["artifacts"]["dataset_materialization"] = (
-                materialization.name
-            )
+            manifest["dataset_materialization_sha256"] = sha256_file(materialization)
+            manifest["artifacts"]["dataset_materialization"] = materialization.name
             manifest["commands"]["play"] = [
                 "ros2",
                 "bag",
@@ -613,9 +578,7 @@ class CudaNavAutonomySuiteTest(unittest.TestCase):
             manifest_path = run / "manifest.json"
             manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
             manifest["rosbag_identity"] = describe_input(run / "rosbag")
-            manifest_path.write_text(
-                json.dumps(manifest) + "\n", encoding="utf-8"
-            )
+            manifest_path.write_text(json.dumps(manifest) + "\n", encoding="utf-8")
             suite["modes"]["closed_loop"]["manifest_sha256"] = sha256_file(
                 manifest_path
             )

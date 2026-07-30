@@ -54,6 +54,11 @@ the clone/build/run logs, Docker image ID, GPU/driver identity, support matrix,
 and CudaNav JSON/log. Missing Docker or NVIDIA tooling is an unavailable gate,
 not a skipped pass.
 
+The CudaNav systems attestation requires the retained ROS 2 closed-loop run,
+real-rosbag shadow evaluation, Jazzy CI, and at least one identified physical
+CUDA GPU. Multi-GPU reproduction is an optional cross-device extension and is
+not part of the v1 readiness decision.
+
 After the release-profile directory passes, publish its content-bound matrix
 attestation. The command independently revalidates the retained manifest and
 every declared artifact before writing anything:

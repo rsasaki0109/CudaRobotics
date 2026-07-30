@@ -51,9 +51,9 @@ its workflow run URL, record its SHA-256 in
 - `platform.image == "ubuntu-24.04"`;
 - all required checks equal `"passed"`.
 
-The systems ledger must remain `ready: false` until the release-profile
-closed-loop, real-rosbag shadow, and two-model physical GPU artifacts also
-validate on that same commit and controller configuration.
+The systems ledger becomes ready only after the release-profile closed-loop
+and real-rosbag shadow artifacts validate with the ROS 2 evidence. An
+identified physical GPU remains mandatory; a two-model matrix is optional.
 
 When they do, use the systems publisher described in
 [`cudanav_autonomy_suite.md`](cudanav_autonomy_suite.md) to generate the
