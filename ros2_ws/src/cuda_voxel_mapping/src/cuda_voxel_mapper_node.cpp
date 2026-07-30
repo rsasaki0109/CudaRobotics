@@ -34,6 +34,29 @@ diagnostic_msgs::msg::KeyValue key_value(const std::string & key, const std::str
 
 }  // namespace
 
+nav_msgs::msg::OccupancyGrid make_occupancy_message(
+  const cudarobotics::OccupancyProjection & projection,
+  const rclcpp::Time & stamp,
+  const rclcpp::Time & map_load_time,
+  const std::string & frame_id)
+{
+  nav_msgs::msg::OccupancyGrid message;
+  message.header.stamp = stamp;
+  message.header.frame_id = frame_id;
+  message.info.map_load_time = map_load_time;
+  message.info.resolution = projection.grid.resolution;
+  message.info.width = static_cast<std::uint32_t>(projection.grid.width);
+  message.info.height = static_cast<std::uint32_t>(projection.grid.height);
+  message.info.origin.position.x = projection.grid.origin_x;
+  message.info.origin.position.y = projection.grid.origin_y;
+  // OccupancyGrid is a planar projection. The voxel grid's vertical origin
+  // belongs to the 3D map and must not leak into this 2D pose.
+  message.info.origin.position.z = 0.0;
+  message.info.origin.orientation.w = 1.0;
+  message.data = projection.data;
+  return message;
+}
+
 CudaVoxelMapperNode::CudaVoxelMapperNode(const rclcpp::NodeOptions & options)
 : rclcpp_lifecycle::LifecycleNode("cuda_voxel_mapper", options)
 {
@@ -355,19 +378,9 @@ void CudaVoxelMapperNode::publish_occupancy(
   const cudarobotics::OccupancyProjection & projection,
   const rclcpp::Time & stamp)
 {
-  nav_msgs::msg::OccupancyGrid message;
-  message.header.stamp = stamp;
-  message.header.frame_id = odom_frame_;
-  message.info.map_load_time = map_load_time_;
-  message.info.resolution = projection.grid.resolution;
-  message.info.width = static_cast<std::uint32_t>(projection.grid.width);
-  message.info.height = static_cast<std::uint32_t>(projection.grid.height);
-  message.info.origin.position.x = projection.grid.origin_x;
-  message.info.origin.position.y = projection.grid.origin_y;
-  message.info.origin.position.z = projection.grid.origin_z;
-  message.info.origin.orientation.w = 1.0;
-  message.data = projection.data;
-  occupancy_publisher_->publish(message);
+  occupancy_publisher_->publish(
+    make_occupancy_message(
+      projection, stamp, map_load_time_, odom_frame_));
 }
 
 void CudaVoxelMapperNode::publish_local_map(const rclcpp::Time & stamp)

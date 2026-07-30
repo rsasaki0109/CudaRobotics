@@ -44,8 +44,8 @@ std::vector<Segment> course_segments() {
 
 const std::vector<std::pair<float, float>>& mission_waypoints() {
   static const std::vector<std::pair<float, float>> value = {
-    {0.0f, 0.0f}, {2.7f, 0.0f}, {3.15f, 1.15f}, {4.75f, 1.15f},
-    {5.55f, -1.15f}, {7.25f, -1.15f}, {9.0f, 0.0f}};
+    {0.0f, 0.0f}, {1.8f, 0.0f}, {2.9f, 1.4f}, {5.05f, 1.4f},
+    {5.35f, -1.4f}, {7.5f, -1.4f}, {9.0f, 0.0f}};
   return value;
 }
 

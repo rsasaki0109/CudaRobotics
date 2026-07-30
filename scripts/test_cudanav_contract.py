@@ -338,6 +338,7 @@ def main() -> int:
         'executable="follow_path_mission"',
         'DeclareLaunchArgument(',
         '"controller_config"',
+        '"transform_timeout_sec": 0.4',
     ):
         assert term in bringup_launch
     controller_config = (
@@ -346,12 +347,19 @@ def main() -> int:
     for term in (
         "/cuda_nav/controller_server:",
         "/cuda_nav/local_costmap/local_costmap:",
+        "    controller_frequency: 10.0",
         'plugin: "cuda_mppi_controller::CudaMppiController"',
+        'plugin: "nav2_controller::PoseProgressChecker"',
+        "      required_movement_angle: 0.35",
         'plugin: "cuda_voxel_costmap_layer::CudaVoxelCostmapLayer"',
+        "    width: 12\n",
+        "    height: 6\n",
     ):
         assert term in controller_config, (
             f"missing namespaced controller config term: {term}"
         )
+    assert "    width: 12.0\n" not in controller_config
+    assert "    height: 6.0\n" not in controller_config
     assert "\ncontroller_server:" not in controller_config
     assert "\nlocal_costmap:" not in controller_config
     shadow_launch = (
@@ -405,6 +413,9 @@ def main() -> int:
     ).read_text(encoding="utf-8")
     assert "ChangeState" in orchestrator_source
     assert "GetState" in orchestrator_source
+    assert "contains_transform" in orchestrator_source
+    assert "_wait_for_odometry_transform" in orchestrator_source
+    assert 'TFMessage, "/tf"' in orchestrator_source
     mission_source = (
         BRINGUP_PACKAGE / "cuda_nav_bringup" / "follow_path_mission.py"
     ).read_text(encoding="utf-8")
@@ -421,6 +432,10 @@ def main() -> int:
         '"diagnostic_error_count"',
         '"diagnostic_components"',
         '"failure_counters"',
+        'self.declare_parameter("controller_frequency", 10.0)',
+        "while rclpy.ok() and not node.finished",
+        "action server is not active yet; retrying first goal",
+        "except KeyboardInterrupt:",
     ):
         assert term in mission_source
     evidence_source = (ROOT / "scripts" / "cudanav_evidence.py").read_text(
