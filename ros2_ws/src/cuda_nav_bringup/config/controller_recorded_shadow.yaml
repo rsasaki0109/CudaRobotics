@@ -1,0 +1,85 @@
+/cuda_nav/controller_server:
+  ros__parameters:
+    controller_frequency: 10.0
+    costmap_update_timeout: 0.5
+    enable_stamped_cmd_vel: true
+    failure_tolerance: 0.3
+    odom_topic: odom
+    publish_zero_velocity: true
+    use_realtime_priority: false
+    controller_plugins: [FollowPath]
+    progress_checker_plugins: [progress_checker]
+    goal_checker_plugins: [general_goal_checker]
+
+    progress_checker:
+      plugin: "nav2_controller::PoseProgressChecker"
+      required_movement_radius: 0.25
+      required_movement_angle: 0.35
+      movement_time_allowance: 30.0
+    general_goal_checker:
+      plugin: "nav2_controller::SimpleGoalChecker"
+      stateful: true
+      xy_goal_tolerance: 0.20
+      yaw_goal_tolerance: 0.30
+    FollowPath:
+      plugin: "cuda_mppi_controller::CudaMppiController"
+      batch_size: 4096
+      time_steps: 56
+      model_dt: 0.05
+      iteration_count: 1
+      motion_model: DiffDrive
+      v_max: 0.55
+      v_min: -0.25
+      w_max: 1.8
+      v_std: 0.20
+      w_std: 0.40
+      enable_retreat: true
+      retreat_scale: 0.5
+      temperature: 0.12
+      goal_weight: 20.0
+      goal_yaw_weight: 3.0
+      path_weight: 10.0
+      path_follow_weight: 5.0
+      path_angle_weight: 0.30
+      follow_lookahead: 0.8
+      costmap_weight: 4.0
+      distance_field_weight: 2.0
+      distance_field_cutoff: 0.65
+      smoothness_weight: 0.25
+      backward_weight: 0.6
+      speed_weight: 3.0
+      angular_weight: 0.6
+      yaw_goal_activation_dist: 0.5
+      lookahead_dist: 3.0
+      transform_tolerance: 0.15
+
+/cuda_nav/local_costmap/local_costmap:
+  ros__parameters:
+    update_frequency: 5.0
+    publish_frequency: 2.0
+    global_frame: odom
+    robot_base_frame: base_link
+    rolling_window: true
+    width: 12
+    height: 6
+    resolution: 0.10
+    robot_radius: 0.24
+    track_unknown_space: true
+    always_send_full_costmap: true
+    plugins: [cuda_voxel, inflation_layer]
+    cuda_voxel:
+      plugin: "cuda_voxel_costmap_layer::CudaVoxelCostmapLayer"
+      enabled: true
+      occupancy_topic: /cuda_nav/occupancy
+      lethal_threshold: 50
+      # Shadow control scores recorded observations; raw-cloud clearance is
+      # evaluated independently, while never-observed cells remain traversable.
+      unknown_is_free: true
+      use_maximum: false
+      # Offline datasets can use a sensor-header epoch different from /clock.
+      max_map_age_sec: 0.0
+      footprint_clearing_radius: 0.30
+    inflation_layer:
+      plugin: "nav2_costmap_2d::InflationLayer"
+      cost_scaling_factor: 3.0
+      inflation_radius: 0.60

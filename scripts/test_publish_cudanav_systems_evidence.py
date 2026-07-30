@@ -53,7 +53,7 @@ class PublishCudaNavSystemsEvidenceTest(unittest.TestCase):
             )
             self.assertEqual(
                 summary["real_rosbag_shadow"]["evidence_mode"],
-                "shadow_controller_with_recorded_motion",
+                "real_sensor_shadow_with_derived_path",
             )
             self.assertEqual(
                 set(

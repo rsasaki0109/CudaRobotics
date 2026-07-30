@@ -30,6 +30,7 @@ def main() -> int:
         "front_below_0_5m_ratio": 0.02,
     }
     diagnostics = {
+        "samples": 100,
         "solve_mean_ms": 8.2,
         "solve_p95_ms": 12.4,
         "valid_rollout_ratio_mean": 0.82,
@@ -60,6 +61,18 @@ def main() -> int:
         pointcloud_report["evidence_mode"]
         == "real_sensor_shadow_with_derived_path"
     )
+    diagnostics["all_colliding_cycles"] = 1
+    recovered = MODULE.build_report(
+        motion,
+        clearance,
+        diagnostics,
+        minimum_clearance_m=0.10,
+        maximum_solve_p95_ms=50.0,
+        minimum_valid_ratio=0.50,
+        maximum_all_colliding_ratio=0.02,
+    )
+    assert recovered["quality_pass"]
+    diagnostics["all_colliding_cycles"] = 0
     with tempfile.TemporaryDirectory() as directory:
         output = Path(directory)
         MODULE.write_report(report, output)

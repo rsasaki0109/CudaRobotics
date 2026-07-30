@@ -530,7 +530,20 @@ class CudaNavAutonomySuiteTest(unittest.TestCase):
                     "diagnostics_source": str(
                         (run / "diagnostics.csv").resolve()
                     ),
+                    "timestamp_basis": spec["quality_evaluation"][
+                        "timestamp_basis"
+                    ],
                     "filter": spec["quality_evaluation"]["filter"],
+                }
+            )
+            evaluation.setdefault("thresholds", {}).update(
+                {
+                    "minimum_command_pair_coverage": spec[
+                        "quality_evaluation"
+                    ]["minimum_command_pair_ratio"],
+                    "maximum_all_colliding_ratio": spec[
+                        "quality_evaluation"
+                    ].get("maximum_all_colliding_ratio", 0.0),
                 }
             )
             evaluation_path.write_text(json.dumps(evaluation) + "\n")
@@ -570,6 +583,14 @@ class CudaNavAutonomySuiteTest(unittest.TestCase):
                     str(quality_filter["maximum_range_m"]),
                     "--pointcloud-maximum-command-age-ms",
                     str(quality_filter["maximum_command_age_ms"]),
+                    "--pointcloud-timestamp-basis",
+                    spec["quality_evaluation"]["timestamp_basis"],
+                    "--maximum-all-colliding-ratio",
+                    str(
+                        spec["quality_evaluation"].get(
+                            "maximum_all_colliding_ratio", 0.0
+                        )
+                    ),
                 ]
             )
             (run / "manifest.json").write_text(json.dumps(manifest) + "\n")

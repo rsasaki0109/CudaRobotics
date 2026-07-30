@@ -106,14 +106,16 @@
       "id": "real_data_shadow",
       "statement": "The same CUDA controller stack meets its declared latency, rollout-validity, and clearance gates on a content-addressed public real rosbag.",
       "submission_required": true,
-      "status": "partial",
+      "status": "supported",
       "evidence": [
         "mcd_all_gpu_core_release",
-        "real_rosbag_release"
+        "real_rosbag_release",
+        "real_rosbag_release_report"
       ],
       "limitations": [
         "Rosbag replay is shadow-controller evidence and is not a closed-loop success claim.",
-        "The selected public timed PointCloud2 dataset now has a passing native all-GPU release profile, but a ROS 2 release-profile replay and its runtime attestation remain pending."
+        "The public Istanbul localization bag uses a deterministic Path derived from its recorded GNSS poses; it does not contain a recorded navigation command Path.",
+        "The source bag records point-cloud headers in a different epoch from bag /clock, so the immutable input is paired to controller diagnostics by bag record timestamp."
       ]
     },
     {
@@ -154,7 +156,7 @@
         {
           "path": "scripts/cudanav_rosbag_evidence.py",
           "normalization": "text_lf",
-          "sha256": "fdea1d9792f6fa4b1cf36d76862f92b0d3873af3bebb36803bb605b0592fbd82"
+          "sha256": "807b23156f8e0af10f11f5e588f6a1e41c3b1fb7325534eda9810b7afc3f3a10"
         },
         {
           "path": "scripts/cudanav_real_dataset.py",
@@ -164,7 +166,7 @@
         {
           "path": "scripts/validate_cudanav_real_dataset.py",
           "normalization": "text_lf",
-          "sha256": "5f59751a02313bce042165897a75db743f31beb20b94197812ce4900520f7269"
+          "sha256": "962995a48315f1995628d97549e3d25e4ad153d3f034fbc18690115a7ceff5ff"
         },
         {
           "path": "scripts/derive_cudanav_path_sidecar.py",
@@ -174,17 +176,17 @@
         {
           "path": "scripts/run_cudanav_rosbag_replay.py",
           "normalization": "text_lf",
-          "sha256": "aad02a13909adc0b16db04322e204b70741192974020b37e6dd010c173e386c0"
+          "sha256": "1ceb7b13346139f7ccfda281c67d8b446b0fb963d11e1f8e5484b10e15f75913"
         },
         {
           "path": "scripts/analyze_pointcloud2_clearance.py",
           "normalization": "text_lf",
-          "sha256": "80a22fdd4d09b2d05337bbd7dbe39b92311d12003ee861443e578141103849ba"
+          "sha256": "7707a48f366fd39f9928b6e6ca508fa88da71456cac2314ea70c807687b05396"
         },
         {
           "path": "scripts/evaluate_mppi_rosbag.py",
           "normalization": "text_lf",
-          "sha256": "3d336b97993837f3e9c3a2ffc71ed63e695540fda8eda4dace6b8c747b4df451"
+          "sha256": "bae909e61d6a1618f9ddf403b28508ab371260da50b7290cfb76aa73c44d8f2f"
         },
         {
           "path": "scripts/run_autonomy_suite.py",
@@ -199,7 +201,7 @@
         {
           "path": "docs/cudanav_real_dataset_smoke.json",
           "normalization": "text_lf",
-          "sha256": "02fe9ffe20ed1bb3615f76bd125e65a0af1bba1c9f9f00c570efdb259c3b47e3"
+          "sha256": "a58553fb1aa23f11abe6164366f1484bf09f6a2c44b81dd50be2851ccd918596"
         },
         {
           "path": ".github/workflows/ros2_cuda_mppi.yml",
@@ -235,6 +237,16 @@
           "path": "scripts/test_publish_cudanav_dataset_evidence.py",
           "normalization": "text_lf",
           "sha256": "db76124344b73f6e4829fd0133b355daa230f073218a39fb8038049f83352c16"
+        },
+        {
+          "path": "scripts/publish_cudanav_rosbag_evidence.py",
+          "normalization": "text_lf",
+          "sha256": "ea48c9acb7b1df20854d105c9b7dafe18943916738aa92ed477dc23f00d59a7b"
+        },
+        {
+          "path": "scripts/test_publish_cudanav_rosbag_evidence.py",
+          "normalization": "text_lf",
+          "sha256": "e25befdc72ab01a49b49d3f4552eac244b9c4c7e2d29b8c47d93fbccc43d25bf"
         },
         {
           "path": "scripts/export_rosbag_motion.py",
@@ -1135,7 +1147,27 @@
         {
           "path": "ros2_ws/src/cuda_nav_bringup/launch/cudanav_recorded_shadow.launch.py",
           "normalization": "text_lf",
-          "sha256": "9cf25eddb58bca2fe34a017f94281e74b8a6a39d07ba7aa86f14b8122b237730"
+          "sha256": "0916b42283ce17290714d22849c9581b205cbf4e2ca04c3b0826da5ecb65abc8"
+        },
+        {
+          "path": "ros2_ws/src/cuda_nav_bringup/cuda_nav_bringup/recorded_path_shadow.py",
+          "normalization": "text_lf",
+          "sha256": "f7267966001bf97ed0d7e5a3add65d72622d75f1b40437f1486239b125ca1c2b"
+        },
+        {
+          "path": "ros2_ws/src/cuda_nav_bringup/config/controller_recorded_shadow.yaml",
+          "normalization": "text_lf",
+          "sha256": "6fb01aed6c9227d7a77ca0789163f850729ef2fee70138167a43f63ec92a1b66"
+        },
+        {
+          "path": "ros2_ws/src/cuda_nav_bringup/config/rosbag_qos_overrides.yaml",
+          "normalization": "text_lf",
+          "sha256": "36ba64a51e533de48029b393b7f27a8142145be0cb9df6e1d770f66e29a948f4"
+        },
+        {
+          "path": "ros2_ws/src/cuda_mppi_controller/src/cuda_mppi_controller.cpp",
+          "normalization": "text_lf",
+          "sha256": "4bdcdf95edf9d9bca5a4500669a64100b321e9412c34415b8283fa8d1973726d"
         },
         {
           "path": "ros2_ws/src/cuda_voxel_mapping/src/cuda_voxel_mapper_node.cpp",
@@ -1427,13 +1459,99 @@
     },
     {
       "id": "real_rosbag_release",
-      "status": "pending",
+      "status": "complete",
       "kind": "json_assertions",
       "generator_command": [
         "python3",
-        "scripts/run_cudanav_rosbag_replay.py",
-        "--profile",
-        "release"
+        "scripts/publish_cudanav_rosbag_evidence.py",
+        "build/paper/cudanav_real_rosbag",
+        "--output-json",
+        "docs/results/cudanav_rosbag_shadow_release_2026-07-30.json",
+        "--output-markdown",
+        "docs/results/cudanav_rosbag_shadow_release_2026-07-30.md"
+      ],
+      "artifacts": [
+        {
+          "path": "docs/results/cudanav_rosbag_shadow_release_2026-07-30.json",
+          "normalization": "text_lf",
+          "sha256": "e46e91be1aa1f2de6397b338a33226f499ba1bffd3c1799c6385dbb2ace2b513"
+        }
+      ],
+      "assertions": [
+        {
+          "json_path": "status",
+          "op": "eq",
+          "value": "passed"
+        },
+        {
+          "json_path": "source_commit",
+          "op": "eq",
+          "value": "c4b91452d079fbfa6b285d80355632a5d1c9c716"
+        },
+        {
+          "json_path": "git_dirty",
+          "op": "eq",
+          "value": false
+        },
+        {
+          "json_path": "claims.ros2_runtime",
+          "op": "eq",
+          "value": true
+        },
+        {
+          "json_path": "claims.real_sensor_data",
+          "op": "eq",
+          "value": true
+        },
+        {
+          "json_path": "claims.closed_loop",
+          "op": "eq",
+          "value": false
+        },
+        {
+          "json_path": "metrics.diagnostics_duration_s",
+          "op": "ge",
+          "value": 60.0
+        },
+        {
+          "json_path": "metrics.solve_p95_ms",
+          "op": "le",
+          "value": 50.0
+        },
+        {
+          "json_path": "metrics.command_pair_ratio",
+          "op": "ge",
+          "value": 0.9
+        },
+        {
+          "json_path": "metrics.all_colliding_ratio",
+          "op": "le",
+          "value": 0.02
+        },
+        {
+          "json_path": "metrics.quality_pass",
+          "op": "eq",
+          "value": true
+        }
+      ]
+    },
+    {
+      "id": "real_rosbag_release_report",
+      "status": "complete",
+      "kind": "file_set",
+      "generator_command": [
+        "python3",
+        "scripts/publish_cudanav_rosbag_evidence.py",
+        "build/paper/cudanav_real_rosbag",
+        "--output-markdown",
+        "docs/results/cudanav_rosbag_shadow_release_2026-07-30.md"
+      ],
+      "artifacts": [
+        {
+          "path": "docs/results/cudanav_rosbag_shadow_release_2026-07-30.md",
+          "normalization": "text_lf",
+          "sha256": "0a35d81722ac7ada395111d76674181577e75ab0197c490a207a2ba632090a62"
+        }
       ]
     },
     {

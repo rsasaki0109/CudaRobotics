@@ -137,6 +137,40 @@ class PointCloud2ClearanceTest(unittest.TestCase):
             self.assertEqual(report["command_pair_ratio"], 1.0)
             self.assertAlmostEqual(report["minimum_front_range_m"], 0.8)
 
+    def test_bag_record_timestamp_pairs_cross_epoch_headers(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            database = root / "run.db3"
+            connection = sqlite3.connect(database)
+            connection.executescript(
+                "CREATE TABLE topics(id INTEGER PRIMARY KEY, name TEXT);"
+                "CREATE TABLE messages("
+                "id INTEGER PRIMARY KEY, topic_id INTEGER, "
+                "timestamp INTEGER, data BLOB);"
+                "INSERT INTO topics VALUES(1, '/points');"
+            )
+            connection.execute(
+                "INSERT INTO messages(topic_id, timestamp, data) "
+                "VALUES(1, ?, ?)",
+                (112_000_000_345, pointcloud([(1.0, 0.0, 0.0)], 12)),
+            )
+            connection.commit()
+            connection.close()
+            diagnostics = root / "diagnostics.csv"
+            diagnostics.write_text(
+                "stamp_sec,cmd_v,cmd_vy,cmd_w\n"
+                "112.000000345,0.2,0.0,0.1\n"
+            )
+            report = analyze(
+                database,
+                root / "clearance.csv",
+                diagnostics,
+                pointcloud_topic="/points",
+                timestamp_basis="bag_record_timestamp",
+            )
+            self.assertEqual(report["timestamp_basis"], "bag_record_timestamp")
+            self.assertEqual(report["command_pair_ratio"], 1.0)
+
 
 if __name__ == "__main__":
     unittest.main()

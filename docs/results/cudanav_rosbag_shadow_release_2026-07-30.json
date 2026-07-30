@@ -1,0 +1,180 @@
+{
+  "artifacts": {
+    "controller_config_sha256": "6fb01aed6c9227d7a77ca0789163f850729ef2fee70138167a43f63ec92a1b66",
+    "diagnostics_sha256": "d08f079c222bb6abadf14e5df5782ffdb3d21e674894f8634d3cf0cd6b1645e2",
+    "evaluation_sha256": "f271168b06d1aa5cddedeb98d33051c06b3af35268b9f0f7b5a124a93f86fb1c",
+    "manifest_sha256": "cd6e8ee226ca4d430509c7113d821a8dcb6dbe5acf8a21dbf2cc3a03b0d0dd18"
+  },
+  "claims": {
+    "closed_loop": false,
+    "commands_modify_recorded_motion": false,
+    "derived_recorded_path": true,
+    "real_sensor_data": true,
+    "ros2_runtime": true
+  },
+  "dataset": {
+    "database": {
+      "bytes": 1009799168,
+      "path": "rosbag2_2024_09_12-14_59_58_0.db3",
+      "sha256": "eb80d649a41fd557ff3af5df4424051191fb696d0ebecbeb36b385702d2b4c8d"
+    },
+    "derived_path": {
+      "file_count": 2,
+      "files": [
+        {
+          "bytes": 670,
+          "path": "metadata.yaml",
+          "sha256": "f8031738b58f7789e7909f7bb59ab21e88bc0e9a6156e6121d4b077ae9a9b2de"
+        },
+        {
+          "bytes": 241664,
+          "path": "path_sidecar_0.db3",
+          "sha256": "973c18fb29006d23cf720e7dccf3ca34c128bffb8f21ef8fd308d35060b5dcd5"
+        }
+      ],
+      "total_bytes": 242334,
+      "tree_sha256": "2ec1532d5a48c46527d5d6887ab54bdf19d5966304e752090e1a74a7cb408cbe"
+    },
+    "id": "autoware_istanbul_localization_smoke",
+    "input": {
+      "file_count": 3,
+      "files": [
+        {
+          "bytes": 2775,
+          "path": "inspection.json",
+          "sha256": "19fefd9577a81416ab8810a1d278d796fb8008422b117891cec412fc787b1886"
+        },
+        {
+          "bytes": 1778,
+          "path": "metadata.yaml",
+          "sha256": "e59fa67e6fac76425e7abccffd50b3d82769ed5945422e92f743882ba3f1c84b"
+        },
+        {
+          "bytes": 1009799168,
+          "path": "rosbag2_2024_09_12-14_59_58_0.db3",
+          "sha256": "eb80d649a41fd557ff3af5df4424051191fb696d0ebecbeb36b385702d2b4c8d"
+        }
+      ],
+      "total_bytes": 1009803721,
+      "tree_sha256": "0e6471d09b8db1112686f62364da6c2d228c670d4e07ff0f342a0c41717a6114"
+    },
+    "materialization_sha256": "a29fd353375172784b8688da67fe8217bbbc23c3bad2ad97fa1ce48ff8d9d5f8"
+  },
+  "evidence_mode": "real_sensor_shadow_with_derived_path",
+  "gate": {
+    "checks": {
+      "artifact_controller_config": true,
+      "artifact_controller_log": true,
+      "artifact_diagnostics": true,
+      "artifact_evaluation": true,
+      "artifact_play_log": true,
+      "artifact_recording": true,
+      "artifact_table": true,
+      "clean_worktree": true,
+      "commands_recorded": true,
+      "config_sha256_matches": true,
+      "controller_inputs_bound": true,
+      "dataset_materialization": true,
+      "dataset_materialization_semantics": true,
+      "derived_path_contract": true,
+      "diagnostics_coverage": true,
+      "diagnostics_sha256_matches": true,
+      "evaluate_inputs_bound": true,
+      "evaluation_database_identity": true,
+      "evaluation_inputs_bound": true,
+      "evaluation_mode": true,
+      "evaluation_quality_pass": true,
+      "evaluation_schema": true,
+      "evaluation_sha256_matches": true,
+      "evidence_mode": true,
+      "git_commit_recorded": true,
+      "gpu_identity_recorded": true,
+      "input_content_unchanged": true,
+      "input_identity_schema": true,
+      "manifest_schema": true,
+      "minimum_duration": true,
+      "no_launch_errors": true,
+      "play_input_bound": true,
+      "pointcloud_evaluate_command_bound": true,
+      "pointcloud_evaluation_contract": true,
+      "process_returncodes": true,
+      "profile_matches": true,
+      "record_command_bound": true,
+      "record_topics_recorded": true,
+      "recording_content_unchanged": true,
+      "recording_identity_schema": true,
+      "required_output_topic_messages": true,
+      "required_output_topics_declared": true,
+      "required_output_topics_recorded": true
+    },
+    "passed": true,
+    "profile": "release",
+    "thresholds": {
+      "minimum_diagnostics_samples": 100,
+      "minimum_duration_sec": 60.0,
+      "require_recording": true
+    }
+  },
+  "git_dirty": false,
+  "gpu": [
+    {
+      "driver_version": "596.36",
+      "memory_total_mib": "6144",
+      "name": "NVIDIA GeForce GTX 1660 Ti",
+      "physical_index": "0",
+      "uuid": "GPU-f635286a-d68f-5039-cbc9-22d7f295b3a3"
+    }
+  ],
+  "limitations": "Recorded motion is open-loop evidence. Closed-loop success requires a live robot or simulator whose state reacts to CUDA MPPI commands.",
+  "metrics": {
+    "all_colliding_cycles": 5,
+    "all_colliding_ratio": 0.006305170239596469,
+    "command_pair_ratio": 1.0,
+    "diagnostics_duration_s": 79.02507424354553,
+    "diagnostics_samples": 793,
+    "mean_front_clearance_m": 5.800013112844822,
+    "minimum_front_range_m": 3.535006439208734,
+    "paired_command_samples": 790,
+    "pointcloud_window_samples": 790,
+    "quality_pass": true,
+    "retreat_cycles": 5,
+    "solve_max_ms": 246.482332,
+    "solve_mean_ms": 3.165844732660782,
+    "solve_p95_ms": 4.800996,
+    "valid_rollout_ratio_mean": 0.9906786308913934
+  },
+  "output_recording": {
+    "file_count": 2,
+    "files": [
+      {
+        "bytes": 8897,
+        "path": "metadata.yaml",
+        "sha256": "12fd025ce0d1014fdb68e44eddceb115a7b80a1e0e798754d1c9d402c6b6e391"
+      },
+      {
+        "bytes": 66975393,
+        "path": "recording_0.mcap",
+        "sha256": "49ebde67816a2d3d0c8468561e0d85cdedc7894eec952a9134a13538e21571f4"
+      }
+    ],
+    "required_topic_messages": {
+      "/cuda_nav/cmd_vel": 790,
+      "/cuda_nav/esdf": 794,
+      "/cuda_nav/occupancy": 796,
+      "/cuda_nav/odom": 804
+    },
+    "total_bytes": 66984290,
+    "tree_sha256": "303714f40b341aa118573bff680e52ab1a9420a36b0b6d23682a2c05f40db7c9"
+  },
+  "profile": "release",
+  "schema_version": 1,
+  "source_commit": "c4b91452d079fbfa6b285d80355632a5d1c9c716",
+  "status": "passed",
+  "thresholds": {
+    "maximum_all_colliding_ratio": 0.02,
+    "maximum_solve_p95_ms": 50.0,
+    "minimum_clearance_m": 0.1,
+    "minimum_command_pair_coverage": 0.9,
+    "minimum_valid_rollout_ratio": 0.5
+  }
+}

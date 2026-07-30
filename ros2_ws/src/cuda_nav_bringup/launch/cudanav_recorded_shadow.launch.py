@@ -12,6 +12,9 @@ def generate_launch_description():
     points_topic = LaunchConfiguration("points_topic")
     path_topic = LaunchConfiguration("path_topic")
     sensor_frame = LaunchConfiguration("sensor_frame")
+    readiness_timeout_sec = ParameterValue(
+        LaunchConfiguration("readiness_timeout_sec"), value_type=float
+    )
     use_sim_time = ParameterValue(
         LaunchConfiguration("use_sim_time"), value_type=bool
     )
@@ -35,7 +38,9 @@ def generate_launch_description():
                     "map_voxel_size": 0.20,
                     "scan_voxel_size": 0.15,
                     "map_radius": 20.0,
-                    "max_scan_age_sec": 0.5,
+                    # Recorded message headers may use sensor time rather than
+                    # the recorder's /clock epoch. Ordering is still checked.
+                    "max_scan_age_sec": 0.0,
                 }
             ],
             remappings=[("points", points_topic)],
@@ -64,7 +69,7 @@ def generate_launch_description():
                     "projection_max_z": 2.0,
                     "max_range": 12.0,
                     "rolling_margin_cells": 30,
-                    "max_scan_age_sec": 0.5,
+                    "max_scan_age_sec": 0.0,
                 }
             ],
             remappings=[("points", points_topic)],
@@ -86,7 +91,7 @@ def generate_launch_description():
                     "max_distance": 3.0,
                     "max_width": 160,
                     "max_height": 100,
-                    "max_input_age_sec": 0.5,
+                    "max_input_age_sec": 0.0,
                 }
             ],
         ),
@@ -113,6 +118,7 @@ def generate_launch_description():
             DeclareLaunchArgument("points_topic", default_value="/points"),
             DeclareLaunchArgument("path_topic", default_value="/plan"),
             DeclareLaunchArgument("sensor_frame", default_value="base_link"),
+            DeclareLaunchArgument("readiness_timeout_sec", default_value="30.0"),
             DeclareLaunchArgument("use_sim_time", default_value="true"),
             *lifecycle_nodes,
             Node(
@@ -121,7 +127,12 @@ def generate_launch_description():
                 name="cudanav_lifecycle_orchestrator",
                 namespace=namespace,
                 output="screen",
-                parameters=[common],
+                parameters=[
+                    {
+                        **common,
+                        "readiness_timeout_sec": readiness_timeout_sec,
+                    }
+                ],
             ),
             Node(
                 package="cuda_nav_bringup",

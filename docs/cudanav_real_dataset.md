@@ -94,9 +94,11 @@ The materialization gate requires positive message counts for every selected
 recorded input and for the derived Path. It rehashes both local bag trees, the
 generator report, and the acquisition inspection by default. The inspection
 binds the selected Drive file ID, exact DB name/size/SHA-256, required-topic
-checks, and dataset-spec digest to the source-bag identity. The actual
-public-bag GPU shadow replay remains outstanding; the selection alone is
-intentionally `valid: true, ready: false`.
+checks, and dataset-spec digest to the source-bag identity. The GTX 1660 Ti
+ROS 2 release replay now passes with 793 CUDA MPPI diagnostics, 790/790
+point-cloud/command pairs, 4.801 ms solve p95, and 3.535 m minimum measured
+front clearance. See
+[`results/cudanav_rosbag_shadow_release_2026-07-30.md`](results/cudanav_rosbag_shadow_release_2026-07-30.md).
 
 After a clean-commit materialization passes, publish a portable summary without
 redistributing the bag or leaking machine-local paths:
