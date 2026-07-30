@@ -1,0 +1,84 @@
+name: V1 release candidate
+
+on:
+  workflow_dispatch:
+    inputs:
+      build_run_id:
+        description: Successful Build run for this exact commit
+        required: true
+        type: string
+      python_run_id:
+        description: Successful Python package run for this exact commit
+        required: true
+        type: string
+      ros_run_id:
+        description: Successful ROS2 CUDA MPPI run for this exact commit
+        required: true
+        type: string
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  assemble:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate run identifiers
+        shell: bash
+        run: |
+          set -euo pipefail
+          for run_id in \
+            "${{ inputs.build_run_id }}" \
+            "${{ inputs.python_run_id }}" \
+            "${{ inputs.ros_run_id }}"; do
+            [[ "$run_id" =~ ^[1-9][0-9]*$ ]]
+          done
+
+      - name: Download exact-commit CI evidence
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p build/v1_rc_inputs/build
+          mkdir -p build/v1_rc_inputs/python
+          mkdir -p build/v1_rc_inputs/ros
+          gh run download "${{ inputs.build_run_id }}" \
+            --name "github-build-ci-evidence-${GITHUB_SHA}" \
+            --dir build/v1_rc_inputs/build
+          gh run download "${{ inputs.python_run_id }}" \
+            --name "python-package-ci-evidence-${GITHUB_SHA}" \
+            --dir build/v1_rc_inputs/python
+          gh run download "${{ inputs.ros_run_id }}" \
+            --name "ros-jazzy-ci-evidence-${GITHUB_SHA}" \
+            --dir build/v1_rc_inputs/ros
+
+      - name: Assemble and validate portable candidate bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -z "$(git status --porcelain)"
+          python3 scripts/v1_release_candidate.py assemble \
+            --build \
+              build/v1_rc_inputs/build/github_build_ci_evidence.json \
+            --python \
+              build/v1_rc_inputs/python/python_package_ci_evidence.json \
+            --python-artifacts \
+              build/v1_rc_inputs/python/python_artifacts.json \
+            --ros \
+              build/v1_rc_inputs/ros/ros_jazzy_ci_evidence.json \
+            --output-dir build/v1_release_candidate \
+            --commit "$GITHUB_SHA"
+          python3 scripts/v1_release_candidate.py validate \
+            build/v1_release_candidate/bundle.json \
+            --commit "$GITHUB_SHA"
+
+      - name: Upload exact-commit candidate bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: v1-release-candidate-${{ github.sha }}
+          path: build/v1_release_candidate
+          if-no-files-found: error
