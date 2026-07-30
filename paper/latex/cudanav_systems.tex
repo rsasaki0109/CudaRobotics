@@ -1,0 +1,245 @@
+\documentclass[conference]{IEEEtran}
+
+\usepackage{booktabs}
+\usepackage{cite}
+\usepackage{url}
+
+\title{CudaNav: A Reproducible End-to-End GPU Autonomy Stack}
+
+\author{\IEEEauthorblockN{Anonymous Authors}}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+GPU robotics systems often benchmark isolated kernels while leaving data
+movement, middleware integration, and end-to-end behavior outside the
+measurement boundary. We present CudaNav, an open-source stack connecting GPU
+LiDAR odometry, rolling voxel mapping, a typed Euclidean signed distance
+field, and model predictive path integral control through reusable CUDA cores
+and ROS~2/Nav2 adapters. We separate causal closed-loop simulation from
+recorded-data shadow execution and from physical cross-device reproduction.
+On an NVIDIA GeForce GTX~1660~Ti, the native stack completes 30 continuous
+alternating S-course traversals over 1,059.4 simulated seconds and 352.75~m
+with zero collisions, 0.0035\% final odometry drift, and zero frame-deadline
+misses. On a content-addressed MCD Ouster sequence, GPU odometry processes
+1,190 frames with 0.815~m ATE RMSE; the complete
+odometry--mapping--ESDF--MPPI shadow stack obtains 0.812~m ATE RMSE and
+integrates every scan. A release-profile ROS~2 simulation completes 30/30
+traversals with retained MCAP and video evidence. Every result is bound to
+source, data, hardware identity, thresholds, and raw outputs. Reproduction on
+a second distinct physical GPU model remains a declared submission blocker;
+the present artifact is therefore a candidate manuscript rather than a claim
+of completed multi-GPU validation.
+\end{abstract}
+
+\section{Introduction}
+Autonomous navigation is a causal pipeline. LiDAR odometry changes the pose
+used by mapping, mapping changes the distance field used by control, and
+control changes the next state and scan. Accelerating correspondence search
+or rollout evaluation alone does not establish that this chain is coherent,
+safe, or deadline compliant.
+
+CudaNav joins four reusable GPU stages:
+\begin{center}
+\fbox{\parbox{0.91\columnwidth}{\centering
+LiDAR or recorded PointCloud2 $\rightarrow$ GPU KISS-ICP-style odometry
+$\rightarrow$ rolling voxel map $\rightarrow$ typed ESDF
+$\rightarrow$ CUDA MPPI $\rightarrow$ command-driven plant or shadow output}}
+\end{center}
+The stack exposes the same CUDA sources through native runners, Python
+bindings, and ROS~2 lifecycle/Nav2 components. Its evidence contracts prevent
+recorded motion from being reported as closed-loop success.
+
+Our contributions are:
+\begin{enumerate}
+  \item an all-GPU odometry, mapping, distance-field, and control path without
+        a host-side algorithmic fallback;
+  \item ROS~2/Nav2 adapters that reuse the tested CUDA cores;
+  \item content-bound contracts distinguishing simulation, real-data shadow
+        execution, and physical multi-GPU reproduction; and
+  \item a consumer-GPU evaluation that retains partial and negative evidence
+        instead of silently dropping failed gates.
+\end{enumerate}
+
+\section{Related Systems}
+KISS-ICP shows that point-to-point ICP with carefully selected robust
+components can provide accurate LiDAR odometry across sensors
+\cite{vizzo2023kissicp}. CudaNav follows this minimal design philosophy while
+using GPU voxel-hash nearest-neighbor correspondences.
+
+MPPI performs sampling-based receding-horizon control efficiently on GPUs
+\cite{williams2017mppi}. CudaNav retains rollout validity, all-colliding,
+retreat, and deadline diagnostics rather than reporting solve time alone.
+Navigation2 provides lifecycle-managed ROS~2 navigation and behavior-tree
+orchestration \cite{macenski2020marathon2}; CudaNav integrates at its costmap
+and controller interfaces while keeping native and middleware evidence
+separate.
+
+\section{System}
+\subsection{GPU LiDAR Odometry}
+The odometry core downsamples each scan, predicts motion, searches neighboring
+voxel-hash cells, rejects outliers, and solves a robust point-to-point rigid
+update. Persistent device buffers retain the local map. Diagnostics include
+correspondences, inliers, nearest-neighbor time, frame time, reference error,
+and hash-capacity failures.
+
+\subsection{Rolling Mapping and ESDF}
+Registered points are fused into a bounded rolling voxel representation. A
+typed distance-field interface carries dimensions, resolution, origin,
+storage, and device ownership. GPU Euclidean distance propagation and
+inflation produce the controller field, while observed-voxel, occupied-cell,
+and map-shift counts expose stale or empty maps.
+
+\subsection{CUDA MPPI}
+The controller samples trajectories, evaluates path, goal, collision,
+clearance, curvature-speed, and path-angle terms, and updates commands by
+cost-weighted aggregation. DiffDrive, Ackermann, and Omni adapters share the
+same core. The native S-course alternates path direction without resetting the
+plant, odometry, voxel map, or ESDF, so accumulated drift remains visible.
+
+\subsection{ROS 2 Boundary}
+Lifecycle components provide GPU KISS-ICP, voxel mapping, and ESDF; a typed
+distance-field message connects the Nav2 voxel costmap layer and CUDA MPPI
+controller plugin. Exact-commit Jazzy CI checks package compilation, plugin
+loading, parameter validation, derived-path sidecars, and no-GPU contract
+tests.
+
+\section{Evidence Contracts}
+The evaluation distinguishes three non-interchangeable modes:
+\begin{table}[t]
+\centering
+\caption{Evidence boundaries.}
+\label{tab:evidence}
+\small
+\begin{tabular}{lcc}
+\toprule
+Mode & Causal scans & Real sensor \\
+\midrule
+Native/ROS~2 simulation & yes & no \\
+Recorded-data shadow & no & yes \\
+Physical GPU matrix & run-dependent & run-dependent \\
+\bottomrule
+\end{tabular}
+\end{table}
+Each manifest records a full commit, clean state, source digest, GPU model and
+UUID, driver, profile, thresholds, commands, and hashes of retained files.
+Validators reopen raw JSON, CSV, bag metadata, and media.
+
+The machine-readable ledger tracks nine claims:
+\texttt{reproducibility\_contracts},
+\texttt{real\_dataset\_materialization},
+\texttt{real\_gpu\_odometry},
+\texttt{real\_gpu\_core\_shadow},
+\texttt{native\_gpu\_core\_closed\_loop},
+\texttt{integrated\_gpu\_stack},
+\texttt{closed\_loop\_autonomy},
+\texttt{real\_data\_shadow}, and
+\texttt{multi\_gpu\_reproduction}. The first eight are supported. The final
+claim is partial because only one physical GPU model is currently retained.
+
+\section{Evaluation}
+\subsection{Continuous Native Closed Loop}
+The deterministic S-course uses a bounded $11\times5$~m workspace, two
+offset wall obstacles, a 0.24~m robot radius, 240 LiDAR rays at three heights,
+and a 0.1~s control period. Ground truth generates LiDAR and scores the run;
+the controller receives only estimated state and GPU-produced map data. The
+release profile requires 30 alternating traversals, at least 600 simulated
+seconds, zero collisions, final goal distance below 0.30~m, drift below 1\%,
+and frame-deadline miss rate below 1\%.
+
+\begin{table}[t]
+\centering
+\caption{Native continuous closed-loop release.}
+\label{tab:native}
+\small
+\begin{tabular}{lr}
+\toprule
+Metric & Result \\
+\midrule
+Traversals & 30/30 \\
+Simulated duration & 1,059.4 s \\
+Ground-truth distance & 352.748 m \\
+Final goal distance & 0.296 m \\
+Collisions & 0 \\
+KISS-ICP ATE RMSE & 0.0124 m \\
+Final drift & 0.003493\% \\
+MPPI solve p95 & 0.455 ms \\
+Full frame p95 & 5.237 ms \\
+Deadline misses & 0\% \\
+\bottomrule
+\end{tabular}
+\end{table}
+The command-effect distance equals ground-truth travel, establishing that
+commands affect subsequent plant state and scans. A second run on the same GTX
+1660~Ti also completes 30/30 traversals, but it is repeat evidence rather than
+cross-model evidence.
+
+\subsection{Real PointCloud2 Shadow Execution}
+The MCD \texttt{ntu\_day\_02} Ouster OS1-128 sources, calibration, and ground
+truth are content addressed and deterministically materialized into a
+7,559,663,616-byte ROS~2 SQLite/CDR bag. Full-window timing admission identifies
+nanoseconds as the only plausible point-time unit. After the declared
+one-second warm-up, 1,190 scans spanning 118.902~s remain.
+
+\begin{table}[t]
+\centering
+\caption{MCD release-profile results.}
+\label{tab:mcd}
+\small
+\begin{tabular}{lrr}
+\toprule
+Metric & Odometry & Full shadow stack \\
+\midrule
+Frames & 1,190 & 1,190 \\
+ATE RMSE & 0.815 m & 0.812 m \\
+Final drift & 0.472\% & 0.471\% \\
+Mean frame time & 327.148 ms & 232.294 ms \\
+GPU NN p95 & 177.821 ms & 180.835 ms \\
+ESDF p95 & -- & 1.068 ms \\
+MPPI solve p95 & -- & 0.715 ms \\
+\bottomrule
+\end{tabular}
+\end{table}
+The full stack integrates all scans, reaches 1,791,642 observed voxels, and
+executes 120 two-iteration MPPI shadow evaluations without an all-colliding
+event. These commands do not alter the recorded sequence and therefore do not
+prove real-world closed-loop navigation.
+
+\subsection{ROS 2 Closed Loop and Public Shadow Bag}
+The ROS~2 release-profile simulator completes 30/30 traversals over
+1,325.5~s and 380.12~m with zero collisions, 0.00283\% drift, and a 0.241\%
+deadline-miss rate. A retained 1.23~GB MCAP contains positive counts for
+command, odometry, occupancy, and ESDF topics, and a bound video records the
+mission.
+
+The public Istanbul shadow release adds 793 MPPI diagnostic cycles over
+79.025~s. All 790 point clouds in the control window pair with a command
+within 200~ms. Solve p95 is 4.801~ms, mean rollout validity is 0.9907, and
+front clearance remains at least 3.535~m. Five retreat cycles are retained
+rather than hidden.
+
+\section{Reproducibility and Readiness}
+The native and real-data release commands, thresholds, source hashes, dataset
+hashes, and raw-output hashes are included in the artifact ledger. The strict
+multi-GPU workflow executes the 30-traversal node on two separately labeled
+self-hosted runners, then requires two distinct UUIDs and two distinct model
+names at one commit and source digest.
+
+Current evidence contains one NVIDIA GeForce GTX~1660~Ti node. The
+\texttt{multi\_gpu\_reproduction} claim and the systems ledger remain partial
+until a second distinct physical model passes the same release profile.
+Real-robot closed-loop navigation is also outside the current claim boundary.
+These limitations are release gates, not implied completed results.
+
+\section{Conclusion}
+CudaNav demonstrates an end-to-end GPU autonomy path with causal native and
+ROS~2 simulation, real PointCloud2 shadow execution, and content-bound
+evidence. The retained results support the integrated single-GPU stack. The
+anonymous source and PDF are reproducible now; the submission artifact remains
+fail-closed until strict cross-model GPU evidence is complete.
+
+\bibliographystyle{IEEEtran}
+\bibliography{references}
+
+\end{document}

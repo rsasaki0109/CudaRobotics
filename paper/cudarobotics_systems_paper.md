@@ -27,12 +27,12 @@ collisions, 0.0035% final odometry drift, and zero 150 ms frame-deadline
 misses. On a content-addressed MCD Ouster sequence, the timed GPU KISS-ICP core
 processes 1,190 frames over 118.902 seconds with 0.815 m ATE RMSE and 0.472%
 final drift. The full odometry-mapping-ESDF-MPPI shadow pipeline processes the
-same window with 0.819 m ATE RMSE, integrates every scan, and executes 120
+same window with 0.812 m ATE RMSE, integrates every scan, and executes 120
 finite shadow-control evaluations without an all-colliding event. Every
 reported artifact is tied to source, dataset, hardware, thresholds, and raw
-outputs by a machine-checked manifest. A release-profile ROS 2 run with MCAP
-and video, and reproduction on a second GPU model, remain required before the
-broader systems claims are considered supported.
+outputs by a machine-checked manifest. A release-profile ROS 2 run retains
+MCAP and video evidence; reproduction on a second GPU model remains required
+before the broader systems claims are considered supported.
 
 ## 1. Introduction
 

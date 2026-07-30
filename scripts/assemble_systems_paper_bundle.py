@@ -14,11 +14,13 @@ from typing import Any
 from canonical_evidence_archive import sha256_file
 from paper_artifact_contract import validate_manifest
 from systems_paper_bundle import (
+    BIBLIOGRAPHY,
+    LATEX_SOURCE,
     evaluate_bundle,
     evaluate_manuscript,
+    evaluate_submission_source,
     manuscript_links,
 )
-
 
 ROOT = Path(__file__).resolve().parents[1]
 LEDGER = Path("paper/artifacts/cudarobotics_systems.json")
@@ -88,17 +90,23 @@ def assemble(
         source,
     )
     if not all(manuscript_gate.values()):
-        failed = [
-            name for name, passed in manuscript_gate.items() if not passed
-        ]
-        raise ValueError(
-            "source systems manuscript is not final: " + ", ".join(failed)
-        )
+        failed = [name for name, passed in manuscript_gate.items() if not passed]
+        raise ValueError("source systems manuscript is not final: " + ", ".join(failed))
+    submission_gate = evaluate_submission_source(
+        source / LATEX_SOURCE,
+        source / BIBLIOGRAPHY,
+        ledger,
+    )
+    if not all(submission_gate.values()):
+        failed = [name for name, passed in submission_gate.items() if not passed]
+        raise ValueError("source systems submission is not final: " + ", ".join(failed))
 
     output.mkdir(parents=True, exist_ok=True)
     categories = {
         LEDGER.as_posix(): "ledger",
         MANUSCRIPT.as_posix(): "manuscript",
+        LATEX_SOURCE: "submission_source",
+        BIBLIOGRAPHY: "submission_source",
     }
     manuscript = manuscript_path.read_text(encoding="utf-8")
     for target in manuscript_links(manuscript):
@@ -141,13 +149,9 @@ def assemble(
     }
     gate = evaluate_bundle(manifest, output, source_commit)
     if not gate["valid"] or not gate["ready"]:
-        failed = [
-            name for name, passed in gate["checks"].items() if not passed
-        ]
+        failed = [name for name, passed in gate["checks"].items() if not passed]
         failed.extend(
-            name
-            for name, passed in gate["readiness_checks"].items()
-            if not passed
+            name for name, passed in gate["readiness_checks"].items() if not passed
         )
         raise ValueError("assembled systems bundle failed: " + ", ".join(failed))
     manifest["validation"] = {
