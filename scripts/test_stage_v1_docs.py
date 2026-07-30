@@ -34,7 +34,7 @@ class StageV1DocsTest(unittest.TestCase):
             self.assertTrue(all(checks.values()), checks)
             for name in ("index.html", "install.html", "nav2.html"):
                 text = (output / name).read_text(encoding="utf-8")
-                self.assertNotIn("v0.2.0", text)
+                self.assertNotIn("0.2.0", text)
                 self.assertNotIn("CudaRobotics/blob/master/", text)
                 self.assertNotIn("CudaRobotics/tree/master/", text)
 
