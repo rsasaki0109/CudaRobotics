@@ -18,14 +18,14 @@ class V1SupportMatrixTest(unittest.TestCase):
         self.assertTrue(result["valid"], result)
         self.assertFalse(result["ready"])
         self.assertFalse(result["readiness"]["release_status"])
-        self.assertTrue(result["readiness"]["python_at_target"])
-        self.assertTrue(result["readiness"]["ros_at_target"])
+        self.assertFalse(result["readiness"]["python_at_target"])
+        self.assertFalse(result["readiness"]["ros_at_target"])
 
     def test_declared_component_version_must_match_source(self) -> None:
         matrix = deepcopy(load())
         matrix["surfaces"]["ros2"]["package_versions"][
             "cuda_kiss_icp"
-        ] = "0.3.0"
+        ] = "9.9.9"
         result = evaluate(matrix)
         self.assertFalse(result["checks"]["ros_versions"])
         self.assertFalse(result["valid"])
@@ -44,16 +44,16 @@ class V1SupportMatrixTest(unittest.TestCase):
         self.assertFalse(result["checks"]["main_command"])
         self.assertFalse(result["valid"])
 
-    def test_colab_is_pinned_to_the_immutable_target_tag(self) -> None:
+    def test_colab_is_pinned_to_the_immutable_source_tag(self) -> None:
         result = evaluate(load())
         self.assertTrue(result["checks"]["colab"], result)
-        self.assertTrue(result["readiness"]["colab_target_ref"], result)
+        self.assertFalse(result["readiness"]["colab_target_ref"], result)
 
     def test_colab_clone_cannot_float_to_master(self) -> None:
         matrix = deepcopy(load())
-        matrix["target_tag"] = "v1.0.1"
+        matrix["source_tag"] = "v0.3.1"
         result = evaluate(matrix)
-        self.assertFalse(result["checks"]["target_tag"])
+        self.assertFalse(result["checks"]["source_tag"])
         self.assertFalse(result["checks"]["colab"])
         self.assertFalse(result["readiness"]["colab_target_ref"])
 

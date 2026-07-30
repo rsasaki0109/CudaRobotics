@@ -83,6 +83,8 @@ def evaluate(
         else readiness
     )
     target = matrix.get("target_version")
+    source_version = matrix.get("source_version")
+    source_tag = matrix.get("source_tag")
     actual_python = python_version()
     actual_ros = ros_versions()
     declared_ros = surfaces.get("ros2", {}).get("package_versions")
@@ -105,6 +107,9 @@ def evaluate(
         "status": status in {"development", "release"},
         "target_version": target == "1.0.0",
         "target_tag": matrix.get("target_tag") == "v1.0.0",
+        "source_version": source_version == actual_python
+        and source_version != target,
+        "source_tag": source_tag == f"v{source_version}",
         "surface_table": isinstance(surfaces, dict)
         and {
             "python_source",
@@ -163,11 +168,11 @@ def evaluate(
         "colab": surfaces.get("colab", {}).get("requires_gpu_runtime") is True
         and surfaces.get("colab", {}).get("url") in read("README.md")
         and (
-            f"git clone --depth 1 --branch {matrix.get('target_tag')} "
+            f"git clone --depth 1 --branch {source_tag} "
             in read("examples/colab/cudarobotics_quickstart.ipynb")
         )
         and (
-            f"/tree/{matrix.get('target_tag')}/"
+            f"/tree/{source_tag}/"
             in read("examples/colab/cudarobotics_quickstart.ipynb")
         ),
         "documentation": documentation.get("install_page")
