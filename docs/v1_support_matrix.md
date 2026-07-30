@@ -4,8 +4,9 @@
 contract connecting the Python source and wheels, ROS 2 launch, Docker image,
 Colab notebook, and documentation site.
 
-The current status is deliberately `development`. The matrix records the
-versions that exist now without relabelling them as v1.0. It becomes
+The current status is deliberately `development`. The Python source and all
+supported ROS 2 packages now carry the `1.0.0` release-candidate version, but
+that version alignment alone is not a release claim. The matrix becomes
 release-ready only when:
 
 - the Python and all eight ROS packages are versioned `1.0.0`;

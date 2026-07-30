@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
-"""Ensure package, release-document, and docs-site versions stay synchronized."""
+"""Ensure v1 source packages and the published-docs declaration stay synced."""
 
 from __future__ import annotations
 
+import json
 import re
+import xml.etree.ElementTree as ET
 from pathlib import Path
 
 
@@ -18,6 +20,13 @@ def capture(path: Path, pattern: str) -> str:
 
 
 def main() -> int:
+    matrix = json.loads(
+        (REPO / "docs" / "v1_support_matrix.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    target = matrix["target_version"]
+    declared_ros = matrix["surfaces"]["ros2"]["package_versions"]
     versions = {
         "python_project": capture(
             REPO / "python" / "pyproject.toml",
@@ -27,26 +36,23 @@ def main() -> int:
             REPO / "python" / "src" / "cudarobotics" / "bindings.cpp",
             r'm\.attr\("__version__"\)\s*=\s*"([^"]+)"',
         ),
-        "cuda_mppi_controller": capture(
-            REPO / "ros2_ws" / "src" / "cuda_mppi_controller" / "package.xml",
-            r"<version>([^<]+)</version>",
-        ),
-        "cuda_robotics": capture(
-            REPO / "ros2_ws" / "src" / "cuda_robotics" / "package.xml",
-            r"<version>([^<]+)</version>",
-        ),
-        "release_notes": capture(
-            REPO / "docs" / "releases" / "v0.2.0_notes.md",
-            r"(?m)^# v([0-9]+\.[0-9]+\.[0-9]+)\b",
-        ),
-        "release_checklist": capture(
-            REPO / "docs" / "releases" / "v0.2.0_smoke_checklist.md",
-            r"(?m)^- Tag: `v([0-9]+\.[0-9]+\.[0-9]+)`$",
-        ),
     }
-    assert len(set(versions.values())) == 1, versions
-    version = next(iter(versions.values()))
-    release_label = f"v{version}"
+    for package in (*declared_ros, "cuda_robotics"):
+        versions[package] = (
+            ET.parse(REPO / "ros2_ws" / "src" / package / "package.xml")
+            .getroot()
+            .findtext("version")
+        )
+    versions["cuda_nav_bringup_setup"] = capture(
+        REPO / "ros2_ws" / "src" / "cuda_nav_bringup" / "setup.py",
+        r'(?m)^\s*version="([^"]+)"',
+    )
+
+    assert set(declared_ros.values()) == {target}, declared_ros
+    assert set(versions.values()) == {target}, versions
+
+    published = matrix["release_readiness"]["published_version"]
+    published_label = f"v{published}"
     docs_pages = (
         REPO / "docs" / "site" / "index.html",
         REPO / "docs" / "site" / "install.html",
@@ -54,10 +60,15 @@ def main() -> int:
         REPO / "docs" / "site" / "results.html",
     )
     for path in docs_pages:
-        assert release_label in path.read_text(encoding="utf-8"), (
-            f"{release_label} not found in {path}"
+        assert published_label in path.read_text(encoding="utf-8"), (
+            f"{published_label} not found in {path}"
         )
-    print(f"version consistency checks passed: {version}")
+    install = docs_pages[1].read_text(encoding="utf-8")
+    assert f"releases/tag/{published_label}" in install
+    print(
+        "version consistency checks passed: "
+        f"source={target}, published={published}"
+    )
     return 0
 
 

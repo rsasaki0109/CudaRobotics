@@ -35,8 +35,9 @@ explicit failure reporting across the complete loop.
 | Area | Implemented | Evidence still required |
 |---|---|---|
 | v0.2 closure | Published `v0.2.0` at `417e28e2ce7dfb3e1033e9c19bd3731b309cefb0`; public evidence ZIP revalidated; Build, Python manylinux, ROS 2, Docker/GHCR, CPU, and GTX 1660 Ti gates pass | Complete |
-| GPU odometry | Reusable voxel-hash KISS-ICP core, lifecycle ROS component, and exact-master Jazzy compile/package CI | Recorded-stream ROS 2 GPU runtime evidence |
-| Mapping | Rolling voxel map, exact typed ESDF, lifecycle nodes, and exact-master Jazzy compile/plugin CI | ROS 2 GPU stream latency/correctness evidence |
+| v1 release source | Python and all nine ROS 2 packages are version-aligned at `1.0.0`; the support matrix remains fail-closed in `development` | Immutable-tag fresh-clone, CudaNav multi-GPU, published-image, and deployed-docs attestations |
+| GPU odometry | Reusable voxel-hash KISS-ICP core, lifecycle ROS component, exact-master Jazzy CI, and 804 odometry outputs in the content-addressed Istanbul ROS 2 GPU shadow release | Complete |
+| Mapping | Rolling voxel map, exact typed ESDF, lifecycle nodes, exact-master Jazzy CI, and 796 occupancy plus 794 ESDF outputs in the Istanbul ROS 2 GPU shadow release | Complete |
 | Nav2 integration | Voxel costmap plugin, CUDA MPPI, deterministic closed-loop bringup; ROS 2 GPU release passes 30/30 traversals over 1325.5 seconds; public real-sensor shadow release passes 793 GPU control cycles with retained MCAP | Complete |
 | Reproducibility | Exact-master Jazzy CI passes; MCD 1,190-scan all-GPU release, clean UUID-bound ROS 2 closed-loop release, and content-addressed Istanbul real-rosbag shadow release pass on the GTX 1660 Ti | Add one physical GPU model and acquire the fresh-clone, published-image, and deployed-docs attestations from one immutable tag |
 | Contact paper | Published 32,400-episode robustness, exact 10 ms matched-compute, 3,150-episode closed-loop MuJoCo evidence, ready ledger, anonymous IEEE conference source, generated figures, and content-bound bundle/archive contracts | Select the final venue mode and real anonymous artifact URL; optional independent-hardware replication |
