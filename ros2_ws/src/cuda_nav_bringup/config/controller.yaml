@@ -1,6 +1,6 @@
 /cuda_nav/controller_server:
   ros__parameters:
-    controller_frequency: 15.0
+    controller_frequency: 10.0
     costmap_update_timeout: 0.5
     enable_stamped_cmd_vel: true
     failure_tolerance: 0.3
