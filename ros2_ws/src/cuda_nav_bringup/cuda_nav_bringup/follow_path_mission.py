@@ -28,7 +28,7 @@ class FollowPathMission(Node):
         self.declare_parameter("output_path", "/tmp/cudanav_closed_loop.json")
         self.declare_parameter("startup_delay_sec", 8.0)
         self.declare_parameter("mission_timeout_sec", 90.0)
-        self.declare_parameter("controller_frequency", 20.0)
+        self.declare_parameter("controller_frequency", 10.0)
         self.declare_parameter("traversal_count", 1)
         self._client = ActionClient(
             self,
@@ -65,7 +65,6 @@ class FollowPathMission(Node):
         self._trajectory: list[
             tuple[float, float, float, float | None, float | None]
         ] = []
-        self._shutdown_timer = None
         self.create_subscription(PoseStamped, "ground_truth", self._truth_cb, 10)
         self.create_subscription(Odometry, "odom", self._odom_cb, 10)
         self.create_subscription(Bool, "collision", self._collision_cb, 1)
@@ -209,6 +208,14 @@ class FollowPathMission(Node):
             self._finish(False, f"goal request failed: {exception}", None)
             return
         if goal_handle is None or not goal_handle.accepted:
+            if self._traversals_completed == 0:
+                self._goal_in_flight = False
+                self._mission_started = False
+                self._send_time = 0.0
+                self.get_logger().info(
+                    "action server is not active yet; retrying first goal"
+                )
+                return
             self._finish(False, "goal rejected", None)
             return
         result_future = goal_handle.get_result_async()
@@ -321,18 +328,20 @@ class FollowPathMission(Node):
         self.get_logger().info(
             f"mission complete: {reason}; evidence={self._output_path}"
         )
-        self._shutdown_timer = self.create_timer(0.2, self._shutdown)
 
-    def _shutdown(self) -> None:
-        if rclpy.ok():
-            rclpy.shutdown()
+    @property
+    def finished(self) -> bool:
+        return self._finished
 
 
 def main(args: list[str] | None = None) -> None:
     rclpy.init(args=args)
     node = FollowPathMission()
     try:
-        rclpy.spin(node)
+        while rclpy.ok() and not node.finished:
+            rclpy.spin_once(node, timeout_sec=0.1)
+    except KeyboardInterrupt:
+        pass
     finally:
         node.destroy_node()
         if rclpy.ok():

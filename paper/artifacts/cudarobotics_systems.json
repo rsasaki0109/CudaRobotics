@@ -77,26 +77,29 @@
       "id": "integrated_gpu_stack",
       "statement": "GPU KISS-ICP, rolling voxel mapping, exact typed ESDF, a Nav2 costmap bridge, and CUDA MPPI build and run as one ROS 2 Jazzy stack.",
       "submission_required": true,
-      "status": "partial",
+      "status": "supported",
       "evidence": [
         "stack_source_contract",
-        "ros_jazzy_ci"
+        "ros_jazzy_ci",
+        "closed_loop_release"
       ],
       "limitations": [
-        "Reusable CUDA sources and ROS integration are present, but a green ROS 2 Jazzy build and plugin-load run from the paper commit is still required."
+        "The retained GPU runtime run covers one GPU model; the separate multi-GPU claim remains partial."
       ]
     },
     {
       "id": "closed_loop_autonomy",
       "statement": "CudaNav completes the deterministic S-course for at least ten minutes with zero collisions, less than one percent odometry drift, and less than one percent controller deadline misses.",
       "submission_required": true,
-      "status": "partial",
+      "status": "supported",
       "evidence": [
         "native_gpu_closed_loop_release",
-        "closed_loop_release"
+        "closed_loop_release",
+        "closed_loop_release_report"
       ],
       "limitations": [
-        "The native GPU core passes the 30-traversal and ten-minute numerical contract, but no release-profile ROS 2 GPU run with retained MCAP and video is currently attached."
+        "The ROS 2 release run is deterministic command-driven simulation on one GPU model, not a real-robot or real-sensor closed-loop claim.",
+        "The 1.23 GB MCAP and derived video are retained locally and bound by SHA-256 in the portable result."
       ]
     },
     {
@@ -1117,12 +1120,12 @@
         {
           "path": "ros2_ws/src/cuda_nav_bringup/launch/cudanav_closed_loop.launch.py",
           "normalization": "text_lf",
-          "sha256": "a70b2d7e70c01c3e6faeec8b6d13a206cdb596956b86a432b3a2d7a33b46da7d"
+          "sha256": "964f5a259dcbaa820b469ff5c5cc8aac0d2810624d9eb93b48eeb3c44bc0d45d"
         },
         {
           "path": "ros2_ws/src/cuda_nav_bringup/config/controller.yaml",
           "normalization": "text_lf",
-          "sha256": "eb1efd71a66b8ead97cfd0ce1322ad74ba5b88784fd54dd123144526f3279c68"
+          "sha256": "2a9d94778069a693fec855e451f646baf1a03a17bfe74d4c0e05f5d5c55d45ca"
         },
         {
           "path": "src/voxel_mapping_gpu.cu",
@@ -1137,7 +1140,7 @@
         {
           "path": "ros2_ws/src/cuda_voxel_mapping/src/cuda_voxel_mapper_node.cpp",
           "normalization": "text_lf",
-          "sha256": "354382003750f6938db0ccbbddf3b05a379d851d568880a308a2a3a6761a7d9a"
+          "sha256": "727aaa381d8191ee824fb718394a670fcabad5b4bcf3a42c0b85dc6da7c0b618"
         },
         {
           "path": "ros2_ws/src/cuda_voxel_costmap_layer/include/cuda_voxel_costmap_layer/cuda_voxel_costmap_layer.hpp",
@@ -1328,7 +1331,7 @@
     },
     {
       "id": "closed_loop_release",
-      "status": "pending",
+      "status": "complete",
       "kind": "json_assertions",
       "generator_command": [
         "python3",
@@ -1336,7 +1339,90 @@
         "--output-dir",
         "build/paper/cudanav_closed_loop",
         "--profile",
+        "release",
+        "--traversal-count",
+        "30",
+        "--record-bag",
+        "--render-video"
+      ],
+      "artifacts": [
+        {
+          "path": "docs/results/cudanav_ros_gpu_closed_loop_release_2026-07-30.json",
+          "normalization": "text_lf",
+          "sha256": "77374b884a7a38e6786aea4a88973333c580307fb5d4937890be2f4a300cf61d"
+        }
+      ],
+      "assertions": [
+        {
+          "json_path": "status",
+          "op": "eq",
+          "value": "passed"
+        },
+        {
+          "json_path": "source_commit",
+          "op": "eq",
+          "value": "6eb0d0dca5ced88bf5ff788f61bbc76267a2a573"
+        },
+        {
+          "json_path": "git_dirty",
+          "op": "eq",
+          "value": false
+        },
+        {
+          "json_path": "claims.command_driven_closed_loop",
+          "op": "eq",
+          "value": true
+        },
+        {
+          "json_path": "metrics.traversals_completed",
+          "op": "eq",
+          "value": 30
+        },
+        {
+          "json_path": "metrics.elapsed_sec",
+          "op": "ge",
+          "value": 600.0
+        },
+        {
+          "json_path": "metrics.collision_count",
+          "op": "eq",
+          "value": 0
+        },
+        {
+          "json_path": "metrics.odometry_drift_percent",
+          "op": "lt",
+          "value": 1.0
+        },
+        {
+          "json_path": "metrics.command_deadline_miss_rate",
+          "op": "lt",
+          "value": 0.01
+        },
+        {
+          "json_path": "gates.manifest_gate",
+          "op": "eq",
+          "value": true
+        }
+      ]
+    },
+    {
+      "id": "closed_loop_release_report",
+      "status": "complete",
+      "kind": "file_set",
+      "generator_command": [
+        "python3",
+        "scripts/run_cudanav_closed_loop.py",
+        "--output-dir",
+        "build/paper/cudanav_closed_loop",
+        "--profile",
         "release"
+      ],
+      "artifacts": [
+        {
+          "path": "docs/results/cudanav_ros_gpu_closed_loop_release_2026-07-30.md",
+          "normalization": "text_lf",
+          "sha256": "b47d9d29b59c66227f29c02573fb2853cc82263035cefb683385ad4e61f831d1"
+        }
       ]
     },
     {
