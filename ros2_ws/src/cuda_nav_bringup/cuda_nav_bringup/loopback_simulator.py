@@ -214,6 +214,8 @@ def main(args: list[str] | None = None) -> None:
     node = CudaNavLoopbackSimulator()
     try:
         rclpy.spin(node)
+    except KeyboardInterrupt:
+        pass
     finally:
         node.destroy_node()
         if rclpy.ok():

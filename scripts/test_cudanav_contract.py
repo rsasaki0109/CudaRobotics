@@ -338,6 +338,7 @@ def main() -> int:
         'executable="follow_path_mission"',
         'DeclareLaunchArgument(',
         '"controller_config"',
+        '"transform_timeout_sec": 0.4',
     ):
         assert term in bringup_launch
     controller_config = (
@@ -409,6 +410,9 @@ def main() -> int:
     ).read_text(encoding="utf-8")
     assert "ChangeState" in orchestrator_source
     assert "GetState" in orchestrator_source
+    assert "contains_transform" in orchestrator_source
+    assert "_wait_for_odometry_transform" in orchestrator_source
+    assert 'TFMessage, "/tf"' in orchestrator_source
     mission_source = (
         BRINGUP_PACKAGE / "cuda_nav_bringup" / "follow_path_mission.py"
     ).read_text(encoding="utf-8")
@@ -425,6 +429,9 @@ def main() -> int:
         '"diagnostic_error_count"',
         '"diagnostic_components"',
         '"failure_counters"',
+        "while rclpy.ok() and not node.finished",
+        "action server is not active yet; retrying first goal",
+        "except KeyboardInterrupt:",
     ):
         assert term in mission_source
     evidence_source = (ROOT / "scripts" / "cudanav_evidence.py").read_text(
