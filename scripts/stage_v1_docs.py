@@ -27,6 +27,7 @@ def transform_text(text: str, *, tag: str) -> str:
         ("CudaRobotics/blob/master/", f"CudaRobotics/blob/{tag}/"),
         ("CudaRobotics/master/", f"CudaRobotics/{tag}/"),
         ("v0.2.0", f"v{VERSION}"),
+        ("0.2.0", VERSION),
     )
     transformed = text
     for old, new in replacements:
