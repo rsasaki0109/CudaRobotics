@@ -44,6 +44,12 @@ jobs:
           test "${{ inputs.tag }}" = "v1.0.0"
           SOURCE_COMMIT="$(git -C source rev-parse HEAD)"
           rsync -a --delete source/docs/site/ pages/docs/
+          rsync -a \
+            --include='*.gif' --exclude='*' \
+            source/gif/ pages/
+          while IFS= read -r -d '' asset; do
+            cmp "$asset" "pages/$(basename "$asset")"
+          done < <(find source/gif -maxdepth 1 -type f -name '*.gif' -print0)
           python3 source/scripts/write_v1_docs_release_manifest.py \
             --output pages/docs/release.json \
             --tag "${{ inputs.tag }}" \
