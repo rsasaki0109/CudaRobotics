@@ -178,7 +178,10 @@ def main() -> int:
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--commit")
     args = parser.parse_args()
-    commit = args.commit or git_text("rev-parse", "HEAD")
+    head = git_text("rev-parse", "HEAD")
+    commit = args.commit or head
+    if commit != head:
+        raise SystemExit(f"requested commit {commit} does not match source HEAD {head}")
     dirty = bool(git_text("status", "--porcelain"))
     if dirty:
         raise SystemExit("tracked worktree is dirty; commit paper sources first")
