@@ -1,0 +1,68 @@
+{
+  "schema_version": 1,
+  "evidence_mode": "ros2_gpu_closed_loop_simulation",
+  "status": "passed",
+  "profile": "release",
+  "source_commit": "6eb0d0dca5ced88bf5ff788f61bbc76267a2a573",
+  "git_dirty": false,
+  "claims": {
+    "ros2_runtime": true,
+    "gpu_odometry_mapping_esdf_control": true,
+    "command_driven_closed_loop": true,
+    "real_sensor_data": false,
+    "multi_gpu": false
+  },
+  "hardware": {
+    "name": "NVIDIA GeForce GTX 1660 Ti",
+    "uuid": "GPU-f635286a-d68f-5039-cbc9-22d7f295b3a3",
+    "memory_total_mib": 6144,
+    "driver_version": "596.36"
+  },
+  "metrics": {
+    "elapsed_sec": 1325.534834006,
+    "traversals_requested": 30,
+    "traversals_completed": 30,
+    "ground_truth_distance_m": 380.1230177132822,
+    "ground_truth_goal_distance_m": 0.15260101086230707,
+    "collision_count": 0,
+    "odometry_position_error_m": 0.010747578319004655,
+    "odometry_drift_percent": 0.00282739476910901,
+    "command_intervals": 13268,
+    "command_deadline_misses": 32,
+    "command_deadline_miss_rate": 0.002411817907747965,
+    "diagnostic_status_samples": 39982,
+    "diagnostic_error_count": 0,
+    "diagnostic_warn_count": 0,
+    "failure_counter_max": 0
+  },
+  "release_thresholds": {
+    "min_elapsed_sec": 600.0,
+    "max_collisions": 0,
+    "max_goal_distance_m": 0.25,
+    "max_drift_percent": 1.0,
+    "max_deadline_miss_rate": 0.01,
+    "min_command_intervals": 1000
+  },
+  "artifacts": {
+    "controller_config_sha256": "2a9d94778069a693fec855e451f646baf1a03a17bfe74d4c0e05f5d5c55d45ca",
+    "summary_sha256": "1055e69c3e43d548592e720385180adb76eef8ac15f7f689c5d116402a6bb278",
+    "trajectory_sha256": "efe321d85bc8cb408f1e666487fdb5e7aa1d084fcc755af340609fd85a53f3c9",
+    "video_sha256": "d8e9faccc3f1faf69ca7569a9e515ca597b7aa1c2ed3871193f237988323c445",
+    "launch_log_sha256": "d58aff8bf2b13fbe5262614511864bd0fd62785a2adf7641e0d61e1b31e5ef4f",
+    "rosbag_tree_sha256": "935face2588f0930ba2bc0348d82cfc775a1ae655837bb5097a32894b1d32859",
+    "rosbag_mcap_sha256": "15f05316c66b8b45e9808238eb3196ace5d8ad0e59e965c1dce007fd4beae433",
+    "rosbag_total_bytes": 1233851559
+  },
+  "gates": {
+    "summary_gate": true,
+    "manifest_gate": true,
+    "artifact_hashes_match": true,
+    "required_bag_topics_present": true,
+    "clean_shutdown": true
+  },
+  "limitations": [
+    "The plant and LiDAR are deterministic simulation, not real sensor data.",
+    "This run covers one physical GPU model and does not satisfy the multi-GPU claim.",
+    "The 1.23 GB retained MCAP and derived GIF remain local; this portable record binds them by SHA-256."
+  ]
+}

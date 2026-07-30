@@ -186,8 +186,8 @@ The following IDs are authoritative and are checked against the manuscript:
 | `real_gpu_odometry` | Supported | 1,190-frame timed GPU KISS-ICP release profile |
 | `real_gpu_core_shadow` | Supported | 1,190-frame native all-GPU shadow release profile |
 | `native_gpu_core_closed_loop` | Supported | 30-traversal native release plus bound visual |
-| `integrated_gpu_stack` | Partial | Jazzy compile/plugin CI passes at `724d05c`; GPU runtime attestation pending |
-| `closed_loop_autonomy` | Partial | Native release passes; ROS 2 MCAP/video release pending |
+| `integrated_gpu_stack` | Supported | Jazzy compile/plugin CI plus UUID-bound ROS 2 GPU runtime release |
+| `closed_loop_autonomy` | Supported | 30/30 ROS 2 traversals, retained MCAP/video, zero collisions |
 | `real_data_shadow` | Partial | Native release passes; ROS 2 release replay pending |
 | `multi_gpu_reproduction` | Partial | One UUID-bound GTX 1660 Ti node; second model pending |
 
