@@ -11,9 +11,10 @@ from typing import Any
 from canonical_evidence_archive import sha256_file
 from paper_artifact_contract import validate_manifest
 
-
 MODE = "cudarobotics_systems_paper_bundle"
 PAPER_ID = "cudarobotics-systems"
+LATEX_SOURCE = "paper/latex/cudanav_systems.tex"
+BIBLIOGRAPHY = "paper/latex/references.bib"
 MANIFEST_KEYS = {
     "schema_version",
     "evidence_mode",
@@ -29,6 +30,7 @@ FINAL_DRAFT_FORBIDDEN = (
     "not a submission-ready manuscript",
     "ready: false",
 )
+IDENTITY_TOKENS = ("ryohei", "sasaki", "rsasa", "@")
 
 
 def _safe_file(root: Path, relative: Any) -> Path | None:
@@ -78,12 +80,65 @@ def evaluate_manuscript(
     lowered = text.lower()
     return {
         "manuscript_readable": bool(text),
-        "title": isinstance(ledger.get("title"), str)
-        and ledger["title"] in first_line,
+        "title": isinstance(ledger.get("title"), str) and ledger["title"] in first_line,
         "claim_status_rows": claim_rows,
         "local_links": links_valid,
-        "final_status": not any(
-            phrase in lowered for phrase in FINAL_DRAFT_FORBIDDEN
+        "final_status": not any(phrase in lowered for phrase in FINAL_DRAFT_FORBIDDEN),
+    }
+
+
+def evaluate_submission_source(
+    latex_path: Path,
+    bibliography_path: Path,
+    ledger: dict[str, Any],
+) -> dict[str, bool]:
+    try:
+        latex = latex_path.read_text(encoding="utf-8")
+        bibliography = bibliography_path.read_text(encoding="utf-8")
+    except (OSError, UnicodeError):
+        latex = ""
+        bibliography = ""
+    lowered = latex.lower()
+    claims = [
+        str(claim.get("id", "")).replace("_", r"\_")
+        for claim in ledger.get("claims", [])
+        if isinstance(claim, dict)
+    ]
+    return {
+        "latex_readable": bool(latex),
+        "latex_ieee": r"\documentclass[conference]{IEEEtran}" in latex,
+        "latex_title": ledger.get("title") in latex,
+        "latex_anonymous": (
+            r"\author{\IEEEauthorblockN{Anonymous Authors}}" in latex
+            and not any(token in lowered for token in IDENTITY_TOKENS)
+        ),
+        "latex_claims": bool(claims) and all(claim in latex for claim in claims),
+        "latex_boundaries": all(
+            phrase in lowered
+            for phrase in (
+                "candidate manuscript",
+                "second distinct physical gpu model",
+                "recorded-data shadow",
+                "real-robot closed-loop navigation",
+            )
+        ),
+        "latex_results": all(
+            value in latex
+            for value in (
+                "1,059.4",
+                "352.748",
+                "0.003493",
+                "0.815",
+                "0.812",
+                "1,325.5",
+                "4.801",
+            )
+        ),
+        "latex_bibliography": (
+            r"\bibliography{references}" in latex
+            and "vizzo2023kissicp" in bibliography
+            and "macenski2020marathon2" in bibliography
+            and "williams2017mppi" in bibliography
         ),
     }
 
@@ -106,9 +161,7 @@ def evaluate_bundle(
                 else f"entry-{index}"
             )
             path = (
-                _safe_file(root, entry.get("path"))
-                if isinstance(entry, dict)
-                else None
+                _safe_file(root, entry.get("path")) if isinstance(entry, dict) else None
             )
             valid = (
                 path is not None
@@ -127,9 +180,7 @@ def evaluate_bundle(
             file_checks[key] = valid
             if isinstance(entry, dict) and isinstance(entry.get("path"), str):
                 declared.add(entry["path"])
-            if isinstance(entry, dict) and isinstance(
-                entry.get("category"), str
-            ):
+            if isinstance(entry, dict) and isinstance(entry.get("category"), str):
                 categories.add(entry["category"])
     actual = {
         path.relative_to(root).as_posix()
@@ -141,9 +192,7 @@ def evaluate_bundle(
     ledger_reference = manifest.get("ledger")
     ledger_path = _safe_file(
         root,
-        ledger_reference.get("path")
-        if isinstance(ledger_reference, dict)
-        else None,
+        ledger_reference.get("path") if isinstance(ledger_reference, dict) else None,
     )
     ledger: dict[str, Any] = {}
     ledger_gate: dict[str, Any] = {"valid": False, "ready": False}
@@ -159,9 +208,11 @@ def evaluate_bundle(
     manuscript_reference = manifest.get("manuscript")
     manuscript_path = _safe_file(
         root,
-        manuscript_reference.get("path")
-        if isinstance(manuscript_reference, dict)
-        else None,
+        (
+            manuscript_reference.get("path")
+            if isinstance(manuscript_reference, dict)
+            else None
+        ),
     )
     manuscript_gate = (
         evaluate_manuscript(manuscript_path, ledger, root)
@@ -174,6 +225,26 @@ def evaluate_bundle(
             "final_status": False,
         }
     )
+    latex_path = _safe_file(root, LATEX_SOURCE)
+    bibliography_path = _safe_file(root, BIBLIOGRAPHY)
+    submission_gate = (
+        evaluate_submission_source(
+            latex_path,
+            bibliography_path,
+            ledger,
+        )
+        if latex_path is not None and bibliography_path is not None
+        else {
+            "latex_readable": False,
+            "latex_ieee": False,
+            "latex_title": False,
+            "latex_anonymous": False,
+            "latex_claims": False,
+            "latex_boundaries": False,
+            "latex_results": False,
+            "latex_bibliography": False,
+        }
+    )
 
     source_commit = manifest.get("source_commit")
     manifest_keys = set(manifest)
@@ -184,9 +255,7 @@ def evaluate_bundle(
         "mode": manifest.get("evidence_mode") == MODE,
         "paper_id": manifest.get("paper_id") == PAPER_ID,
         "title": manifest.get("title") == ledger.get("title"),
-        "source_commit": bool(
-            re.fullmatch(r"[0-9a-f]{40}", str(source_commit))
-        )
+        "source_commit": bool(re.fullmatch(r"[0-9a-f]{40}", str(source_commit)))
         and (expected_commit is None or source_commit == expected_commit),
         "files": isinstance(files, list)
         and bool(files)
@@ -198,6 +267,7 @@ def evaluate_bundle(
             "ledger",
             "evidence",
             "linked_document",
+            "submission_source",
         }
         <= categories,
         "ledger_reference": (
@@ -214,6 +284,7 @@ def evaluate_bundle(
             and manuscript_reference["sha256"] == sha256_file(manuscript_path)
         ),
         **manuscript_gate,
+        **submission_gate,
     }
     readiness_checks = {
         "clean_commit": manifest.get("git_dirty") is False,

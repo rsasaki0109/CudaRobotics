@@ -13,7 +13,6 @@ from assemble_systems_paper_bundle import ROOT, assemble
 from paper_artifact_contract import sha256_file
 from systems_paper_bundle import evaluate_bundle, load_bundle
 
-
 COMMIT = "b" * 40
 TITLE = "CudaNav Test: A Reproducible End-to-End GPU Autonomy Stack"
 
@@ -49,6 +48,35 @@ def ready_source(root: Path) -> None:
             ]
         )
         + "\n",
+        encoding="utf-8",
+    )
+    latex_root = root / "paper/latex"
+    latex_root.mkdir(parents=True)
+    (latex_root / "cudanav_systems.tex").write_text(
+        "\n".join(
+            [
+                r"\documentclass[conference]{IEEEtran}",
+                rf"\title{{{TITLE}}}",
+                r"\author{\IEEEauthorblockN{Anonymous Authors}}",
+                r"\begin{document}",
+                r"\maketitle",
+                "This candidate manuscript keeps the second distinct "
+                "physical GPU model pending.",
+                "It separates recorded-data shadow evidence from "
+                "real-robot closed-loop navigation.",
+                r"\texttt{end\_to\_end}",
+                "Results: 1,059.4 352.748 0.003493 0.815 0.812 " "1,325.5 4.801.",
+                r"\bibliography{references}",
+                r"\end{document}",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    (latex_root / "references.bib").write_text(
+        "@article{vizzo2023kissicp,title={KISS-ICP}}\n"
+        "@article{macenski2020marathon2,title={The Marathon 2}}\n"
+        "@article{williams2017mppi,title={MPPI}}\n",
         encoding="utf-8",
     )
     ledger = {
@@ -182,6 +210,19 @@ class SystemsPaperBundleTest(unittest.TestCase):
             gate = evaluate_bundle(manifest, manifest_path.parent, COMMIT)
             self.assertFalse(gate["valid"])
             self.assertFalse(gate["checks"]["validation_record"])
+
+    def test_identity_leak_in_submission_source_is_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "source"
+            ready_source(source)
+            latex = source / "paper/latex/cudanav_systems.tex"
+            latex.write_text(
+                latex.read_text(encoding="utf-8") + "\nContact: author@example.com\n",
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(ValueError, "latex_anonymous"):
+                assemble(source, root / "bundle", COMMIT, False)
 
 
 if __name__ == "__main__":

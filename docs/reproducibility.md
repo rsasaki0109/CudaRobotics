@@ -295,9 +295,12 @@ archive-integrity gates.
 
 The systems paper has a separate fail-closed path because its claim ledger is
 not yet ready. After all submission-required claims become supported,
-`scripts/assemble_systems_paper_bundle.py` copies the final manuscript, ledger,
-all complete evidence files, and directly linked local protocols into an exact
-inventory. `scripts/archive_systems_paper_bundle.py` then produces
+`.github/workflows/systems-paper.yml` has already compiled the anonymous IEEE
+candidate source on the exact commit. `scripts/assemble_systems_paper_bundle.py`
+then copies that source, its bibliography, the final Markdown manuscript,
+ledger, all complete evidence files, and directly linked local protocols into
+an exact inventory. `scripts/archive_systems_paper_bundle.py` then produces
 `cudarobotics-systems-paper-artifact.zip`; its validator reruns the ledger
-assertions and manuscript/status/link contract after safe extraction. The
-current partial ledger is an explicit negative test and cannot be packaged.
+assertions, anonymous-source checks, and manuscript/status/link contract after
+safe extraction. The current partial ledger is an explicit negative test and
+cannot be packaged.
