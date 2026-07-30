@@ -170,9 +170,15 @@ def evaluate(
         == "docs/site/nav2.html",
         "published_version": (
             status == "development"
-            and published_version == "0.1.0"
-            and "v0.1.0 remains the latest published release"
-            in install_page
+            and isinstance(published_version, str)
+            and re.fullmatch(r"\d+\.\d+\.\d+", published_version) is not None
+            and published_version != target
+            and f"published v{published_version}" in install_page.lower()
+            and f"v{published_version}" in index_page
+            and (
+                f"releases/tag/v{published_version}"
+                in install_page
+            )
         )
         or (
             status == "release"
