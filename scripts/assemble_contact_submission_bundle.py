@@ -34,6 +34,7 @@ RESULT_PREFIXES = (
     "contact_matched_compute_2026-07-28_",
     "contact_external_fidelity_2026-07-28_",
 )
+TEXT_SUFFIXES = {".bib", ".csv", ".md", ".tex", ".txt"}
 
 
 def git_text(*args: str) -> str:
@@ -80,7 +81,15 @@ def _write_json(path: Path, payload: Any) -> None:
 
 def _copy(source: Path, destination: Path) -> None:
     destination.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(source, destination)
+    if source.suffix.lower() in TEXT_SUFFIXES:
+        payload = (
+            source.read_bytes()
+            .replace(b"\r\n", b"\n")
+            .replace(b"\r", b"\n")
+        )
+        destination.write_bytes(payload)
+    else:
+        shutil.copy2(source, destination)
 
 
 def _file_entry(root: Path, relative: str, category: str) -> dict[str, Any]:

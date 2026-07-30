@@ -43,11 +43,18 @@ MANIFEST_KEYS = {
 }
 
 
-def sha256_file(path: Path) -> str:
+def sha256_file(path: Path, normalization: str | None = None) -> str:
     digest = hashlib.sha256()
-    with path.open("rb") as stream:
-        for block in iter(lambda: stream.read(1024 * 1024), b""):
-            digest.update(block)
+    if normalization == "text_lf":
+        digest.update(
+            path.read_bytes().replace(b"\r\n", b"\n").replace(b"\r", b"\n")
+        )
+    elif normalization is None:
+        with path.open("rb") as stream:
+            for block in iter(lambda: stream.read(1024 * 1024), b""):
+                digest.update(block)
+    else:
+        raise ValueError(f"unsupported artifact normalization: {normalization}")
     return digest.hexdigest()
 
 
@@ -151,7 +158,11 @@ def evaluate_bundle(
                 and bool(sources)
                 and all(
                     (source_path := _safe_file(root, source.get("path"))) is not None
-                    and sha256_file(source_path) == source.get("sha256")
+                    and source.get("normalization") == "text_lf"
+                    and sha256_file(
+                        source_path, source.get("normalization")
+                    )
+                    == source.get("sha256")
                     for source in sources.values()
                     if isinstance(source, dict)
                 )
