@@ -79,8 +79,9 @@ class V1DocumentationEvidenceTest(unittest.TestCase):
         ).read_text(encoding="utf-8")
         self.assertIn("ref: gh-pages", workflow)
         self.assertIn(
-            "rsync -a --delete source/docs/site/ pages/docs/", workflow
+            "python3 source/scripts/stage_v1_docs.py", workflow
         )
+        self.assertIn("--output-dir pages/docs", workflow)
         self.assertIn("path: pages", workflow)
         self.assertIn("actions/deploy-pages@v4", workflow)
         self.assertIn("validate_v1_docs_source.py", workflow)
