@@ -37,6 +37,14 @@ class StageV1DocsTest(unittest.TestCase):
                 self.assertNotIn("0.2.0", text)
                 self.assertNotIn("CudaRobotics/blob/master/", text)
                 self.assertNotIn("CudaRobotics/tree/master/", text)
+            index = (output / "index.html").read_text(encoding="utf-8")
+            install = (output / "install.html").read_text(encoding="utf-8")
+            nav2 = (output / "nav2.html").read_text(encoding="utf-8")
+            self.assertIn("GPU KISS-ICP", index)
+            self.assertIn(
+                "git clone --depth 1 --branch v1.0.0", install
+            )
+            self.assertIn("v1.0.0 End-to-End CudaNav", nav2)
 
     def test_live_site_remains_the_published_v0_2_surface(self) -> None:
         index = (ROOT / "docs" / "site" / "index.html").read_text(
