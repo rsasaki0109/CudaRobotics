@@ -58,15 +58,37 @@ For a rosbag containing compatible `sensor_msgs/PointCloud2`, TF, and
 
 ```bash
 ros2 launch cuda_nav_bringup cudanav_recorded_shadow.launch.py \
-  params_file:=/path/to/controller.yaml \
+  params_file:="$(ros2 pkg prefix cuda_nav_bringup)/share/cuda_nav_bringup/config/controller_recorded_shadow.yaml" \
   diagnostics_csv:=/tmp/cudanav_diagnostics.csv \
   points_topic:=/points \
   path_topic:=/plan \
+  readiness_timeout_sec:=30.0 \
   use_sim_time:=true
 ```
 
 The launch runs GPU KISS-ICP, voxel mapping, ESDF, the Nav2 CUDA MPPI
 controller, and a small adapter that forwards the newest recorded Path to the
 FollowPath action. The adapter never synthesizes or transforms the recorded
-path. CUDA MPPI commands are shadow outputs and do not modify subsequent bag
+path, and it retains that Path across transient lifecycle rejection or an
+aborted shadow goal so startup races do not discard the only recorded plan.
+CUDA MPPI commands are shadow outputs and do not modify subsequent bag
 messages, so this launch must not be described as closed-loop success.
+
+When replaying a bag with `/tf_static`, preserve its transient-local
+durability so late-joining transform consumers receive the recorded static
+tree:
+
+```bash
+ros2 bag play /path/to/bag \
+  --qos-profile-overrides-path \
+  "$(ros2 pkg prefix cuda_nav_bringup)/share/cuda_nav_bringup/config/rosbag_qos_overrides.yaml"
+```
+
+The 30-second readiness default leaves room for controller startup, runner
+settling, and bags whose first point cloud follows their initial static TF.
+This offline-only launch also disables wall/`/clock` age rejection because
+some immutable datasets record sensor header stamps in a different epoch.
+Zero/non-monotonic stamps are still rejected; live CudaNav launches retain
+their bounded scan-age checks. Its dedicated controller config treats
+never-observed cells as traversable for shadow scoring; recorded occupied
+cells remain lethal and raw-cloud clearance is evaluated independently.

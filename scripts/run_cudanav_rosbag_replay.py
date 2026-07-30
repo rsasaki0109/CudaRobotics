@@ -282,6 +282,14 @@ def main() -> int:
                 str(quality_filter["maximum_range_m"]),
                 "--pointcloud-maximum-command-age-ms",
                 str(quality_filter["maximum_command_age_ms"]),
+                "--pointcloud-timestamp-basis",
+                dataset_spec["quality_evaluation"]["timestamp_basis"],
+                "--maximum-all-colliding-ratio",
+                str(
+                    dataset_spec["quality_evaluation"].get(
+                        "maximum_all_colliding_ratio", 0.0
+                    )
+                ),
             ]
         )
     env = os.environ.copy()

@@ -172,7 +172,13 @@ def analyze(
     minimum_range_m: float = 0.05,
     maximum_range_m: float = 50.0,
     maximum_command_age_ms: float = 200.0,
+    timestamp_basis: str = "pointcloud_header_stamp",
 ) -> dict[str, Any]:
+    if timestamp_basis not in {
+        "pointcloud_header_stamp",
+        "bag_record_timestamp",
+    }:
+        raise ValueError(f"unsupported timestamp basis: {timestamp_basis}")
     commands = diagnostics_commands(diagnostics_csv)
     command_times = [row["stamp_ns"] for row in commands]
     connection = sqlite3.connect(f"file:{db.resolve().as_posix()}?mode=ro", uri=True)
@@ -180,6 +186,11 @@ def analyze(
         rows = []
         for recorded_ns, payload in messages(connection, pointcloud_topic):
             cloud = parse_pointcloud2(payload)
+            pairing_stamp_ns = (
+                recorded_ns
+                if timestamp_basis == "bag_record_timestamp"
+                else cloud["stamp_ns"]
+            )
             clearance, finite_count, selected_count = front_clearance(
                 cloud,
                 half_angle_rad=half_angle_rad,
@@ -189,11 +200,11 @@ def analyze(
                 maximum_range_m=maximum_range_m,
             )
             index = min(
-                bisect.bisect_left(command_times, cloud["stamp_ns"]),
+                bisect.bisect_left(command_times, pairing_stamp_ns),
                 len(commands) - 1,
             )
-            if index and abs(command_times[index - 1] - cloud["stamp_ns"]) < abs(
-                command_times[index] - cloud["stamp_ns"]
+            if index and abs(command_times[index - 1] - pairing_stamp_ns) < abs(
+                command_times[index] - pairing_stamp_ns
             ):
                 index -= 1
             command = commands[index]
@@ -201,12 +212,13 @@ def analyze(
                 {
                     "recorded_ns": recorded_ns,
                     "stamp_ns": cloud["stamp_ns"],
+                    "pairing_stamp_ns": pairing_stamp_ns,
                     "frame_id": cloud["frame_id"],
                     "finite_points": finite_count,
                     "front_points": selected_count,
                     "front_min_range_m": clearance,
                     "command_age_ms": abs(
-                        command["stamp_ns"] - cloud["stamp_ns"]
+                        command["stamp_ns"] - pairing_stamp_ns
                     )
                     / 1e6,
                     "command_speed_mps": math.hypot(
@@ -227,18 +239,31 @@ def analyze(
     valid = [row for row in rows if row["front_min_range_m"] is not None]
     if not valid:
         raise ValueError("no PointCloud2 samples contain a valid front point")
-    paired = [
-        row for row in valid if row["command_age_ms"] <= maximum_command_age_ms
+    evaluation_window = [
+        row
+        for row in valid
+        if command_times[0] <= row["pairing_stamp_ns"] <= command_times[-1]
     ]
-    clearances = [float(row["front_min_range_m"]) for row in valid]
+    if not evaluation_window:
+        raise ValueError("no PointCloud2 samples overlap the diagnostics window")
+    paired = [
+        row
+        for row in evaluation_window
+        if row["command_age_ms"] <= maximum_command_age_ms
+    ]
+    clearances = [
+        float(row["front_min_range_m"]) for row in evaluation_window
+    ]
     return {
         "database": str(db.resolve()),
         "pointcloud_topic": pointcloud_topic,
         "diagnostics_source": str(diagnostics_csv.resolve()),
+        "timestamp_basis": timestamp_basis,
         "cloud_samples": len(rows),
         "valid_front_samples": len(valid),
+        "evaluation_window_samples": len(evaluation_window),
         "paired_command_samples": len(paired),
-        "command_pair_ratio": len(paired) / len(valid),
+        "command_pair_ratio": len(paired) / len(evaluation_window),
         "mean_front_clearance_m": sum(clearances) / len(clearances),
         "minimum_front_range_m": min(clearances),
         "front_below_0_5m_ratio": sum(value < 0.5 for value in clearances)

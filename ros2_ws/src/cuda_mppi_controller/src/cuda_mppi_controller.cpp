@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <iomanip>
 #include <limits>
 #include <mutex>
 #include <stdexcept>
@@ -508,6 +509,7 @@ CudaMppiController::DiagnosticsCsv CudaMppiController::openDiagnosticsCsv(
             "CudaMppiController: failed to open diagnostics_csv_path '" + path + "'");
   }
   output.enabled = true;
+  output.file << std::setprecision(17);
   output.file
     << "stamp_sec,solve_ms,best_cost,mean_cost,sampled_rollouts,valid_rollouts,"
     << "valid_rollout_ratio,all_colliding,retreating,path_points,costmap_size_x,"

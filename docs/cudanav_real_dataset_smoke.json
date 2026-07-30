@@ -56,7 +56,8 @@
     "kind": "pointcloud2_front_clearance_with_shadow_diagnostics",
     "pointcloud_topic": "/localization/util/downsample/pointcloud",
     "command_source": "cuda_mppi_diagnostics_csv",
-    "timestamp_basis": "pointcloud_header_stamp",
+    "timestamp_basis": "bag_record_timestamp",
+    "maximum_all_colliding_ratio": 0.02,
     "filter": {
       "half_angle_rad": 0.5235987755982988,
       "minimum_z_m": -0.5,
