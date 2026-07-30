@@ -200,6 +200,12 @@ The release matrix should cover:
 Objective: publish a usable toolkit and two reproducible, narrowly scoped paper
 packages.
 
+The pre-tag Build, Python package, and ROS 2 Jazzy attestations are combined
+by `.github/workflows/v1-release-candidate.yml`. The resulting portable bundle
+recomputes every gate, requires three distinct successful runs on the same
+`refs/heads/master` commit, binds the Python 1.0.0 artifact/source manifest,
+and rejects undeclared or edited files before the immutable tag is created.
+
 v1.0 release gates:
 
 - a new user can install and reach the main demo within 15 minutes;
