@@ -4,6 +4,17 @@ This directory stores benchmark artifacts that are meant to be inspected before
 running a GPU locally. They are not final paper-faithful claims; they are
 fixed-seed smoke results with enough detail to make wins and failures visible.
 
+## CudaNav ROS 2 Real-Rosbag Shadow Release, 2026-07-30
+
+- Report: [`cudanav_rosbag_shadow_release_2026-07-30.md`](cudanav_rosbag_shadow_release_2026-07-30.md)
+- Portable evidence: [`cudanav_rosbag_shadow_release_2026-07-30.json`](cudanav_rosbag_shadow_release_2026-07-30.json)
+- Scope: public Autoware Istanbul PointCloud2 + recorded static TF, with a
+  deterministic Path derived from recorded GNSS poses
+- Result: release gate passes on a GTX 1660 Ti with 793 CUDA MPPI diagnostics,
+  790/790 command-paired point clouds, 4.801 ms solve p95, and all required
+  CudaNav output topics retained in a content-addressed MCAP
+- Claim boundary: real-sensor shadow evaluation, not closed-loop navigation
+
 ## Registration External Baselines, 2026-06-11
 
 - Report: [`registration_external_baselines_2026-06-11.md`](registration_external_baselines_2026-06-11.md)

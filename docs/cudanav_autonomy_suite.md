@@ -109,7 +109,7 @@ The release suite passes only when:
 - the closed-loop MCAP is content-addressed and has positive message counts
   for every required sensor, state, control, collision, and diagnostic topic;
 - the content-addressed real rosbag release policy passes and remains labelled
-  `shadow_controller_with_recorded_motion`;
+  `real_sensor_shadow_with_derived_path`;
 - the shadow output MCAP contains positive message counts for CudaNav commands,
   odometry, occupancy, and typed ESDF;
 - the multi-GPU matrix passes with at least two physical UUIDs and two model
