@@ -5,7 +5,7 @@ package_name = "cuda_nav_bringup"
 
 setup(
     name=package_name,
-    version="1.0.0",
+    version="0.3.0",
     packages=find_packages(exclude=["test"]),
     data_files=[
         (

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Stage immutable v1 documentation without changing the live v0.2 source."""
+"""Stage immutable v1 documentation without changing the live v0.3 source."""
 
 from __future__ import annotations
 
@@ -16,19 +16,19 @@ TEXT_SUFFIXES = {".css", ".html", ".js", ".json", ".md", ".txt"}
 def transform_text(text: str, *, tag: str) -> str:
     replacements = (
         (
-            "v0.2.0 adds reproducible registration suites, typed registration\n"
-            "            results, and an evidence-labelled real-rosbag "
-            "evaluation workflow.",
+            "v0.3.0 adds the integrated CudaNav stack, release-bound evidence,\n"
+            "            reproducible registration suites, and typed "
+            "registration",
             "v1.0.0 connects GPU KISS-ICP, rolling voxel mapping, typed ESDF,\n"
             "            and ROS 2 CUDA MPPI as the quality-gated end-to-end "
             "CudaNav stack.",
         ),
         (
-            "docs/releases/v0.2.0_smoke_checklist.md",
+            "docs/releases/v0.3.0_release_checklist.md",
             "docs/releases/v1.0.0_release_checklist.md",
         ),
         (
-            "docs/releases/v0.2.0_notes.md",
+            "docs/releases/v0.3.0_notes.md",
             "docs/releases/v1.0.0_notes.md",
         ),
         ("CudaRobotics/tree/master/", f"CudaRobotics/tree/{tag}/"),
@@ -54,8 +54,8 @@ def transform_text(text: str, *, tag: str) -> str:
             "path.",
             "records the release-supported surfaces and their evidence gates.",
         ),
-        ("v0.2.0", f"v{VERSION}"),
-        ("0.2.0", VERSION),
+        ("v0.3.0", f"v{VERSION}"),
+        ("0.3.0", VERSION),
     )
     transformed = text
     for old, new in replacements:
