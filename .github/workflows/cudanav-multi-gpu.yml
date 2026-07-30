@@ -1,0 +1,208 @@
+name: CudaNav multi-GPU release
+
+on:
+  workflow_dispatch:
+    inputs:
+      runner_a_label:
+        description: Unique label for the first physical GPU runner
+        required: true
+        default: gpu-a
+        type: string
+      runner_b_label:
+        description: Unique label for the second physical GPU runner
+        required: true
+        default: gpu-b
+        type: string
+      runner_a_device:
+        description: NVIDIA physical index or UUID on runner A
+        required: true
+        default: "0"
+        type: string
+      runner_b_device:
+        description: NVIDIA physical index or UUID on runner B
+        required: true
+        default: "0"
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  preflight:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require two explicitly distinct runner labels
+        shell: bash
+        env:
+          RUNNER_A_LABEL: ${{ inputs.runner_a_label }}
+          RUNNER_B_LABEL: ${{ inputs.runner_b_label }}
+          RUNNER_A_DEVICE: ${{ inputs.runner_a_device }}
+          RUNNER_B_DEVICE: ${{ inputs.runner_b_device }}
+        run: |
+          set -euo pipefail
+          [[ "$RUNNER_A_LABEL" =~ ^[A-Za-z0-9._-]+$ ]]
+          [[ "$RUNNER_B_LABEL" =~ ^[A-Za-z0-9._-]+$ ]]
+          test "$RUNNER_A_LABEL" != "$RUNNER_B_LABEL"
+          test -n "$RUNNER_A_DEVICE"
+          test -n "$RUNNER_B_DEVICE"
+
+  gpu-a:
+    needs: preflight
+    runs-on:
+      - self-hosted
+      - Linux
+      - X64
+      - gpu
+      - ${{ inputs.runner_a_label }}
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verify clean exact source
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -z "$(git status --porcelain)"
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+
+      - name: Build native CudaNav release target
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+          cmake --build build \
+            --target cudanav_gpu_closed_loop_s_course \
+            -j"$(nproc)"
+
+      - name: Collect first physical GPU release node
+        shell: bash
+        env:
+          GPU_DEVICE: ${{ inputs.runner_a_device }}
+        run: |
+          set -euo pipefail
+          python3 scripts/run_cudanav_multi_gpu.py \
+            --evidence-kind native-release \
+            --output-dir build/cudanav_multi_gpu_node_a \
+            --devices "$GPU_DEVICE" \
+            --repetitions 1 \
+            --timeout-sec 3600 \
+            --minimum-gpu-devices 1 \
+            --minimum-gpu-models 1
+          python3 scripts/validate_cudanav_multi_gpu.py \
+            build/cudanav_multi_gpu_node_a
+          test -z "$(git status --porcelain)"
+
+      - name: Upload first content-bound node
+        uses: actions/upload-artifact@v4
+        with:
+          name: cudanav-native-node-a-${{ github.sha }}
+          path: build/cudanav_multi_gpu_node_a
+          if-no-files-found: error
+          retention-days: 30
+
+  gpu-b:
+    needs: preflight
+    runs-on:
+      - self-hosted
+      - Linux
+      - X64
+      - gpu
+      - ${{ inputs.runner_b_label }}
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verify clean exact source
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -z "$(git status --porcelain)"
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+
+      - name: Build native CudaNav release target
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+          cmake --build build \
+            --target cudanav_gpu_closed_loop_s_course \
+            -j"$(nproc)"
+
+      - name: Collect second physical GPU release node
+        shell: bash
+        env:
+          GPU_DEVICE: ${{ inputs.runner_b_device }}
+        run: |
+          set -euo pipefail
+          python3 scripts/run_cudanav_multi_gpu.py \
+            --evidence-kind native-release \
+            --output-dir build/cudanav_multi_gpu_node_b \
+            --devices "$GPU_DEVICE" \
+            --repetitions 1 \
+            --timeout-sec 3600 \
+            --minimum-gpu-devices 1 \
+            --minimum-gpu-models 1
+          python3 scripts/validate_cudanav_multi_gpu.py \
+            build/cudanav_multi_gpu_node_b
+          test -z "$(git status --porcelain)"
+
+      - name: Upload second content-bound node
+        uses: actions/upload-artifact@v4
+        with:
+          name: cudanav-native-node-b-${{ github.sha }}
+          path: build/cudanav_multi_gpu_node_b
+          if-no-files-found: error
+          retention-days: 30
+
+  aggregate:
+    needs:
+      - gpu-a
+      - gpu-b
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download first physical GPU node
+        uses: actions/download-artifact@v4
+        with:
+          name: cudanav-native-node-a-${{ github.sha }}
+          path: build/imported/node_a
+
+      - name: Download second physical GPU node
+        uses: actions/download-artifact@v4
+        with:
+          name: cudanav-native-node-b-${{ github.sha }}
+          path: build/imported/node_b
+
+      - name: Aggregate strict two-model release matrix
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -t node_a_runs < <(
+            find build/imported/node_a -type f -name manifest.json \
+              -printf '%h\n' | sort
+          )
+          mapfile -t node_b_runs < <(
+            find build/imported/node_b -type f -name manifest.json \
+              -printf '%h\n' | sort
+          )
+          test "${#node_a_runs[@]}" -eq 1
+          test "${#node_b_runs[@]}" -eq 1
+          python3 scripts/run_cudanav_multi_gpu.py \
+            --evidence-kind native-release \
+            --output-dir build/cudanav_multi_gpu_release \
+            --import-run "${node_a_runs[0]}" \
+            --import-run "${node_b_runs[0]}" \
+            --minimum-gpu-devices 2 \
+            --minimum-gpu-models 2
+          python3 scripts/validate_cudanav_multi_gpu.py \
+            build/cudanav_multi_gpu_release
+          test -z "$(git status --porcelain)"
+
+      - name: Upload strict multi-GPU release evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: cudanav-multi-gpu-release-${{ github.sha }}
+          path: build/cudanav_multi_gpu_release
+          if-no-files-found: error
+          retention-days: 90
