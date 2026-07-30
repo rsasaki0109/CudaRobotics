@@ -17,6 +17,12 @@
 
 namespace cuda_voxel_mapping {
 
+nav_msgs::msg::OccupancyGrid make_occupancy_message(
+  const cudarobotics::OccupancyProjection & projection,
+  const rclcpp::Time & stamp,
+  const rclcpp::Time & map_load_time,
+  const std::string & frame_id);
+
 class CudaVoxelMapperNode : public rclcpp_lifecycle::LifecycleNode
 {
 public:
