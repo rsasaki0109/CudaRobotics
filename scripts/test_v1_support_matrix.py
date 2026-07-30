@@ -48,6 +48,15 @@ class V1SupportMatrixTest(unittest.TestCase):
         result = evaluate(load())
         self.assertFalse(result["readiness"]["colab_target_ref"])
 
+    def test_release_documents_are_part_of_the_surface_contract(self) -> None:
+        matrix = deepcopy(load())
+        matrix["surfaces"]["documentation"]["release_notes"] = (
+            "docs/releases/v0.2.0_notes.md"
+        )
+        result = evaluate(matrix)
+        self.assertFalse(result["checks"]["documentation"])
+        self.assertFalse(result["valid"])
+
     def test_development_published_version_must_match_docs(self) -> None:
         matrix = deepcopy(load())
         matrix["release_readiness"]["published_version"] = "0.1.0"

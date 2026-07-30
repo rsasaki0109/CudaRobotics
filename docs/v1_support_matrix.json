@@ -58,7 +58,9 @@
     "documentation": {
       "site": "https://rsasaki0109.github.io/CudaRobotics/docs/",
       "install_page": "docs/site/install.html",
-      "nav2_page": "docs/site/nav2.html"
+      "nav2_page": "docs/site/nav2.html",
+      "release_notes": "docs/releases/v1.0.0_notes.md",
+      "release_checklist": "docs/releases/v1.0.0_release_checklist.md"
     }
   },
   "release_readiness": {
