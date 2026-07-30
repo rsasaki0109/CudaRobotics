@@ -1,0 +1,94 @@
+{
+  "schema_version": 1,
+  "evidence_mode": "gallery_gpu_regeneration",
+  "status": "passed",
+  "generated_at": "2026-07-30T07:06:17.4475286Z",
+  "source_commit": "6bf402ba7ded5fc56142a60a069f8794f52f6bb0",
+  "source_clean_before_run": true,
+  "environment": {
+    "gpu_name": "NVIDIA GeForce GTX 1660 Ti",
+    "gpu_uuid": "GPU-f635286a-d68f-5039-cbc9-22d7f295b3a3",
+    "driver_version": "596.36",
+    "cuda": "12.6.85",
+    "cuda_architecture": "75",
+    "opencv": "4.6.0",
+    "ffmpeg": "6.1.1-3ubuntu5",
+    "os": "Ubuntu 24.04 under WSL2"
+  },
+  "configure_command": "cmake -S . -B build75 -DCMAKE_BUILD_TYPE=Release -DCMAKE_CUDA_COMPILER=/usr/local/cuda-12.6/bin/nvcc -DCMAKE_CUDA_ARCHITECTURES=75",
+  "build_targets": [
+    "gpu_batched_ilqr",
+    "gpu_correlative_scan_matching",
+    "gpu_csm_submap_slam",
+    "gpu_jfa_edt",
+    "gpu_lk_optical_flow",
+    "gpu_marching_cubes",
+    "gpu_tsdf_fusion"
+  ],
+  "checks": {
+    "all_targets_built": true,
+    "all_runs_completed": true,
+    "all_gif89a": true,
+    "all_nonempty": true,
+    "all_multiframe": true,
+    "all_first_last_frames_differ": true
+  },
+  "artifacts": [
+    {
+      "path": "gif/gpu_batched_ilqr.gif",
+      "bytes": 1366802,
+      "sha256": "70a7871312840843c274ab7dfbf0cc93b9e9ebd24a54a984d821e4b4ec938c02",
+      "width": 900,
+      "height": 506,
+      "frames": 39
+    },
+    {
+      "path": "gif/gpu_correlative_scan_matching.gif",
+      "bytes": 2889784,
+      "sha256": "125f8ea4274585c1e7ea963289cfe394b793ceb7717ee1939cfbf6a41bc1420e",
+      "width": 760,
+      "height": 280,
+      "frames": 44
+    },
+    {
+      "path": "gif/gpu_csm_submap_slam.gif",
+      "bytes": 1543194,
+      "sha256": "1e5497e1586605c106a6277afae910197bcbc624d33306e847956aa270710e79",
+      "width": 900,
+      "height": 325,
+      "frames": 207
+    },
+    {
+      "path": "gif/gpu_jfa_edt.gif",
+      "bytes": 2308918,
+      "sha256": "fd7c1e9fde918b9d7f3dfc557118dd2fecb7046a8071ff5e8cf28e35db705198",
+      "width": 640,
+      "height": 640,
+      "frames": 12
+    },
+    {
+      "path": "gif/gpu_lk_optical_flow.gif",
+      "bytes": 509255,
+      "sha256": "1d1fef5facd75189e39c8daf51516089804732314ed131dde18561037a7ad87c",
+      "width": 760,
+      "height": 600,
+      "frames": 24
+    },
+    {
+      "path": "gif/gpu_marching_cubes.gif",
+      "bytes": 1017440,
+      "sha256": "952c429ce438e6444c243f01ebec77708538cf47896cf94e74524c20489d0d4a",
+      "width": 760,
+      "height": 600,
+      "frames": 36
+    },
+    {
+      "path": "gif/gpu_tsdf_fusion.gif",
+      "bytes": 940037,
+      "sha256": "a3d4834218605c1c869bbd609239a791426f39b7a5f72f7a65d80550df6461b1",
+      "width": 760,
+      "height": 600,
+      "frames": 24
+    }
+  ]
+}
