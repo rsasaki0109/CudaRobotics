@@ -44,8 +44,17 @@ class V1SupportMatrixTest(unittest.TestCase):
         self.assertFalse(result["checks"]["main_command"])
         self.assertFalse(result["valid"])
 
-    def test_current_colab_master_link_is_not_release_ready(self) -> None:
+    def test_colab_is_pinned_to_the_immutable_target_tag(self) -> None:
         result = evaluate(load())
+        self.assertTrue(result["checks"]["colab"], result)
+        self.assertTrue(result["readiness"]["colab_target_ref"], result)
+
+    def test_colab_clone_cannot_float_to_master(self) -> None:
+        matrix = deepcopy(load())
+        matrix["target_tag"] = "v1.0.1"
+        result = evaluate(matrix)
+        self.assertFalse(result["checks"]["target_tag"])
+        self.assertFalse(result["checks"]["colab"])
         self.assertFalse(result["readiness"]["colab_target_ref"])
 
     def test_release_documents_are_part_of_the_surface_contract(self) -> None:

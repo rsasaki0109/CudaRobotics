@@ -1132,6 +1132,9 @@ add_test(NAME check_v1_release_archive
 add_test(NAME check_v1_documentation_evidence
   COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/test_v1_documentation_evidence.py
   WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/scripts)
+add_test(NAME check_stage_v1_docs
+  COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/test_stage_v1_docs.py
+  WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/scripts)
 add_test(NAME check_v1_quickstart_evidence
   COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/test_v1_quickstart_evidence.py
     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/scripts)

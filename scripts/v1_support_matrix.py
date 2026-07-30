@@ -162,8 +162,13 @@ def evaluate(
         and "driver (>= 525" in read("docker/README.md"),
         "colab": surfaces.get("colab", {}).get("requires_gpu_runtime") is True
         and surfaces.get("colab", {}).get("url") in read("README.md")
-        and "git clone --depth 1" in read(
-            "examples/colab/cudarobotics_quickstart.ipynb"
+        and (
+            f"git clone --depth 1 --branch {matrix.get('target_tag')} "
+            in read("examples/colab/cudarobotics_quickstart.ipynb")
+        )
+        and (
+            f"/tree/{matrix.get('target_tag')}/"
+            in read("examples/colab/cudarobotics_quickstart.ipynb")
         ),
         "documentation": documentation.get("install_page")
         == "docs/site/install.html"
