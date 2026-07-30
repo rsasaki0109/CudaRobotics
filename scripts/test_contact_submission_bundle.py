@@ -10,6 +10,7 @@ import unittest
 
 from assemble_contact_submission_bundle import assemble
 from contact_submission_bundle import evaluate_bundle, load_bundle
+from paper_artifact_contract import sha256_file
 
 
 COMMIT = "a" * 40
@@ -75,6 +76,28 @@ class ContactSubmissionBundleTest(unittest.TestCase):
         self.assertEqual(sum(row["episodes"] for row in external), 1050)
         self.assertEqual(sum(row["successes"] for row in external), 480)
         self.assertAlmostEqual(480 / 1050, 0.45714285714285713)
+        for source in figure_manifest["sources"].values():
+            self.assertEqual(source["normalization"], "text_lf")
+            self.assertEqual(
+                source["sha256"],
+                sha256_file(
+                    self.output / source["path"],
+                    source["normalization"],
+                ),
+            )
+
+    def test_text_files_are_canonical_lf(self) -> None:
+        text_suffixes = {".bib", ".csv", ".md", ".tex", ".txt"}
+        text_paths = [
+            path
+            for path in self.output.rglob("*")
+            if path.is_file() and path.suffix.lower() in text_suffixes
+        ]
+        self.assertTrue(text_paths)
+        for path in text_paths:
+            payload = path.read_bytes()
+            self.assertNotIn(b"\r\n", payload, path)
+            self.assertNotIn(b"\r", payload, path)
 
     def test_tampered_manuscript_is_rejected(self) -> None:
         manuscript = self.output / "paper/diff_mppi_submission_draft.md"
