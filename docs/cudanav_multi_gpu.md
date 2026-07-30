@@ -85,6 +85,29 @@ physical GPU UUIDs, distinct model names, and a complete repetition matrix.
 Each aggregate run row binds the copied child manifest SHA-256, preventing a
 post-import edit even when the edited child would still satisfy the semantic
 smoke thresholds.
+
+## GitHub Actions collection
+
+The manual `.github/workflows/cudanav-multi-gpu.yml` workflow automates the
+same native cross-machine release. Register two Linux x86_64 CUDA runners with
+the common `self-hosted`, `Linux`, `X64`, and `gpu` labels, plus two distinct
+self-hosted runner labels such as `gpu-a` and `gpu-b`. Dispatch the workflow
+from the exact release-candidate ref:
+
+```bash
+gh workflow run cudanav-multi-gpu.yml --ref master \
+  -f runner_a_label=gpu-a -f runner_a_device=0 \
+  -f runner_b_label=gpu-b -f runner_b_device=0
+```
+
+Each runner builds the native CudaNav target and records one 30-traversal
+release node. The GitHub-hosted aggregation job downloads both unedited
+content-bound node directories and restores the publication thresholds:
+two distinct physical GPU UUIDs, two distinct GPU model names, one source
+commit, one source digest, and one complete repetition from each device. It
+uploads `cudanav-multi-gpu-release-<commit>` only when the strict validator
+passes. Distinct labels are required at dispatch and the aggregate gate still
+rejects two labels that ultimately identify the same GPU UUID or model.
 If multiple repetitions are imported, every physical GPU must contribute the
 same count. `--import-run` cannot be combined with local `--devices`.
 
