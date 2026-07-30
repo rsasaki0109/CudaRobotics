@@ -28,11 +28,18 @@ COLORS = {
 }
 
 
-def sha256_file(path: Path) -> str:
+def sha256_file(path: Path, normalization: str | None = None) -> str:
     digest = hashlib.sha256()
-    with path.open("rb") as stream:
-        for block in iter(lambda: stream.read(1024 * 1024), b""):
-            digest.update(block)
+    if normalization == "text_lf":
+        digest.update(
+            path.read_bytes().replace(b"\r\n", b"\n").replace(b"\r", b"\n")
+        )
+    elif normalization is None:
+        with path.open("rb") as stream:
+            for block in iter(lambda: stream.read(1024 * 1024), b""):
+                digest.update(block)
+    else:
+        raise ValueError(f"unsupported source normalization: {normalization}")
     return digest.hexdigest()
 
 
@@ -293,7 +300,8 @@ def render(output_dir: Path) -> dict[str, Any]:
         "sources": {
             name: {
                 "path": path.relative_to(ROOT).as_posix(),
-                "sha256": sha256_file(path),
+                "normalization": "text_lf",
+                "sha256": sha256_file(path, "text_lf"),
             }
             for name, path in SOURCES.items()
         },
