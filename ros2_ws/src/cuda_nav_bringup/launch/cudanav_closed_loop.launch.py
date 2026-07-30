@@ -55,6 +55,7 @@ def generate_launch_description():
                     "diagnostics_topic": "mapping_diagnostics",
                     "odom_frame": "odom",
                     "expected_sensor_frame": "base_link",
+                    "transform_timeout_sec": 0.4,
                     "width": 160,
                     "height": 100,
                     "depth": 24,

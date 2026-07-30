@@ -3,11 +3,23 @@
 from __future__ import annotations
 
 import sys
+import time
 
 from lifecycle_msgs.msg import State, Transition
 from lifecycle_msgs.srv import ChangeState, GetState
 import rclpy
 from rclpy.node import Node
+from tf2_msgs.msg import TFMessage
+
+
+def contains_transform(
+    message: TFMessage, parent_frame: str, child_frame: str
+) -> bool:
+    return any(
+        transform.header.frame_id == parent_frame
+        and transform.child_frame_id == child_frame
+        for transform in message.transforms
+    )
 
 
 class LifecycleOrchestrator(Node):
@@ -23,6 +35,9 @@ class LifecycleOrchestrator(Node):
             ],
         )
         self.declare_parameter("service_timeout_sec", 60.0)
+        self.declare_parameter("readiness_timeout_sec", 10.0)
+        self.declare_parameter("readiness_parent_frame", "odom")
+        self.declare_parameter("readiness_child_frame", "base_link")
 
     def run(self) -> bool:
         timeout = float(self.get_parameter("service_timeout_sec").value)
@@ -42,7 +57,41 @@ class LifecycleOrchestrator(Node):
                 timeout,
             ):
                 return False
+            if (
+                target == "cuda_kiss_icp_odometry"
+                and not self._wait_for_odometry_transform()
+            ):
+                return False
         self.get_logger().info("CudaNav lifecycle sequence is active")
+        return True
+
+    def _wait_for_odometry_transform(self) -> bool:
+        parent = str(self.get_parameter("readiness_parent_frame").value)
+        child = str(self.get_parameter("readiness_child_frame").value)
+        timeout = float(self.get_parameter("readiness_timeout_sec").value)
+        ready = False
+
+        def callback(message: TFMessage) -> None:
+            nonlocal ready
+            ready = ready or contains_transform(message, parent, child)
+
+        subscription = self.create_subscription(
+            TFMessage, "/tf", callback, 10
+        )
+        deadline = time.monotonic() + timeout
+        try:
+            while not ready and time.monotonic() < deadline:
+                rclpy.spin_once(self, timeout_sec=0.1)
+        finally:
+            self.destroy_subscription(subscription)
+        if not ready:
+            self.get_logger().error(
+                f"timed out waiting for transform {parent}->{child}"
+            )
+            return False
+        self.get_logger().info(
+            f"runtime readiness confirmed by transform {parent}->{child}"
+        )
         return True
 
     def _transition(

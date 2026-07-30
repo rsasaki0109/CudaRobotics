@@ -144,10 +144,16 @@ def stop_process(process: subprocess.Popen[Any]) -> None:
         if os.name == "nt":
             process.send_signal(signal.CTRL_BREAK_EVENT)
         else:
-            os.killpg(process.pid, signal.SIGINT)
+            # Signal ros2 launch itself so it can shut down managed processes
+            # in dependency order instead of delivering a duplicate SIGINT to
+            # every member of the process group.
+            process.send_signal(signal.SIGINT)
         process.wait(timeout=15.0)
     except (OSError, subprocess.TimeoutExpired):
-        process.kill()
+        if os.name == "nt":
+            process.kill()
+        else:
+            os.killpg(process.pid, signal.SIGKILL)
         process.wait(timeout=10.0)
 
 
@@ -271,6 +277,9 @@ def main() -> int:
                 deadline = time.monotonic() + timeout_sec
                 while time.monotonic() < deadline:
                     if summary_path.is_file():
+                        # Let the mission node finish its callback and destroy
+                        # its ROS entities before stopping the remaining graph.
+                        time.sleep(1.0)
                         break
                     if process.poll() is not None:
                         break

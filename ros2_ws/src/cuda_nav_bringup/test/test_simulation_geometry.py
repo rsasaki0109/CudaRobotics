@@ -8,6 +8,7 @@ from cuda_nav_bringup.simulation_geometry import (
     default_segments,
     interpolate_polyline,
     mission_waypoints,
+    point_segment_distance,
     raycast,
 )
 
@@ -27,8 +28,16 @@ def test_collision_and_course_clearance():
     segments = default_segments()
     assert collides(-0.80, 0.0, 0.24, segments)
     assert not collides(0.0, 0.0, 0.24, segments)
-    for x, y, _ in interpolate_polyline(mission_waypoints(), 0.02):
+    path = interpolate_polyline(mission_waypoints(), 0.02)
+    for x, y, _ in path:
         assert not collides(x, y, 0.24, segments)
+    minimum_clearance = min(
+        point_segment_distance(x, y, segment)
+        for x, y, _ in path
+        for segment in segments
+    )
+    # Keep a numerical margin beyond the configured 0.60 m inflation radius.
+    assert minimum_clearance >= 0.80
 
 
 def test_mission_polyline_is_dense_and_finite():
