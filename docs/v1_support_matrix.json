@@ -3,6 +3,8 @@
   "status": "development",
   "target_version": "1.0.0",
   "target_tag": "v1.0.0",
+  "source_version": "0.3.0",
+  "source_tag": "v0.3.0",
   "main_demo": {
     "surface": "docker_source",
     "time_budget_seconds": 900,
@@ -13,14 +15,14 @@
   },
   "surfaces": {
     "python_source": {
-      "version": "1.0.0",
+      "version": "0.3.0",
       "python": ">=3.9",
       "platform": "Linux x86_64",
       "cuda_toolkit": ">=12.0",
       "command": "python examples/python/mppi_quickstart.py"
     },
     "python_wheels": {
-      "version": "1.0.0",
+      "version": "0.3.0",
       "platform": "manylinux x86_64",
       "python": [
         "cp310",
@@ -34,14 +36,14 @@
       "cuda_toolkit": "12.6",
       "command": "ros2 launch cuda_nav_bringup cudanav_closed_loop.launch.py",
       "package_versions": {
-        "cuda_robotics_msgs": "1.0.0",
-        "cuda_robotics_common": "1.0.0",
-        "cuda_kiss_icp": "1.0.0",
-        "cuda_voxel_mapping": "1.0.0",
-        "cuda_esdf": "1.0.0",
-        "cuda_voxel_costmap_layer": "1.0.0",
-        "cuda_mppi_controller": "1.0.0",
-        "cuda_nav_bringup": "1.0.0"
+        "cuda_robotics_msgs": "0.3.0",
+        "cuda_robotics_common": "0.3.0",
+        "cuda_kiss_icp": "0.3.0",
+        "cuda_voxel_mapping": "0.3.0",
+        "cuda_esdf": "0.3.0",
+        "cuda_voxel_costmap_layer": "0.3.0",
+        "cuda_mppi_controller": "0.3.0",
+        "cuda_nav_bringup": "0.3.0"
       }
     },
     "docker_source": {
@@ -51,7 +53,7 @@
       "mode": "cudanav"
     },
     "colab": {
-      "url": "https://colab.research.google.com/github/rsasaki0109/CudaRobotics/blob/v1.0.0/examples/colab/cudarobotics_quickstart.ipynb",
+      "url": "https://colab.research.google.com/github/rsasaki0109/CudaRobotics/blob/v0.3.0/examples/colab/cudarobotics_quickstart.ipynb",
       "scope": "Python MPPI and registration GPU quickstart",
       "requires_gpu_runtime": true
     },
@@ -64,7 +66,7 @@
     }
   },
   "release_readiness": {
-    "published_version": "0.2.0",
+    "published_version": "0.3.0",
     "quickstart_15_minute_evidence": null,
     "cudanav_release_evidence": null,
     "docker_gpu_evidence": null,
