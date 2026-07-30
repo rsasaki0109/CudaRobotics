@@ -52,8 +52,14 @@ def build_report(
     minimum_clearance_m: float,
     maximum_solve_p95_ms: float,
     minimum_valid_ratio: float,
+    maximum_all_colliding_ratio: float = 0.0,
     evidence_mode: str = "shadow_controller_with_recorded_motion",
 ) -> dict[str, object]:
+    all_colliding_ratio = (
+        int(diagnostics["all_colliding_cycles"]) / int(diagnostics["samples"])
+        if diagnostics is not None
+        else 0.0
+    )
     checks = {
         "motion_has_duration": float(motion["duration_s"]) > 0.0,
         "motion_has_commands": int(motion["command_samples"]) > 0,
@@ -73,8 +79,8 @@ def build_report(
                     float(diagnostics["valid_rollout_ratio_mean"])
                     >= minimum_valid_ratio
                 ),
-                "no_all_colliding_cycles": (
-                    int(diagnostics["all_colliding_cycles"]) == 0
+                "bounded_all_colliding_ratio": (
+                    all_colliding_ratio <= maximum_all_colliding_ratio
                 ),
             }
         )
@@ -89,6 +95,7 @@ def build_report(
             "minimum_clearance_m": minimum_clearance_m,
             "maximum_solve_p95_ms": maximum_solve_p95_ms,
             "minimum_valid_rollout_ratio": minimum_valid_ratio,
+            "maximum_all_colliding_ratio": maximum_all_colliding_ratio,
             "minimum_command_pair_coverage": 0.90,
         },
         "motion": motion,
@@ -197,9 +204,17 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--pointcloud-maximum-command-age-ms", type=float, default=200.0
     )
+    parser.add_argument(
+        "--pointcloud-timestamp-basis",
+        choices=("pointcloud_header_stamp", "bag_record_timestamp"),
+        default="pointcloud_header_stamp",
+    )
     parser.add_argument("--minimum-clearance-m", type=float, default=0.10)
     parser.add_argument("--maximum-solve-p95-ms", type=float, default=50.0)
     parser.add_argument("--minimum-valid-ratio", type=float, default=0.50)
+    parser.add_argument(
+        "--maximum-all-colliding-ratio", type=float, default=0.0
+    )
     return parser.parse_args()
 
 
@@ -300,6 +315,7 @@ def main() -> int:
             minimum_range_m=args.pointcloud_minimum_range_m,
             maximum_range_m=args.pointcloud_maximum_range_m,
             maximum_command_age_ms=args.pointcloud_maximum_command_age_ms,
+            timestamp_basis=args.pointcloud_timestamp_basis,
         )
         evidence_mode = "real_sensor_shadow_with_derived_path"
     else:
@@ -324,6 +340,7 @@ def main() -> int:
         minimum_clearance_m=args.minimum_clearance_m,
         maximum_solve_p95_ms=args.maximum_solve_p95_ms,
         minimum_valid_ratio=args.minimum_valid_ratio,
+        maximum_all_colliding_ratio=args.maximum_all_colliding_ratio,
         evidence_mode=evidence_mode,
     )
     write_report(report, args.output_dir)

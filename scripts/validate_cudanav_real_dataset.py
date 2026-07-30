@@ -150,7 +150,8 @@ def evaluate_spec(spec: dict[str, Any]) -> dict[str, bool]:
             == "pointcloud2_front_clearance_with_shadow_diagnostics"
             and quality.get("pointcloud_topic") == expected_pointcloud[0]
             and quality.get("command_source") == "cuda_mppi_diagnostics_csv"
-            and quality.get("timestamp_basis") == "pointcloud_header_stamp"
+            and quality.get("timestamp_basis")
+            in {"pointcloud_header_stamp", "bag_record_timestamp"}
             and quality.get("filter")
             == {
                 "half_angle_rad": 0.5235987755982988,
@@ -161,6 +162,12 @@ def evaluate_spec(spec: dict[str, Any]) -> dict[str, bool]:
                 "maximum_command_age_ms": 200.0,
             }
             and quality.get("minimum_command_pair_ratio") == 0.9
+            and isinstance(
+                quality.get("maximum_all_colliding_ratio", 0.0), (int, float)
+            )
+            and 0.0
+            <= quality.get("maximum_all_colliding_ratio", 0.0)
+            <= 1.0
         ),
     }
 

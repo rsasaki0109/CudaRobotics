@@ -374,9 +374,35 @@ def main() -> int:
         'executable="recorded_path_shadow"',
         'DeclareLaunchArgument("points_topic"',
         'DeclareLaunchArgument("path_topic"',
+        'DeclareLaunchArgument("readiness_timeout_sec"',
         'DeclareLaunchArgument("use_sim_time"',
+        '"readiness_timeout_sec": readiness_timeout_sec',
+        '"max_scan_age_sec": 0.0',
+        '"max_input_age_sec": 0.0',
     ):
         assert term in shadow_launch
+    rosbag_qos = (
+        BRINGUP_PACKAGE / "config" / "rosbag_qos_overrides.yaml"
+    ).read_text(encoding="utf-8")
+    for term in ("/tf_static:", "reliable", "transient_local"):
+        assert term in rosbag_qos
+    setup_source = (BRINGUP_PACKAGE / "setup.py").read_text(encoding="utf-8")
+    assert '"config/rosbag_qos_overrides.yaml"' in setup_source
+    assert '"config/controller_recorded_shadow.yaml"' in setup_source
+    shadow_controller_config = (
+        BRINGUP_PACKAGE / "config" / "controller_recorded_shadow.yaml"
+    ).read_text(encoding="utf-8")
+    assert "      max_map_age_sec: 0.0" in shadow_controller_config
+    assert "      unknown_is_free: true" in shadow_controller_config
+    mppi_controller_source = (
+        ROOT
+        / "ros2_ws"
+        / "src"
+        / "cuda_mppi_controller"
+        / "src"
+        / "cuda_mppi_controller.cpp"
+    ).read_text(encoding="utf-8")
+    assert "std::setprecision(17)" in mppi_controller_source
     shadow_source = (
         BRINGUP_PACKAGE
         / "cuda_nav_bringup"
@@ -387,6 +413,8 @@ def main() -> int:
         "Path",
         "minimum_path_poses",
         "commands do not alter",
+        "self._retain_inflight()",
+        "retaining recorded path for retry",
     ):
         assert term in shadow_source
     simulator_source = (

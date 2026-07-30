@@ -525,12 +525,22 @@ def evaluate_manifest(
                             "maximum_command_age_ms"
                         ]
                     ),
+                    "--pointcloud-timestamp-basis": spec[
+                        "quality_evaluation"
+                    ]["timestamp_basis"],
+                    "--maximum-all-colliding-ratio": str(
+                        spec["quality_evaluation"].get(
+                            "maximum_all_colliding_ratio", 0.0
+                        )
+                    ),
                 }
                 command = commands["evaluate"]
                 checks["pointcloud_evaluate_command_bound"] = all(
-                    option in command
-                    and command.index(option) + 1 < len(command)
-                    and command[command.index(option) + 1] == value
+                    any(
+                        command[index] == option
+                        and command[index + 1] == value
+                        for index in range(len(command) - 1)
+                    )
                     for option, value in expected_options.items()
                 )
             except (KeyError, OSError, TypeError, ValueError):
