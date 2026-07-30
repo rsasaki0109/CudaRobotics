@@ -1,0 +1,96 @@
+name: Systems paper
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [master]
+    paths:
+      - ".github/workflows/systems-paper.yml"
+      - "paper/artifacts/cudarobotics_systems.json"
+      - "paper/cudarobotics_systems_paper.md"
+      - "paper/latex/cudanav_systems.tex"
+      - "paper/latex/references.bib"
+      - "scripts/*systems_paper*"
+      - "scripts/test_cudarobotics_systems_paper.py"
+      - "docs/results/cudanav_*"
+  pull_request:
+    branches: [master]
+    paths:
+      - ".github/workflows/systems-paper.yml"
+      - "paper/artifacts/cudarobotics_systems.json"
+      - "paper/cudarobotics_systems_paper.md"
+      - "paper/latex/cudanav_systems.tex"
+      - "paper/latex/references.bib"
+      - "scripts/*systems_paper*"
+      - "scripts/test_cudarobotics_systems_paper.py"
+      - "docs/results/cudanav_*"
+
+jobs:
+  build-systems-paper:
+    runs-on: ubuntu-22.04
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate systems claims and anonymous source
+        run: |
+          python scripts/validate_paper_artifacts.py \
+            paper/artifacts/cudarobotics_systems.json
+          python scripts/test_cudarobotics_systems_paper.py
+          python scripts/test_systems_paper_bundle.py
+          python scripts/test_systems_paper_archive.py
+
+      - name: Record release readiness
+        id: readiness
+        shell: bash
+        run: |
+          if python scripts/validate_paper_artifacts.py \
+            paper/artifacts/cudarobotics_systems.json --require-ready; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Compile anonymous IEEE candidate
+        uses: xu-cheng/latex-action@6549dc21effb2730855a1281407ecfcececc6c1b # v4
+        with:
+          root_file: cudanav_systems.tex
+          working_directory: paper/latex
+          args: -pdf -file-line-error -halt-on-error -interaction=nonstopmode
+
+      - name: Assemble ready artifact when all claims pass
+        if: steps.readiness.outputs.ready == 'true'
+        shell: bash
+        run: |
+          python scripts/assemble_systems_paper_bundle.py \
+            --output-dir build/cudarobotics_systems_paper_bundle \
+            --commit "$GITHUB_SHA"
+          python scripts/archive_systems_paper_bundle.py \
+            build/cudarobotics_systems_paper_bundle/submission_manifest.json \
+            --output build/cudarobotics-systems-paper-artifact.zip \
+            --commit "$GITHUB_SHA"
+          python scripts/validate_systems_paper_archive.py \
+            build/cudarobotics-systems-paper-artifact.zip \
+            --checksum \
+              build/cudarobotics-systems-paper-artifact.zip.sha256 \
+            --commit "$GITHUB_SHA"
+
+      - name: Upload candidate manuscript
+        uses: actions/upload-artifact@v4
+        with:
+          name: cudanav-systems-paper-candidate-${{ github.sha }}
+          if-no-files-found: error
+          path: |
+            paper/latex/cudanav_systems.pdf
+            paper/latex/cudanav_systems.tex
+            paper/latex/references.bib
+
+      - name: Upload ready systems artifact
+        if: steps.readiness.outputs.ready == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: cudanav-systems-paper-release-${{ github.sha }}
+          if-no-files-found: error
+          path: |
+            build/cudarobotics-systems-paper-artifact.zip
+            build/cudarobotics-systems-paper-artifact.zip.sha256
