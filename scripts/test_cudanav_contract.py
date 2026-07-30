@@ -347,7 +347,10 @@ def main() -> int:
     for term in (
         "/cuda_nav/controller_server:",
         "/cuda_nav/local_costmap/local_costmap:",
+        "    controller_frequency: 15.0",
         'plugin: "cuda_mppi_controller::CudaMppiController"',
+        'plugin: "nav2_controller::PoseProgressChecker"',
+        "      required_movement_angle: 0.35",
         'plugin: "cuda_voxel_costmap_layer::CudaVoxelCostmapLayer"',
         "    width: 12\n",
         "    height: 6\n",
@@ -429,6 +432,7 @@ def main() -> int:
         '"diagnostic_error_count"',
         '"diagnostic_components"',
         '"failure_counters"',
+        'self.declare_parameter("controller_frequency", 15.0)',
         "while rclpy.ok() and not node.finished",
         "action server is not active yet; retrying first goal",
         "except KeyboardInterrupt:",

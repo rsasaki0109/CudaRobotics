@@ -28,7 +28,7 @@ class FollowPathMission(Node):
         self.declare_parameter("output_path", "/tmp/cudanav_closed_loop.json")
         self.declare_parameter("startup_delay_sec", 8.0)
         self.declare_parameter("mission_timeout_sec", 90.0)
-        self.declare_parameter("controller_frequency", 20.0)
+        self.declare_parameter("controller_frequency", 15.0)
         self.declare_parameter("traversal_count", 1)
         self._client = ActionClient(
             self,
