@@ -2,7 +2,7 @@
 
 [![GitHub stars](https://img.shields.io/github/stars/rsasaki0109/CudaRobotics?style=social)](https://github.com/rsasaki0109/CudaRobotics/stargazers)
 [![CUDA](https://img.shields.io/badge/CUDA-12.x-76B900)](https://developer.nvidia.com/cuda-toolkit)
-[![Docs](https://img.shields.io/badge/docs-v0.2.0--dev-1f6f64)](https://rsasaki0109.github.io/CudaRobotics/docs/)
+[![Docs](https://img.shields.io/badge/docs-v0.2.0-1f6f64)](https://rsasaki0109.github.io/CudaRobotics/docs/)
 [![Gallery](https://img.shields.io/badge/gallery-animated_demos-blue)](https://rsasaki0109.github.io/CudaRobotics/)
 [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/rsasaki0109/CudaRobotics/blob/master/examples/colab/cudarobotics_quickstart.ipynb)
 
