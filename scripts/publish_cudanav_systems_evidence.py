@@ -159,7 +159,7 @@ def build_artifacts(
             },
         },
         "real_rosbag_shadow": {
-            "evidence_mode": "shadow_controller_with_recorded_motion",
+            "evidence_mode": "real_sensor_shadow_with_derived_path",
             "quality_pass": evaluation["quality_pass"],
             "input_tree_sha256": rosbag_manifest["input_bag"][
                 "tree_sha256"
@@ -308,7 +308,7 @@ def build_v1_attestation(
         and deadline_miss < 0.01,
         "real_rosbag_shadow": isinstance(real, dict)
         and real.get("evidence_mode")
-        == "shadow_controller_with_recorded_motion"
+        == "real_sensor_shadow_with_derived_path"
         and real.get("quality_pass") is True,
         "multi_gpu": isinstance(models, list)
         and all(isinstance(model, str) and model for model in models)
