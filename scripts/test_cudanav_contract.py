@@ -3,8 +3,9 @@
 
 from __future__ import annotations
 
-import xml.etree.ElementTree as ET
+import json
 from pathlib import Path
+import xml.etree.ElementTree as ET
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -15,6 +16,9 @@ MAPPING_PACKAGE = ROOT / "ros2_ws" / "src" / "cuda_voxel_mapping"
 ESDF_PACKAGE = ROOT / "ros2_ws" / "src" / "cuda_esdf"
 COSTMAP_PACKAGE = ROOT / "ros2_ws" / "src" / "cuda_voxel_costmap_layer"
 BRINGUP_PACKAGE = ROOT / "ros2_ws" / "src" / "cuda_nav_bringup"
+TARGET_VERSION = json.loads(
+    (ROOT / "docs" / "v1_support_matrix.json").read_text(encoding="utf-8")
+)["target_version"]
 
 
 def message_fields(path: Path) -> list[str]:
@@ -41,7 +45,7 @@ def main() -> int:
 
     package_root = ET.parse(PACKAGE / "package.xml").getroot()
     assert package_root.findtext("name") == "cuda_robotics_msgs"
-    assert package_root.findtext("version") == "0.3.0"
+    assert package_root.findtext("version") == TARGET_VERSION
     dependencies = {
         element.text
         for tag in ("buildtool_depend", "depend", "exec_depend")
@@ -66,7 +70,7 @@ def main() -> int:
 
     odometry_root = ET.parse(ODOMETRY_PACKAGE / "package.xml").getroot()
     assert odometry_root.findtext("name") == "cuda_kiss_icp"
-    assert odometry_root.findtext("version") == "0.3.0"
+    assert odometry_root.findtext("version") == TARGET_VERSION
     odometry_dependencies = {
         element.text
         for tag in ("buildtool_depend", "depend", "test_depend")
@@ -85,7 +89,7 @@ def main() -> int:
 
     common_root = ET.parse(COMMON_PACKAGE / "package.xml").getroot()
     assert common_root.findtext("name") == "cuda_robotics_common"
-    assert common_root.findtext("version") == "0.3.0"
+    assert common_root.findtext("version") == TARGET_VERSION
 
     odometry_cmake = (
         ODOMETRY_PACKAGE / "CMakeLists.txt"
@@ -142,7 +146,7 @@ def main() -> int:
 
     mapping_root = ET.parse(MAPPING_PACKAGE / "package.xml").getroot()
     assert mapping_root.findtext("name") == "cuda_voxel_mapping"
-    assert mapping_root.findtext("version") == "0.3.0"
+    assert mapping_root.findtext("version") == TARGET_VERSION
     mapping_dependencies = {
         element.text
         for tag in ("buildtool_depend", "depend", "test_depend")
@@ -201,7 +205,7 @@ def main() -> int:
 
     esdf_root = ET.parse(ESDF_PACKAGE / "package.xml").getroot()
     assert esdf_root.findtext("name") == "cuda_esdf"
-    assert esdf_root.findtext("version") == "0.3.0"
+    assert esdf_root.findtext("version") == TARGET_VERSION
     esdf_dependencies = {
         element.text
         for tag in ("buildtool_depend", "depend", "test_depend")
@@ -255,7 +259,7 @@ def main() -> int:
 
     costmap_root = ET.parse(COSTMAP_PACKAGE / "package.xml").getroot()
     assert costmap_root.findtext("name") == "cuda_voxel_costmap_layer"
-    assert costmap_root.findtext("version") == "0.3.0"
+    assert costmap_root.findtext("version") == TARGET_VERSION
     costmap_dependencies = {
         element.text
         for tag in ("buildtool_depend", "depend", "test_depend")
@@ -303,7 +307,7 @@ def main() -> int:
 
     bringup_root = ET.parse(BRINGUP_PACKAGE / "package.xml").getroot()
     assert bringup_root.findtext("name") == "cuda_nav_bringup"
-    assert bringup_root.findtext("version") == "0.3.0"
+    assert bringup_root.findtext("version") == TARGET_VERSION
     bringup_dependencies = {
         element.text
         for tag in ("buildtool_depend", "exec_depend", "test_depend")

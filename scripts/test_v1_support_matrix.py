@@ -18,13 +18,14 @@ class V1SupportMatrixTest(unittest.TestCase):
         self.assertTrue(result["valid"], result)
         self.assertFalse(result["ready"])
         self.assertFalse(result["readiness"]["release_status"])
-        self.assertFalse(result["readiness"]["python_at_target"])
+        self.assertTrue(result["readiness"]["python_at_target"])
+        self.assertTrue(result["readiness"]["ros_at_target"])
 
     def test_declared_component_version_must_match_source(self) -> None:
         matrix = deepcopy(load())
         matrix["surfaces"]["ros2"]["package_versions"][
             "cuda_kiss_icp"
-        ] = "1.0.0"
+        ] = "0.3.0"
         result = evaluate(matrix)
         self.assertFalse(result["checks"]["ros_versions"])
         self.assertFalse(result["valid"])

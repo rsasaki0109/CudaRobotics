@@ -13,14 +13,14 @@
   },
   "surfaces": {
     "python_source": {
-      "version": "0.2.0",
+      "version": "1.0.0",
       "python": ">=3.9",
       "platform": "Linux x86_64",
       "cuda_toolkit": ">=12.0",
       "command": "python examples/python/mppi_quickstart.py"
     },
     "python_wheels": {
-      "version": "0.2.0",
+      "version": "1.0.0",
       "platform": "manylinux x86_64",
       "python": [
         "cp310",
@@ -34,14 +34,14 @@
       "cuda_toolkit": "12.6",
       "command": "ros2 launch cuda_nav_bringup cudanav_closed_loop.launch.py",
       "package_versions": {
-        "cuda_robotics_msgs": "0.3.0",
-        "cuda_robotics_common": "0.3.0",
-        "cuda_kiss_icp": "0.3.0",
-        "cuda_voxel_mapping": "0.3.0",
-        "cuda_esdf": "0.3.0",
-        "cuda_voxel_costmap_layer": "0.3.0",
-        "cuda_mppi_controller": "0.2.0",
-        "cuda_nav_bringup": "0.3.0"
+        "cuda_robotics_msgs": "1.0.0",
+        "cuda_robotics_common": "1.0.0",
+        "cuda_kiss_icp": "1.0.0",
+        "cuda_voxel_mapping": "1.0.0",
+        "cuda_esdf": "1.0.0",
+        "cuda_voxel_costmap_layer": "1.0.0",
+        "cuda_mppi_controller": "1.0.0",
+        "cuda_nav_bringup": "1.0.0"
       }
     },
     "docker_source": {
