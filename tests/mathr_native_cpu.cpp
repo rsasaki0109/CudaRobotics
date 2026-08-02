@@ -352,7 +352,10 @@ void test_ba_and_gauss_newton() {
         {-1.0f, -0.5f, 4.0f}, {-0.3f, 0.4f, 5.0f}, {0.2f, -0.2f, 3.5f},
         {0.8f, 0.7f, 6.0f}, {1.2f, -0.6f, 4.5f}, {-0.8f, 0.9f, 5.5f}};
     for (const auto& point : points) {
-        ba.add_point(point);
+        std::array<float, 3> initial_point = point;
+        initial_point[0] += 0.05f;
+        initial_point[1] -= 0.03f;
+        ba.add_point(initial_point);
     }
     for (int camera = 0; camera < 2; ++camera) {
         for (int point_id = 0; point_id < 6; ++point_id) {
@@ -379,7 +382,7 @@ void test_ba_and_gauss_newton() {
     cudarobotics::ba::BundleAdjustmentOptions ba_options;
     ba_options.max_iterations = 20;
     ba_options.min_iterations = 2;
-    ba_options.damping = 1.0e-2f;
+    ba_options.damping = 1.0e-4f;
     ba_options.max_step = 0.25f;
     const cudarobotics::ba::BundleAdjustmentSummary ba_summary = ba.solve(ba_options);
     check(ba_summary.finite && ba.score() < ba_before * 1.0e-3f,

@@ -1,7 +1,7 @@
 {
   "algorithm": "sha256-text-lf",
   "schema_version": 1,
-  "source_digest": "adbe068b71ee8e847c94e7a0ac77f89a06edf38e3455d5ef3e98edfa2929295d",
+  "source_digest": "0a0af3646909e7316e6bda07d726e48c2fdcd7a69de9283fef8484a43189b9b6",
   "sources": {
     "CMakeLists.txt": "d661f49cf50e486b338f2f1b01f121189295824d722dd76e4f852044494ba1b0",
     "README.md": "82585990094db47a5f8733645dd63e87376e1d6fbb48bdcadee1cc69cbcf42ec",
@@ -26,7 +26,7 @@
     "core/include/cudarobotics/math_tools.hpp": "6430898c4400927aa826edb81a1bc10f3e923a962e157f115b938d41a2cb60b5",
     "core/include/cudarobotics/numerical_derivative.hpp": "4d1277d8ae4375c7a25071fe5f453d1b831cc0d37dc9010cb3c60c74fad7b839",
     "core/include/cudarobotics/polygon.hpp": "53e76f867db8dd8d18547fc2f90630699fe5afc54aa0ad4a2974d912def92ea7",
-    "core/include/cudarobotics/projection.hpp": "31c65209a653b8a67b47e3d5f69193925893535e4152971e650a627d3cf3486a",
+    "core/include/cudarobotics/projection.hpp": "e09e79d69f3e5786c586a8e0c2be5fa8a5a7faebbb5287d04259f018cb8c5781",
     "core/include/cudarobotics/robust_p2plane_gpu.hpp": "74af2a8c8b94866140ce68797a4c8aed64f78874e92fdae0e99bc79caab5e7c4",
     "core/include/cudarobotics/robust_treg_gpu.hpp": "78f1c434344f6281ca8b9cbb74544d14ee4d215ba9b4eb309b354cf58438aa60",
     "core/include/cudarobotics/sinkhorn_reg_gpu.hpp": "f384450bdc8878bc04478d78df97b5ac954e6f172294ede0ced8c142e0a8ffc8",

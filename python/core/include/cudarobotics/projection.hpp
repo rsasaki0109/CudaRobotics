@@ -73,8 +73,8 @@ CUDAROBOTICS_PROJ_HD inline void transform(const float* pose_or_matrix,
         lie::mat3_mul(R, minus_skew_p, pose_rotation_block);
         for (int row = 0; row < 3; ++row) {
             for (int col = 0; col < 3; ++col) {
-                d_pose[3 * row + col] = R[3 * row + col];
-                d_pose[3 * row + 3 + col] = pose_rotation_block[3 * row + col];
+                d_pose[6 * row + col] = R[3 * row + col];
+                d_pose[6 * row + 3 + col] = pose_rotation_block[3 * row + col];
             }
         }
     }
@@ -108,8 +108,8 @@ CUDAROBOTICS_PROJ_HD inline void transform_inverse(const float* pose_or_matrix,
         lie::skew(result, skew_result);
         for (int row = 0; row < 3; ++row) {
             for (int col = 0; col < 3; ++col) {
-                d_pose[3 * row + col] = row == col ? -1.0f : 0.0f;
-                d_pose[3 * row + 3 + col] = skew_result[3 * row + col];
+                d_pose[6 * row + col] = row == col ? -1.0f : 0.0f;
+                d_pose[6 * row + 3 + col] = skew_result[3 * row + col];
             }
         }
     }
