@@ -873,6 +873,12 @@ target_link_libraries(test_host_math ${OpenCV_LIBS})
 add_executable(test_lie_group_math tests/lie_group_math_cpu.cpp)
 add_executable(test_imu_preintegration tests/imu_preintegration_cpu.cpp)
 add_executable(test_robust_loss tests/robust_loss_cpu.cpp)
+add_executable(test_g2o_io tests/g2o_io_cpu.cpp)
+add_executable(test_graph_optimization tests/graph_optimization_cpu.cpp)
+add_executable(test_mathr_native tests/mathr_native_cpu.cpp)
+add_executable(test_imu_graph tests/imu_graph_cpu.cpp)
+add_executable(test_graph_g2o tests/graph_g2o_cpu.cpp)
+add_executable(test_projection_gpu tests/projection_gpu_smoke.cu)
 add_executable(test_imu_preintegration_gpu tests/imu_preintegration_gpu_smoke.cu)
 target_compile_options(test_imu_preintegration_gpu PRIVATE
   $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
@@ -1217,11 +1223,42 @@ set_tests_properties(test_robust_loss PROPERTIES
   TIMEOUT 10
   LABELS "cpu;math;robust")
 
+add_test(NAME test_g2o_io COMMAND ${PROJECT_SOURCE_DIR}/bin/test_g2o_io)
+set_tests_properties(test_g2o_io PROPERTIES
+  TIMEOUT 10
+  LABELS "cpu;math;graph")
+
+add_test(NAME test_graph_optimization COMMAND ${PROJECT_SOURCE_DIR}/bin/test_graph_optimization)
+set_tests_properties(test_graph_optimization PROPERTIES
+  TIMEOUT 10
+  LABELS "cpu;math;graph")
+
+add_test(NAME test_mathr_native COMMAND ${PROJECT_SOURCE_DIR}/bin/test_mathr_native)
+set_tests_properties(test_mathr_native PROPERTIES
+  TIMEOUT 10
+  LABELS "cpu;math;geometry;filter")
+
+add_test(NAME test_imu_graph COMMAND ${PROJECT_SOURCE_DIR}/bin/test_imu_graph)
+set_tests_properties(test_imu_graph PROPERTIES
+  TIMEOUT 10
+  LABELS "cpu;math;imu;graph")
+
+add_test(NAME test_graph_g2o COMMAND ${PROJECT_SOURCE_DIR}/bin/test_graph_g2o)
+set_tests_properties(test_graph_g2o PROPERTIES
+  TIMEOUT 10
+  LABELS "cpu;math;graph;g2o")
+
+add_test(NAME test_projection_gpu COMMAND ${PROJECT_SOURCE_DIR}/bin/test_projection_gpu)
+set_tests_properties(test_projection_gpu PROPERTIES
+  TIMEOUT 60
+  LABELS "gpu;math;geometry"
+  SKIP_RETURN_CODE 77)
+
 add_test(NAME test_imu_preintegration_gpu
   COMMAND ${PROJECT_SOURCE_DIR}/bin/test_imu_preintegration_gpu)
 set_tests_properties(test_imu_preintegration_gpu PROPERTIES
   TIMEOUT 60
-  LABELS "gpu;math;imu"
+  LABELS "gpu;math;imu;graph"
   SKIP_RETURN_CODE 77)
 
 ##############################
