@@ -166,7 +166,8 @@ public:
         measurement.measure(state, predicted, H);
         float HP[10];
         float Ht[10];
-        for (int row = 0; row < 2; ++row) for (int col = 0; col < 5; ++col) Ht[5 * row + col] = H[5 * col + row];
+        for (int row = 0; row < 5; ++row)
+            for (int col = 0; col < 2; ++col) Ht[2 * row + col] = H[5 * col + row];
         mat_mul(H, 2, 5, covariance, 5, HP);
         float S[4];
         mat_mul(HP, 2, 5, Ht, 2, S);
