@@ -870,6 +870,13 @@ add_executable(test_gpu_mlp src/test_gpu_mlp.cu)
 add_executable(test_host_math src/test_host_math.cpp)
 target_link_libraries(test_host_math ${OpenCV_LIBS})
 
+add_executable(test_lie_group_math tests/lie_group_math_cpu.cpp)
+add_executable(test_imu_preintegration tests/imu_preintegration_cpu.cpp)
+add_executable(test_robust_loss tests/robust_loss_cpu.cpp)
+add_executable(test_imu_preintegration_gpu tests/imu_preintegration_gpu_smoke.cu)
+target_compile_options(test_imu_preintegration_gpu PRIVATE
+  $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
+
 ##############################
 # CTest Registration
 ##############################
@@ -1194,6 +1201,28 @@ add_test(NAME test_host_math COMMAND ${PROJECT_SOURCE_DIR}/bin/test_host_math)
 set_tests_properties(test_host_math PROPERTIES
   TIMEOUT 10
   LABELS "cpu")
+
+add_test(NAME test_lie_group_math COMMAND ${PROJECT_SOURCE_DIR}/bin/test_lie_group_math)
+set_tests_properties(test_lie_group_math PROPERTIES
+  TIMEOUT 10
+  LABELS "cpu;math")
+
+add_test(NAME test_imu_preintegration COMMAND ${PROJECT_SOURCE_DIR}/bin/test_imu_preintegration)
+set_tests_properties(test_imu_preintegration PROPERTIES
+  TIMEOUT 10
+  LABELS "cpu;math;imu")
+
+add_test(NAME test_robust_loss COMMAND ${PROJECT_SOURCE_DIR}/bin/test_robust_loss)
+set_tests_properties(test_robust_loss PROPERTIES
+  TIMEOUT 10
+  LABELS "cpu;math;robust")
+
+add_test(NAME test_imu_preintegration_gpu
+  COMMAND ${PROJECT_SOURCE_DIR}/bin/test_imu_preintegration_gpu)
+set_tests_properties(test_imu_preintegration_gpu PROPERTIES
+  TIMEOUT 60
+  LABELS "gpu;math;imu"
+  SKIP_RETURN_CODE 77)
 
 ##############################
 # MuJoCo Benchmarks
