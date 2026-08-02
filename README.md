@@ -89,7 +89,8 @@ python examples/python/registration_quickstart.py
 | **CudaNav multi-GPU reproducibility matrix** | [`docs/cudanav_multi_gpu.md`](docs/cudanav_multi_gpu.md) |
 | **CudaNav physical GPU matrix — GTX 1660 Ti node** | [`docs/results/cudanav_gpu_closed_loop_release_gtx1660ti_2026-07-29.md`](docs/results/cudanav_gpu_closed_loop_release_gtx1660ti_2026-07-29.md) |
 | **CudaNav complete autonomy evidence suite** | [`docs/cudanav_autonomy_suite.md`](docs/cudanav_autonomy_suite.md) |
-| **MathematicalRobotics selected CUDA port** | [`docs/mathr_port.md`](docs/mathr_port.md) |
+| **MathematicalRobotics native migration** | [`docs/mathr_port.md`](docs/mathr_port.md) |
+| **MathematicalRobotics full migration ledger** | [`docs/mathr_migration_matrix.md`](docs/mathr_migration_matrix.md) |
 | Nav2 CPU vs CUDA MPPI head-to-head | [`docs/results/cuda_mppi_vs_nav2_2026-06-10.md`](docs/results/cuda_mppi_vs_nav2_2026-06-10.md) |
 | CUDA MPPI extended controller scenarios | [`docs/results/cuda_mppi_extended_scenarios_2026-06-12.md`](docs/results/cuda_mppi_extended_scenarios_2026-06-12.md) |
 | CUDA MPPI bag / real-data evaluation harness | [`docs/cuda_mppi_bag_eval.md`](docs/cuda_mppi_bag_eval.md) |

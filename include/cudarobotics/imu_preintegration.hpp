@@ -225,25 +225,10 @@ CUDAROBOTICS_IMU_HD static inline void delta_to_tangent(const NavDelta& delta,
 
 CUDAROBOTICS_IMU_HD static inline void hso3(const float* omega,
                                              float* H) {
-    const float theta2 = omega[0] * omega[0] +
-                         omega[1] * omega[1] +
-                         omega[2] * omega[2];
-    float K[9];
-    cudarobotics::lie::skew(omega, K);
-    if (theta2 < 1.0e-8f) {
-        cudarobotics::lie::mat3_identity(H);
-        for (int i = 0; i < 9; ++i) H[i] -= 0.5f * K[i];
-        return;
-    }
-    const float theta = sqrtf(theta2);
-    float K_unit[9];
-    float K2[9];
-    for (int i = 0; i < 9; ++i) K_unit[i] = K[i] / theta;
-    cudarobotics::lie::mat3_mul(K_unit, K_unit, K2);
-    const float a = (1.0f - cosf(theta)) / theta;
-    const float b = 1.0f - sinf(theta) / theta;
-    cudarobotics::lie::mat3_identity(H);
-    for (int i = 0; i < 9; ++i) H[i] += -a * K_unit[i] + b * K2[i];
+    // HSO3 in MathematicalRobotics is the right SO(3) Jacobian.  Keep the
+    // implementation in the shared Lie-group header so the CPU and CUDA
+    // paths use the same stable small-angle formula.
+    cudarobotics::lie::so3_right_jacobian(omega, H);
 }
 
 CUDAROBOTICS_IMU_HD static inline void nav_state_retract(
