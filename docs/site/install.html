@@ -85,7 +85,7 @@ python -c "import cudarobotics as cr; print(cr.__version__)"</code></pre>
         </div>
       </section>
 
-      <section class="section">
+      <section class="section" id="source-checkout">
         <div class="section-head">
           <h2>Current Source Checkout</h2>
         </div>
@@ -93,11 +93,22 @@ python -c "import cudarobotics as cr; print(cr.__version__)"</code></pre>
           <div class="code">
 <pre><code>git clone https://github.com/rsasaki0109/CudaRobotics.git
 cd CudaRobotics
-python -m pip install -e python/
+python scripts/install_python_wheel.py
 python -c "import cudarobotics as cr; print(cr.__version__)"
-python examples/python/mppi_quickstart.py
-python examples/python/registration_quickstart.py</code></pre>
+python examples/python/onboarding_quickstart.py</code></pre>
           </div>
+          <p>
+            Success writes an MPPI GIF, separate logs, and
+            <code>build/onboarding/python/python_quickstart_result.json</code>.
+            A failed result records the failed step and failure category.
+            Continue with the
+            <a href="https://github.com/rsasaki0109/CudaRobotics/blob/master/docs/onboarding_recipes.md">Level 1–3 recipes</a>.
+          </p>
+          <p>
+            The helper selects only the published CPython 3.10/3.12 Linux
+            x86_64 wheel. For an editable CUDA source build, replace it with
+            <code>python -m pip install -e 'python/[examples]'</code>.
+          </p>
           <p>
             Maintainers should run `./scripts/sync_python_core.sh` before
             building release artifacts so the Python package contains the
@@ -145,7 +156,9 @@ docker run --rm --gpus all -v "$PWD/out:/out" cudarobotics cudanav</code></pre>
         <div class="callout">
           <p>
             No local setup needed:
-            <a href="https://colab.research.google.com/github/rsasaki0109/CudaRobotics/blob/master/examples/colab/cudarobotics_quickstart.ipynb">open the Colab quickstart</a>.
+            <a href="https://colab.research.google.com/github/rsasaki0109/CudaRobotics/blob/master/examples/colab/cudarobotics_quickstart.ipynb">open the latest Colab onboarding</a>.
+            Its notebook UX follows the current documentation while the
+            package clone remains pinned to published v0.3.0.
           </p>
         </div>
       </section>

@@ -6,7 +6,13 @@ on:
     branches: [master]
     paths:
       - "python/**"
+      - "examples/colab/cudarobotics_quickstart.ipynb"
+      - "examples/python/onboarding_quickstart.py"
+      - "examples/python/mppi_dlpack_costmap.py"
       - "scripts/sync_python_core.sh"
+      - "scripts/summarize_adoption_results.py"
+      - "scripts/install_python_wheel.py"
+      - "scripts/validate_python_onboarding.py"
       - "src/*_gpu.cu"
       - "include/cudarobotics/**"
       - "include/cuda_mppi_controller/**"
@@ -19,7 +25,13 @@ on:
     branches: [master]
     paths:
       - "python/**"
+      - "examples/colab/cudarobotics_quickstart.ipynb"
+      - "examples/python/onboarding_quickstart.py"
+      - "examples/python/mppi_dlpack_costmap.py"
       - "scripts/sync_python_core.sh"
+      - "scripts/summarize_adoption_results.py"
+      - "scripts/install_python_wheel.py"
+      - "scripts/validate_python_onboarding.py"
       - "src/*_gpu.cu"
       - "include/cudarobotics/**"
       - "include/cuda_mppi_controller/**"
