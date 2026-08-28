@@ -1,10 +1,10 @@
 {
   "algorithm": "sha256-text-lf",
   "schema_version": 1,
-  "source_digest": "0a0af3646909e7316e6bda07d726e48c2fdcd7a69de9283fef8484a43189b9b6",
+  "source_digest": "43f116717fc12cc32f75d4bc153d12cf1ec7f9737f2e44606a5c2433b01583e6",
   "sources": {
     "CMakeLists.txt": "d661f49cf50e486b338f2f1b01f121189295824d722dd76e4f852044494ba1b0",
-    "README.md": "82585990094db47a5f8733645dd63e87376e1d6fbb48bdcadee1cc69cbcf42ec",
+    "README.md": "cd19a92f86e90e86d0e2eda7f132c2cf1755a743e0b2ef3e843dcb8e16955a6b",
     "core/include/cuda_check.cuh": "f358ad19e3b83228d39f1980ce386fa1af52bcb0b0e3e1acfd7967a59375fe96",
     "core/include/cuda_mppi_controller/mppi_gpu.hpp": "4dda021b7dbf6247ebefa668e524a0053e6dd89303048bd4e281f2f26ea32627",
     "core/include/cudarobotics/bal_io.hpp": "dd3a2140119294af09676bb77a7618c392b99ae7d5bcb1cc4696f583d9cf1ef8",
@@ -38,8 +38,8 @@
     "core/src/robust_p2plane_gpu.cu": "636086b0cf6c3d0c9fc78e8f1798df6dc79a22e86af06e8836b6ffdeaea63545",
     "core/src/robust_treg_gpu.cu": "d28246e367a2a34cc3cafd8136415e01be697b93a98d93073544dd00c3d6daa9",
     "core/src/sinkhorn_gpu.cu": "7866ff758b09e9a6f3115dc14f1b638db0fb550982b76602bde0b1159e716411",
-    "pyproject.toml": "d5e6b4b612e6bbf1f92c7f28fc673d1a1941b221e0b025f7dbeccc0743b56ea1",
-    "src/cudarobotics/__init__.py": "d7b0eebe28f0a89a22e0cd175783a3ce41f602d58e749af703536a55da1c744b",
+    "pyproject.toml": "8c7abf8f77bfe369ba612258972b7aa1e69573e6dfeebe099af98002d7a9fd55",
+    "src/cudarobotics/__init__.py": "7f20301ebd6424d5c8b1dc3198ddf649307a0c3e9bcabb5b2a10e34633a455b4",
     "src/cudarobotics/bindings.cpp": "ab5c0b9f0c9c3fe425d08dc321c39fde550f75d5ce59ce5f85a4d68237e8715b",
     "src/cudarobotics/registration/__init__.py": "f01e0602ce4c90c163a01eb03f68bcb14040084b8740d07a63677ba08ec9a6fb"
   }
