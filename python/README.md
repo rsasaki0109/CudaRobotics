@@ -11,6 +11,13 @@ point-cloud registration algorithms.
 
 ## Install
 
+From a repository clone on supported Linux x86_64 and CPython 3.10/3.12, the
+shortest published-wheel path is:
+
+```bash
+python scripts/install_python_wheel.py
+```
+
 Editable install from a clone (recommended for development):
 
 ```bash
@@ -35,6 +42,15 @@ NVIDIA driver at runtime.
 
 ```bash
 python -c "import cudarobotics as cr; print(cr.__version__)"
+python examples/python/onboarding_quickstart.py
+```
+
+The onboarding command runs the MPPI and registration quickstarts together
+and writes a versioned success or failure result to
+`build/onboarding/python/python_quickstart_result.json`. To run the examples
+individually:
+
+```bash
 python examples/python/mppi_quickstart.py
 python examples/python/mppi_dlpack_costmap.py  # requires CUDA PyTorch or CuPy
 python examples/python/registration_quickstart.py

@@ -79,6 +79,26 @@ def test_mppi_planner_cuda_dlpack_costmap_smoke():
     assert "valid_rollout_ratio" in info
 
 
+def test_cuda_array_prefers_dlpack_over_buffer_facade():
+    helper = getattr(cr, "_prefer_cuda_dlpack", None)
+    if helper is None:
+        pytest.skip("installed package predates CUDA DLPack preference helper")
+
+    class FakeCudaArray:
+        __cuda_array_interface__ = {"shape": (2, 2)}
+
+        def __dlpack__(self, *args, **kwargs):
+            return (args, kwargs)
+
+        def __dlpack_device__(self):
+            return (2, 0)
+
+    wrapped = helper(FakeCudaArray())
+    assert not hasattr(wrapped, "__cuda_array_interface__")
+    assert wrapped.__dlpack__(stream=7) == ((), {"stream": 7})
+    assert wrapped.__dlpack_device__() == (2, 0)
+
+
 @pytest.mark.parametrize(
     "cls",
     [

@@ -50,6 +50,25 @@ _MOTION_MODELS = {
 }
 
 
+class _CudaDLPackOnly:
+    """Hide a CUDA array's CPU buffer facade from the native overload."""
+
+    def __init__(self, value):
+        self._value = value
+
+    def __dlpack__(self, *args, **kwargs):
+        return self._value.__dlpack__(*args, **kwargs)
+
+    def __dlpack_device__(self):
+        return self._value.__dlpack_device__()
+
+
+def _prefer_cuda_dlpack(value):
+    if hasattr(value, "__cuda_array_interface__") and hasattr(value, "__dlpack__"):
+        return _CudaDLPackOnly(value)
+    return value
+
+
 def _coerce_motion_model(value):
     if isinstance(value, MotionModel):
         return value
@@ -92,6 +111,7 @@ class MppiPlanner:
         goal_is_final=False,
         footprint=None,
     ):
+        costmap = _prefer_cuda_dlpack(costmap)
         return self._planner.compute(
             state, costmap, path, goal, origin, resolution, goal_is_final, footprint
         )
