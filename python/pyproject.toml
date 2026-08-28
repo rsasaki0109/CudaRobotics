@@ -45,7 +45,7 @@ test = [
 [project.urls]
 Homepage = "https://github.com/rsasaki0109/CudaRobotics"
 Repository = "https://github.com/rsasaki0109/CudaRobotics"
-Documentation = "https://github.com/rsasaki0109/CudaRobotics/tree/master/python"
+Documentation = "https://rsasaki0109.github.io/CudaRobotics/docs/"
 
 [tool.scikit-build]
 cmake.source-dir = "."

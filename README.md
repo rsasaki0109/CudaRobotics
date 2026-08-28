@@ -61,16 +61,37 @@ Full animated gallery: https://rsasaki0109.github.io/CudaRobotics/
 
 ## Quickstart
 
-[Open in Colab](https://colab.research.google.com/github/rsasaki0109/CudaRobotics/blob/v0.3.0/examples/colab/cudarobotics_quickstart.ipynb)
-· [Documentation](https://rsasaki0109.github.io/CudaRobotics/docs/)
-· [Nav2 CUDA MPPI](ros2_ws/src/cuda_mppi_controller/)
-· [Full animated gallery](https://rsasaki0109.github.io/CudaRobotics/)
+Choose the shortest path for what you want to do:
+
+| I want to... | Start here | What success looks like | Typical time |
+|---|---|---|---|
+| **Try it without setting up CUDA locally** | [Run the latest Colab onboarding](https://colab.research.google.com/github/rsasaki0109/CudaRobotics/blob/master/examples/colab/cudarobotics_quickstart.ipynb) (builds published v0.3.0) | An MPPI navigation GIF and a checked result JSON | 5–10 min |
+| **Use the Python API on my NVIDIA GPU** | Follow the commands below, then open the [Python guide](python/README.md) | A planner command plus registration metrics | 10–15 min |
+| **Integrate with ROS 2 / Nav2** | Follow the [Level 3 CudaNav recipe](docs/onboarding_recipes.md#level-3-move-to-ros-2-and-nav2) and [CudaNav architecture](docs/cudanav_architecture.md) | A deterministic closed-loop GPU navigation run | 15+ min |
+
+Just browsing? See the [animated gallery](https://rsasaki0109.github.io/CudaRobotics/)
+or the [documentation site](https://rsasaki0109.github.io/CudaRobotics/docs/).
+
+### Python on a local GPU
+
+The published wheel path requires Linux x86_64, CPython 3.10 or 3.12, and a
+compatible NVIDIA driver. It avoids a local CUDA/C++ build and refuses an
+unsupported interpreter instead of downloading the wrong 57 MB wheel.
 
 ```bash
-pip install -e python/
-python examples/python/mppi_quickstart.py
-python examples/python/registration_quickstart.py
+python scripts/install_python_wheel.py
+python examples/python/onboarding_quickstart.py
 ```
+
+For development from source, use `pip install -e 'python/[examples]'`; that
+path additionally requires CUDA Toolkit 12.x (`nvcc` on `PATH`), CMake 3.18+,
+and a C++17 compiler. If neither local path matches your setup, use Colab.
+
+Success writes `build/onboarding/python/python_quickstart_result.json`, an
+MPPI GIF, and separate MPPI and registration logs. After the first run, choose
+a [Level 1–3 onboarding recipe](docs/onboarding_recipes.md). Project maintainers
+can track improvements using the privacy-preserving
+[adoption metrics contract](docs/adoption_metrics.md).
 
 <details>
 <summary>More setup, benchmark, and research details</summary>
