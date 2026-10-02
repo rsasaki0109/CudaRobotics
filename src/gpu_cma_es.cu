@@ -527,7 +527,7 @@ int main() {
     std::printf("GPU objective eval %.3f ms, CPU %.3f ms, speedup %.1fx, max rel error %.3e\n",
                 bench.gpu_ms, bench.cpu_ms, bench.speedup, bench.max_rel_error);
 
-    int mkdir_ret = std::system("mkdir -p gif");
+    int mkdir_ret = cudabot::ensure_dirs({"gif"});
     (void)mkdir_ret;
     cv::VideoWriter video("gif/gpu_cma_es.avi",
                           cv::VideoWriter::fourcc('M', 'J', 'P', 'G'),

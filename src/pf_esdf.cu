@@ -35,6 +35,7 @@
 #include <cuda_runtime.h>
 #include <curand_kernel.h>
 #include "cuda_check.cuh"
+#include "cuda_video.h"
 
 // -------------------------------------------------------------------------
 // World / sensor
@@ -285,8 +286,8 @@ static void draw_pose(cv::Mat& img, float wx, float wy, cv::Scalar color, int r)
 static void convert_avi_to_gif(const char* avi, const char* gif, int fps) {
     char cmd[512];
     std::snprintf(cmd, sizeof(cmd),
-        "ffmpeg -y -i %s -vf 'fps=%d,scale=900:-1:flags=lanczos' -loop 0 %s "
-        "> /dev/null 2>&1", avi, fps, gif);
+        "ffmpeg -y -i %s -vf \"fps=%d,scale=900:-1:flags=lanczos\" -loop 0 %s "
+        "> " CUDABOT_NULL_DEVICE " 2>&1", avi, fps, gif);
     int rc = std::system(cmd);
     if (rc != 0) std::fprintf(stderr, "ffmpeg conversion returned %d\n", rc);
 }
@@ -375,7 +376,7 @@ int main() {
     std::normal_distribution<float> sensor_noise(0.0f, SENSOR_SIGMA);
 
     cv::VideoWriter video("gif/pf_esdf.avi",
-                          cv::VideoWriter::fourcc('X', 'V', 'I', 'D'), 15,
+                          cudabot::avi_fourcc(), 15,
                           cv::Size(PANEL_W * 2 + 4, PANEL_H + 30));
     if (!video.isOpened()) {
         std::fprintf(stderr, "Failed to open gif/pf_esdf.avi\n");

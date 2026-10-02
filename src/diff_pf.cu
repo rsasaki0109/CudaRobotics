@@ -49,6 +49,7 @@
 
 #include "autodiff_engine.cuh"
 #include "cuda_check.cuh"
+#include "cuda_video.h"
 
 using Dual = cudabot::DualNumber<float>;
 
@@ -697,7 +698,7 @@ int main() {
     upload_particles(PC, N_PARTICLES, ipx, ipy, ipth);
 
     cv::VideoWriter video("gif/comparison_diff_pf.avi",
-                          cv::VideoWriter::fourcc('X', 'V', 'I', 'D'), 30,
+                          cudabot::avi_fourcc(), 30,
                           cv::Size(PANEL_W * 3, PANEL_H));
 
     double rmse_A = 0.0, rmse_B = 0.0, rmse_C = 0.0;
@@ -770,8 +771,8 @@ int main() {
                 "  DPF trained       (alpha=%.2f)        = %.3f m\n",
                 rmse_A, rmse_B, alpha_dpf, rmse_C);
     std::system("ffmpeg -y -i gif/comparison_diff_pf.avi "
-                "-vf 'fps=15,scale=1140:-1:flags=lanczos' -loop 0 "
-                "gif/comparison_diff_pf.gif 2>/dev/null");
+                "-vf \"fps=15,scale=1140:-1:flags=lanczos\" -loop 0 "
+                "gif/comparison_diff_pf.gif 2>" CUDABOT_NULL_DEVICE);
     std::cout << "GIF saved to gif/comparison_diff_pf.gif" << std::endl;
     return 0;
 }

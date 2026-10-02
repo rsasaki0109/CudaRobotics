@@ -21,6 +21,7 @@
 #include "neural_sdf_nav.cuh"
 #include "cuda_check.cuh"
 #include "mppi_reduction.cuh"
+#include "cuda_video.h"
 
 
 using namespace std;
@@ -203,7 +204,7 @@ int main() {
 
     cv::VideoWriter video(
         AVI_PATH,
-        cv::VideoWriter::fourcc('X', 'V', 'I', 'D'),
+        cudabot::avi_fourcc(),
         15,
         cv::Size(left_bg.cols * 2, left_bg.rows));
 

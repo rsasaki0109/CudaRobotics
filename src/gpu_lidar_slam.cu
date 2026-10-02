@@ -32,6 +32,7 @@
 
 #include <cuda_runtime.h>
 #include "cuda_check.cuh"
+#include "cuda_video.h"
 
 constexpr float WORLD_X = 60.0f;
 constexpr float WORLD_Y = 60.0f;
@@ -382,8 +383,8 @@ static cv::Mat render_gt(const std::vector<unsigned char>& occ_gt,
 static void convert_avi_to_gif(const char* avi, const char* gif, int fps) {
     char cmd[512];
     std::snprintf(cmd, sizeof(cmd),
-        "ffmpeg -y -i %s -vf 'fps=%d,scale=1100:-1:flags=lanczos' -loop 0 %s "
-        "> /dev/null 2>&1", avi, fps, gif);
+        "ffmpeg -y -i %s -vf \"fps=%d,scale=1100:-1:flags=lanczos\" -loop 0 %s "
+        "> " CUDABOT_NULL_DEVICE " 2>&1", avi, fps, gif);
     int rc = std::system(cmd);
     if (rc != 0) std::fprintf(stderr, "ffmpeg conversion returned %d\n", rc);
 }
@@ -439,7 +440,7 @@ int main() {
     est_traj.reserve(N_FRAMES * 2);
 
     cv::VideoWriter video("gif/gpu_lidar_slam.avi",
-                          cv::VideoWriter::fourcc('X','V','I','D'), 15,
+                          cudabot::avi_fourcc(), 15,
                           cv::Size(PANEL_W * 2 + 4, PANEL_H + 30));
 
     float est_x = 30.0f, est_y = 30.0f, est_yaw = 0.0f;

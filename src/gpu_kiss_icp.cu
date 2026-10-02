@@ -846,7 +846,7 @@ static void render_gif(const std::vector<std::vector<float>>& scans,
                        const std::vector<Pose>& gt,const std::vector<Pose>& est){
     const int W=1280,H=720; const float PX=18.f; const int CX=430,CY=380;
     auto proj=[&](float x,float y,float& sx,float& sy){ sx=CX+PX*x; sy=CY-PX*y; };  // top-down
-    if(system("mkdir -p tmp")!=0)std::fprintf(stderr,"warn mkdir\n");
+    if(cudabot::ensure_dirs({"tmp"})!=0)std::fprintf(stderr,"warn mkdir\n");
     cv::VideoWriter video("tmp/gpu_kiss_icp.avi",cv::VideoWriter::fourcc('M','J','P','G'),18,cv::Size(W,H));
     int K=scans.size(); const int HOLD=20;
     std::vector<float> accum;

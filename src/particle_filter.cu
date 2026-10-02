@@ -18,6 +18,7 @@
 #include <cuda_runtime.h>
 #include <curand_kernel.h>
 #include "cuda_check.cuh"
+#include "cuda_video.h"
 
 #define SIM_TIME 50.0f
 #define DT 0.1f
@@ -325,7 +326,7 @@ int main() {
     // Visualization
     // ------------------------------------------
     cv::namedWindow("pf", cv::WINDOW_NORMAL);
-    cv::VideoWriter video("gif/pf.avi", cv::VideoWriter::fourcc('X','V','I','D'), 30, cv::Size(3500, 3500));
+    cv::VideoWriter video("gif/pf.avi", cudabot::avi_fourcc(), 30, cv::Size(3500, 3500));
     int count = 0;
 
     std::cout << "Particle Filter with CUDA (" << NP << " particles)" << std::endl;

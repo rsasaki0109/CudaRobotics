@@ -798,7 +798,7 @@ int main() {
     std::printf("GPU update %.3f ms, CPU %.3f ms, speedup %.1fx\n",
                 bench.gpu_ms, bench.cpu_ms, bench.speedup);
 
-    int mkdir_ret = std::system("mkdir -p gif");
+    int mkdir_ret = cudabot::ensure_dirs({"gif"});
     (void)mkdir_ret;
     cv::VideoWriter video("gif/gpu_assignment_tracking.avi",
                           cv::VideoWriter::fourcc('M', 'J', 'P', 'G'),

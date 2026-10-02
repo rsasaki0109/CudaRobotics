@@ -25,6 +25,7 @@
 
 #include <cuda_runtime.h>
 #include "cuda_check.cuh"
+#include "cuda_video.h"
 
 constexpr float PI = 3.14159265358979323846f;
 constexpr int W = 480;
@@ -375,7 +376,7 @@ int main() {
                 "accumulator MAE %.6f\n", N_CHECK, cpu_check_ms, gpu_check_ms, mae);
 
     cv::VideoWriter video("gif/comparison_gaussian_splatting.avi",
-                          cv::VideoWriter::fourcc('X', 'V', 'I', 'D'), 24,
+                          cudabot::avi_fourcc(), 24,
                           cv::Size(W * 3, H));
     double cpu_sum = 0.0;
     double gpu_sum = 0.0;
@@ -421,8 +422,8 @@ int main() {
     }
 
     std::system("ffmpeg -y -i gif/comparison_gaussian_splatting.avi "
-                "-vf 'fps=15,scale=900:-1:flags=lanczos' -loop 0 "
-                "gif/comparison_gaussian_splatting.gif 2>/dev/null");
+                "-vf \"fps=15,scale=900:-1:flags=lanczos\" -loop 0 "
+                "gif/comparison_gaussian_splatting.gif 2>" CUDABOT_NULL_DEVICE);
     std::cout << "GIF saved to gif/comparison_gaussian_splatting.gif" << std::endl;
 
     cudaFree(d_check);

@@ -28,6 +28,7 @@
 #include <cuda_runtime.h>
 #include <curand_kernel.h>
 #include "cuda_check.cuh"
+#include "cuda_video.h"
 
 
 using namespace std;
@@ -277,7 +278,7 @@ int main()
     int IMG_SIZE = 600;
     cv::VideoWriter video(
         "gif/stomp.avi",
-        cv::VideoWriter::fourcc('X', 'V', 'I', 'D'), 15,
+        cudabot::avi_fourcc(), 15,
         cv::Size(IMG_SIZE, IMG_SIZE));
 
     if (!video.isOpened()) {
@@ -413,8 +414,8 @@ int main()
 
     // Convert to GIF
     system("ffmpeg -y -i gif/stomp.avi "
-           "-vf 'fps=15,scale=600:-1:flags=lanczos' -loop 0 "
-           "gif/stomp.gif 2>/dev/null");
+           "-vf \"fps=15,scale=600:-1:flags=lanczos\" -loop 0 "
+           "gif/stomp.gif 2>" CUDABOT_NULL_DEVICE);
     cout << "GIF saved to gif/stomp.gif" << endl;
 
     cv::imshow("stomp", final_img);

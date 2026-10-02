@@ -833,7 +833,7 @@ int main() {
                 gpu_ms, BATCH_QUERIES, GRID_W, GRID_H, gpu_metrics.expanded,
                 expansion_reduction, speedup, gpu_metrics.path_steps, gpu_metrics.reached);
 
-    std::system("mkdir -p gif");
+    cudabot::ensure_dirs({"gif"});
     cv::VideoWriter video("gif/gpu_neural_astar_traversability.avi",
                           cv::VideoWriter::fourcc('M', 'J', 'P', 'G'),
                           VIDEO_FPS, cv::Size(PANEL_W, PANEL_H));

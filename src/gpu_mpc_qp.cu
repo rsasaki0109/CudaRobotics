@@ -217,7 +217,7 @@ static Sim run(int nAgents,int steps,float umax,unsigned seed){
 static void render_gif(const Sim& sim,int nAgents){
     const int W=1000,H=1000; const float PX=42.f; const int CX=500,CY=500;
     auto proj=[&](float x,float y,int&sx,int&sy){ sx=CX+(int)(PX*x); sy=CY-(int)(PX*y); };
-    if(system("mkdir -p tmp")!=0)std::fprintf(stderr,"warn\n");
+    if(cudabot::ensure_dirs({"tmp"})!=0)std::fprintf(stderr,"warn\n");
     cv::VideoWriter video("tmp/gpu_mpc_qp.avi",cv::VideoWriter::fourcc('M','J','P','G'),20,cv::Size(W,H));
     int S=sim.traj.size(); const int HOLD=18;
     for(int f=0;f<S+HOLD;f+=2){ int k=std::min(f,S-1);

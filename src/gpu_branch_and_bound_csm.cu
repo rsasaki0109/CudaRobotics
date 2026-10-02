@@ -552,7 +552,7 @@ static void draw_info(cv::Mat& img, int ox, float win_xy, float win_th,
 }
 
 static void ensure_dirs() {
-    int rc = std::system("mkdir -p gif tmp");
+    int rc = cudabot::ensure_dirs({"gif", "tmp"});
     if (rc != 0) std::fprintf(stderr, "mkdir failed with code %d\n", rc);
 }
 

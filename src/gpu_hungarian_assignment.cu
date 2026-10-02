@@ -407,7 +407,7 @@ int main() {
                     d_costs, d_rounds, d_unresolved);
     CUDA_CHECK(cudaDeviceSynchronize());
 
-    int mkdir_ret = std::system("mkdir -p gif");
+    int mkdir_ret = cudabot::ensure_dirs({"gif"});
     (void)mkdir_ret;
     cv::VideoWriter video("gif/gpu_hungarian_assignment.avi",
                           cv::VideoWriter::fourcc('M', 'J', 'P', 'G'),

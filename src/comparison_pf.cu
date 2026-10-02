@@ -15,6 +15,7 @@
 #include <cuda_runtime.h>
 #include <curand_kernel.h>
 #include "cuda_check.cuh"
+#include "cuda_video.h"
 
 #define SIM_TIME 20.0f
 #define DT 0.1f
@@ -427,7 +428,7 @@ int main() {
     // Video
     int W = 1750, H = 1750;
     cv::VideoWriter video("gif/comparison_pf.avi",
-                          cv::VideoWriter::fourcc('X','V','I','D'), 30, cv::Size(W * 2, H));
+                          cudabot::avi_fourcc(), 30, cv::Size(W * 2, H));
 
     std::cout << "Particle Filter comparison: CPU vs CUDA (" << NP << " particles)" << std::endl;
 
@@ -589,8 +590,8 @@ int main() {
 
     // Convert to gif
     system("ffmpeg -y -i gif/comparison_pf.avi "
-           "-vf 'fps=15,scale=800:-1:flags=lanczos' -loop 0 "
-           "gif/comparison_pf.gif 2>/dev/null");
+           "-vf \"fps=15,scale=800:-1:flags=lanczos\" -loop 0 "
+           "gif/comparison_pf.gif 2>" CUDABOT_NULL_DEVICE);
     std::cout << "GIF saved to gif/comparison_pf.gif" << std::endl;
 
     // Cleanup

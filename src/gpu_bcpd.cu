@@ -278,7 +278,7 @@ static void render_gif(const std::vector<float>& X, const std::vector<std::vecto
     auto sub = [](const std::vector<float>& P, int stride){ std::vector<float> q;
         for (size_t i=0;i<P.size()/3;i+=stride){ q.push_back(P[i*3]);q.push_back(P[i*3+1]);q.push_back(P[i*3+2]);} return q; };
     std::vector<float> Xs = sub(X, 2);
-    if (system("mkdir -p tmp") != 0) std::fprintf(stderr, "warning: mkdir tmp failed\n");
+    if (cudabot::ensure_dirs({"tmp"}) != 0) std::fprintf(stderr, "warning: mkdir tmp failed\n");
     cv::VideoWriter video("tmp/gpu_bcpd.avi", cv::VideoWriter::fourcc('M','J','P','G'), 18, cv::Size(W,H));
     int ntraj = (int)traj.size(); const int HOLD = 24; int nframes = ntraj + HOLD;
     struct Sp { float sx, sy, d; cv::Scalar c; };

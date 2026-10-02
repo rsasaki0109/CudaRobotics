@@ -16,6 +16,7 @@
 #include <opencv2/opencv.hpp>
 #include <cuda_runtime.h>
 #include "cuda_check.cuh"
+#include "cuda_video.h"
 
 
 using namespace std;
@@ -659,7 +660,7 @@ int main() {
     }
 
     cv::VideoWriter video("gif/comparison_hybrid_astar.avi",
-                          cv::VideoWriter::fourcc('X', 'V', 'I', 'D'), 30,
+                          cudabot::avi_fourcc(), 30,
                           cv::Size(panel_w * 2, panel_h));
 
     int max_explored = max((int)cpu_result.explored_points.size(),
@@ -783,8 +784,8 @@ int main() {
     printf("Video saved to gif/comparison_hybrid_astar.avi (%d frames)\n", frame_count);
 
     system("ffmpeg -y -i gif/comparison_hybrid_astar.avi "
-           "-vf 'fps=15,scale=1200:-1:flags=lanczos' -loop 0 "
-           "gif/comparison_hybrid_astar.gif 2>/dev/null");
+           "-vf \"fps=15,scale=1200:-1:flags=lanczos\" -loop 0 "
+           "gif/comparison_hybrid_astar.gif 2>" CUDABOT_NULL_DEVICE);
     printf("GIF saved to gif/comparison_hybrid_astar.gif\n");
 
     // Cleanup

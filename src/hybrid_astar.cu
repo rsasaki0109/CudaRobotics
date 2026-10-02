@@ -19,6 +19,7 @@
 #include <opencv2/opencv.hpp>
 #include <cuda_runtime.h>
 #include "cuda_check.cuh"
+#include "cuda_video.h"
 
 
 using namespace std;
@@ -442,7 +443,7 @@ void hybrid_astar_planning(float sx, float sy, float stheta,
 
     cv::namedWindow("hybrid_astar", cv::WINDOW_NORMAL);
     cv::VideoWriter video("gif/hybrid_astar.avi",
-                          cv::VideoWriter::fourcc('X', 'V', 'I', 'D'), 30,
+                          cudabot::avi_fourcc(), 30,
                           cv::Size(img_w, img_h));
 
     // Hybrid A* search
@@ -621,8 +622,8 @@ void hybrid_astar_planning(float sx, float sy, float stheta,
 
     // Convert to gif
     system("ffmpeg -y -i gif/hybrid_astar.avi "
-           "-vf 'fps=15,scale=600:-1:flags=lanczos' -loop 0 "
-           "gif/hybrid_astar.gif 2>/dev/null");
+           "-vf \"fps=15,scale=600:-1:flags=lanczos\" -loop 0 "
+           "gif/hybrid_astar.gif 2>" CUDABOT_NULL_DEVICE);
     printf("GIF saved to gif/hybrid_astar.gif\n");
 
     cv::waitKey(0);

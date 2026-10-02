@@ -15,6 +15,7 @@
 
 #include <cuda_runtime.h>
 #include "cuda_check.cuh"
+#include "cuda_video.h"
 
 // ---------------------------------------------------------------------------
 // CUDA kernel: parallel nearest neighbor with shared memory reduction
@@ -309,7 +310,7 @@ int main() {
     int img_reso = 50;
     int S = img_size * img_reso; // 850
     cv::VideoWriter video("gif/comparison_rrt.avi",
-                          cv::VideoWriter::fourcc('X','V','I','D'), 30, cv::Size(S * 2, S));
+                          cudabot::avi_fourcc(), 30, cv::Size(S * 2, S));
 
     // Persistent background images for incremental drawing
     cv::Mat bg_cpu(S, S, CV_8UC3, cv::Scalar(255, 255, 255));
@@ -519,8 +520,8 @@ int main() {
 
     // Convert to gif
     system("ffmpeg -y -i gif/comparison_rrt.avi "
-           "-vf 'fps=15,scale=800:-1:flags=lanczos' -loop 0 "
-           "gif/comparison_rrt.gif 2>/dev/null");
+           "-vf \"fps=15,scale=800:-1:flags=lanczos\" -loop 0 "
+           "gif/comparison_rrt.gif 2>" CUDABOT_NULL_DEVICE);
     std::cout << "GIF saved to gif/comparison_rrt.gif" << std::endl;
 
     return 0;
