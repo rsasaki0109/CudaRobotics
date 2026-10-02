@@ -26,22 +26,23 @@
 #include "diff_cost.cuh"
 #include "diff_dynamics.cuh"
 #include "cuda_check.cuh"
+#include "mppi_reduction.cuh"
 
 using namespace std;
 using namespace cudabot;
 
-static const int K_SAMPLES = 4096;
-static const int T_HORIZON = 30;
-static const int MAX_STEPS = 500;
-static const float WORKSPACE = 50.0f;
-static const float START_X = 5.0f;
-static const float START_Y = 5.0f;
-static const float START_THETA = 0.0f;
-static const float START_V = 0.0f;
-static const float GOAL_TOL = 2.0f;
-static const float LAMBDA = 8.0f;
-static const float ALPHA = 0.01f;
-static const int N_OBSTACLES = 10;
+static constexpr int K_SAMPLES = 4096;
+static constexpr int T_HORIZON = 30;
+static constexpr int MAX_STEPS = 500;
+static constexpr float WORKSPACE = 50.0f;
+static constexpr float START_X = 5.0f;
+static constexpr float START_Y = 5.0f;
+static constexpr float START_THETA = 0.0f;
+static constexpr float START_V = 0.0f;
+static constexpr float GOAL_TOL = 2.0f;
+static constexpr float LAMBDA = 8.0f;
+static constexpr float ALPHA = 0.01f;
+static constexpr int N_OBSTACLES = 10;
 
 static const Obstacle h_obstacles[N_OBSTACLES] = {
     {12.0f, 15.0f, 3.0f}, {20.0f, 25.0f, 3.5f}, {30.0f, 10.0f, 3.0f},
@@ -127,41 +128,6 @@ __global__ void rollout_kernel(
 
     d_costs[k] = total_cost;
     d_rng[k] = local_rng;
-}
-
-__global__ void compute_weights_kernel(
-    const float* d_costs, float* d_weights, int K, float lambda)
-{
-    if (blockIdx.x != 0 || threadIdx.x != 0) return;
-    float min_cost = FLT_MAX;
-    for (int k = 0; k < K; k++) min_cost = fminf(min_cost, d_costs[k]);
-
-    float sum_w = 0.0f;
-    for (int k = 0; k < K; k++) {
-        float w = expf(-(d_costs[k] - min_cost) / lambda);
-        d_weights[k] = w;
-        sum_w += w;
-    }
-    if (sum_w > 0.0f) {
-        for (int k = 0; k < K; k++) d_weights[k] /= sum_w;
-    }
-}
-
-__global__ void update_controls_kernel(
-    float* d_nominal, const float* d_perturbed, const float* d_weights, int K, int T)
-{
-    int t = blockIdx.x * blockDim.x + threadIdx.x;
-    if (t >= T) return;
-
-    float accel = 0.0f;
-    float steer = 0.0f;
-    for (int k = 0; k < K; k++) {
-        float w = d_weights[k];
-        accel += w * d_perturbed[k * T * 2 + t * 2 + 0];
-        steer += w * d_perturbed[k * T * 2 + t * 2 + 1];
-    }
-    d_nominal[t * 2 + 0] = accel;
-    d_nominal[t * 2 + 1] = steer;
 }
 
 __global__ void rollout_nominal_kernel(
@@ -390,9 +356,8 @@ int main() {
         rollout_kernel<<<(K_SAMPLES + block - 1) / block, block>>>(
             rx, ry, rtheta, rv, d_nominal, d_costs, d_perturbed, d_trajectories, d_rng,
             params, cost_params, K_SAMPLES, T_HORIZON);
-        compute_weights_kernel<<<1, 1>>>(d_costs, d_weights, K_SAMPLES, LAMBDA);
-        update_controls_kernel<<<(T_HORIZON + block - 1) / block, block>>>(
-            d_nominal, d_perturbed, d_weights, K_SAMPLES, T_HORIZON);
+        cudabot::launch_softmin_weights(d_costs, d_weights, K_SAMPLES, LAMBDA);
+        cudabot::launch_weighted_control_update(d_perturbed, d_weights, d_nominal, K_SAMPLES, T_HORIZON * 2);
         rollout_nominal_kernel<<<1, 1>>>(rx, ry, rtheta, rv, d_nominal, d_states, params, T_HORIZON);
         compute_gradient_kernel<<<1, 1>>>(d_states, d_nominal, d_grad, params, cost_params, T_HORIZON);
         gradient_step_kernel<<<(T_HORIZON + block - 1) / block, block>>>(

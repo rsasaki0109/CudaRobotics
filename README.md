@@ -527,7 +527,10 @@ cmake ..
 make -j$(nproc)
 ```
 
-Executables are written to `bin/`.
+Executables are written to `bin/`. Single-config generators default to
+`Release`. CUDA code is built for the GPU(s) reported by `nvidia-smi`
+(sm_75 + PTX when no GPU is visible, e.g. in CI); override with
+`-DCMAKE_CUDA_ARCHITECTURES="86;89"`.
 
 Build and run one demo:
 

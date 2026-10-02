@@ -21,6 +21,7 @@
 #include <cuda_runtime.h>
 #include <curand_kernel.h>
 #include "cuda_check.cuh"
+#include "mppi_reduction.cuh"
 
 
 using namespace std;
@@ -28,37 +29,37 @@ using namespace std;
 // -------------------------------------------------------------------------
 // Constants
 // -------------------------------------------------------------------------
-static const int K_CPU        = 32;       // CPU sample count (sparse)
-static const int K_GPU        = 4096;     // GPU sample count (dense)
-static const int T_HORIZON    = 30;
-static const float DT         = 0.05f;
-static const float WHEELBASE  = 2.5f;
-static const float LAMBDA     = 10.0f;
-static const float WORKSPACE  = 50.0f;
+static constexpr int K_CPU        = 32;       // CPU sample count (sparse)
+static constexpr int K_GPU        = 4096;     // GPU sample count (dense)
+static constexpr int T_HORIZON    = 30;
+static constexpr float DT         = 0.05f;
+static constexpr float WHEELBASE  = 2.5f;
+static constexpr float LAMBDA     = 10.0f;
+static constexpr float WORKSPACE  = 50.0f;
 
 // Control limits
-static const float MAX_ACCEL       = 5.0f;
-static const float MAX_STEER_RATE  = 1.0f;
-static const float MAX_SPEED       = 8.0f;
-static const float MAX_STEER       = 0.6f;
+static constexpr float MAX_ACCEL       = 5.0f;
+static constexpr float MAX_STEER_RATE  = 1.0f;
+static constexpr float MAX_SPEED       = 8.0f;
+static constexpr float MAX_STEER       = 0.6f;
 
 // Noise standard deviations
-static const float ACCEL_NOISE_STD = 2.0f;
-static const float STEER_NOISE_STD = 0.4f;
+static constexpr float ACCEL_NOISE_STD = 2.0f;
+static constexpr float STEER_NOISE_STD = 0.4f;
 
 // Cost weights
-static const float GOAL_WEIGHT     = 1.0f;
-static const float OBS_WEIGHT      = 200.0f;
-static const float SPEED_WEIGHT    = 0.1f;
-static const float STEER_WEIGHT    = 5.0f;
-static const float TERMINAL_WEIGHT = 10.0f;
+static constexpr float GOAL_WEIGHT     = 1.0f;
+static constexpr float OBS_WEIGHT      = 200.0f;
+static constexpr float SPEED_WEIGHT    = 0.1f;
+static constexpr float STEER_WEIGHT    = 5.0f;
+static constexpr float TERMINAL_WEIGHT = 10.0f;
 
-static const float START_X = 5.0f,  START_Y = 5.0f;
-static const float START_THETA = 0.0f, START_V = 0.0f;
-static const float GOAL_X  = 45.0f, GOAL_Y  = 45.0f;
+static constexpr float START_X = 5.0f,  START_Y = 5.0f;
+static constexpr float START_THETA = 0.0f, START_V = 0.0f;
+static constexpr float GOAL_X  = 45.0f, GOAL_Y  = 45.0f;
 
 // Obstacles
-static const int N_OBSTACLES = 10;
+static constexpr int N_OBSTACLES = 10;
 __constant__ float d_obs_x[N_OBSTACLES];
 __constant__ float d_obs_y[N_OBSTACLES];
 __constant__ float d_obs_r[N_OBSTACLES];
@@ -67,8 +68,8 @@ static float h_obs_x[N_OBSTACLES] = {12.0f, 20.0f, 30.0f, 15.0f, 25.0f, 35.0f, 2
 static float h_obs_y[N_OBSTACLES] = {15.0f, 25.0f, 10.0f, 35.0f, 18.0f, 30.0f, 40.0f, 20.0f, 30.0f, 38.0f};
 static float h_obs_r[N_OBSTACLES] = { 3.0f,  3.5f,  3.0f,  2.5f,  3.5f,  2.5f,  3.0f,  3.0f,  2.5f,  2.5f};
 
-static const int MAX_STEPS = 600;
-static const float GOAL_TOL = 2.0f;
+static constexpr int MAX_STEPS = 600;
+static constexpr float GOAL_TOL = 2.0f;
 
 // -------------------------------------------------------------------------
 // CUDA Kernels
@@ -155,50 +156,6 @@ __global__ void rollout_kernel(
 
     d_costs[k] = cost;
     d_rand_states[k] = local_state;
-}
-
-__global__ void compute_weights_kernel(
-    const float* __restrict__ d_costs,
-    float* __restrict__ d_weights,
-    float* __restrict__ d_min_cost,
-    int K, float lambda)
-{
-    if (threadIdx.x != 0 || blockIdx.x != 0) return;
-
-    float min_c = FLT_MAX;
-    for (int k = 0; k < K; k++) {
-        if (d_costs[k] < min_c) min_c = d_costs[k];
-    }
-    d_min_cost[0] = min_c;
-
-    float sum_exp = 0.0f;
-    for (int k = 0; k < K; k++) {
-        float w = expf(-1.0f / lambda * (d_costs[k] - min_c));
-        d_weights[k] = w;
-        sum_exp += w;
-    }
-    if (sum_exp > 0.0f) {
-        for (int k = 0; k < K; k++) d_weights[k] /= sum_exp;
-    }
-}
-
-__global__ void update_controls_kernel(
-    float* __restrict__ d_nominal,
-    const float* __restrict__ d_perturbed,
-    const float* __restrict__ d_weights,
-    int K, int T)
-{
-    int t = blockIdx.x * blockDim.x + threadIdx.x;
-    if (t >= T) return;
-
-    float wa = 0.0f, ws = 0.0f;
-    for (int k = 0; k < K; k++) {
-        float w = d_weights[k];
-        wa += w * d_perturbed[k * T * 2 + t * 2 + 0];
-        ws += w * d_perturbed[k * T * 2 + t * 2 + 1];
-    }
-    d_nominal[t * 2 + 0] = wa;
-    d_nominal[t * 2 + 1] = ws;
 }
 
 // -------------------------------------------------------------------------
@@ -407,7 +364,6 @@ struct GpuMPPI {
 
         int block = 256;
         int grid_K = (K + block - 1) / block;
-        int grid_T = (T_HORIZON + block - 1) / block;
 
         CUDA_CHECK(cudaMemcpy(d_nominal, h_nominal.data(), ctrl_size * sizeof(float), cudaMemcpyHostToDevice));
 
@@ -418,11 +374,11 @@ struct GpuMPPI {
         CUDA_CHECK(cudaGetLastError());
         CUDA_CHECK(cudaDeviceSynchronize());
 
-        compute_weights_kernel<<<1, 1>>>(d_costs, d_weights, d_min_cost, K, LAMBDA);
+        cudabot::launch_softmin_weights(d_costs, d_weights, K, LAMBDA, d_min_cost);
         CUDA_CHECK(cudaGetLastError());
         CUDA_CHECK(cudaDeviceSynchronize());
 
-        update_controls_kernel<<<grid_T, block>>>(d_nominal, d_perturbed, d_weights, K, T_HORIZON);
+        cudabot::launch_weighted_control_update(d_perturbed, d_weights, d_nominal, K, T_HORIZON * 2);
         CUDA_CHECK(cudaGetLastError());
         CUDA_CHECK(cudaDeviceSynchronize());
 

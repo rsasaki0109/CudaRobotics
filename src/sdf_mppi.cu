@@ -20,6 +20,7 @@
 
 #include "neural_sdf_nav.cuh"
 #include "cuda_check.cuh"
+#include "mppi_reduction.cuh"
 
 using namespace std;
 using namespace cudabot;
@@ -27,13 +28,13 @@ using namespace cudabot;
 static const char* AVI_PATH = "gif/sdf_mppi.avi";
 static const char* GIF_PATH = "gif/sdf_mppi.gif";
 
-static const int K_SAMPLES = 4096;
-static const int T_HORIZON = 30;
-static const int MAX_STEPS = 170;
-static const float DT = 0.16f;
-static const float MAX_SPEED = 1.4f;
-static const float LAMBDA = 2.2f;
-static const int SDF_WEIGHT_CAP = 12000;
+static constexpr int K_SAMPLES = 4096;
+static constexpr int T_HORIZON = 30;
+static constexpr int MAX_STEPS = 170;
+static constexpr float DT = 0.16f;
+static constexpr float MAX_SPEED = 1.4f;
+static constexpr float LAMBDA = 2.2f;
+static constexpr int SDF_WEIGHT_CAP = 12000;
 
 __constant__ float d_sdf_weights[SDF_WEIGHT_CAP];
 
@@ -103,37 +104,6 @@ __global__ void rollout_kernel(
     d_rng[k] = rng;
 }
 
-__global__ void compute_weights_kernel(const float* d_costs, float* d_weights) {
-    if (threadIdx.x != 0 || blockIdx.x != 0) return;
-    float min_cost = FLT_MAX;
-    for (int k = 0; k < K_SAMPLES; k++) min_cost = fminf(min_cost, d_costs[k]);
-
-    float sum_w = 0.0f;
-    for (int k = 0; k < K_SAMPLES; k++) {
-        float w = expf(-(d_costs[k] - min_cost) / LAMBDA);
-        d_weights[k] = w;
-        sum_w += w;
-    }
-    if (sum_w > 0.0f) {
-        for (int k = 0; k < K_SAMPLES; k++) d_weights[k] /= sum_w;
-    }
-}
-
-__global__ void update_controls_kernel(float* d_nominal, const float* d_perturbed, const float* d_weights) {
-    int t = blockIdx.x * blockDim.x + threadIdx.x;
-    if (t >= T_HORIZON) return;
-
-    float ux = 0.0f;
-    float uy = 0.0f;
-    for (int k = 0; k < K_SAMPLES; k++) {
-        float w = d_weights[k];
-        ux += w * d_perturbed[k * T_HORIZON * 2 + t * 2 + 0];
-        uy += w * d_perturbed[k * T_HORIZON * 2 + t * 2 + 1];
-    }
-    d_nominal[t * 2 + 0] = ux;
-    d_nominal[t * 2 + 1] = uy;
-}
-
 int main() {
     vector<float> train_inputs;
     vector<float> train_targets;
@@ -189,8 +159,8 @@ int main() {
     for (int step = 0; step < MAX_STEPS; step++) {
         for (int iter = 0; iter < 6; iter++) {
             rollout_kernel<<<blocks, threads>>>(state.x, state.y, d_nominal, d_costs, d_perturbed, d_rng);
-            compute_weights_kernel<<<1, 1>>>(d_costs, d_weights);
-            update_controls_kernel<<<1, T_HORIZON>>>(d_nominal, d_perturbed, d_weights);
+            cudabot::launch_softmin_weights(d_costs, d_weights, K_SAMPLES, LAMBDA);
+            cudabot::launch_weighted_control_update(d_perturbed, d_weights, d_nominal, K_SAMPLES, T_HORIZON * 2);
         }
 
         CUDA_CHECK(cudaMemcpy(h_nominal.data(), d_nominal, h_nominal.size() * sizeof(float), cudaMemcpyDeviceToHost));

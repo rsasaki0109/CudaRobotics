@@ -29,6 +29,7 @@
 #include <cuda_runtime.h>
 #include <curand_kernel.h>
 #include "cuda_check.cuh"
+#include "mppi_reduction.cuh"
 
 using namespace std;
 
@@ -250,35 +251,6 @@ __global__ void rollout_kernel(
     d_rng[k] = rng;
 }
 
-__global__ void compute_weights_kernel(const float* __restrict__ d_costs,
-                                       float* __restrict__ d_weights) {
-    if (threadIdx.x != 0 || blockIdx.x != 0) return;
-    float min_cost = FLT_MAX;
-    for (int k = 0; k < K_SAMPLES; k++) min_cost = fminf(min_cost, d_costs[k]);
-    float sum_w = 0.0f;
-    for (int k = 0; k < K_SAMPLES; k++) {
-        float w = expf(-(d_costs[k] - min_cost) / LAMBDA);
-        d_weights[k] = w;
-        sum_w += w;
-    }
-    if (sum_w > 0.0f) for (int k = 0; k < K_SAMPLES; k++) d_weights[k] /= sum_w;
-}
-
-__global__ void update_controls_kernel(float* __restrict__ d_nominal,
-                                       const float* __restrict__ d_perturbed,
-                                       const float* __restrict__ d_weights) {
-    int t = blockIdx.x * blockDim.x + threadIdx.x;
-    if (t >= T_HORIZON) return;
-    float ux = 0.0f, uy = 0.0f;
-    for (int k = 0; k < K_SAMPLES; k++) {
-        float w = d_weights[k];
-        ux += w * d_perturbed[k * T_HORIZON * 2 + t * 2 + 0];
-        uy += w * d_perturbed[k * T_HORIZON * 2 + t * 2 + 1];
-    }
-    d_nominal[t * 2 + 0] = ux;
-    d_nominal[t * 2 + 1] = uy;
-}
-
 // -------------------------------------------------------------------------
 // Rendering
 // -------------------------------------------------------------------------
@@ -420,8 +392,8 @@ int main() {
             rollout_kernel<<<blocks, threads>>>(
                 state.x, state.y, goal.x, goal.y,
                 d_nominal, d_esdf, d_costs, d_perturbed, d_rng);
-            compute_weights_kernel<<<1, 1>>>(d_costs, d_weights);
-            update_controls_kernel<<<1, T_HORIZON>>>(d_nominal, d_perturbed, d_weights);
+            cudabot::launch_softmin_weights(d_costs, d_weights, K_SAMPLES, LAMBDA);
+            cudabot::launch_weighted_control_update(d_perturbed, d_weights, d_nominal, K_SAMPLES, T_HORIZON * 2);
             CUDA_CHECK(cudaDeviceSynchronize());
             auto rt1 = std::chrono::high_resolution_clock::now();
             rollout_ms_total += std::chrono::duration<double, std::milli>(rt1 - rt0).count();
