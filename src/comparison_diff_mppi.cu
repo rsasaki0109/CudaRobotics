@@ -25,6 +25,7 @@
 #include "cuda_check.cuh"
 #include "mppi_reduction.cuh"
 #include "cuda_video.h"
+#include "display.h"
 
 
 using namespace std;
@@ -430,8 +431,8 @@ int main() {
         cv::Mat frame;
         cv::hconcat(left, right, frame);
         video.write(frame);
-        cv::imshow("comparison_diff_mppi", frame);
-        cv::waitKey(1);
+        cudabot::imshow("comparison_diff_mppi", frame);
+        cudabot::waitKey(1);
 
         float sdx = standard.rx - standard.cost_params.goal_x;
         float sdy = standard.ry - standard.cost_params.goal_y;

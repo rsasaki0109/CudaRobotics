@@ -19,6 +19,7 @@
 
 #include <cuda_runtime.h>
 #include "cuda_check.cuh"
+#include "display.h"
 
 
 #ifndef M_PI
@@ -951,7 +952,7 @@ void RRTStarRS::propagate_cost_to_leaves(int parent_idx) {
 
 std::vector<Node> RRTStarRS::planning() {
     // Visualization setup
-    cv::namedWindow("rrt_star_rs", cv::WINDOW_NORMAL);
+    cudabot::namedWindow("rrt_star_rs", cv::WINDOW_NORMAL);
     float range = rand_max_ - rand_min_;
     int img_reso = 15;
     int img_w = (int)(range * img_reso);
@@ -1164,8 +1165,8 @@ std::vector<Node> RRTStarRS::planning() {
         }
 
         if (iter % 10 == 0) {
-            cv::imshow("rrt_star_rs", bg);
-            cv::waitKey(1);
+            cudabot::imshow("rrt_star_rs", bg);
+            cudabot::waitKey(1);
         }
 
         // Check if we can connect to goal via RS curve
@@ -1244,12 +1245,12 @@ std::vector<Node> RRTStarRS::planning() {
             cv::arrowedLine(bg, gp, ep, cv::Scalar(255, 0, 0), 3);
         }
 
-        cv::imshow("rrt_star_rs", bg);
-        cv::waitKey(0);
+        cudabot::imshow("rrt_star_rs", bg);
+        cudabot::waitKey(0);
     } else {
         std::cout << "No path found within " << max_iter_ << " iterations." << std::endl;
-        cv::imshow("rrt_star_rs", bg);
-        cv::waitKey(0);
+        cudabot::imshow("rrt_star_rs", bg);
+        cudabot::waitKey(0);
     }
 
     return path;

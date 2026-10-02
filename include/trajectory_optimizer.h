@@ -17,6 +17,7 @@
 #include<opencv2/highgui/highgui.hpp>
 #include<chrono>
 #include"motion_model.h"
+#include "display.h"
 
 
 namespace cpprobotics{
@@ -56,7 +57,7 @@ Traj TrajectoryOptimizer::optimizer_traj(
 
   int count = 0;
   if (visualize){
-    cv::namedWindow("mptg", cv::WINDOW_NORMAL);
+    cudabot::namedWindow("mptg", cv::WINDOW_NORMAL);
   }
 
   Traj sample_traj;
@@ -89,8 +90,8 @@ Traj TrajectoryOptimizer::optimizer_traj(
 
 
       if (visualize){
-        cv::imshow("mptg", bg);
-        cv::waitKey(5);
+        cudabot::imshow("mptg", bg);
+        cudabot::waitKey(5);
       }
 
       if (save){

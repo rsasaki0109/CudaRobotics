@@ -19,6 +19,7 @@
 
 #include <cuda_runtime.h>
 #include "cuda_check.cuh"
+#include "display.h"
 
 
 // ---------------------------------------------------------------------------
@@ -653,7 +654,7 @@ void RRTStar3D::propagate_cost_to_leaves(int parent_idx) {
 
 std::vector<Node> RRTStar3D::planning() {
     // Visualization setup: XY (top view) and XZ (side view) side by side
-    cv::namedWindow("rrt_star_3d", cv::WINDOW_NORMAL);
+    cudabot::namedWindow("rrt_star_3d", cv::WINDOW_NORMAL);
     float range = rand_max_ - rand_min_;
     int img_reso = 12;
     int view_w = (int)(range * img_reso);
@@ -839,8 +840,8 @@ std::vector<Node> RRTStar3D::planning() {
         }
 
         if (iter % 50 == 0) {
-            cv::imshow("rrt_star_3d", bg);
-            cv::waitKey(1);
+            cudabot::imshow("rrt_star_3d", bg);
+            cudabot::waitKey(1);
         }
 
         // Check if we reached the goal
@@ -856,8 +857,8 @@ std::vector<Node> RRTStar3D::planning() {
     }
 
     // Show final tree
-    cv::imshow("rrt_star_3d", bg);
-    cv::waitKey(1);
+    cudabot::imshow("rrt_star_3d", bg);
+    cudabot::waitKey(1);
 
     // Extract path
     std::vector<Node> path;
@@ -893,14 +894,14 @@ std::vector<Node> RRTStar3D::planning() {
         cv::circle(bg, xy_pt(goal_x_, goal_y_),  marker_r, cv::Scalar(255, 0, 0), -1);
         cv::circle(bg, xz_pt(goal_x_, goal_z_),  marker_r, cv::Scalar(255, 0, 0), -1);
 
-        cv::imshow("rrt_star_3d", bg);
-        cv::waitKey(0);
+        cudabot::imshow("rrt_star_3d", bg);
+        cudabot::waitKey(0);
 
         std::reverse(path.begin(), path.end());
     } else {
         std::cout << "No path found within " << max_iter_ << " iterations." << std::endl;
-        cv::imshow("rrt_star_3d", bg);
-        cv::waitKey(0);
+        cudabot::imshow("rrt_star_3d", bg);
+        cudabot::waitKey(0);
     }
 
     return path;

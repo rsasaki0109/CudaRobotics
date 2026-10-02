@@ -19,6 +19,7 @@
 
 #include <cuda_runtime.h>
 #include "cuda_check.cuh"
+#include "display.h"
 
 
 // ---------------------------------------------------------------------------
@@ -529,7 +530,7 @@ void RRTStar::propagate_cost_to_leaves(int parent_idx) {
 
 std::vector<Node> RRTStar::planning() {
     // Visualization setup
-    cv::namedWindow("rrt_star", cv::WINDOW_NORMAL);
+    cudabot::namedWindow("rrt_star", cv::WINDOW_NORMAL);
     int img_size = (int)(rand_max_ - rand_min_);
     int img_reso = 50;
     cv::Mat bg(img_size * img_reso, img_size * img_reso,
@@ -714,8 +715,8 @@ std::vector<Node> RRTStar::planning() {
                 cv::Scalar(0, 255, 0), 10);
         }
 
-        cv::imshow("rrt_star", bg);
-        cv::waitKey(5);
+        cudabot::imshow("rrt_star", bg);
+        cudabot::waitKey(5);
 
         // Check if we reached the goal
         float dist_to_goal = calc_dist(new_node.x, new_node.y, goal_x_, goal_y_);
@@ -756,14 +757,14 @@ std::vector<Node> RRTStar::planning() {
             idx = node_list_[idx].parent_idx;
         }
 
-        cv::imshow("rrt_star", bg);
-        cv::waitKey(0);
+        cudabot::imshow("rrt_star", bg);
+        cudabot::waitKey(0);
 
         std::reverse(path.begin(), path.end());
     } else {
         std::cout << "No path found within " << max_iter_ << " iterations." << std::endl;
-        cv::imshow("rrt_star", bg);
-        cv::waitKey(0);
+        cudabot::imshow("rrt_star", bg);
+        cudabot::waitKey(0);
     }
 
     return path;

@@ -29,6 +29,7 @@
 #include <curand_kernel.h>
 #include "cuda_check.cuh"
 #include "cuda_video.h"
+#include "display.h"
 
 
 using namespace std;
@@ -377,9 +378,9 @@ int main()
         cv::putText(img, buf, cv::Point(10, 25),
                     cv::FONT_HERSHEY_SIMPLEX, 0.55, cv::Scalar(0, 0, 0), 2);
 
-        cv::namedWindow("stomp", cv::WINDOW_AUTOSIZE);
-        cv::imshow("stomp", img);
-        cv::waitKey(1);
+        cudabot::namedWindow("stomp", cv::WINDOW_AUTOSIZE);
+        cudabot::imshow("stomp", img);
+        cudabot::waitKey(1);
         video.write(img);
 
         if (iter % 10 == 0) {
@@ -418,8 +419,8 @@ int main()
            "gif/stomp.gif 2>" CUDABOT_NULL_DEVICE);
     cout << "GIF saved to gif/stomp.gif" << endl;
 
-    cv::imshow("stomp", final_img);
-    cv::waitKey(0);
+    cudabot::imshow("stomp", final_img);
+    cudabot::waitKey(0);
 
     // Cleanup
     CUDA_CHECK(cudaFree(d_trajectory));

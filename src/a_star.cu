@@ -18,6 +18,7 @@
 #include <cuda_runtime.h>
 #include "cuda_check.cuh"
 #include "cuda_video.h"
+#include "display.h"
 
 using namespace std;
 
@@ -233,7 +234,7 @@ void a_star_planning(float sx, float sy,
     int ywidth = max_oy - min_oy;
 
     // Visualization
-    cv::namedWindow("astar", cv::WINDOW_NORMAL);
+    cudabot::namedWindow("astar", cv::WINDOW_NORMAL);
     int count = 0;
     int img_reso = 5;
     cv::Mat bg(img_reso * xwidth,
@@ -314,9 +315,9 @@ void a_star_planning(float sx, float sy,
                           cv::Scalar(0, 255, 0));
 
             count++;
-            cv::imshow("astar", bg);
+            cudabot::imshow("astar", bg);
             video.write(bg);
-            cv::waitKey(5);
+            cudabot::waitKey(5);
 
             if (path_cost[node->x][node->y] + motion[i].sum_cost < path_cost[new_node->x][new_node->y]) {
                 path_cost[new_node->x][new_node->y] = path_cost[node->x][node->y] + motion[i].sum_cost;
@@ -329,11 +330,11 @@ void a_star_planning(float sx, float sy,
     delete ngoal;
     delete nstart;
 
-    cv::imshow("astar", bg);
+    cudabot::imshow("astar", bg);
     video.write(bg);
     video.release();
     std::cout << "Video saved to videos/astar.avi" << std::endl;
-    cv::waitKey(0);
+    cudabot::waitKey(0);
 }
 
 // -------------------------------------------------------------------------

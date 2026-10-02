@@ -19,6 +19,7 @@
 
 #include <cuda_runtime.h>
 #include "cuda_check.cuh"
+#include "display.h"
 
 using namespace std;
 
@@ -501,9 +502,9 @@ void voronoi_road_map_planning(float sx, float sy, float gx, float gy,
                           (int)((gy - min_y + 0.5f) * img_scale)),
                img_scale, cv::Scalar(255, 0, 0), -1);
 
-    cv::namedWindow("voronoi", cv::WINDOW_NORMAL);
-    cv::imshow("voronoi", img);
-    cv::waitKey(0);
+    cudabot::namedWindow("voronoi", cv::WINDOW_NORMAL);
+    cudabot::imshow("voronoi", img);
+    cudabot::waitKey(0);
 }
 
 // -------------------------------------------------------------------------

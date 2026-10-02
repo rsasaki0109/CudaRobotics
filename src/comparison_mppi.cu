@@ -23,6 +23,7 @@
 #include "cuda_check.cuh"
 #include "mppi_reduction.cuh"
 #include "cuda_video.h"
+#include "display.h"
 
 
 using namespace std;
@@ -592,9 +593,9 @@ int main()
         cv::Mat combined;
         cv::hconcat(left, right, combined);
 
-        cv::namedWindow("comparison_mppi", cv::WINDOW_AUTOSIZE);
-        cv::imshow("comparison_mppi", combined);
-        cv::waitKey(1);
+        cudabot::namedWindow("comparison_mppi", cv::WINDOW_AUTOSIZE);
+        cudabot::imshow("comparison_mppi", combined);
+        cudabot::waitKey(1);
         video.write(combined);
 
         if (step % 30 == 0) {
@@ -631,8 +632,8 @@ int main()
            "gif/comparison_mppi.gif 2>" CUDABOT_NULL_DEVICE);
     cout << "GIF saved to gif/comparison_mppi.gif" << endl;
 
-    cv::imshow("comparison_mppi", combined);
-    cv::waitKey(0);
+    cudabot::imshow("comparison_mppi", combined);
+    cudabot::waitKey(0);
 
     gpu_mppi.cleanup();
 

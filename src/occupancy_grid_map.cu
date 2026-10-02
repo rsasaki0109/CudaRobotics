@@ -19,6 +19,7 @@
 #include <cuda_runtime.h>
 #include "cuda_check.cuh"
 #include "cuda_video.h"
+#include "display.h"
 
 using namespace std;
 
@@ -365,7 +366,7 @@ int main() {
     int gridSize = (NUM_RAYS + blockSize - 1) / blockSize;
 
     // --- Main loop ---
-    cv::namedWindow("occupancy_grid", cv::WINDOW_AUTOSIZE);
+    cudabot::namedWindow("occupancy_grid", cv::WINDOW_AUTOSIZE);
 
     for (int step = 0; step < num_steps; step++) {
         float rx = path_x[step];
@@ -407,8 +408,8 @@ int main() {
                                  RESOLUTION, cell_px);
 
             video.write(img);
-            cv::imshow("occupancy_grid", img);
-            int key = cv::waitKey(10);
+            cudabot::imshow("occupancy_grid", img);
+            int key = cudabot::waitKey(10);
             if (key == 27) break;  // ESC to quit
         }
     }
@@ -433,14 +434,14 @@ int main() {
     cv::Mat final_img;
     logodds_to_image(h_logodds, final_img, GRID_W, GRID_H, cell_px);
 
-    cv::imshow("occupancy_grid", final_img);
+    cudabot::imshow("occupancy_grid", final_img);
     cout << "Press any key to exit..." << endl;
-    cv::waitKey(0);
+    cudabot::waitKey(0);
 
     // Cleanup
     CUDA_CHECK(cudaFree(d_logodds));
     CUDA_CHECK(cudaFree(d_ranges));
-    cv::destroyAllWindows();
+    cudabot::destroyAllWindows();
 
     return 0;
 }

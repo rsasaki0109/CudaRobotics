@@ -19,6 +19,7 @@
 #include <curand_kernel.h>
 #include "cuda_check.cuh"
 #include "cuda_video.h"
+#include "display.h"
 
 // ---------------------------------------------------------------------------
 // CUDA error check macro
@@ -545,7 +546,7 @@ int main() {
             }
 
     // Video
-    cv::namedWindow("comparison_amcl", cv::WINDOW_NORMAL);
+    cudabot::namedWindow("comparison_amcl", cv::WINDOW_NORMAL);
     cv::VideoWriter video(
         "gif/comparison_amcl.avi",
         cudabot::avi_fourcc(), 30,
@@ -744,13 +745,13 @@ int main() {
         cv::putText(combined, buf, cv::Point(10, COMBINED_H - 10),
                     cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(0, 0, 0), 2);
 
-        cv::imshow("comparison_amcl", combined);
+        cudabot::imshow("comparison_amcl", combined);
         video.write(combined);
-        cv::waitKey(5);
+        cudabot::waitKey(5);
     }
 
     video.release();
-    cv::destroyAllWindows();
+    cudabot::destroyAllWindows();
 
     printf("\nFinal timing: CPU=%.2f ms/step, CUDA=%.2f ms/step\n",
            cpu_total_ms / step_count, cuda_total_ms / step_count);

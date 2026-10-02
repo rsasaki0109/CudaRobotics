@@ -13,6 +13,7 @@
 #include<opencv2/opencv.hpp>
 #include<opencv2/core/core.hpp>
 #include<opencv2/highgui/highgui.hpp>
+#include "display.h"
 using namespace std;
 
 
@@ -142,7 +143,7 @@ void dijkstra_star_planning(float sx, float sy,
   int ywidth = max_oy-min_oy;
 
   //visualization
-  cv::namedWindow("astar", cv::WINDOW_NORMAL);
+  cudabot::namedWindow("astar", cv::WINDOW_NORMAL);
   int count = 0;
   int img_reso = 5;
   cv::Mat bg(img_reso*xwidth,
@@ -219,8 +220,8 @@ void dijkstra_star_planning(float sx, float sy,
       // std::string int_count = std::to_string(count);
       // cv::imwrite("./pngs/"+std::string(5-int_count.length(), '0').append(int_count)+".png", bg);
       count++;
-      cv::imshow("dijkstra", bg);
-      cv::waitKey(5);
+      cudabot::imshow("dijkstra", bg);
+      cudabot::waitKey(5);
 
       pq.push(new_node);
     }
@@ -232,8 +233,8 @@ void dijkstra_star_planning(float sx, float sy,
 
   // std::string int_count = std::to_string(count);
   // cv::imwrite("./pngs/"+std::string(5-int_count.length(), '0').append(int_count)+".png", bg);
-  cv::imshow("dijkstra", bg);
-  cv::waitKey(5);
+  cudabot::imshow("dijkstra", bg);
+  cudabot::waitKey(5);
 };
 
 
