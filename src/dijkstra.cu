@@ -17,6 +17,7 @@
 
 #include <cuda_runtime.h>
 #include "cuda_check.cuh"
+#include "display.h"
 
 using namespace std;
 
@@ -220,7 +221,7 @@ void dijkstra_planning(float sx, float sy,
   int ywidth = max_oy - min_oy;
 
   // Visualization setup
-  cv::namedWindow("dijkstra", cv::WINDOW_NORMAL);
+  cudabot::namedWindow("dijkstra", cv::WINDOW_NORMAL);
   int count = 0;
   int img_reso = 5;
   cv::Mat bg(img_reso * xwidth,
@@ -295,8 +296,8 @@ void dijkstra_planning(float sx, float sy,
                     cv::Scalar(0, 255, 0));
 
       count++;
-      cv::imshow("dijkstra", bg);
-      cv::waitKey(5);
+      cudabot::imshow("dijkstra", bg);
+      cudabot::waitKey(5);
 
       pq.push(new_node);
     }
@@ -306,8 +307,8 @@ void dijkstra_planning(float sx, float sy,
   delete ngoal;
   delete nstart;
 
-  cv::imshow("dijkstra", bg);
-  cv::waitKey(5);
+  cudabot::imshow("dijkstra", bg);
+  cudabot::waitKey(5);
 }
 
 // -------------------------------------------------------------------------

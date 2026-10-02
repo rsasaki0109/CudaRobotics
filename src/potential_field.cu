@@ -20,6 +20,7 @@
 #include <cuda_runtime.h>
 #include "cuda_check.cuh"
 #include "cuda_video.h"
+#include "display.h"
 
 using namespace std;
 
@@ -354,12 +355,12 @@ void draw_result(
         video.write(img);
     }
 
-    cv::namedWindow("potential_field", cv::WINDOW_AUTOSIZE);
-    cv::imshow("potential_field", img);
+    cudabot::namedWindow("potential_field", cv::WINDOW_AUTOSIZE);
+    cudabot::imshow("potential_field", img);
     video.write(img);
     video.release();
     std::cout << "Video saved to videos/potential_field.avi" << std::endl;
-    cv::waitKey(0);
+    cudabot::waitKey(0);
 }
 
 // -------------------------------------------------------------------------

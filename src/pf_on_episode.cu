@@ -20,6 +20,7 @@
 #include <curand_kernel.h>
 #include "cuda_check.cuh"
 #include "cuda_video.h"
+#include "display.h"
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -360,7 +361,7 @@ int main() {
     // ======================================================================
     // REPLAY phase
     // ======================================================================
-    cv::namedWindow("pf_on_episode", cv::WINDOW_NORMAL);
+    cudabot::namedWindow("pf_on_episode", cv::WINDOW_NORMAL);
     cv::VideoWriter video(
         "gif/pf_on_episode.avi",
         cudabot::avi_fourcc(), 30, cv::Size(IMG_W, IMG_H));
@@ -489,9 +490,9 @@ int main() {
         snprintf(buf, sizeof(buf), "Step %d/%d", step, N_TEACH_STEPS);
         cv::putText(bg, buf, cv::Point(10, 30), cv::FONT_HERSHEY_SIMPLEX, 0.8, cv::Scalar(0, 0, 0), 2);
 
-        cv::imshow("pf_on_episode", bg);
+        cudabot::imshow("pf_on_episode", bg);
         video.write(bg);
-        cv::waitKey(5);
+        cudabot::waitKey(5);
     }
 
     video.release();

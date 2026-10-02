@@ -20,6 +20,7 @@
 #include <curand_kernel.h>
 #include "cuda_check.cuh"
 #include "cuda_video.h"
+#include "display.h"
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -637,8 +638,8 @@ int main() {
     // ------------------------------------------
     // Visualization setup
     // ------------------------------------------
-    cv::namedWindow("amcl", cv::WINDOW_NORMAL);
-    cv::resizeWindow("amcl", IMG_W, IMG_H);
+    cudabot::namedWindow("amcl", cv::WINDOW_NORMAL);
+    cudabot::resizeWindow("amcl", IMG_W, IMG_H);
 
     cv::VideoWriter video(
         "gif/amcl.avi",
@@ -936,9 +937,9 @@ int main() {
         cv::putText(frame, text_buf, cv::Point(10, 75),
                     cv::FONT_HERSHEY_SIMPLEX, 0.7, cv::Scalar(0, 0, 0), 2);
 
-        cv::imshow("amcl", frame);
+        cudabot::imshow("amcl", frame);
         video.write(frame);
-        cv::waitKey(5);
+        cudabot::waitKey(5);
 
         if (step % 50 == 0) {
             float err_x = gt_x - est_x;
@@ -950,7 +951,7 @@ int main() {
     }
 
     video.release();
-    cv::destroyAllWindows();
+    cudabot::destroyAllWindows();
 
     std::cout << "Video saved to gif/amcl.avi" << std::endl;
 

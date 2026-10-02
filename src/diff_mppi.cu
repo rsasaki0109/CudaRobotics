@@ -28,6 +28,7 @@
 #include "cuda_check.cuh"
 #include "mppi_reduction.cuh"
 #include "cuda_video.h"
+#include "display.h"
 
 using namespace std;
 using namespace cudabot;
@@ -446,8 +447,8 @@ int main() {
         cv::putText(img, buf, cv::Point(10, 56), cv::FONT_HERSHEY_SIMPLEX, 0.48, cv::Scalar(70, 70, 70), 1);
 
         video.write(img);
-        cv::imshow("diff_mppi", img);
-        cv::waitKey(1);
+        cudabot::imshow("diff_mppi", img);
+        cudabot::waitKey(1);
 
         if (step % 20 == 0) {
             printf("Step %3d pos=(%.2f, %.2f) min_cost=%.2f accel=%.2f steer=%.2f\n",

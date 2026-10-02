@@ -15,6 +15,7 @@
 #include"frenet_path.h"
 #include"quintic_polynomial.h"
 #include"quartic_polynomial.h"
+#include "display.h"
 
 #define SIM_LOOP 500
 #define MAX_SPEED  50.0 / 3.6  // maximum speed [m/s]
@@ -217,7 +218,7 @@ int main(){
 
   float area = 20.0;
 
-  cv::namedWindow("frenet", cv::WINDOW_NORMAL);
+  cudabot::namedWindow("frenet", cv::WINDOW_NORMAL);
   int count = 0;
 
   for(int i=0; i<SIM_LOOP; i++){
@@ -272,8 +273,8 @@ int main(){
       10);
 
 
-    cv::imshow("frenet", bg);
-    cv::waitKey(5);
+    cudabot::imshow("frenet", bg);
+    cudabot::waitKey(5);
 
     // save image in build/bin/pngs
     // struct timeval tp;

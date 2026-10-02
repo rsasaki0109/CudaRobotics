@@ -29,6 +29,7 @@
 #include "cuda_check.cuh"
 #include "mppi_reduction.cuh"
 #include "cuda_video.h"
+#include "display.h"
 
 using namespace std;
 
@@ -436,9 +437,9 @@ int main()
         cv::putText(img, buf, cv::Point(10, 58),
                     cv::FONT_HERSHEY_SIMPLEX, 0.55, cv::Scalar(80, 80, 80), 1);
 
-        cv::namedWindow("mppi", cv::WINDOW_AUTOSIZE);
-        cv::imshow("mppi", img);
-        cv::waitKey(1);
+        cudabot::namedWindow("mppi", cv::WINDOW_AUTOSIZE);
+        cudabot::imshow("mppi", img);
+        cudabot::waitKey(1);
         video.write(img);
 
         if (step % 20 == 0) {
@@ -476,8 +477,8 @@ int main()
            "gif/mppi.gif 2>" CUDABOT_NULL_DEVICE);
     cout << "GIF saved to gif/mppi.gif" << endl;
 
-    cv::imshow("mppi", final_img);
-    cv::waitKey(0);
+    cudabot::imshow("mppi", final_img);
+    cudabot::waitKey(0);
 
     // Cleanup
     CUDA_CHECK(cudaFree(d_nominal));

@@ -23,6 +23,7 @@
 #include <curand_kernel.h>
 #include "cuda_check.cuh"
 #include "cuda_video.h"
+#include "display.h"
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -549,8 +550,8 @@ int main() {
             }
 
     // Visualization
-    cv::namedWindow("expansion_reset_mcl", cv::WINDOW_NORMAL);
-    cv::resizeWindow("expansion_reset_mcl", IMG_W, IMG_H);
+    cudabot::namedWindow("expansion_reset_mcl", cv::WINDOW_NORMAL);
+    cudabot::resizeWindow("expansion_reset_mcl", IMG_W, IMG_H);
     cv::VideoWriter video(
         "gif/expansion_reset_mcl.avi",
         cudabot::avi_fourcc(), 30, cv::Size(IMG_W, IMG_H));
@@ -746,9 +747,9 @@ int main() {
                 cv::FONT_HERSHEY_SIMPLEX, 1.2, cv::Scalar(0, 200, 0), 3);
         }
 
-        cv::imshow("expansion_reset_mcl", bg);
+        cudabot::imshow("expansion_reset_mcl", bg);
         video.write(bg);
-        cv::waitKey(5);
+        cudabot::waitKey(5);
     }
 
     video.release();
