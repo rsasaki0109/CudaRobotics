@@ -21,6 +21,7 @@
 #include <opencv2/opencv.hpp>
 #include <cuda_runtime.h>
 #include "cuda_check.cuh"
+#include "cuda_video.h"
 
 // =====================================================================
 // Parameters
@@ -269,7 +270,7 @@ int main()
 
     cv::VideoWriter video(
         "gif/icp.avi",
-        cv::VideoWriter::fourcc('X', 'V', 'I', 'D'), 10, cv::Size(vp.W, vp.H));
+        cudabot::avi_fourcc(), 10, cv::Size(vp.W, vp.H));
 
     // --- CUDA setup ---
     float *d_src_x, *d_src_y, *d_tgt_x, *d_tgt_y;
@@ -447,8 +448,8 @@ int main()
 
     // Convert to gif
     system("ffmpeg -y -i gif/icp.avi "
-           "-vf 'fps=10,scale=800:-1:flags=lanczos' -loop 0 "
-           "gif/icp.gif 2>/dev/null");
+           "-vf \"fps=10,scale=800:-1:flags=lanczos\" -loop 0 "
+           "gif/icp.gif 2>" CUDABOT_NULL_DEVICE);
     std::cout << "GIF saved to gif/icp.gif" << std::endl;
 
     // Cleanup

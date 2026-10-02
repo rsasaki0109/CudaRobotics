@@ -511,7 +511,7 @@ done_lc:
     (void)omega_xy; (void)omega_th;
 
     // Video writer
-    std::system("mkdir -p gif");
+    cudabot::ensure_dirs({"gif"});
     cv::VideoWriter video("gif/gpu_pose_graph_slam.avi",
                           cv::VideoWriter::fourcc('M', 'J', 'P', 'G'),
                           12, cv::Size(PANEL_W * 2, PANEL_H));

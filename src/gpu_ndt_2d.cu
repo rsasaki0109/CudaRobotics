@@ -385,7 +385,7 @@ int main() {
     std::uniform_real_distribution<float> uni_xy(-1.0f, 1.0f);
     std::uniform_real_distribution<float> uni_th(-0.35f, 0.35f);
 
-    std::system("mkdir -p gif");
+    cudabot::ensure_dirs({"gif"});
     cv::VideoWriter video("gif/gpu_ndt_2d.avi",
                           cv::VideoWriter::fourcc('M', 'J', 'P', 'G'),
                           10, cv::Size(PANEL_W, PANEL_H + 50));

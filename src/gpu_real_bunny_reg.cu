@@ -228,7 +228,7 @@ static float surf_residual(const std::vector<float>& X,const std::vector<float>&
 // ============================ GIF (real bunny convergence) ============================
 static void render_gif(const std::vector<float>& X,const std::vector<char>& is_out,const std::vector<float>& Y,const std::vector<Pose>& traj){
     const int W=1280,H=720,CX=400,CY=380; const float SCALE=300.f,elev=0.30f;
-    if(system("mkdir -p tmp")!=0)std::fprintf(stderr,"warn\n");
+    if(cudabot::ensure_dirs({"tmp"})!=0)std::fprintf(stderr,"warn\n");
     cv::VideoWriter video("tmp/gpu_real_bunny_reg.avi",cv::VideoWriter::fourcc('M','J','P','G'),18,cv::Size(W,H));
     int nt=traj.size(),Nx=X.size()/3,My=Y.size()/3; const int HOLD=24;
     struct Sp{float sx,sy,d;cv::Scalar c;};

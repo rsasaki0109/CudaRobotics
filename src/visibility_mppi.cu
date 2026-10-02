@@ -40,6 +40,7 @@
 #include <curand_kernel.h>
 #include "cuda_check.cuh"
 #include "mppi_reduction.cuh"
+#include "cuda_video.h"
 
 // -------------------------------------------------------------------------
 // World / planner parameters
@@ -405,8 +406,8 @@ static int count_visible_host(const std::vector<unsigned char>& occ,
 static void convert_avi_to_gif(const char* avi, const char* gif, int fps) {
     char cmd[512];
     std::snprintf(cmd, sizeof(cmd),
-        "ffmpeg -y -i %s -vf 'fps=%d,scale=1200:-1:flags=lanczos' -loop 0 %s "
-        "> /dev/null 2>&1", avi, fps, gif);
+        "ffmpeg -y -i %s -vf \"fps=%d,scale=1200:-1:flags=lanczos\" -loop 0 %s "
+        "> " CUDABOT_NULL_DEVICE " 2>&1", avi, fps, gif);
     int rc = std::system(cmd);
     if (rc != 0) std::fprintf(stderr, "ffmpeg conversion returned %d\n", rc);
 }
@@ -490,7 +491,7 @@ int main() {
     std::vector<float> vis_nom(T_HORIZON * 2, 0.0f);
 
     cv::VideoWriter video("gif/visibility_mppi.avi",
-                          cv::VideoWriter::fourcc('X','V','I','D'), 15,
+                          cudabot::avi_fourcc(), 15,
                           cv::Size(PANEL_W * 2 + 4, PANEL_H + 30));
 
     int sum_base_vis = 0, sum_vis_vis = 0, vis_counted = 0;

@@ -494,7 +494,7 @@ int main() {
     std::vector<float> h_cost(N_TRAJ);
     std::vector<Point2> expert = expert_waypoints();
 
-    std::system("mkdir -p gif");
+    cudabot::ensure_dirs({"gif"});
     cv::VideoWriter video("gif/gpu_diffusion_policy.avi",
                           cv::VideoWriter::fourcc('M', 'J', 'P', 'G'),
                           VIDEO_FPS, cv::Size(PANEL_W, PANEL_H));

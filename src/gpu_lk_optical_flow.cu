@@ -388,7 +388,7 @@ int main() {
                 mean_endpoint);
 
     // --- animation: side-by-side I + J, with estimated flow arrows ---------
-    if (system("mkdir -p tmp") != 0)
+    if (cudabot::ensure_dirs({"tmp"}) != 0)
         std::fprintf(stderr, "warning: mkdir tmp failed\n");
     cv::VideoWriter video("tmp/gpu_lk_optical_flow.avi",
                           cv::VideoWriter::fourcc('M', 'J', 'P', 'G'),

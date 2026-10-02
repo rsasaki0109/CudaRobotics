@@ -18,6 +18,7 @@
 
 #include <cuda_runtime.h>
 #include "cuda_check.cuh"
+#include "cuda_video.h"
 
 
 // ---------------------------------------------------------------------------
@@ -766,7 +767,7 @@ int main() {
     int W = 4000, H = 1000;
     cv::VideoWriter video(
         "gif/comparison_frenet.avi",
-        cv::VideoWriter::fourcc('X', 'V', 'I', 'D'), 30, cv::Size(W * 2, H));
+        cudabot::avi_fourcc(), 30, cv::Size(W * 2, H));
 
     if (!video.isOpened()) {
         std::cerr << "Failed to open video writer" << std::endl;
@@ -879,8 +880,8 @@ int main() {
 
     // Convert to gif
     system("ffmpeg -y -i gif/comparison_frenet.avi "
-           "-vf 'fps=15,scale=800:-1:flags=lanczos' -loop 0 "
-           "gif/comparison_frenet.gif 2>/dev/null");
+           "-vf \"fps=15,scale=800:-1:flags=lanczos\" -loop 0 "
+           "gif/comparison_frenet.gif 2>" CUDABOT_NULL_DEVICE);
     std::cout << "GIF saved to gif/comparison_frenet.gif" << std::endl;
 
     // Cleanup

@@ -1348,7 +1348,7 @@ int main() {
                 guided_best.min_clearance, guided_best.mean_route_error, cost_drop,
                 terminal_drop, interaction_drop, clearance_gain);
 
-    std::system("mkdir -p gif");
+    cudabot::ensure_dirs({"gif"});
     cv::VideoWriter video("gif/gpu_interaction_graph_neural_mppi.avi",
                           cv::VideoWriter::fourcc('M', 'J', 'P', 'G'),
                           VIDEO_FPS, cv::Size(PANEL_W, PANEL_H));

@@ -19,6 +19,7 @@
 #include <cuda_runtime.h>
 #include <curand_kernel.h>
 #include "cuda_check.cuh"
+#include "cuda_video.h"
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -362,7 +363,7 @@ int main() {
     cv::namedWindow("pf_on_episode", cv::WINDOW_NORMAL);
     cv::VideoWriter video(
         "gif/pf_on_episode.avi",
-        cv::VideoWriter::fourcc('X', 'V', 'I', 'D'), 30, cv::Size(IMG_W, IMG_H));
+        cudabot::avi_fourcc(), 30, cv::Size(IMG_W, IMG_H));
 
     // Replay robot follows the taught trajectory with noise
     float replay_x = 0, replay_y = 0, replay_yaw = 0;
@@ -495,8 +496,8 @@ int main() {
 
     video.release();
     system("ffmpeg -y -i gif/pf_on_episode.avi "
-           "-vf 'fps=15,scale=800:-1:flags=lanczos' -loop 0 "
-           "gif/pf_on_episode.gif 2>/dev/null");
+           "-vf \"fps=15,scale=800:-1:flags=lanczos\" -loop 0 "
+           "gif/pf_on_episode.gif 2>" CUDABOT_NULL_DEVICE);
     std::cout << "GIF saved to gif/pf_on_episode.gif" << std::endl;
 
     cudaFree(d_ep_beams); cudaFree(d_ep_v); cudaFree(d_ep_omega);

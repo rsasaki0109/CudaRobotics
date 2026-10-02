@@ -397,7 +397,7 @@ int main() {
         return (ix * 200003LL + iy) * 200003LL + iz;
     };
 
-    std::system("mkdir -p gif");
+    cudabot::ensure_dirs({"gif"});
     const int OUT_W = IMG_W * 3 + 24;   // 3 panels + gaps
     const int OUT_H = IMG_H + 50;
     cv::VideoWriter video("gif/gpu_gaussian_splatting_slam.avi",

@@ -1418,7 +1418,7 @@ static void write_video(const std::vector<Snapshot>& snapshots,
 #ifdef _WIN32
     mkdir_rc = std::system("if not exist gif mkdir gif");
 #else
-    mkdir_rc = std::system("mkdir -p gif");
+    mkdir_rc = cudabot::ensure_dirs({"gif"});
 #endif
     if (mkdir_rc != 0) {
         std::fprintf(stderr, "Failed to create gif directory\n");

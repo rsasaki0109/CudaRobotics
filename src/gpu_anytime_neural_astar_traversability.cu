@@ -861,7 +861,7 @@ int main() {
                 gpu_metrics.expanded, expansion_reduction, first_cpu.goal_cost,
                 best_cpu.goal_cost, cost_improvement, speedup, gpu_metrics.reached);
 
-    std::system("mkdir -p gif");
+    cudabot::ensure_dirs({"gif"});
     cv::VideoWriter video("gif/gpu_anytime_neural_astar_traversability.avi",
                           cv::VideoWriter::fourcc('M', 'J', 'P', 'G'),
                           VIDEO_FPS, cv::Size(PANEL_W, PANEL_H));

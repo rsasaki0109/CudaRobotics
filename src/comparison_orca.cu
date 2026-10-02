@@ -12,6 +12,7 @@
 #include <opencv2/opencv.hpp>
 #include <cuda_runtime.h>
 #include "cuda_check.cuh"
+#include "cuda_video.h"
 
 
 #define PI_F 3.14159265f
@@ -581,7 +582,7 @@ int main() {
     int gs = (N_AGENTS + bs - 1) / bs;
 
     cv::VideoWriter video("gif/comparison_orca.avi",
-                          cv::VideoWriter::fourcc('X','V','I','D'), 30, cv::Size(IMG_W * 2, IMG_W));
+                          cudabot::avi_fourcc(), 30, cv::Size(IMG_W * 2, IMG_W));
 
     std::vector<std::vector<cv::Point>> trails_pf(N_AGENTS), trails_orca(N_AGENTS);
     int steps = 0;
@@ -648,8 +649,8 @@ int main() {
 
     video.release();
     system("ffmpeg -y -i gif/comparison_orca.avi "
-           "-vf 'fps=20,scale=800:-1:flags=lanczos' -loop 0 "
-           "gif/comparison_orca.gif 2>/dev/null");
+           "-vf \"fps=20,scale=800:-1:flags=lanczos\" -loop 0 "
+           "gif/comparison_orca.gif 2>" CUDABOT_NULL_DEVICE);
 
     printf("GIF saved to gif/comparison_orca.gif\n");
 

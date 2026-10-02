@@ -495,7 +495,7 @@ int main() {
     CUDA_CHECK(cudaDeviceSynchronize());
 
     // Visualisation setup
-    std::system("mkdir -p gif");
+    cudabot::ensure_dirs({"gif"});
     cv::VideoWriter video("gif/gpu_ndt_3d.avi",
                           cv::VideoWriter::fourcc('M', 'J', 'P', 'G'),
                           10, cv::Size(PANEL_W, PANEL_H + 60));

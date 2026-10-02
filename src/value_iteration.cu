@@ -20,6 +20,7 @@
 
 #include <cuda_runtime.h>
 #include "cuda_check.cuh"
+#include "cuda_video.h"
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -317,12 +318,12 @@ int main() {
     cv::namedWindow("value_iteration", cv::WINDOW_NORMAL);
     cv::VideoWriter video(
         "gif/value_iteration.avi",
-        cv::VideoWriter::fourcc('X', 'V', 'I', 'D'), 10, cv::Size(IMG_W, IMG_H));
+        cudabot::avi_fourcc(), 10, cv::Size(IMG_W, IMG_H));
 
     // Video for comparison
     cv::VideoWriter comp_video(
         "gif/comparison_value_iteration.avi",
-        cv::VideoWriter::fourcc('X', 'V', 'I', 'D'), 10, cv::Size(IMG_W * 2, IMG_H));
+        cudabot::avi_fourcc(), 10, cv::Size(IMG_W * 2, IMG_H));
 
     double total_cpu_ms = 0, total_cuda_ms = 0;
 
@@ -390,11 +391,11 @@ int main() {
            total_cpu_ms, total_cuda_ms, total_cpu_ms / total_cuda_ms);
 
     system("ffmpeg -y -i gif/value_iteration.avi "
-           "-vf 'fps=10,scale=600:-1:flags=lanczos' -loop 0 "
-           "gif/value_iteration.gif 2>/dev/null");
+           "-vf \"fps=10,scale=600:-1:flags=lanczos\" -loop 0 "
+           "gif/value_iteration.gif 2>" CUDABOT_NULL_DEVICE);
     system("ffmpeg -y -i gif/comparison_value_iteration.avi "
-           "-vf 'fps=10,scale=800:-1:flags=lanczos' -loop 0 "
-           "gif/comparison_value_iteration.gif 2>/dev/null");
+           "-vf \"fps=10,scale=800:-1:flags=lanczos\" -loop 0 "
+           "gif/comparison_value_iteration.gif 2>" CUDABOT_NULL_DEVICE);
     std::cout << "GIF saved to gif/value_iteration.gif and gif/comparison_value_iteration.gif" << std::endl;
 
     cudaFree(d_V_in); cudaFree(d_V_out); cudaFree(d_policy);

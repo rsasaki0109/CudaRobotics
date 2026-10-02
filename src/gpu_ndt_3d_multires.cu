@@ -568,7 +568,7 @@ int main() {
     }
 
     // Visualisation setup
-    int mkdir_ret = std::system("mkdir -p gif");
+    int mkdir_ret = cudabot::ensure_dirs({"gif"});
     (void)mkdir_ret;
     cv::VideoWriter video("gif/gpu_ndt_3d_multires.avi",
                           cv::VideoWriter::fourcc('M', 'J', 'P', 'G'),

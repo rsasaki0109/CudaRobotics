@@ -19,6 +19,7 @@
 
 #include <cuda_runtime.h>
 #include "cuda_check.cuh"
+#include "cuda_video.h"
 
 constexpr int GRID_W = 400;
 constexpr int GRID_H = 400;
@@ -268,7 +269,7 @@ int main() {
     std::vector<float> h_dist_cpu(N_RAYS_CPU);
 
     cv::VideoWriter video("gif/comparison_lidar_sim.avi",
-                          cv::VideoWriter::fourcc('X', 'V', 'I', 'D'), 30,
+                          cudabot::avi_fourcc(), 30,
                           cv::Size(PANEL_W * 2, PANEL_H));
 
     // Sensor follows an elliptic trajectory through the scene
@@ -366,8 +367,8 @@ int main() {
     }
 
     std::system("ffmpeg -y -i gif/comparison_lidar_sim.avi "
-                "-vf 'fps=15,scale=900:-1:flags=lanczos' -loop 0 "
-                "gif/comparison_lidar_sim.gif 2>/dev/null");
+                "-vf \"fps=15,scale=900:-1:flags=lanczos\" -loop 0 "
+                "gif/comparison_lidar_sim.gif 2>" CUDABOT_NULL_DEVICE);
     std::cout << "GIF saved to gif/comparison_lidar_sim.gif" << std::endl;
     return 0;
 }

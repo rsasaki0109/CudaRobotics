@@ -50,6 +50,7 @@
 
 #include "gpu_mlp.cuh"
 #include "cuda_check.cuh"
+#include "cuda_video.h"
 
 using cudabot::GpuMLP;
 using cudabot::mlp_forward;
@@ -931,7 +932,7 @@ static ScenarioResult run_scenario(const ScenarioConfig& scenario,
     std::string avi_path = std::string("gif/") + scenario.gif_slug + ".avi";
     std::string gif_path = std::string("gif/") + scenario.gif_slug + ".gif";
     cv::VideoWriter video(avi_path,
-                          cv::VideoWriter::fourcc('X', 'V', 'I', 'D'), 30,
+                          cudabot::avi_fourcc(), 30,
                           cv::Size(PANEL_W * 4, PANEL_H));
 
     std::mt19937 rng_obs_eval(99);
@@ -1015,8 +1016,8 @@ static ScenarioResult run_scenario(const ScenarioConfig& scenario,
                 result.ratio_D);
 
     std::string cmd = "ffmpeg -y -i " + avi_path +
-                      " -vf 'fps=15,scale=1600:-1:flags=lanczos' -loop 0 " +
-                      gif_path + " 2>/dev/null";
+                      " -vf \"fps=15,scale=1600:-1:flags=lanczos\" -loop 0 " +
+                      gif_path + " 2>" CUDABOT_NULL_DEVICE;
     std::system(cmd.c_str());
     std::cout << "GIF saved to " << gif_path << std::endl;
     return result;
@@ -1079,7 +1080,7 @@ static InjectionResult run_kidnap_injection_scenario(
     const std::string avi_path = "gif/comparison_diff_pf_mlp_kidnap_injection.avi";
     const std::string gif_path = "gif/comparison_diff_pf_mlp_kidnap_injection.gif";
     cv::VideoWriter video(avi_path,
-                          cv::VideoWriter::fourcc('X', 'V', 'I', 'D'), 30,
+                          cudabot::avi_fourcc(), 30,
                           cv::Size(PANEL_W * 4, PANEL_H));
 
     std::mt19937 rng_obs_eval(99);
@@ -1171,8 +1172,8 @@ static InjectionResult run_kidnap_injection_scenario(
                 result.rmse_calibrated_injected, result.ratio_calibrated_injected);
 
     std::string cmd = "ffmpeg -y -i " + avi_path +
-                      " -vf 'fps=15,scale=1600:-1:flags=lanczos' -loop 0 " +
-                      gif_path + " 2>/dev/null";
+                      " -vf \"fps=15,scale=1600:-1:flags=lanczos\" -loop 0 " +
+                      gif_path + " 2>" CUDABOT_NULL_DEVICE;
     std::system(cmd.c_str());
     std::cout << "GIF saved to " << gif_path << std::endl;
     return result;
@@ -1290,7 +1291,7 @@ static std::vector<InjectionPolicyResult> run_kidnap_injection_trigger_gif(
     const std::string avi_path = "gif/comparison_diff_pf_mlp_injection_trigger.avi";
     const std::string gif_path = "gif/comparison_diff_pf_mlp_injection_trigger.gif";
     cv::VideoWriter video(avi_path,
-                          cv::VideoWriter::fourcc('X', 'V', 'I', 'D'), 30,
+                          cudabot::avi_fourcc(), 30,
                           cv::Size(PANEL_W * 4, PANEL_H));
 
     std::vector<ParticleSet*> P = {&PA, &PB, &PC, &PD};
@@ -1370,8 +1371,8 @@ static std::vector<InjectionPolicyResult> run_kidnap_injection_trigger_gif(
     }
 
     std::string cmd = "ffmpeg -y -i " + avi_path +
-                      " -vf 'fps=15,scale=1600:-1:flags=lanczos' -loop 0 " +
-                      gif_path + " 2>/dev/null";
+                      " -vf \"fps=15,scale=1600:-1:flags=lanczos\" -loop 0 " +
+                      gif_path + " 2>" CUDABOT_NULL_DEVICE;
     std::system(cmd.c_str());
     std::cout << "GIF saved to " << gif_path << std::endl;
     return results;

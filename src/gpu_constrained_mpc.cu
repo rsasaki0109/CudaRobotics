@@ -223,7 +223,7 @@ static Sim run(int nR,int steps,int constrained,float margin,unsigned seed){
 static void render_gif(const Sim& sim,int nR){
     const int W=900,H=900; const float PX=58.f; const int CX=450,CY=450;
     auto proj=[&](float x,float y,int&sx,int&sy){ sx=CX+(int)(PX*x); sy=CY-(int)(PX*y); };
-    if(system("mkdir -p tmp")!=0)std::fprintf(stderr,"warn\n");
+    if(cudabot::ensure_dirs({"tmp"})!=0)std::fprintf(stderr,"warn\n");
     cv::VideoWriter video("tmp/gpu_constrained_mpc.avi",cv::VideoWriter::fourcc('M','J','P','G'),20,cv::Size(W,H));
     int S=sim.traj.size(); const int HOLD=16;
     for(int f=0;f<S+HOLD;f+=1){ int k=std::min(f,S-1);

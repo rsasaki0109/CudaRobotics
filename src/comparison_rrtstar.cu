@@ -17,6 +17,7 @@
 
 #include <cuda_runtime.h>
 #include "cuda_check.cuh"
+#include "cuda_video.h"
 
 
 // ---------------------------------------------------------------------------
@@ -613,7 +614,7 @@ int main() {
     int S = img_size * img_reso; // 850
 
     cv::VideoWriter video("gif/comparison_rrtstar.avi",
-                          cv::VideoWriter::fourcc('X','V','I','D'), 30, cv::Size(S * 2, S));
+                          cudabot::avi_fourcc(), 30, cv::Size(S * 2, S));
 
     cv::Mat bg_cpu(S, S, CV_8UC3, cv::Scalar(255, 255, 255));
     cv::Mat bg_cuda(S, S, CV_8UC3, cv::Scalar(255, 255, 255));
@@ -888,8 +889,8 @@ int main() {
         std::cout << "CUDA avg: " << cuda_total_ms / cuda_iter_count << " ms/iter" << std::endl;
 
     system("ffmpeg -y -i gif/comparison_rrtstar.avi "
-           "-vf 'fps=15,scale=800:-1:flags=lanczos' -loop 0 "
-           "gif/comparison_rrtstar.gif 2>/dev/null");
+           "-vf \"fps=15,scale=800:-1:flags=lanczos\" -loop 0 "
+           "gif/comparison_rrtstar.gif 2>" CUDABOT_NULL_DEVICE);
     std::cout << "GIF saved to gif/comparison_rrtstar.gif" << std::endl;
 
     return 0;

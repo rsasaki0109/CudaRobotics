@@ -20,6 +20,7 @@
 
 #include <cuda_runtime.h>
 #include "cuda_check.cuh"
+#include "cuda_video.h"
 
 constexpr float PI = 3.14159265358979323846f;
 constexpr float DEG = PI / 180.0f;
@@ -443,7 +444,7 @@ int main() {
                 "label_match_rate=%.2f%%\n\n", first_max_err, first_label_match);
 
     cv::VideoWriter video("gif/comparison_lidar3d_sim.avi",
-                          cv::VideoWriter::fourcc('X', 'V', 'I', 'D'), 24,
+                          cudabot::avi_fourcc(), 24,
                           cv::Size(PANEL_W * 3, PANEL_H));
 
     double cpu_ms_sum = 0.0;
@@ -507,8 +508,8 @@ int main() {
     }
 
     std::system("ffmpeg -y -i gif/comparison_lidar3d_sim.avi "
-                "-vf 'fps=15,scale=900:-1:flags=lanczos' -loop 0 "
-                "gif/comparison_lidar3d_sim.gif 2>/dev/null");
+                "-vf \"fps=15,scale=900:-1:flags=lanczos\" -loop 0 "
+                "gif/comparison_lidar3d_sim.gif 2>" CUDABOT_NULL_DEVICE);
     std::cout << "GIF saved to gif/comparison_lidar3d_sim.gif" << std::endl;
 
     cudaFree(d_prims);

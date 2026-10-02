@@ -23,6 +23,7 @@
 
 #include "benchmark_functions.cuh"
 #include "cuda_check.cuh"
+#include "cuda_video.h"
 
 using namespace std;
 
@@ -247,7 +248,7 @@ int main() {
     // Video
     string avi_path = "gif/cma_es.avi";
     string gif_path = "gif/cma_es.gif";
-    cv::VideoWriter video(avi_path, cv::VideoWriter::fourcc('X', 'V', 'I', 'D'), 15,
+    cv::VideoWriter video(avi_path, cudabot::avi_fourcc(), 15,
                           cv::Size(VIS_W, VIS_H));
 
     vector<float> h_samples(N * D);
@@ -406,7 +407,7 @@ int main() {
     video.release();
     cout << "Video saved to " << avi_path << endl;
 
-    string cmd = "ffmpeg -y -i " + avi_path + " -vf 'fps=15,scale=400:-1' -loop 0 " + gif_path + " 2>/dev/null";
+    string cmd = "ffmpeg -y -i " + avi_path + " -vf \"fps=15,scale=400:-1\" -loop 0 " + gif_path + " 2>" CUDABOT_NULL_DEVICE;
     system(cmd.c_str());
     cout << "GIF saved to " << gif_path << endl;
 

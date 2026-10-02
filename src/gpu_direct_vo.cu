@@ -311,7 +311,7 @@ int main() {
                 rms_gpu.empty() ? 0.0 : rms_gpu.front(), rms_gpu.empty() ? 0.0 : rms_gpu.back());
 
     // ---------- animation
-    if (system("mkdir -p tmp") != 0) std::fprintf(stderr, "warning: mkdir tmp failed\n");
+    if (cudabot::ensure_dirs({"tmp"}) != 0) std::fprintf(stderr, "warning: mkdir tmp failed\n");
     cv::VideoWriter video("tmp/gpu_direct_vo.avi",
                           cv::VideoWriter::fourcc('M', 'J', 'P', 'G'),
                           6, cv::Size(PANEL_W, PANEL_H));

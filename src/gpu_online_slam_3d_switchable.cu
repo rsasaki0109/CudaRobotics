@@ -796,7 +796,7 @@ int main() {
     edges.reserve(max_edges);
     std::vector<float> eswitch_view;  // current device switch weights (switch path)
 
-    if (std::system("mkdir -p gif") != 0) std::fprintf(stderr, "mkdir gif failed\n");
+    if (cudabot::ensure_dirs({"gif"}) != 0) std::fprintf(stderr, "mkdir gif failed\n");
     const int frame_w = PANEL_W * 2 + 6;
     const int frame_h = TITLE_H + PANEL_H + FOOT_H;
     cv::VideoWriter video("gif/gpu_online_slam_3d_switchable.avi",

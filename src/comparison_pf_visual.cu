@@ -18,6 +18,7 @@
 #include <cuda_runtime.h>
 #include <curand_kernel.h>
 #include "cuda_check.cuh"
+#include "cuda_video.h"
 
 #define SIM_TIME 30.0f
 #define DT 0.1f
@@ -247,7 +248,7 @@ int main() {
 
     int W = 800, H = 800;
     cv::VideoWriter video("gif/comparison_pf_visual.avi",
-        cv::VideoWriter::fourcc('X', 'V', 'I', 'D'), 30, cv::Size(W * 2, H));
+        cudabot::avi_fourcc(), 30, cv::Size(W * 2, H));
 
     float time_val = 0;
     while (time_val <= SIM_TIME) {
@@ -334,8 +335,8 @@ int main() {
 
     video.release();
     system("ffmpeg -y -i gif/comparison_pf_visual.avi "
-           "-vf 'fps=15,scale=800:-1:flags=lanczos' -loop 0 "
-           "gif/comparison_pf_visual.gif 2>/dev/null");
+           "-vf \"fps=15,scale=800:-1:flags=lanczos\" -loop 0 "
+           "gif/comparison_pf_visual.gif 2>" CUDABOT_NULL_DEVICE);
     std::cout << "GIF saved to gif/comparison_pf_visual.gif" << std::endl;
 
     cudaFree(d_px); cudaFree(d_px2); cudaFree(d_pw); cudaFree(d_obs);

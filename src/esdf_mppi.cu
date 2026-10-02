@@ -30,6 +30,7 @@
 #include <curand_kernel.h>
 #include "cuda_check.cuh"
 #include "mppi_reduction.cuh"
+#include "cuda_video.h"
 
 using namespace std;
 
@@ -300,8 +301,8 @@ static void draw_path(cv::Mat& img, const std::vector<cv::Point2f>& path, cv::Sc
 static void convert_avi_to_gif(const char* avi_path, const char* gif_path, int fps) {
     char cmd[512];
     std::snprintf(cmd, sizeof(cmd),
-        "ffmpeg -y -i %s -vf 'fps=%d,scale=700:-1:flags=lanczos' -loop 0 %s "
-        "> /dev/null 2>&1",
+        "ffmpeg -y -i %s -vf \"fps=%d,scale=700:-1:flags=lanczos\" -loop 0 %s "
+        "> " CUDABOT_NULL_DEVICE " 2>&1",
         avi_path, fps, gif_path);
     int rc = std::system(cmd);
     if (rc != 0) std::fprintf(stderr, "ffmpeg conversion returned %d\n", rc);
@@ -376,7 +377,7 @@ int main() {
     const char* AVI_PATH = "gif/esdf_mppi.avi";
     const char* GIF_PATH = "gif/esdf_mppi.gif";
     cv::VideoWriter video(
-        AVI_PATH, cv::VideoWriter::fourcc('X','V','I','D'), 15,
+        AVI_PATH, cudabot::avi_fourcc(), 15,
         cv::Size(background.cols, background.rows));
     if (!video.isOpened()) {
         std::fprintf(stderr, "Failed to open %s\n", AVI_PATH);

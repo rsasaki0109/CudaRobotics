@@ -19,6 +19,7 @@
 #include <random>
 #include <vector>
 #include "cuda_check.cuh"
+#include "cuda_video.h"
 
 namespace cudabot {
 
@@ -252,7 +253,7 @@ static cv::Mat draw_frame(const std::vector<unsigned char>& occ,
 static void convert_avi_to_gif(const std::string& avi, const std::string& gif, int fps) {
     char cmd[1024];
     std::snprintf(cmd, sizeof(cmd),
-                  "ffmpeg -y -i %s -vf \"fps=%d,scale=900:-1:flags=lanczos,split[a][b];[a]palettegen=stats_mode=diff[p];[b][p]paletteuse=dither=bayer:bayer_scale=5:diff_mode=rectangle\" %s 2>/dev/null",
+                  "ffmpeg -y -i %s -vf \"fps=%d,scale=900:-1:flags=lanczos,split[a][b];[a]palettegen=stats_mode=diff[p];[b][p]paletteuse=dither=bayer:bayer_scale=5:diff_mode=rectangle\" %s 2>" CUDABOT_NULL_DEVICE,
                   avi.c_str(), fps, gif.c_str());
     int rc = std::system(cmd);
     if (rc != 0) std::fprintf(stderr, "ffmpeg failed (%d)\n", rc);
@@ -333,7 +334,7 @@ int main() {
     std::printf("Distance fields built: %d robots x %d x %d cells, %d sweeps -> %.2f ms\n",
                 N_ROBOTS, GRID, GRID, BF_ITERS, ms_fields);
 
-    std::system("mkdir -p gif");
+    cudabot::ensure_dirs({"gif"});
     cv::VideoWriter video("gif/gpu_multi_robot_planner.avi",
                           cv::VideoWriter::fourcc('M', 'J', 'P', 'G'),
                           15, cv::Size(GRID * 3 + 240, GRID * 3));

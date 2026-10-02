@@ -25,6 +25,7 @@
 
 #include <cuda_runtime.h>
 #include "cuda_check.cuh"
+#include "cuda_video.h"
 
 constexpr int GRID_W = 320;
 constexpr int GRID_H = 240;
@@ -434,7 +435,7 @@ int main() {
     std::vector<int>           h_block_min_idx(grid_dim);
 
     cv::VideoWriter video("gif/comparison_reeds_shepp_fan.avi",
-                          cv::VideoWriter::fourcc('X', 'V', 'I', 'D'), 30,
+                          cudabot::avi_fourcc(), 30,
                           cv::Size(PANEL_W * 2, PANEL_H));
 
     // Target = the open parking slot in the bottom row, facing +Y.
@@ -584,8 +585,8 @@ int main() {
     }
 
     std::system("ffmpeg -y -i gif/comparison_reeds_shepp_fan.avi "
-                "-vf 'fps=15,scale=900:-1:flags=lanczos' -loop 0 "
-                "gif/comparison_reeds_shepp_fan.gif 2>/dev/null");
+                "-vf \"fps=15,scale=900:-1:flags=lanczos\" -loop 0 "
+                "gif/comparison_reeds_shepp_fan.gif 2>" CUDABOT_NULL_DEVICE);
     std::cout << "GIF saved to gif/comparison_reeds_shepp_fan.gif" << std::endl;
     return 0;
 }

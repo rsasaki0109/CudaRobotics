@@ -10,6 +10,7 @@
 #include <opencv2/opencv.hpp>
 #include <cuda_runtime.h>
 #include "cuda_check.cuh"
+#include "cuda_video.h"
 
 #define PI 3.14159265f
 #define N_ROBOTS 500
@@ -185,7 +186,7 @@ int main() {
 
     int W = IMG_SIZE;
     cv::VideoWriter video("gif/comparison_multi_robot.avi",
-                          cv::VideoWriter::fourcc('X','V','I','D'), 30, cv::Size(W*2, W));
+                          cudabot::avi_fourcc(), 30, cv::Size(W*2, W));
 
     std::vector<std::vector<cv::Point>> trails_cpu(N_ROBOTS), trails_gpu(N_ROBOTS);
     double cpu_total = 0, cuda_total = 0;
@@ -231,8 +232,8 @@ int main() {
 
     video.release();
     system("ffmpeg -y -i gif/comparison_multi_robot.avi "
-           "-vf 'fps=20,scale=800:-1:flags=lanczos' -loop 0 "
-           "gif/comparison_multi_robot.gif 2>/dev/null");
+           "-vf \"fps=20,scale=800:-1:flags=lanczos\" -loop 0 "
+           "gif/comparison_multi_robot.gif 2>" CUDABOT_NULL_DEVICE);
 
     printf("CPU avg: %.4f ms/step, CUDA avg: %.4f ms/step\n", cpu_total/steps, cuda_total/steps);
     printf("GIF saved to gif/comparison_multi_robot.gif\n");

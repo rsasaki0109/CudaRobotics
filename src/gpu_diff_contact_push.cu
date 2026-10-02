@@ -184,7 +184,7 @@ static void render_gif(const std::vector<std::vector<std::array<float,2>>>& push
                        const std::vector<std::array<float,3>>& tgt,const std::vector<std::array<float,2>>& org,int nShow){
     const int W=1000,H=1000; const float PX=70.f; Phys ph=phys();
     auto proj=[&](float x,float y,int&sx,int&sy){ sx=(int)(PX*x); sy=(int)(-PX*y); };
-    if(system("mkdir -p tmp")!=0)std::fprintf(stderr,"warn\n");
+    if(cudabot::ensure_dirs({"tmp"})!=0)std::fprintf(stderr,"warn\n");
     cv::VideoWriter video("tmp/gpu_diff_contact_push.avi",cv::VideoWriter::fourcc('M','J','P','G'),20,cv::Size(W,H));
     int F=TSTEP+1; const int HOLD=16;
     for(int f=0;f<F+HOLD;++f){ int k=std::min(f,F-1);

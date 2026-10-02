@@ -466,7 +466,7 @@ int main() {
     float fd_h = 0.01f;
     std::vector<float> sigma_hist, loss_hist;
 
-    std::system("mkdir -p gif");
+    cudabot::ensure_dirs({"gif"});
     cv::VideoWriter video("gif/diff_e2e_slam.avi",
                           cv::VideoWriter::fourcc('M', 'J', 'P', 'G'),
                           12, cv::Size(540 * 2, 540));

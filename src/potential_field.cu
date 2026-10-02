@@ -19,6 +19,7 @@
 
 #include <cuda_runtime.h>
 #include "cuda_check.cuh"
+#include "cuda_video.h"
 
 using namespace std;
 
@@ -345,7 +346,7 @@ void draw_result(
     cv::circle(img, gp, cell_size * 3, cv::Scalar(255, 0, 0), -1);
 
     // Draw path as red line
-    cv::VideoWriter video("gif/potential_field.avi", cv::VideoWriter::fourcc('X','V','I','D'), 30, cv::Size(img.cols, img.rows));
+    cv::VideoWriter video("gif/potential_field.avi", cudabot::avi_fourcc(), 30, cv::Size(img.cols, img.rows));
     for (int i = 0; i < (int)rx.size() - 1; i++) {
         cv::Point p1 = to_pixel(rx[i], ry[i]);
         cv::Point p2 = to_pixel(rx[i + 1], ry[i + 1]);

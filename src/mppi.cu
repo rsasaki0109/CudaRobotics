@@ -28,6 +28,7 @@
 #include <curand_kernel.h>
 #include "cuda_check.cuh"
 #include "mppi_reduction.cuh"
+#include "cuda_video.h"
 
 using namespace std;
 
@@ -243,7 +244,7 @@ int main()
     int IMG_SIZE = 800;
     cv::VideoWriter video(
         "gif/mppi.avi",
-        cv::VideoWriter::fourcc('X', 'V', 'I', 'D'), 20,
+        cudabot::avi_fourcc(), 20,
         cv::Size(IMG_SIZE, IMG_SIZE));
 
     if (!video.isOpened()) {
@@ -471,8 +472,8 @@ int main()
 
     // Convert to GIF
     system("ffmpeg -y -i gif/mppi.avi "
-           "-vf 'fps=20,scale=800:-1:flags=lanczos' -loop 0 "
-           "gif/mppi.gif 2>/dev/null");
+           "-vf \"fps=20,scale=800:-1:flags=lanczos\" -loop 0 "
+           "gif/mppi.gif 2>" CUDABOT_NULL_DEVICE);
     cout << "GIF saved to gif/mppi.gif" << endl;
 
     cv::imshow("mppi", final_img);

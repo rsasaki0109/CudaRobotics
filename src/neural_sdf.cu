@@ -13,6 +13,7 @@
 #include <opencv2/opencv.hpp>
 
 #include "neural_sdf_nav.cuh"
+#include "cuda_video.h"
 
 using namespace std;
 using namespace cudabot;
@@ -32,7 +33,7 @@ int main() {
 
     cv::VideoWriter video(
         AVI_PATH,
-        cv::VideoWriter::fourcc('X', 'V', 'I', 'D'),
+        cudabot::avi_fourcc(),
         12,
         cv::Size(840, 420));
 

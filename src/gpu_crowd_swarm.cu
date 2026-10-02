@@ -748,7 +748,7 @@ int main() {
 
     CUDA_CHECK(cudaMemcpy(d_a, agents.data(), agents.size() * sizeof(Agent),
                           cudaMemcpyHostToDevice));
-    int mkdir_ret = std::system("mkdir -p gif");
+    int mkdir_ret = cudabot::ensure_dirs({"gif"});
     (void)mkdir_ret;
     cv::VideoWriter video("gif/gpu_crowd_swarm.avi",
                           cv::VideoWriter::fourcc('M', 'J', 'P', 'G'),

@@ -301,7 +301,7 @@ int main() {
     }
     cv::line(bg, w2p(x0, y0 + HALFW), w2p(x0, y0 - HALFW), cv::Scalar(255, 255, 255), 3, cv::LINE_AA);
 
-    std::system("mkdir -p gif");
+    cudabot::ensure_dirs({"gif"});
     cv::VideoWriter video("gif/gpu_mppi_racing.avi",
                           cv::VideoWriter::fourcc('M', 'J', 'P', 'G'), 30, cv::Size(IMG, IMG));
 

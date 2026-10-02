@@ -24,6 +24,7 @@
 #include "diff_dynamics.cuh"
 #include "cuda_check.cuh"
 #include "mppi_reduction.cuh"
+#include "cuda_video.h"
 
 
 using namespace std;
@@ -411,7 +412,7 @@ int main() {
     int panel = 400;
     cv::VideoWriter video(
         "gif/comparison_diff_mppi.avi",
-        cv::VideoWriter::fourcc('X', 'V', 'I', 'D'), 20, cv::Size(panel * 2, panel));
+        cudabot::avi_fourcc(), 20, cv::Size(panel * 2, panel));
     if (!video.isOpened()) {
         cerr << "Failed to open video writer" << endl;
         return 1;
@@ -445,8 +446,8 @@ int main() {
 
     video.release();
     system("ffmpeg -y -i gif/comparison_diff_mppi.avi "
-           "-vf 'fps=15,scale=400:-1' -loop 0 "
-           "gif/comparison_diff_mppi.gif 2>/dev/null");
+           "-vf \"fps=15,scale=400:-1\" -loop 0 "
+           "gif/comparison_diff_mppi.gif 2>" CUDABOT_NULL_DEVICE);
 
     standard.cleanup();
     diff.cleanup();
