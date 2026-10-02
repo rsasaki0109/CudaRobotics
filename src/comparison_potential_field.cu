@@ -26,11 +26,11 @@ using namespace std;
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
-const float KP         = 5.0f;
-const float ETA        = 100.0f;
-const float AREA_WIDTH = 30.0f;
-const float grid_reso  = 0.5f;
-const float rr         = 5.0f;
+constexpr float KP         = 5.0f;
+constexpr float ETA        = 100.0f;
+constexpr float AREA_WIDTH = 30.0f;
+constexpr float grid_reso  = 0.5f;
+constexpr float rr         = 5.0f;
 
 // ---------------------------------------------------------------------------
 // CPU: compute potential field (double loop over grid)

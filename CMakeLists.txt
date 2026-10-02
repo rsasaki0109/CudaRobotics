@@ -52,7 +52,17 @@ set(LIBRARY_OUTPUT_PATH ${PROJECT_SOURCE_DIR}/lib)
 find_package(Eigen3 REQUIRED)
 find_package(OpenCV REQUIRED)
 
+# Prefer the imported target: Eigen 5.x does not set EIGEN3_INCLUDE_DIR, and
+# build-tree configs can point it at a non-existent install prefix.
+if(TARGET Eigen3::Eigen)
+  get_target_property(EIGEN3_INCLUDE_DIR Eigen3::Eigen INTERFACE_INCLUDE_DIRECTORIES)
+endif()
 include_directories(${EIGEN3_INCLUDE_DIR})
+
+if(MSVC)
+  # M_PI and friends are opt-in with the MSVC CRT.
+  add_compile_definitions(_USE_MATH_DEFINES)
+endif()
 include_directories(./include)
 
 ##############################

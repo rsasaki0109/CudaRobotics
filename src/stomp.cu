@@ -38,17 +38,17 @@ using namespace std;
 static const int K_SAMPLES     = 10000;    // number of noisy trajectory samples
 static const int N_WAYPOINTS   = 50;       // number of waypoints
 static const int DIM           = 2;        // 2D workspace
-static const float LAMBDA      = 10.0f;    // temperature parameter
+static constexpr float LAMBDA      = 10.0f;    // temperature parameter
 static const int MAX_ITER      = 100;      // max optimization iterations
-static const float WORKSPACE   = 50.0f;    // workspace size
-static const float NOISE_STD   = 2.0f;     // noise standard deviation
-static const float OBS_COST_WEIGHT    = 100.0f;  // obstacle cost weight
-static const float SMOOTH_COST_WEIGHT = 1.0f;    // smoothness cost weight
-static const float OBS_CLEARANCE      = 1.5f;    // clearance around obstacles
+static constexpr float WORKSPACE   = 50.0f;    // workspace size
+static constexpr float NOISE_STD   = 2.0f;     // noise standard deviation
+static constexpr float OBS_COST_WEIGHT    = 100.0f;  // obstacle cost weight
+static constexpr float SMOOTH_COST_WEIGHT = 1.0f;    // smoothness cost weight
+static constexpr float OBS_CLEARANCE      = 1.5f;    // clearance around obstacles
 
 // Start and goal
-static const float START_X = 5.0f,  START_Y = 5.0f;
-static const float GOAL_X  = 45.0f, GOAL_Y  = 45.0f;
+static constexpr float START_X = 5.0f,  START_Y = 5.0f;
+static constexpr float GOAL_X  = 45.0f, GOAL_Y  = 45.0f;
 
 // Obstacles: (cx, cy, radius)
 static const int N_OBSTACLES = 8;

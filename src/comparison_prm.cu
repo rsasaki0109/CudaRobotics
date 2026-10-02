@@ -25,8 +25,8 @@
 // ---------------------------------------------------------------------------
 static const int   N_SAMPLE         = 500;
 static const int   N_KNN            = 10;
-static const float MAX_EDGE_LEN     = 30.0f;
-static const float ROBOT_SIZE       = 5.0f;
+static constexpr float MAX_EDGE_LEN     = 30.0f;
+static constexpr float ROBOT_SIZE       = 5.0f;
 static const int   EDGE_CHECK_STEPS = 100;
 
 // ---------------------------------------------------------------------------

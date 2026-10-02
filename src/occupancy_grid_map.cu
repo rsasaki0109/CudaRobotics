@@ -26,19 +26,19 @@ using namespace std;
 // -------------------------------------------------------------------------
 const int   GRID_W       = 100;         // grid width in cells
 const int   GRID_H       = 100;         // grid height in cells
-const float RESOLUTION   = 0.5f;        // meters per cell
+constexpr float RESOLUTION   = 0.5f;        // meters per cell
 const int   NUM_RAYS     = 360;         // lidar rays per scan
-const float MAX_RANGE    = 20.0f;       // lidar max range [m]
-const float ANGULAR_RES  = 1.0f;        // degrees between rays
-const float L_OCC        = 0.85f;       // log-odds increment for occupied
-const float L_FREE       = -0.4f;       // log-odds increment for free
-const float L_PRIOR      = 0.0f;        // initial log-odds
-const float L_MIN        = -5.0f;       // clamp min
-const float L_MAX        = 5.0f;        // clamp max
+constexpr float MAX_RANGE    = 20.0f;       // lidar max range [m]
+constexpr float ANGULAR_RES  = 1.0f;        // degrees between rays
+constexpr float L_OCC        = 0.85f;       // log-odds increment for occupied
+constexpr float L_FREE       = -0.4f;       // log-odds increment for free
+constexpr float L_PRIOR      = 0.0f;        // initial log-odds
+constexpr float L_MIN        = -5.0f;       // clamp min
+constexpr float L_MAX        = 5.0f;        // clamp max
 
 // Grid origin in world coordinates (bottom-left corner)
-const float GRID_ORIGIN_X = 0.0f;
-const float GRID_ORIGIN_Y = 0.0f;
+constexpr float GRID_ORIGIN_X = 0.0f;
+constexpr float GRID_ORIGIN_Y = 0.0f;
 
 // -------------------------------------------------------------------------
 // Obstacle definition for simulation

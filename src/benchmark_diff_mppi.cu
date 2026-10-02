@@ -29,15 +29,16 @@
 #include "diff_dynamics.cuh"
 #include "hybrid_astar_pp.h"
 #include "cuda_check.cuh"
+#include "cuda_portable.cuh"
 
 
 using namespace std;
 using namespace cudabot;
 
-static const float WORKSPACE = 50.0f;
+static constexpr float WORKSPACE = 50.0f;
 static const int MAX_OBSTACLES = 16;
 static const int MAX_DYNAMIC_OBSTACLES = 8;
-static const float DEFAULT_LAMBDA = 8.0f;
+static constexpr float DEFAULT_LAMBDA = 8.0f;
 static const int DEFAULT_T_HORIZON = 30;
 static const int BENCH_WARMUP_ITERS = 4;
 
@@ -6527,7 +6528,7 @@ static Scenario make_model_mismatch_crossing_scene() {
 }
 
 static void ensure_build_dir() {
-    mkdir("build", 0755);
+    cudabot::make_dir("build");
 }
 
 static vector<int> parse_int_list(const string& text) {

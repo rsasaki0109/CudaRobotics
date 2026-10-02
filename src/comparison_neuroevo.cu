@@ -41,8 +41,8 @@ static const int N_GEN      = 500;
 static const int INPUT_DIM  = 4;
 static const int OUTPUT_DIM = 1;
 static const int TOURN_K    = 5;
-static const float CROSS_R  = 0.8f;
-static const float MUT_S    = 0.1f;
+static constexpr float CROSS_R  = 0.8f;
+static constexpr float MUT_S    = 0.1f;
 static const int ELITE_N    = 10;
 
 static const int IMG_W = 800;

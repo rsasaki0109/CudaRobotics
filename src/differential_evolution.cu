@@ -33,10 +33,10 @@ using namespace std;
 static const int DE_N = 10000;
 static const int DE_D = 30;
 static const int MAX_GEN = 1000;
-static const float F = 0.8f;       // Differential weight
-static const float CR = 0.9f;      // Crossover probability
-static const float X_MIN = -5.12f;
-static const float X_MAX = 5.12f;
+static constexpr float F = 0.8f;       // Differential weight
+static constexpr float CR = 0.9f;      // Crossover probability
+static constexpr float X_MIN = -5.12f;
+static constexpr float X_MAX = 5.12f;
 
 // -------------------------------------------------------------------------
 // Kernels

@@ -40,6 +40,7 @@
 
 #include "cuda_check.cuh"
 #include "cuda_video.h"
+#include "cuda_portable.cuh"
 
 namespace cudabot {
 
@@ -135,7 +136,7 @@ __host__ __device__ static inline int popcount_u(unsigned int v) {
 #ifdef __CUDA_ARCH__
     return __popc(v);
 #else
-    return __builtin_popcount(v);
+    return cudabot::popcount32(v);
 #endif
 }
 
