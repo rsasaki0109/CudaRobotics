@@ -391,7 +391,7 @@ int main() {
     CUDA_CHECK(cudaMemcpy(snap_core.data(), d_core, N_POINTS * sizeof(int),
                           cudaMemcpyDeviceToHost));
 
-    if (system("mkdir -p tmp") != 0)
+    if (cudabot::ensure_dirs({"tmp"}) != 0)
         std::fprintf(stderr, "warning: mkdir tmp failed\n");
     cv::VideoWriter video("tmp/gpu_dbscan.avi",
                           cv::VideoWriter::fourcc('M', 'J', 'P', 'G'),

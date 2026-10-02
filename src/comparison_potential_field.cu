@@ -19,6 +19,7 @@
 
 #include <cuda_runtime.h>
 #include "cuda_check.cuh"
+#include "cuda_video.h"
 
 
 using namespace std;
@@ -373,7 +374,7 @@ int main() {
     // Write as video (path animation)
     cv::VideoWriter video(
         "gif/comparison_potential_field.avi",
-        cv::VideoWriter::fourcc('X', 'V', 'I', 'D'), 30, cv::Size(W * 2, H));
+        cudabot::avi_fourcc(), 30, cv::Size(W * 2, H));
 
     if (!video.isOpened()) {
         cerr << "Failed to open video writer" << endl;
@@ -413,8 +414,8 @@ int main() {
 
     // Convert to gif
     system("ffmpeg -y -i gif/comparison_potential_field.avi "
-           "-vf 'fps=15,scale=800:-1:flags=lanczos' -loop 0 "
-           "gif/comparison_potential_field.gif 2>/dev/null");
+           "-vf \"fps=15,scale=800:-1:flags=lanczos\" -loop 0 "
+           "gif/comparison_potential_field.gif 2>" CUDABOT_NULL_DEVICE);
     cout << "GIF saved to gif/comparison_potential_field.gif" << endl;
 
     // Cleanup

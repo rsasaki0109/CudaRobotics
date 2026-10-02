@@ -313,7 +313,7 @@ int main() {
                 max_diff, sum_diff / N_VOX);
 
     // --- animation: surface refining as frames are added, view orbiting -----
-    if (system("mkdir -p tmp") != 0)
+    if (cudabot::ensure_dirs({"tmp"}) != 0)
         std::fprintf(stderr, "warning: mkdir tmp failed\n");
     cv::VideoWriter video("tmp/gpu_tsdf_fusion.avi",
                           cv::VideoWriter::fourcc('M', 'J', 'P', 'G'),

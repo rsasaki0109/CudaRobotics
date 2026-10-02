@@ -490,7 +490,7 @@ int main() {
     std::printf("GPU label propagation: %.3f ms (%d nodes x %d iters, %.1fx vs CPU, accuracy %.2f%%)\n",
                 gpu_ms, N_NODES, PROP_ITERS, speedup, 100.0f * final_gpu.accuracy);
 
-    std::system("mkdir -p gif");
+    cudabot::ensure_dirs({"gif"});
     cv::VideoWriter video("gif/gpu_label_propagation_traversability.avi",
                           cv::VideoWriter::fourcc('M', 'J', 'P', 'G'),
                           VIDEO_FPS, cv::Size(PANEL_W, PANEL_H));

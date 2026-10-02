@@ -1192,7 +1192,7 @@ static void draw_info(cv::Mat& img, int ox, int step, const StepSummary& s,
 }
 
 static void ensure_dirs() {
-    int rc = std::system("mkdir -p gif tmp");
+    int rc = cudabot::ensure_dirs({"gif", "tmp"});
     if (rc != 0) std::fprintf(stderr, "mkdir rc %d\n", rc);
 }
 

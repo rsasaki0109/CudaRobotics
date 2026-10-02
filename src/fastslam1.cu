@@ -18,6 +18,7 @@
 #include <cuda_runtime.h>
 #include <curand_kernel.h>
 #include "cuda_check.cuh"
+#include "cuda_video.h"
 
 // ---------------------------------------------------------------------------
 // Parameters
@@ -569,7 +570,7 @@ int main() {
     // Visualization
     // ------------------------------------------
     cv::namedWindow("fastslam1", cv::WINDOW_NORMAL);
-    cv::VideoWriter video("gif/fastslam1.avi", cv::VideoWriter::fourcc('X','V','I','D'), 30, cv::Size(3500, 3500));
+    cv::VideoWriter video("gif/fastslam1.avi", cudabot::avi_fourcc(), 30, cv::Size(3500, 3500));
 
     std::cout << "FastSLAM 1.0 with CUDA (" << N_PARTICLES << " particles, "
               << N_TRUE_LM << " landmarks)" << std::endl;

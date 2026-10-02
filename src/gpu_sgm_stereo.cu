@@ -349,7 +349,7 @@ int main() {
     std::printf("vs ground truth: MAE %.3f px, within 1px %.1f%%, within 2px %.1f%%\n",
                 mae, pct1, pct2);
 
-    if (system("mkdir -p tmp") != 0) std::fprintf(stderr, "warning: mkdir tmp failed\n");
+    if (cudabot::ensure_dirs({"tmp"}) != 0) std::fprintf(stderr, "warning: mkdir tmp failed\n");
     cv::VideoWriter video("tmp/gpu_sgm_stereo.avi",
                           cv::VideoWriter::fourcc('M', 'J', 'P', 'G'),
                           2, cv::Size(PANEL_W, PANEL_H));

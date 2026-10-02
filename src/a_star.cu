@@ -17,6 +17,7 @@
 
 #include <cuda_runtime.h>
 #include "cuda_check.cuh"
+#include "cuda_video.h"
 
 using namespace std;
 
@@ -239,7 +240,7 @@ void a_star_planning(float sx, float sy,
                img_reso * ywidth,
                CV_8UC3,
                cv::Scalar(255, 255, 255));
-    cv::VideoWriter video("gif/astar.avi", cv::VideoWriter::fourcc('X','V','I','D'), 30, cv::Size(bg.cols, bg.rows));
+    cv::VideoWriter video("gif/astar.avi", cudabot::avi_fourcc(), 30, cv::Size(bg.cols, bg.rows));
 
     cv::rectangle(bg,
                   cv::Point(nstart->x * img_reso + 1, nstart->y * img_reso + 1),

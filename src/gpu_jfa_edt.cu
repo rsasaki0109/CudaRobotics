@@ -300,7 +300,7 @@ int main() {
                 max_d, sum_d / N_PIX);
 
     // --- animation: replay JFA pass-by-pass --------------------------------
-    if (system("mkdir -p tmp") != 0)
+    if (cudabot::ensure_dirs({"tmp"}) != 0)
         std::fprintf(stderr, "warning: mkdir tmp failed\n");
     cv::VideoWriter video("tmp/gpu_jfa_edt.avi",
                           cv::VideoWriter::fourcc('M', 'J', 'P', 'G'),

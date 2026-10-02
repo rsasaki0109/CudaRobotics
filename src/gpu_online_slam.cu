@@ -26,6 +26,7 @@
 #include <random>
 #include <vector>
 #include "cuda_check.cuh"
+#include "cuda_video.h"
 
 namespace cudabot {
 
@@ -420,7 +421,7 @@ static cv::Mat draw_panel(const std::vector<float>& poses,
 static void convert_avi_to_gif(const std::string& avi, const std::string& gif, int fps) {
     char cmd[1024];
     std::snprintf(cmd, sizeof(cmd),
-                  "ffmpeg -y -i %s -vf \"fps=%d,scale=1080:-1:flags=lanczos,split[a][b];[a]palettegen=stats_mode=diff[p];[b][p]paletteuse=dither=bayer:bayer_scale=5:diff_mode=rectangle\" %s 2>/dev/null",
+                  "ffmpeg -y -i %s -vf \"fps=%d,scale=1080:-1:flags=lanczos,split[a][b];[a]palettegen=stats_mode=diff[p];[b][p]paletteuse=dither=bayer:bayer_scale=5:diff_mode=rectangle\" %s 2>" CUDABOT_NULL_DEVICE,
                   avi.c_str(), fps, gif.c_str());
     int rc = std::system(cmd);
     if (rc != 0) std::fprintf(stderr, "ffmpeg failed (%d)\n", rc);
@@ -489,7 +490,7 @@ int main() {
     edges_h.reserve(max_edges);
     std::vector<Edge> loops_h;
 
-    std::system("mkdir -p gif");
+    cudabot::ensure_dirs({"gif"});
     cv::VideoWriter video("gif/gpu_online_slam.avi",
                           cv::VideoWriter::fourcc('M', 'J', 'P', 'G'),
                           VIDEO_FPS, cv::Size(PANEL_W * 2 + 4, PANEL_H + 30));

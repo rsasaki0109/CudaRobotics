@@ -772,7 +772,7 @@ static cv::Mat draw_frame(int step, const std::vector<float>& lx,
 
 int main() {
     using namespace cudabot;
-    int mkdir_rc = std::system("mkdir -p gif");
+    int mkdir_rc = cudabot::ensure_dirs({"gif"});
     if (mkdir_rc != 0) {
         std::fprintf(stderr, "Failed to create gif directory\n");
         return 1;

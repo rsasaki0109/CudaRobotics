@@ -35,6 +35,7 @@
 
 #include <cuda_runtime.h>
 #include "cuda_check.cuh"
+#include "cuda_video.h"
 
 constexpr float WORLD = 40.0f;
 constexpr int   N_CPU = 2000;
@@ -318,8 +319,8 @@ static cv::Mat render_tree(const std::vector<float>& pts,
 static void convert_avi_to_gif(const char* avi, const char* gif, int fps) {
     char cmd[512];
     std::snprintf(cmd, sizeof(cmd),
-        "ffmpeg -y -i %s -vf 'fps=%d,scale=900:-1:flags=lanczos' -loop 0 %s "
-        "> /dev/null 2>&1", avi, fps, gif);
+        "ffmpeg -y -i %s -vf \"fps=%d,scale=900:-1:flags=lanczos\" -loop 0 %s "
+        "> " CUDABOT_NULL_DEVICE " 2>&1", avi, fps, gif);
     int rc = std::system(cmd);
     if (rc != 0) std::fprintf(stderr, "ffmpeg conversion returned %d\n", rc);
 }
@@ -366,7 +367,7 @@ int main() {
     bot.copyTo(combined(cv::Rect(0, PANEL + 4, PANEL * 2 + 4, PANEL)));
 
     cv::VideoWriter video("gif/comparison_rrtstar_rewire.avi",
-                          cv::VideoWriter::fourcc('X', 'V', 'I', 'D'), 4,
+                          cudabot::avi_fourcc(), 4,
                           cv::Size(combined.cols, combined.rows));
     if (!video.isOpened()) {
         std::fprintf(stderr, "Failed to open gif/comparison_rrtstar_rewire.avi\n");

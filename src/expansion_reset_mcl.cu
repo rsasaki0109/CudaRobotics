@@ -22,6 +22,7 @@
 #include <cuda_runtime.h>
 #include <curand_kernel.h>
 #include "cuda_check.cuh"
+#include "cuda_video.h"
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -552,7 +553,7 @@ int main() {
     cv::resizeWindow("expansion_reset_mcl", IMG_W, IMG_H);
     cv::VideoWriter video(
         "gif/expansion_reset_mcl.avi",
-        cv::VideoWriter::fourcc('X', 'V', 'I', 'D'), 30, cv::Size(IMG_W, IMG_H));
+        cudabot::avi_fourcc(), 30, cv::Size(IMG_W, IMG_H));
 
     bool kidnapped = false;
     bool recovering = false;
@@ -752,8 +753,8 @@ int main() {
 
     video.release();
     system("ffmpeg -y -i gif/expansion_reset_mcl.avi "
-           "-vf 'fps=15,scale=800:-1:flags=lanczos' -loop 0 "
-           "gif/expansion_reset_mcl.gif 2>/dev/null");
+           "-vf \"fps=15,scale=800:-1:flags=lanczos\" -loop 0 "
+           "gif/expansion_reset_mcl.gif 2>" CUDABOT_NULL_DEVICE);
     std::cout << "GIF saved to gif/expansion_reset_mcl.gif" << std::endl;
 
     cudaFree(d_px); cudaFree(d_py); cudaFree(d_ptheta); cudaFree(d_pw);

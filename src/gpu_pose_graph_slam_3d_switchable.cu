@@ -1391,7 +1391,7 @@ static void write_video(const std::vector<Snapshot>& snapshots,
                         const std::vector<Pose>& initial,
                         const std::vector<Edge>& edges,
                         const BenchResult& bench) {
-    int mkdir_rc = std::system("mkdir -p gif");
+    int mkdir_rc = cudabot::ensure_dirs({"gif"});
     if (mkdir_rc != 0) {
         std::fprintf(stderr, "Failed to create gif directory\n");
         std::exit(1);

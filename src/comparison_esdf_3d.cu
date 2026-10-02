@@ -33,6 +33,7 @@
 
 #include <cuda_runtime.h>
 #include "cuda_check.cuh"
+#include "cuda_video.h"
 
 // -------------------------------------------------------------------------
 // Constants
@@ -304,8 +305,8 @@ static void convert_avi_to_gif(const char* avi_path, const char* gif_path,
                                int fps) {
     char cmd[512];
     std::snprintf(cmd, sizeof(cmd),
-        "ffmpeg -y -i %s -vf 'fps=%d,scale=900:-1:flags=lanczos' -loop 0 %s "
-        "> /dev/null 2>&1", avi_path, fps, gif_path);
+        "ffmpeg -y -i %s -vf \"fps=%d,scale=900:-1:flags=lanczos\" -loop 0 %s "
+        "> " CUDABOT_NULL_DEVICE " 2>&1", avi_path, fps, gif_path);
     int rc = std::system(cmd);
     if (rc != 0) std::fprintf(stderr, "ffmpeg conversion returned %d\n", rc);
 }
@@ -340,7 +341,7 @@ int main() {
                 CPU_W, CPU_H, CPU_D, max_err);
 
     cv::VideoWriter video("gif/comparison_esdf_3d.avi",
-                          cv::VideoWriter::fourcc('X', 'V', 'I', 'D'), 15,
+                          cudabot::avi_fourcc(), 15,
                           cv::Size(PANEL_W * 4 + 4, PANEL_H + 36));
     if (!video.isOpened()) {
         std::fprintf(stderr, "Failed to open gif/comparison_esdf_3d.avi\n");

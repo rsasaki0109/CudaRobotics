@@ -30,6 +30,7 @@
 
 #include <cuda_runtime.h>
 #include "cuda_check.cuh"
+#include "cuda_video.h"
 
 // -------------------------------------------------------------------------
 // Constants
@@ -443,7 +444,7 @@ int main() {
     std::vector<float> gpu_grid(gpu_total, 0.0f);
 
     cv::VideoWriter video("gif/comparison_voxel_map.avi",
-                          cv::VideoWriter::fourcc('X', 'V', 'I', 'D'), 30,
+                          cudabot::avi_fourcc(), 30,
                           cv::Size(PANEL_W * 2, PANEL_H));
 
     double cpu_ms_sum = 0.0, gpu_ms_sum = 0.0;
@@ -545,8 +546,8 @@ int main() {
     }
 
     std::system("ffmpeg -y -i gif/comparison_voxel_map.avi "
-                "-vf 'fps=15,scale=900:-1:flags=lanczos' -loop 0 "
-                "gif/comparison_voxel_map.gif 2>/dev/null");
+                "-vf \"fps=15,scale=900:-1:flags=lanczos\" -loop 0 "
+                "gif/comparison_voxel_map.gif 2>" CUDABOT_NULL_DEVICE);
     std::cout << "GIF saved to gif/comparison_voxel_map.gif" << std::endl;
     return 0;
 }

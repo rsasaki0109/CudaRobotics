@@ -18,6 +18,7 @@
 
 #include <cuda_runtime.h>
 #include "cuda_check.cuh"
+#include "cuda_video.h"
 
 
 // ---------------------------------------------------------------------------
@@ -729,7 +730,7 @@ int main() {
 
     // Write as video (repeated frames for visibility as gif)
     cv::VideoWriter video("gif/comparison_prm.avi",
-                          cv::VideoWriter::fourcc('X','V','I','D'), 10, cv::Size(PAD_W * 2, PAD_H));
+                          cudabot::avi_fourcc(), 10, cv::Size(PAD_W * 2, PAD_H));
 
     for (int f = 0; f < 50; f++) video.write(combined);  // 5s at 10fps
 
@@ -737,8 +738,8 @@ int main() {
     std::cout << "Video saved to gif/comparison_prm.avi" << std::endl;
 
     system("ffmpeg -y -i gif/comparison_prm.avi "
-           "-vf 'fps=10,scale=800:-1:flags=lanczos' -loop 0 "
-           "gif/comparison_prm.gif 2>/dev/null");
+           "-vf \"fps=10,scale=800:-1:flags=lanczos\" -loop 0 "
+           "gif/comparison_prm.gif 2>" CUDABOT_NULL_DEVICE);
     std::cout << "GIF saved to gif/comparison_prm.gif" << std::endl;
 
     return 0;

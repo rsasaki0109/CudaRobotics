@@ -15,6 +15,7 @@
 #include <opencv2/opencv.hpp>
 #include <cuda_runtime.h>
 #include "cuda_check.cuh"
+#include "cuda_video.h"
 
 #define N_POINTS   500
 #define MAX_ITER   50
@@ -589,7 +590,7 @@ int main()
 
     cv::VideoWriter video(
         "gif/comparison_icp.avi",
-        cv::VideoWriter::fourcc('X', 'V', 'I', 'D'), 10, cv::Size(vp.W * 2, vp.H));
+        cudabot::avi_fourcc(), 10, cv::Size(vp.W * 2, vp.H));
 
     // Re-run CPU for per-frame snapshots (we already have the data)
     std::vector<float> cpu_frame_x = src_init_x;
@@ -673,8 +674,8 @@ int main()
     std::cout << "Video saved to gif/comparison_icp.avi" << std::endl;
 
     system("ffmpeg -y -i gif/comparison_icp.avi "
-           "-vf 'fps=10,scale=800:-1:flags=lanczos' -loop 0 "
-           "gif/comparison_icp.gif 2>/dev/null");
+           "-vf \"fps=10,scale=800:-1:flags=lanczos\" -loop 0 "
+           "gif/comparison_icp.gif 2>" CUDABOT_NULL_DEVICE);
     std::cout << "GIF saved to gif/comparison_icp.gif" << std::endl;
 
     // Cleanup

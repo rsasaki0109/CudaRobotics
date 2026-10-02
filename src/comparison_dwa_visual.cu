@@ -15,6 +15,7 @@
 
 #include <cuda_runtime.h>
 #include "cuda_check.cuh"
+#include "cuda_video.h"
 
 #define PI 3.141592653f
 
@@ -197,7 +198,7 @@ int main() {
 
     int W = 800, H = 800;
     cv::VideoWriter video("gif/comparison_dwa_visual.avi",
-        cv::VideoWriter::fourcc('X', 'V', 'I', 'D'), 30, cv::Size(W * 2, H));
+        cudabot::avi_fourcc(), 30, cv::Size(W * 2, H));
 
     for (int i = 0; i < 1000; i++) {
         // CPU DWA with all trajectories
@@ -281,8 +282,8 @@ int main() {
 
     video.release();
     system("ffmpeg -y -i gif/comparison_dwa_visual.avi "
-           "-vf 'fps=15,scale=800:-1:flags=lanczos' -loop 0 "
-           "gif/comparison_dwa_visual.gif 2>/dev/null");
+           "-vf \"fps=15,scale=800:-1:flags=lanczos\" -loop 0 "
+           "gif/comparison_dwa_visual.gif 2>" CUDABOT_NULL_DEVICE);
     std::cout << "GIF saved to gif/comparison_dwa_visual.gif" << std::endl;
 
     cudaFree(d_ob); cudaFree(d_costs); cudaFree(d_cv); cudaFree(d_cyr);

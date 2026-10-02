@@ -524,7 +524,7 @@ int main() {
     }
 
     // ---- render the convergence animation ----
-    if (system("mkdir -p tmp") != 0) std::fprintf(stderr, "warning: mkdir tmp failed\n");
+    if (cudabot::ensure_dirs({"tmp"}) != 0) std::fprintf(stderr, "warning: mkdir tmp failed\n");
     cv::VideoWriter video("tmp/gpu_batched_ilqr.avi",
                           cv::VideoWriter::fourcc('M', 'J', 'P', 'G'), 12,
                           cv::Size(FRAME_W, FRAME_H));

@@ -838,7 +838,7 @@ int main() {
                 coordinated.mean_social_risk, coordinated.max_social_risk,
                 collision_drop, risk_drop, sep_gain);
 
-    std::system("mkdir -p gif");
+    cudabot::ensure_dirs({"gif"});
     cv::VideoWriter video("gif/gpu_multiagent_graph_neural_mppi.avi",
                           cv::VideoWriter::fourcc('M', 'J', 'P', 'G'),
                           VIDEO_FPS, cv::Size(PANEL_W, PANEL_H));

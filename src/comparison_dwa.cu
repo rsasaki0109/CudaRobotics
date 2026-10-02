@@ -13,6 +13,7 @@
 
 #include <cuda_runtime.h>
 #include "cuda_check.cuh"
+#include "cuda_video.h"
 
 #define PI 3.141592653f
 
@@ -169,7 +170,7 @@ int main() {
 
     int W = 1750, H = 1750;
     cv::VideoWriter video("gif/comparison_dwa.avi",
-                          cv::VideoWriter::fourcc('X','V','I','D'), 30, cv::Size(W*2, H));
+                          cudabot::avi_fourcc(), 30, cv::Size(W*2, H));
 
     for (int i = 0; i < 1000; i++) {
         // CPU
@@ -233,8 +234,8 @@ int main() {
 
     // Convert to gif
     system("ffmpeg -y -i gif/comparison_dwa.avi "
-           "-vf 'fps=15,scale=800:-1:flags=lanczos' -loop 0 "
-           "gif/comparison_dwa.gif 2>/dev/null");
+           "-vf \"fps=15,scale=800:-1:flags=lanczos\" -loop 0 "
+           "gif/comparison_dwa.gif 2>" CUDABOT_NULL_DEVICE);
     std::cout << "GIF saved to gif/comparison_dwa.gif" << std::endl;
 
     cudaFree(d_ob); cudaFree(d_costs); cudaFree(d_cv); cudaFree(d_cyr); cudaFree(d_mi);

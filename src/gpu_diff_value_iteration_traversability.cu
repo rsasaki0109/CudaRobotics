@@ -733,7 +733,7 @@ int main() {
                 gpu_ms, GRID_W, GRID_H, VI_ITERS, speedup, final_gpu.path_cost,
                 final_gpu.path_steps, final_gpu.reached);
 
-    std::system("mkdir -p gif");
+    cudabot::ensure_dirs({"gif"});
     cv::VideoWriter video("gif/gpu_diff_value_iteration_traversability.avi",
                           cv::VideoWriter::fourcc('M', 'J', 'P', 'G'),
                           VIDEO_FPS, cv::Size(PANEL_W, PANEL_H));

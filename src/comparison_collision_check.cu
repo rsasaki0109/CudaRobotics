@@ -31,6 +31,7 @@
 
 #include <cuda_runtime.h>
 #include "cuda_check.cuh"
+#include "cuda_video.h"
 
 // -------------------------------------------------------------------------
 // Constants
@@ -310,7 +311,7 @@ int main() {
     validate_consistency(h_grid.data(), d_grid);
 
     cv::VideoWriter video("gif/comparison_collision_check.avi",
-                          cv::VideoWriter::fourcc('X', 'V', 'I', 'D'), 30,
+                          cudabot::avi_fourcc(), 30,
                           cv::Size(PANEL_W * 2, PANEL_H));
 
     double cpu_ms_sum = 0.0, gpu_ms_sum = 0.0;
@@ -418,8 +419,8 @@ int main() {
     }
 
     std::system("ffmpeg -y -i gif/comparison_collision_check.avi "
-                "-vf 'fps=15,scale=900:-1:flags=lanczos' -loop 0 "
-                "gif/comparison_collision_check.gif 2>/dev/null");
+                "-vf \"fps=15,scale=900:-1:flags=lanczos\" -loop 0 "
+                "gif/comparison_collision_check.gif 2>" CUDABOT_NULL_DEVICE);
     std::cout << "GIF saved to gif/comparison_collision_check.gif" << std::endl;
     return 0;
 }

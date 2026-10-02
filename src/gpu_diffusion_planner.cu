@@ -32,6 +32,7 @@
 #include <cstdlib>
 #include <vector>
 #include "cuda_check.cuh"
+#include "cuda_video.h"
 
 namespace cudabot {
 
@@ -264,7 +265,7 @@ static void convert_frames_to_gif(const std::string& frame_pattern, const std::s
                   "ffmpeg -y -framerate %d -i %s "
                   "-vf \"fps=%d,scale=900:-1:flags=lanczos,split[a][b];"
                   "[a]palettegen=stats_mode=diff[p];[b][p]paletteuse=dither=bayer:bayer_scale=5:diff_mode=rectangle\" "
-                  "%s 2>/dev/null",
+                  "%s 2>" CUDABOT_NULL_DEVICE,
                   fps, frame_pattern.c_str(), fps, gif.c_str());
     int rc = std::system(cmd);
     if (rc != 0) std::fprintf(stderr, "ffmpeg failed (%d)\n", rc);

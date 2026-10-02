@@ -11,6 +11,7 @@
 #include <cuda_runtime.h>
 #include <opencv2/opencv.hpp>
 
+#include "cuda_video.h"
 #include "gpu_mlp.cuh"
 
 namespace cudabot {
@@ -337,7 +338,7 @@ inline void draw_start_goal(cv::Mat& img, cv::Point2f start, cv::Point2f goal) {
 inline void convert_avi_to_gif(const std::string& avi_path, const std::string& gif_path, int fps = 15) {
     char cmd[1024];
     std::snprintf(cmd, sizeof(cmd),
-                  "ffmpeg -y -i %s -vf 'fps=%d,scale=480:-1' -loop 0 %s 2>/dev/null",
+                  "ffmpeg -y -i %s -vf \"fps=%d,scale=480:-1\" -loop 0 %s 2>" CUDABOT_NULL_DEVICE,
                   avi_path.c_str(), fps, gif_path.c_str());
     std::system(cmd);
 }

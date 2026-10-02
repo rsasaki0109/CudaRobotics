@@ -16,6 +16,7 @@
 #include <opencv2/core/core.hpp>
 #include <opencv2/highgui/highgui.hpp>
 #include "cuda_check.cuh"
+#include "cuda_video.h"
 
 // ---------------------------------------------------------------------------
 // Device kernels
@@ -301,7 +302,7 @@ std::vector<Node> CudaRRT::planning() {
     int img_size = (int)(rand_max - rand_min);
     int img_reso = 50;
     cv::Mat bg(img_size * img_reso, img_size * img_reso, CV_8UC3, cv::Scalar(255, 255, 255));
-    cv::VideoWriter video("gif/rrt.avi", cv::VideoWriter::fourcc('X','V','I','D'), 30, cv::Size(img_size * img_reso, img_size * img_reso));
+    cv::VideoWriter video("gif/rrt.avi", cudabot::avi_fourcc(), 30, cv::Size(img_size * img_reso, img_size * img_reso));
 
     auto toPixel = [&](float wx, float wy) -> cv::Point {
         return cv::Point((int)((wx - rand_min) * img_reso),

@@ -19,6 +19,7 @@
 
 #include "gpu_mlp.cuh"
 #include "parallel_env.cuh"
+#include "cuda_video.h"
 
 using namespace std;
 using namespace cudabot;
@@ -36,7 +37,7 @@ static constexpr float LR = 0.003f;
 static void convert_avi_to_gif(const char* avi_path, const char* gif_path, int fps = 15) {
     char cmd[1024];
     std::snprintf(cmd, sizeof(cmd),
-                  "ffmpeg -y -i %s -vf 'fps=%d,scale=720:-1' -loop 0 %s 2>/dev/null",
+                  "ffmpeg -y -i %s -vf \"fps=%d,scale=720:-1\" -loop 0 %s 2>" CUDABOT_NULL_DEVICE,
                   avi_path, fps, gif_path);
     std::system(cmd);
 }
@@ -315,7 +316,7 @@ int main() {
 
     cv::VideoWriter video(
         AVI_PATH,
-        cv::VideoWriter::fourcc('X', 'V', 'I', 'D'),
+        cudabot::avi_fourcc(),
         15,
         cv::Size(960, 360));
 

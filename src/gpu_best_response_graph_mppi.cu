@@ -1131,7 +1131,7 @@ int main() {
                 game_stats.mean_unilateral_gain, game_stats.normalized_gain,
                 game_stats.max_unilateral_gain, collision_drop, risk_drop, cvar_drop, sep_gain);
 
-    std::system("mkdir -p gif");
+    cudabot::ensure_dirs({"gif"});
     cv::VideoWriter video("gif/gpu_best_response_graph_mppi.avi",
                           cv::VideoWriter::fourcc('M', 'J', 'P', 'G'),
                           VIDEO_FPS, cv::Size(PANEL_W, PANEL_H));

@@ -843,7 +843,7 @@ int main() {
                 100.0f * final_gpu.corridor_passable,
                 100.0f * final_gpu.path_blocked);
 
-    std::system("mkdir -p gif");
+    cudabot::ensure_dirs({"gif"});
     cv::VideoWriter video("gif/gpu_gat_traversability_policy.avi",
                           cv::VideoWriter::fourcc('M', 'J', 'P', 'G'),
                           VIDEO_FPS, cv::Size(PANEL_W, PANEL_H));

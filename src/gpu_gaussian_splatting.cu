@@ -284,7 +284,7 @@ int main() {
     std::vector<int> order(n);
     std::vector<unsigned char> img(IMG_W * IMG_H * 3);
 
-    std::system("mkdir -p gif");
+    cudabot::ensure_dirs({"gif"});
     cv::VideoWriter video("gif/gpu_gaussian_splatting.avi",
                           cv::VideoWriter::fourcc('M', 'J', 'P', 'G'),
                           15, cv::Size(IMG_W, IMG_H));

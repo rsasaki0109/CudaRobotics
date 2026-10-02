@@ -12,6 +12,7 @@
 #include <opencv2/opencv.hpp>
 #include <cuda_runtime.h>
 #include "cuda_check.cuh"
+#include "cuda_video.h"
 
 #define PI 3.14159265f
 #define N_CPU_ROBOTS 5
@@ -174,7 +175,7 @@ int main() {
     int W = IMG_SIZE;
     cv::VideoWriter video(
         "gif/comparison_multi_robot_visual.avi",
-        cv::VideoWriter::fourcc('X', 'V', 'I', 'D'), 30, cv::Size(W * 2, W));
+        cudabot::avi_fourcc(), 30, cv::Size(W * 2, W));
 
     std::vector<std::vector<cv::Point>> trails_cpu(N_CPU_ROBOTS), trails_gpu(N_CUDA_ROBOTS);
     int cuda_blocks = (N_CUDA_ROBOTS + 255) / 256;
@@ -233,8 +234,8 @@ int main() {
 
     video.release();
     system("ffmpeg -y -i gif/comparison_multi_robot_visual.avi "
-           "-vf 'fps=20,scale=800:-1:flags=lanczos' -loop 0 "
-           "gif/comparison_multi_robot_visual.gif 2>/dev/null");
+           "-vf \"fps=20,scale=800:-1:flags=lanczos\" -loop 0 "
+           "gif/comparison_multi_robot_visual.gif 2>" CUDABOT_NULL_DEVICE);
     printf("GIF saved to gif/comparison_multi_robot_visual.gif\n");
 
     cudaFree(d_px); cudaFree(d_py); cudaFree(d_vx); cudaFree(d_vy);

@@ -234,7 +234,7 @@ static void errs(const Pose& res,const Mat3& Rgt,const float* gt_t,float& ang,fl
 // ============================ GIF (flagship convergence) ============================
 static void render_gif(const std::vector<float>& X,const std::vector<char>& is_out,const std::vector<float>& Y,const std::vector<Pose>& traj){
     const int W=1280,H=720,CX=380,CY=360; const float SCALE=80.f,elev=0.42f;
-    if(system("mkdir -p tmp")!=0)std::fprintf(stderr,"warn\n");
+    if(cudabot::ensure_dirs({"tmp"})!=0)std::fprintf(stderr,"warn\n");
     cv::VideoWriter video("tmp/gpu_robust_p2plane_reg.avi",cv::VideoWriter::fourcc('M','J','P','G'),18,cv::Size(W,H));
     int nt=traj.size(),Nx=X.size()/3,My=Y.size()/3; const int HOLD=24;
     struct Sp{float sx,sy,d;cv::Scalar c;};

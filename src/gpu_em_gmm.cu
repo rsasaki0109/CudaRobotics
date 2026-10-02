@@ -599,7 +599,7 @@ int main() {
     std::printf("GPU NLL %.6f, CPU NLL %.6f, mean RMSE %.6f\n",
                 gpu.gpu_nll, gpu.cpu_nll, gpu.mean_rmse);
 
-    int mkdir_ret = std::system("mkdir -p gif");
+    int mkdir_ret = cudabot::ensure_dirs({"gif"});
     (void)mkdir_ret;
     cv::VideoWriter video("gif/gpu_em_gmm.avi",
                           cv::VideoWriter::fourcc('M', 'J', 'P', 'G'),

@@ -27,6 +27,7 @@
 #include "gpu_environments.cuh"
 #include "gpu_genetic.cuh"
 #include "cuda_check.cuh"
+#include "cuda_video.h"
 
 
 using namespace std;
@@ -333,7 +334,7 @@ int main()
     // ----- Video -----
     const string avi_path = "gif/comparison_neuroevo.avi";
     const string gif_path = "gif/comparison_neuroevo.gif";
-    cv::VideoWriter writer(avi_path, cv::VideoWriter::fourcc('X','V','I','D'),
+    cv::VideoWriter writer(avi_path, cudabot::avi_fourcc(),
                            15, cv::Size(IMG_W, IMG_H));
     if (!writer.isOpened()) {
         fprintf(stderr, "Failed to open video writer\n");
@@ -451,7 +452,7 @@ int main()
     // Convert to gif
     char cmd[512];
     snprintf(cmd, sizeof(cmd),
-             "ffmpeg -y -i %s -vf 'fps=15,scale=400:-1' -loop 0 %s 2>/dev/null",
+             "ffmpeg -y -i %s -vf \"fps=15,scale=400:-1\" -loop 0 %s 2>" CUDABOT_NULL_DEVICE,
              avi_path.c_str(), gif_path.c_str());
     system(cmd);
     printf("Saved: %s\n", gif_path.c_str());

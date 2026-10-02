@@ -622,7 +622,7 @@ int main() {
     CUDA_CHECK(cudaMemcpy(d_agents, h_agents.data(), N_AGENTS * sizeof(Agent),
                           cudaMemcpyHostToDevice));
 
-    std::system("mkdir -p gif");
+    cudabot::ensure_dirs({"gif"});
     cv::VideoWriter video("gif/gpu_gnn_swarm_controller.avi",
                           cv::VideoWriter::fourcc('M', 'J', 'P', 'G'),
                           VIDEO_FPS, cv::Size(PANEL_W, PANEL_H));

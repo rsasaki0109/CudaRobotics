@@ -648,7 +648,7 @@ int main() {
                 action_w(best_action_from_stats(gpu_stats[0])),
                 action_w(best_action_from_stats(cpu_stats[0])));
 
-    int mkdir_ret = std::system("mkdir -p gif");
+    int mkdir_ret = cudabot::ensure_dirs({"gif"});
     (void)mkdir_ret;
     cv::VideoWriter video("gif/gpu_mcts_planner.avi",
                           cv::VideoWriter::fourcc('M', 'J', 'P', 'G'),
