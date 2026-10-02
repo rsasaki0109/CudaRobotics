@@ -5,8 +5,8 @@
     >   1. Generate K=4096 sample control sequences with cuRAND noise
     >   2. rollout_kernel: each of K threads rolls out T=30 steps of bicycle model,
     >      accumulates running cost (goal, obstacle, control effort)
-    >   3. compute_weights_kernel: softmin over K costs (exp(-1/lambda * cost))
-    >   4. update_controls_kernel: weighted average of K control sequences per timestep
+    >   3. launch_softmin_weights: block-parallel softmin over K costs (exp(-1/lambda * cost))
+    >   4. launch_weighted_control_update: weighted average of K control sequences
     >   5. Apply first control, shift horizon, repeat
     > Bicycle model: state (x, y, theta, v), control (accel, steer_rate), wheelbase L=2.5
     > CUDA kernels use one thread per sample trajectory
@@ -27,43 +27,44 @@
 #include <cuda_runtime.h>
 #include <curand_kernel.h>
 #include "cuda_check.cuh"
+#include "mppi_reduction.cuh"
 
 using namespace std;
 
 // -------------------------------------------------------------------------
 // Constants
 // -------------------------------------------------------------------------
-static const int K_SAMPLES    = 4096;     // number of sample trajectories
-static const int T_HORIZON    = 30;       // prediction horizon steps
-static const float DT         = 0.05f;    // timestep
-static const float WHEELBASE  = 2.5f;     // bicycle model wheelbase
-static const float LAMBDA     = 10.0f;    // temperature parameter
-static const float WORKSPACE  = 50.0f;    // workspace size
+static constexpr int K_SAMPLES    = 4096;     // number of sample trajectories
+static constexpr int T_HORIZON    = 30;       // prediction horizon steps
+static constexpr float DT         = 0.05f;    // timestep
+static constexpr float WHEELBASE  = 2.5f;     // bicycle model wheelbase
+static constexpr float LAMBDA     = 10.0f;    // temperature parameter
+static constexpr float WORKSPACE  = 50.0f;    // workspace size
 
 // Control limits
-static const float MAX_ACCEL       = 5.0f;
-static const float MAX_STEER_RATE  = 1.0f;    // rad/s
-static const float MAX_SPEED       = 8.0f;
-static const float MAX_STEER       = 0.6f;    // max steering angle
+static constexpr float MAX_ACCEL       = 5.0f;
+static constexpr float MAX_STEER_RATE  = 1.0f;    // rad/s
+static constexpr float MAX_SPEED       = 8.0f;
+static constexpr float MAX_STEER       = 0.6f;    // max steering angle
 
 // Noise standard deviations
-static const float ACCEL_NOISE_STD = 2.0f;
-static const float STEER_NOISE_STD = 0.4f;
+static constexpr float ACCEL_NOISE_STD = 2.0f;
+static constexpr float STEER_NOISE_STD = 0.4f;
 
 // Cost weights
-static const float GOAL_WEIGHT     = 1.0f;
-static const float OBS_WEIGHT      = 200.0f;
-static const float SPEED_WEIGHT    = 0.1f;
-static const float STEER_WEIGHT    = 5.0f;
-static const float TERMINAL_WEIGHT = 10.0f;
+static constexpr float GOAL_WEIGHT     = 1.0f;
+static constexpr float OBS_WEIGHT      = 200.0f;
+static constexpr float SPEED_WEIGHT    = 0.1f;
+static constexpr float STEER_WEIGHT    = 5.0f;
+static constexpr float TERMINAL_WEIGHT = 10.0f;
 
 // Start and goal
-static const float START_X = 5.0f,  START_Y = 5.0f;
-static const float START_THETA = 0.0f, START_V = 0.0f;
-static const float GOAL_X  = 45.0f, GOAL_Y  = 45.0f;
+static constexpr float START_X = 5.0f,  START_Y = 5.0f;
+static constexpr float START_THETA = 0.0f, START_V = 0.0f;
+static constexpr float GOAL_X  = 45.0f, GOAL_Y  = 45.0f;
 
 // Obstacles: (cx, cy, radius)
-static const int N_OBSTACLES = 10;
+static constexpr int N_OBSTACLES = 10;
 __constant__ float d_obs_x[N_OBSTACLES];
 __constant__ float d_obs_y[N_OBSTACLES];
 __constant__ float d_obs_r[N_OBSTACLES];
@@ -72,8 +73,8 @@ static float h_obs_x[N_OBSTACLES] = {12.0f, 20.0f, 30.0f, 15.0f, 25.0f, 35.0f, 2
 static float h_obs_y[N_OBSTACLES] = {15.0f, 25.0f, 10.0f, 35.0f, 18.0f, 30.0f, 40.0f, 20.0f, 30.0f, 38.0f};
 static float h_obs_r[N_OBSTACLES] = { 3.0f,  3.5f,  3.0f,  2.5f,  3.5f,  2.5f,  3.0f,  3.0f,  2.5f,  2.5f};
 
-static const int MAX_STEPS = 600;     // maximum simulation steps
-static const float GOAL_TOL = 2.0f;   // goal tolerance
+static constexpr int MAX_STEPS = 600;     // maximum simulation steps
+static constexpr float GOAL_TOL = 2.0f;   // goal tolerance
 
 // -------------------------------------------------------------------------
 // Kernel: Initialize cuRAND states
@@ -188,63 +189,6 @@ __global__ void rollout_kernel(
 }
 
 // -------------------------------------------------------------------------
-// Kernel: Compute softmin weights from costs
-// Two-pass: first find min cost, then compute exp weights
-// -------------------------------------------------------------------------
-__global__ void compute_weights_kernel(
-    const float* __restrict__ d_costs,
-    float* __restrict__ d_weights,
-    float* __restrict__ d_min_cost,   // [1] scratch for min cost
-    int K, float lambda)
-{
-    // Simple single-thread pass for now (K=4096 is small)
-    if (threadIdx.x != 0 || blockIdx.x != 0) return;
-
-    float min_c = FLT_MAX;
-    for (int k = 0; k < K; k++) {
-        if (d_costs[k] < min_c) min_c = d_costs[k];
-    }
-    d_min_cost[0] = min_c;
-
-    float sum_exp = 0.0f;
-    for (int k = 0; k < K; k++) {
-        float w = expf(-1.0f / lambda * (d_costs[k] - min_c));
-        d_weights[k] = w;
-        sum_exp += w;
-    }
-
-    if (sum_exp > 0.0f) {
-        for (int k = 0; k < K; k++) {
-            d_weights[k] /= sum_exp;
-        }
-    }
-}
-
-// -------------------------------------------------------------------------
-// Kernel: Update nominal controls as weighted average of perturbed sequences
-// One thread per timestep
-// -------------------------------------------------------------------------
-__global__ void update_controls_kernel(
-    float* __restrict__ d_nominal,             // [T * 2] - updated in place
-    const float* __restrict__ d_perturbed,     // [K * T * 2]
-    const float* __restrict__ d_weights,       // [K]
-    int K, int T)
-{
-    int t = blockIdx.x * blockDim.x + threadIdx.x;
-    if (t >= T) return;
-
-    float wa = 0.0f, ws = 0.0f;
-    for (int k = 0; k < K; k++) {
-        float w = d_weights[k];
-        wa += w * d_perturbed[k * T * 2 + t * 2 + 0];
-        ws += w * d_perturbed[k * T * 2 + t * 2 + 1];
-    }
-
-    d_nominal[t * 2 + 0] = wa;
-    d_nominal[t * 2 + 1] = ws;
-}
-
-// -------------------------------------------------------------------------
 // Visualization helper
 // -------------------------------------------------------------------------
 static cv::Point world_to_pixel(float wx, float wy, int img_size, float ws)
@@ -318,7 +262,6 @@ int main()
     path_y.push_back(ry);
 
     int grid_K = (K_SAMPLES + block - 1) / block;
-    int grid_T = (T_HORIZON + block - 1) / block;
 
     // ===================== MPPI control loop =====================
     for (int step = 0; step < MAX_STEPS; step++) {
@@ -343,12 +286,12 @@ int main()
         CUDA_CHECK(cudaDeviceSynchronize());
 
         // 2. Compute weights (softmin)
-        compute_weights_kernel<<<1, 1>>>(d_costs, d_weights, d_min_cost, K_SAMPLES, LAMBDA);
+        cudabot::launch_softmin_weights(d_costs, d_weights, K_SAMPLES, LAMBDA, d_min_cost);
         CUDA_CHECK(cudaGetLastError());
         CUDA_CHECK(cudaDeviceSynchronize());
 
         // 3. Update nominal controls
-        update_controls_kernel<<<grid_T, block>>>(d_nominal, d_perturbed, d_weights, K_SAMPLES, T_HORIZON);
+        cudabot::launch_weighted_control_update(d_perturbed, d_weights, d_nominal, K_SAMPLES, T_HORIZON * 2);
         CUDA_CHECK(cudaGetLastError());
         CUDA_CHECK(cudaDeviceSynchronize());
 

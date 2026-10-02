@@ -1,6 +1,44 @@
 cmake_minimum_required(VERSION 3.18)
+
+# Without this CMake falls back to nvcc's default (sm_52), so modern GPUs run
+# JIT-compiled PTX. Build for the local GPU(s) when one is visible; otherwise
+# (CI, docker build) emit sm_75 SASS + PTX that JITs forward.
+# Override with -DCMAKE_CUDA_ARCHITECTURES=...
+if(NOT DEFINED CMAKE_CUDA_ARCHITECTURES AND NOT DEFINED ENV{CUDAARCHS})
+  set(_cudabot_detected_archs "")
+  find_program(_cudabot_nvidia_smi nvidia-smi)
+  if(_cudabot_nvidia_smi)
+    execute_process(
+      COMMAND ${_cudabot_nvidia_smi} --query-gpu=compute_cap --format=csv,noheader
+      OUTPUT_VARIABLE _cudabot_caps
+      RESULT_VARIABLE _cudabot_smi_result
+      ERROR_QUIET OUTPUT_STRIP_TRAILING_WHITESPACE)
+    if(_cudabot_smi_result EQUAL 0)
+      string(REPLACE "\n" ";" _cudabot_caps "${_cudabot_caps}")
+      foreach(_cap IN LISTS _cudabot_caps)
+        string(STRIP "${_cap}" _cap)
+        if(_cap MATCHES "^([0-9]+)\\.([0-9]+)$")
+          list(APPEND _cudabot_detected_archs "${CMAKE_MATCH_1}${CMAKE_MATCH_2}")
+        endif()
+      endforeach()
+      list(REMOVE_DUPLICATES _cudabot_detected_archs)
+    endif()
+  endif()
+  if(_cudabot_detected_archs)
+    set(CMAKE_CUDA_ARCHITECTURES "${_cudabot_detected_archs}" CACHE STRING "CUDA architectures")
+  else()
+    set(CMAKE_CUDA_ARCHITECTURES 75 CACHE STRING "CUDA architectures")
+  endif()
+endif()
+
 project(CPP_ROBOTICS LANGUAGES CXX CUDA)
 enable_testing()
+message(STATUS "CUDA architectures: ${CMAKE_CUDA_ARCHITECTURES}")
+
+get_property(_cudabot_multi_config GLOBAL PROPERTY GENERATOR_IS_MULTI_CONFIG)
+if(NOT _cudabot_multi_config AND NOT CMAKE_BUILD_TYPE)
+  set(CMAKE_BUILD_TYPE Release CACHE STRING "Build type" FORCE)
+endif()
 
 set(CMAKE_CXX_STANDARD 14)
 set(CMAKE_CUDA_STANDARD 14)
@@ -742,6 +780,8 @@ set_target_properties(cudarobotics_esdf_2d_gpu PROPERTIES
 add_executable(esdf_2d_gpu_smoke tests/esdf_2d_gpu_smoke.cu)
 target_link_libraries(esdf_2d_gpu_smoke cudarobotics_esdf_2d_gpu)
 
+add_executable(mppi_reduction_smoke tests/mppi_reduction_smoke.cu)
+
 add_executable(gpu_mpc_qp src/gpu_mpc_qp.cu)
 target_link_libraries(gpu_mpc_qp ${OpenCV_LIBS})
 target_compile_options(gpu_mpc_qp PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
@@ -928,6 +968,12 @@ add_test(NAME esdf_2d_gpu_smoke
 set_tests_properties(esdf_2d_gpu_smoke PROPERTIES
   TIMEOUT 60
   LABELS "gpu;mapping;esdf;reference")
+
+add_test(NAME mppi_reduction_smoke
+  COMMAND $<TARGET_FILE:mppi_reduction_smoke>)
+set_tests_properties(mppi_reduction_smoke PROPERTIES
+  TIMEOUT 60
+  LABELS "gpu;mppi;reference")
 
 add_test(NAME gpu_planner_showdown_gate
   COMMAND ${PROJECT_SOURCE_DIR}/bin/gpu_planner_showdown_benchmark
