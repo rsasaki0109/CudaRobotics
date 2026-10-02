@@ -39,6 +39,7 @@
 #include <cuda_runtime.h>
 #include <curand_kernel.h>
 #include "cuda_check.cuh"
+#include "mppi_reduction.cuh"
 
 // -------------------------------------------------------------------------
 // World / planner parameters
@@ -320,33 +321,6 @@ __global__ void rollout_kernel(
     d_rng[k] = rng;
 }
 
-__global__ void compute_weights_kernel(const float* costs, float* weights) {
-    if (threadIdx.x != 0 || blockIdx.x != 0) return;
-    float min_cost = FLT_MAX;
-    for (int k = 0; k < K_SAMPLES; k++) min_cost = fminf(min_cost, costs[k]);
-    float sum_w = 0.0f;
-    for (int k = 0; k < K_SAMPLES; k++) {
-        float w = expf(-(costs[k] - min_cost) / LAMBDA);
-        weights[k] = w;
-        sum_w += w;
-    }
-    if (sum_w > 0.0f) for (int k = 0; k < K_SAMPLES; k++) weights[k] /= sum_w;
-}
-
-__global__ void update_controls_kernel(float* nominal, const float* perturbed,
-                                       const float* weights) {
-    int t = blockIdx.x * blockDim.x + threadIdx.x;
-    if (t >= T_HORIZON) return;
-    float ux = 0.0f, uy = 0.0f;
-    for (int k = 0; k < K_SAMPLES; k++) {
-        float w = weights[k];
-        ux += w * perturbed[k * T_HORIZON * 2 + t * 2 + 0];
-        uy += w * perturbed[k * T_HORIZON * 2 + t * 2 + 1];
-    }
-    nominal[t * 2 + 0] = ux;
-    nominal[t * 2 + 1] = uy;
-}
-
 // -------------------------------------------------------------------------
 // Rendering
 // -------------------------------------------------------------------------
@@ -533,8 +507,8 @@ int main() {
                     state.x, state.y, goal.x, goal.y,
                     m.nominal, d_esdf, d_vis, w_vis_arg,
                     m.costs, m.perturbed, m.rng);
-                compute_weights_kernel<<<1, 1>>>(m.costs, m.weights);
-                update_controls_kernel<<<1, T_HORIZON>>>(m.nominal, m.perturbed, m.weights);
+                cudabot::launch_softmin_weights(m.costs, m.weights, K_SAMPLES, LAMBDA);
+                cudabot::launch_weighted_control_update(m.perturbed, m.weights, m.nominal, K_SAMPLES, T_HORIZON * 2);
             }
             CUDA_CHECK(cudaMemcpy(nom.data(), m.nominal,
                                   nom.size() * sizeof(float), cudaMemcpyDeviceToHost));
