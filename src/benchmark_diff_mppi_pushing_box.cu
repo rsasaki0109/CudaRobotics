@@ -29,9 +29,6 @@
 #include <string>
 #include <sys/stat.h>
 #include <thread>
-#ifdef _WIN32
-#include <direct.h>
-#endif
 #include <vector>
 
 #include <cuda_runtime.h>
@@ -39,6 +36,7 @@
 
 #include "autodiff_engine.cuh"
 #include "cuda_check.cuh"
+#include "cuda_portable.cuh"
 
 using namespace std;
 using namespace cudabot;
@@ -1467,11 +1465,7 @@ static BoxScenario make_box_align_contact_arc() {
 
 // ======================== Utilities ========================
 static void ensure_build_dir() {
-#ifdef _WIN32
-    _mkdir("build");
-#else
-    mkdir("build", 0755);
-#endif
+    cudabot::make_dir("build");
 }
 static vector<int> parse_int_list(const string& t){ vector<int> v; string tok; stringstream ss(t); while(getline(ss,tok,',')) if(!tok.empty()) v.push_back(max(1,atoi(tok.c_str()))); sort(v.begin(),v.end()); v.erase(unique(v.begin(),v.end()),v.end()); return v; }
 static vector<string> parse_string_list(const string& t){ vector<string> v; string tok; stringstream ss(t); while(getline(ss,tok,',')) if(!tok.empty()) v.push_back(tok); sort(v.begin(),v.end()); v.erase(unique(v.begin(),v.end()),v.end()); return v; }

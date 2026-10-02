@@ -48,14 +48,14 @@ static const int   N_FRAMES = 24;
 static const int   N_VOX    = VOX_RES * VOX_RES * VOX_RES;
 
 // volume axis-aligned bounds (metres)
-static const float GMIN_X = -2.5f, GMIN_Y = -2.5f, GMIN_Z = -1.5f;
-static const float GSPAN  = 5.0f;                       // cubic span per axis
-static const float VOXSZ  = GSPAN / VOX_RES;            // voxel edge length
-static const float MU     = 0.20f;                      // truncation distance
+static constexpr float GMIN_X = -2.5f, GMIN_Y = -2.5f, GMIN_Z = -1.5f;
+static constexpr float GSPAN  = 5.0f;                       // cubic span per axis
+static constexpr float VOXSZ  = GSPAN / VOX_RES;            // voxel edge length
+static constexpr float MU     = 0.20f;                      // truncation distance
 
 // pinhole intrinsics
-static const float FX = 120.0f, FY = 120.0f;
-static const float CX = DW * 0.5f, CY = DH * 0.5f;
+static constexpr float FX = 120.0f, FY = 120.0f;
+static constexpr float CX = DW * 0.5f, CY = DH * 0.5f;
 
 static const int   PANEL_W = 760;
 static const int   PANEL_H = 600;

@@ -29,6 +29,7 @@
 
 #include "autodiff_engine.cuh"
 #include "cuda_check.cuh"
+#include "cuda_portable.cuh"
 
 #ifndef CUDAROBOTICS_SOURCE_DIR
 #define CUDAROBOTICS_SOURCE_DIR "."
@@ -43,8 +44,8 @@ static const int CTRL_DIM = 1;
 static const int DEFAULT_T_HORIZON = 35;
 static const int DEFAULT_MAX_STEPS = 250;
 static const int DEFAULT_FRAME_SKIP = 2;
-static const float DEFAULT_LAMBDA = 2.5f;
-static const float DEFAULT_NOISE_SIGMA = 0.32f;
+static constexpr float DEFAULT_LAMBDA = 2.5f;
+static constexpr float DEFAULT_NOISE_SIGMA = 0.32f;
 
 struct EpisodeMetrics {
     string scenario;
@@ -502,7 +503,7 @@ static bool file_exists(const string& path) {
 }
 
 static void ensure_build_dir() {
-    mkdir("build", 0755);
+    cudabot::make_dir("build");
 }
 
 static string default_model_path() {

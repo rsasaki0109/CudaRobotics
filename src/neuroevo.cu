@@ -37,8 +37,8 @@ static const int N_GENERATIONS  = 500;
 static const int INPUT_DIM      = 4;   // Cart-Pole: x, x_dot, theta, theta_dot
 static const int OUTPUT_DIM     = 1;   // force direction
 static const int TOURNAMENT_K   = 5;
-static const float CROSSOVER_RATE = 0.8f;
-static const float MUTATION_SIGMA = 0.1f;
+static constexpr float CROSSOVER_RATE = 0.8f;
+static constexpr float MUTATION_SIGMA = 0.1f;
 static const int ELITE_COUNT    = 10;
 
 static const int IMG_W = 800;

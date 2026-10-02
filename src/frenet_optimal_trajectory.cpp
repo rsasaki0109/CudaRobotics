@@ -11,7 +11,6 @@
 #include<opencv2/opencv.hpp>
 #include<opencv2/core/core.hpp>
 #include<opencv2/highgui/highgui.hpp>
-#include<sys/time.h>
 #include"cubic_spline.h"
 #include"frenet_path.h"
 #include"quintic_polynomial.h"

@@ -27,6 +27,7 @@
 
 #include "autodiff_engine.cuh"
 #include "cuda_check.cuh"
+#include "cuda_portable.cuh"
 
 
 using namespace std;
@@ -41,7 +42,7 @@ static const int MAX_OBSTACLES = 16;
 static const int MAX_DYNAMIC_OBSTACLES = 8;
 static const int DEFAULT_T_HORIZON = 30;
 static const int BENCH_WARMUP_ITERS = 4;
-static const float DEFAULT_LAMBDA = 3.0f;
+static constexpr float DEFAULT_LAMBDA = 3.0f;
 
 struct Obstacle3D {
     float x, y, z, r;
@@ -1165,7 +1166,7 @@ static Scenario make_7dof_dynamic_avoid() {
 }
 
 // ======================== Utilities ========================
-static void ensure_build_dir() { mkdir("build", 0755); }
+static void ensure_build_dir() { cudabot::make_dir("build"); }
 
 static vector<int> parse_int_list(const string& text) {
     vector<int> v; string tok; stringstream ss(text);

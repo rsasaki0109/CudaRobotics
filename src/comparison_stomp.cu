@@ -32,16 +32,16 @@ static const int K_CPU         = 100;      // CPU sample count
 static const int K_GPU         = 10000;    // GPU sample count
 static const int N_WAYPOINTS   = 50;
 static const int DIM           = 2;
-static const float LAMBDA      = 10.0f;
+static constexpr float LAMBDA      = 10.0f;
 static const int MAX_ITER      = 100;
-static const float WORKSPACE   = 50.0f;
-static const float NOISE_STD   = 2.0f;
-static const float OBS_COST_WEIGHT    = 100.0f;
-static const float SMOOTH_COST_WEIGHT = 1.0f;
-static const float OBS_CLEARANCE      = 1.5f;
+static constexpr float WORKSPACE   = 50.0f;
+static constexpr float NOISE_STD   = 2.0f;
+static constexpr float OBS_COST_WEIGHT    = 100.0f;
+static constexpr float SMOOTH_COST_WEIGHT = 1.0f;
+static constexpr float OBS_CLEARANCE      = 1.5f;
 
-static const float START_X = 5.0f,  START_Y = 5.0f;
-static const float GOAL_X  = 45.0f, GOAL_Y  = 45.0f;
+static constexpr float START_X = 5.0f,  START_Y = 5.0f;
+static constexpr float GOAL_X  = 45.0f, GOAL_Y  = 45.0f;
 
 // Obstacles
 static const int N_OBSTACLES = 8;

@@ -35,13 +35,13 @@ using namespace std;
 static const int PSO_N = 100000;
 static const int PSO_D = 30;
 static const int MAX_ITER = 1000;
-static const float W_START = 0.9f;
-static const float W_END = 0.4f;
-static const float C1 = 2.0f;
-static const float C2 = 2.0f;
-static const float X_MIN = -5.12f;
-static const float X_MAX = 5.12f;
-static const float V_MAX = 2.0f;
+static constexpr float W_START = 0.9f;
+static constexpr float W_END = 0.4f;
+static constexpr float C1 = 2.0f;
+static constexpr float C2 = 2.0f;
+static constexpr float X_MIN = -5.12f;
+static constexpr float X_MAX = 5.12f;
+static constexpr float V_MAX = 2.0f;
 
 // -------------------------------------------------------------------------
 // Kernels

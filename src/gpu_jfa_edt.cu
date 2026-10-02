@@ -44,6 +44,7 @@
 
 #include "cuda_check.cuh"
 #include "cuda_video.h"
+#include "cuda_portable.cuh"
 
 namespace cudabot {
 
@@ -58,8 +59,8 @@ static const int   PANEL_W = 760;
 static const int   PANEL_H = 760;
 
 // JFA scatter offsets (self + 8 surrounding sites at step s)
-__host__ __device__ static const int OFFX[9] = {-1, 0, 1, -1, 0, 1, -1, 0, 1};
-__host__ __device__ static const int OFFY[9] = {-1, -1, -1, 0, 0, 0, 1, 1, 1};
+CUDABOT_HD_TABLE int OFFX[9] = {-1, 0, 1, -1, 0, 1, -1, 0, 1};
+CUDABOT_HD_TABLE int OFFY[9] = {-1, -1, -1, 0, 0, 0, 1, 1, 1};
 
 // ------------------------------------------------------------------ JFA kernel
 // One pass of JFA at step size `s`.  Each pixel reads the current best at

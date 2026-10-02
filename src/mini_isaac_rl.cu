@@ -30,8 +30,8 @@ static const int RL_ENVS = 1024;
 static const int RL_HORIZON = PARALLEL_CARTPOLE_MAX_STEPS;
 static const int RL_GENERATIONS = 160;
 static const int POLICY_HIDDEN = 32;
-static const float GAMMA = 0.99f;
-static const float LR = 0.003f;
+static constexpr float GAMMA = 0.99f;
+static constexpr float LR = 0.003f;
 
 static void convert_avi_to_gif(const char* avi_path, const char* gif_path, int fps = 15) {
     char cmd[1024];
