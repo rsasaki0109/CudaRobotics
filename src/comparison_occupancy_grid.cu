@@ -28,18 +28,18 @@ using namespace std;
 // -------------------------------------------------------------------------
 const int   GRID_W       = 100;
 const int   GRID_H       = 100;
-const float RESOLUTION   = 0.5f;
+constexpr float RESOLUTION   = 0.5f;
 const int   NUM_RAYS     = 360;
-const float MAX_RANGE    = 20.0f;
-const float ANGULAR_RES  = 1.0f;
-const float L_OCC        = 0.85f;
-const float L_FREE       = -0.4f;
-const float L_PRIOR      = 0.0f;
-const float L_MIN        = -5.0f;
-const float L_MAX        = 5.0f;
+constexpr float MAX_RANGE    = 20.0f;
+constexpr float ANGULAR_RES  = 1.0f;
+constexpr float L_OCC        = 0.85f;
+constexpr float L_FREE       = -0.4f;
+constexpr float L_PRIOR      = 0.0f;
+constexpr float L_MIN        = -5.0f;
+constexpr float L_MAX        = 5.0f;
 
-const float GRID_ORIGIN_X = 0.0f;
-const float GRID_ORIGIN_Y = 0.0f;
+constexpr float GRID_ORIGIN_X = 0.0f;
+constexpr float GRID_ORIGIN_Y = 0.0f;
 
 // -------------------------------------------------------------------------
 // Obstacle segment

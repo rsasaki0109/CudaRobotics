@@ -25,11 +25,11 @@ using namespace std;
 // -------------------------------------------------------------------------
 // Constants (matching PythonRobotics defaults)
 // -------------------------------------------------------------------------
-const float KP         = 5.0f;     // attractive potential gain
-const float ETA        = 100.0f;   // repulsive potential gain
-const float AREA_WIDTH = 30.0f;    // area margin around obstacles
-const float grid_reso  = 0.5f;     // grid resolution [m]
-const float rr         = 5.0f;     // robot radius (repulsive area) [m]
+constexpr float KP         = 5.0f;     // attractive potential gain
+constexpr float ETA        = 100.0f;   // repulsive potential gain
+constexpr float AREA_WIDTH = 30.0f;    // area margin around obstacles
+constexpr float grid_reso  = 0.5f;     // grid resolution [m]
+constexpr float rr         = 5.0f;     // robot radius (repulsive area) [m]
 
 // -------------------------------------------------------------------------
 // CUDA kernel: compute potential field in parallel

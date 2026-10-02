@@ -30,23 +30,23 @@ using namespace std;
 // Constants
 // -------------------------------------------------------------------------
 const int   N_ROBOTS     = 20;
-const float KP_ATT       = 5.0f;      // attractive potential gain
-const float KP_REP       = 100.0f;    // repulsive potential gain (obstacles)
-const float KP_ROBOT     = 50.0f;     // repulsive potential gain (other robots)
-const float ROBOT_RADIUS = 0.5f;      // robot body radius [m]
-const float MAX_SPEED    = 1.0f;      // max velocity magnitude [m/s]
-const float DT           = 0.05f;     // time step [s]
-const float SIM_TIME     = 30.0f;     // total simulation time [s]
+constexpr float KP_ATT       = 5.0f;      // attractive potential gain
+constexpr float KP_REP       = 100.0f;    // repulsive potential gain (obstacles)
+constexpr float KP_ROBOT     = 50.0f;     // repulsive potential gain (other robots)
+constexpr float ROBOT_RADIUS = 0.5f;      // robot body radius [m]
+constexpr float MAX_SPEED    = 1.0f;      // max velocity magnitude [m/s]
+constexpr float DT           = 0.05f;     // time step [s]
+constexpr float SIM_TIME     = 30.0f;     // total simulation time [s]
 
-const float OBS_INFLUENCE = 5.0f;     // obstacle repulsive influence range [m]
-const float ROBOT_INFLUENCE = 3.0f;   // inter-robot repulsive influence range [m]
-const float GOAL_TOL     = 0.3f;      // goal reached tolerance [m]
-const float DAMPING      = 0.8f;      // velocity damping factor
+constexpr float OBS_INFLUENCE = 5.0f;     // obstacle repulsive influence range [m]
+constexpr float ROBOT_INFLUENCE = 3.0f;   // inter-robot repulsive influence range [m]
+constexpr float GOAL_TOL     = 0.3f;      // goal reached tolerance [m]
+constexpr float DAMPING      = 0.8f;      // velocity damping factor
 
 // Circle scenario
-const float CIRCLE_RADIUS = 15.0f;
-const float CIRCLE_CX     = 20.0f;
-const float CIRCLE_CY     = 20.0f;
+constexpr float CIRCLE_RADIUS = 15.0f;
+constexpr float CIRCLE_CX     = 20.0f;
+constexpr float CIRCLE_CY     = 20.0f;
 
 // Obstacles: (cx, cy, radius)
 const int N_OBSTACLES = 3;

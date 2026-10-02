@@ -11,7 +11,6 @@
 #include<opencv2/opencv.hpp>
 #include<opencv2/core/core.hpp>
 #include<opencv2/highgui/highgui.hpp>
-#include<sys/time.h>
 #include<Eigen/Eigen>
 #include"cubic_spline.h"
 #include"motion_model.h"

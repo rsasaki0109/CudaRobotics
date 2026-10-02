@@ -50,7 +50,7 @@ namespace cudabot {
 
 static const int NP=3;              // control params: b, phi, L
 static const int TSTEP=40;
-static const float DT=0.05f;
+static constexpr float DT=0.05f;
 
 // ---- forward-mode dual number with a 3-gradient ----
 struct D { float v; float g[NP]; };

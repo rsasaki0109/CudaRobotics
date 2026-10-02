@@ -56,7 +56,7 @@ static const int NX = 4;          // [px, py, vx, vy]
 static const int NU = 2;          // [ax, ay]
 static const int T  = 20;         // horizon
 static const int M  = T * NU;     // condensed decision dim = 40
-static const float DT = 0.1f;
+static constexpr float DT = 0.1f;
 
 // ============================ small dense linear algebra (host) ============================
 // row-major helpers

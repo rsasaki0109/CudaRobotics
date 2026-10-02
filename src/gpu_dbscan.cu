@@ -52,13 +52,13 @@ namespace cudabot {
 
 // ----------------------------------------------------------------- constants
 #define N_POINTS  8192
-static const float EPS      = 0.55f;
+static constexpr float EPS      = 0.55f;
 static const int   MIN_PTS  = 8;
-static const float EPS2     = EPS * EPS;
+static constexpr float EPS2     = EPS * EPS;
 static const int   MAX_PROP_ITERS = 80;
 static const int   N_BLOBS  = 6;
-static const float WORLD_W  = 30.0f;
-static const float WORLD_H  = 30.0f;
+static constexpr float WORLD_W  = 30.0f;
+static constexpr float WORLD_H  = 30.0f;
 static const int   PANEL_W  = 760;
 static const int   PANEL_H  = 600;
 

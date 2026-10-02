@@ -31,8 +31,8 @@ using namespace cudabot;
 
 static const int DEFAULT_T_HORIZON = 35;
 static const int DEFAULT_MAX_STEPS = 280;
-static const float DEFAULT_LAMBDA = 2.0f;
-static const float DEFAULT_NOISE_SIGMA = 0.40f;
+static constexpr float DEFAULT_LAMBDA = 2.0f;
+static constexpr float DEFAULT_NOISE_SIGMA = 0.40f;
 
 struct EpisodeMetrics {
     string scenario;

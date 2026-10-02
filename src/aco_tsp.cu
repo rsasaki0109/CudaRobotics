@@ -32,13 +32,13 @@ using namespace std;
 static const int N_ANTS = 4096;
 static const int N_CITIES = 50;
 static const int MAX_ITER = 500;
-static const float ALPHA = 1.0f;      // Pheromone importance
-static const float BETA = 3.0f;       // Heuristic importance
-static const float RHO = 0.1f;        // Evaporation rate
-static const float Q = 100.0f;        // Pheromone deposit constant
-static const float TAU_MIN = 0.01f;
-static const float TAU_MAX = 10.0f;
-static const float CITY_RANGE = 100.0f;
+static constexpr float ALPHA = 1.0f;      // Pheromone importance
+static constexpr float BETA = 3.0f;       // Heuristic importance
+static constexpr float RHO = 0.1f;        // Evaporation rate
+static constexpr float Q = 100.0f;        // Pheromone deposit constant
+static constexpr float TAU_MIN = 0.01f;
+static constexpr float TAU_MAX = 10.0f;
+static constexpr float CITY_RANGE = 100.0f;
 
 // -------------------------------------------------------------------------
 // Kernels

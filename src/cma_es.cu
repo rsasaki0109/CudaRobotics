@@ -33,8 +33,8 @@ static const int LAMBDA = 4096;
 static const int DIM = 30;
 static const int MU = LAMBDA / 2;
 static const int MAX_GEN = 500;
-static const float X_MIN = -5.12f;
-static const float X_MAX = 5.12f;
+static constexpr float X_MIN = -5.12f;
+static constexpr float X_MAX = 5.12f;
 
 // -------------------------------------------------------------------------
 // Kernels
