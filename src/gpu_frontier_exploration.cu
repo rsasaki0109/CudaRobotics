@@ -465,7 +465,7 @@ int main() {
                 target_match ? "YES" : "NO");
 
     // --------------------------------------------------- exploration animation
-    if (system("mkdir -p tmp") != 0)
+    if (cudabot::ensure_dirs({"tmp"}) != 0)
         std::fprintf(stderr, "warning: mkdir tmp failed\n");
     cv::VideoWriter video("tmp/gpu_frontier_exploration.avi",
                           cv::VideoWriter::fourcc('M', 'J', 'P', 'G'),

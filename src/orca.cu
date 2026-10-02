@@ -27,6 +27,7 @@
 #include <opencv2/opencv.hpp>
 #include <cuda_runtime.h>
 #include "cuda_check.cuh"
+#include "cuda_video.h"
 
 
 using namespace std;
@@ -692,7 +693,7 @@ int main() {
     }
 
     cv::VideoWriter video("gif/orca.avi",
-                          cv::VideoWriter::fourcc('X','V','I','D'), 30, cv::Size(IMG_SIZE, IMG_SIZE));
+                          cudabot::avi_fourcc(), 30, cv::Size(IMG_SIZE, IMG_SIZE));
 
     // CUDA launch config
     int blockSize = 128;
@@ -828,8 +829,8 @@ int main() {
 
     video.release();
     system("ffmpeg -y -i gif/orca.avi "
-           "-vf 'fps=15,scale=400:-1:flags=lanczos' -loop 0 "
-           "gif/orca.gif 2>/dev/null");
+           "-vf \"fps=15,scale=400:-1:flags=lanczos\" -loop 0 "
+           "gif/orca.gif 2>" CUDABOT_NULL_DEVICE);
     cout << "GIF saved to gif/orca.gif" << endl;
 
     // Cleanup

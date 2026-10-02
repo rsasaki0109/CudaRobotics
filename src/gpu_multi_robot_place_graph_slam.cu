@@ -24,6 +24,7 @@
 #include <vector>
 
 #include "cuda_check.cuh"
+#include "cuda_video.h"
 
 namespace cudabot {
 
@@ -481,7 +482,7 @@ static void render_video(const std::vector<Node>& nodes,
                          float rmse_init,
                          float rmse_final,
                          float gpu_ms) {
-    int mkdir_rc = std::system("mkdir -p gif tmp/gpu_multi_robot_place_graph_slam_frames");
+    int mkdir_rc = cudabot::ensure_dirs({"gif", "tmp/gpu_multi_robot_place_graph_slam_frames"});
     if (mkdir_rc != 0) std::fprintf(stderr, "mkdir failed (%d)\n", mkdir_rc);
     Bounds bounds = compute_bounds(nodes, final_poses);
     std::vector<float> initial = initial_pose_vector(nodes);
@@ -519,7 +520,7 @@ static void render_video(const std::vector<Node>& nodes,
                   "ffmpeg -y -framerate %d -i tmp/gpu_multi_robot_place_graph_slam_frames/frame_%%03d.png "
                   "-vf \"fps=%d,scale=980:-1:flags=lanczos,split[a][b];"
                   "[a]palettegen=stats_mode=diff[p];[b][p]paletteuse=dither=bayer:bayer_scale=5:diff_mode=rectangle\" "
-                  "gif/gpu_multi_robot_place_graph_slam.gif 2>/dev/null",
+                  "gif/gpu_multi_robot_place_graph_slam.gif 2>" CUDABOT_NULL_DEVICE,
                   VIDEO_FPS, VIDEO_FPS);
     int rc = std::system(cmd);
     if (rc != 0) std::fprintf(stderr, "ffmpeg failed (%d) for gpu_multi_robot_place_graph_slam.gif\n", rc);

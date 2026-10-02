@@ -37,6 +37,7 @@
 #include <cuda_runtime.h>
 #include <curand_kernel.h>
 #include "cuda_check.cuh"
+#include "cuda_video.h"
 
 // -------------------------------------------------------------------------
 // World / sensor parameters
@@ -353,8 +354,8 @@ static void draw_pose(cv::Mat& img, float wx, float wy, cv::Scalar color, int r)
 static void convert_avi_to_gif(const char* avi, const char* gif, int fps) {
     char cmd[512];
     std::snprintf(cmd, sizeof(cmd),
-        "ffmpeg -y -i %s -vf 'fps=%d,scale=1500:-1:flags=lanczos' -loop 0 %s "
-        "> /dev/null 2>&1", avi, fps, gif);
+        "ffmpeg -y -i %s -vf \"fps=%d,scale=1500:-1:flags=lanczos\" -loop 0 %s "
+        "> " CUDABOT_NULL_DEVICE " 2>&1", avi, fps, gif);
     int rc = std::system(cmd);
     if (rc != 0) std::fprintf(stderr, "ffmpeg conversion returned %d\n", rc);
 }
@@ -463,7 +464,7 @@ int main() {
     CUDA_CHECK(cudaMalloc(&d_tmp_y, K_PART * sizeof(float)));
 
     cv::VideoWriter video("gif/pf_realistic_obs.avi",
-                          cv::VideoWriter::fourcc('X','V','I','D'), 15,
+                          cudabot::avi_fourcc(), 15,
                           cv::Size(PANEL_W * 3 + 8, PANEL_H + 30));
 
     float true_x = 4.0f, true_y = 4.0f;

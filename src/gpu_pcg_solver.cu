@@ -528,7 +528,7 @@ int main() {
     float field_lo = *std::min_element(truth.begin(), truth.end());
     float field_hi = *std::max_element(truth.begin(), truth.end());
 
-    int mkdir_ret = std::system("mkdir -p gif");
+    int mkdir_ret = cudabot::ensure_dirs({"gif"});
     (void)mkdir_ret;
     cv::VideoWriter video("gif/gpu_pcg_solver.avi",
                           cv::VideoWriter::fourcc('M', 'J', 'P', 'G'),

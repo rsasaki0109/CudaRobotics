@@ -39,6 +39,7 @@
 #include <cuda_runtime.h>
 #include <curand_kernel.h>
 #include "cuda_check.cuh"
+#include "cuda_video.h"
 
 constexpr float PI = 3.14159265358979323846f;
 constexpr float DEG = PI / 180.0f;
@@ -454,8 +455,8 @@ static void render_cloud(cv::Mat& img, const std::vector<float>& xs,
 static void convert_avi_to_gif(const char* avi, const char* gif, int fps) {
     char cmd[512];
     std::snprintf(cmd, sizeof(cmd),
-        "ffmpeg -y -i %s -vf 'fps=%d,scale=900:-1:flags=lanczos' -loop 0 %s "
-        "> /dev/null 2>&1", avi, fps, gif);
+        "ffmpeg -y -i %s -vf \"fps=%d,scale=900:-1:flags=lanczos\" -loop 0 %s "
+        "> " CUDABOT_NULL_DEVICE " 2>&1", avi, fps, gif);
     int rc = std::system(cmd);
     if (rc != 0) std::fprintf(stderr, "ffmpeg conversion returned %d\n", rc);
 }
@@ -501,7 +502,7 @@ int main() {
     std::vector<unsigned char> h_mp_r(N_RAYS);
 
     cv::VideoWriter video("gif/comparison_lidar3d_realistic.avi",
-                          cv::VideoWriter::fourcc('X', 'V', 'I', 'D'), 15,
+                          cudabot::avi_fourcc(), 15,
                           cv::Size(PANEL_W * 2 + 4, PANEL_H + 60));
     if (!video.isOpened()) {
         std::fprintf(stderr, "Failed to open AVI\n");

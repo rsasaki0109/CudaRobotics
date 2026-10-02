@@ -11,6 +11,7 @@
 #include <cuda_runtime.h>
 #include <opencv2/opencv.hpp>
 #include "cuda_check.cuh"
+#include "cuda_video.h"
 
 
 #define EXPAND_DIS 0.5f
@@ -262,7 +263,7 @@ int main() {
     // Write video from collected frames
     if (!frames.empty()) {
         cv::VideoWriter vid("gif/rrt_connect.avi",
-                            cv::VideoWriter::fourcc('X','V','I','D'), 30,
+                            cudabot::avi_fourcc(), 30,
                             cv::Size(frames[0].cols, frames[0].rows));
         for (auto& f : frames) vid.write(f);
         vid.release();

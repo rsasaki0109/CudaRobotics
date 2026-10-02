@@ -673,7 +673,7 @@ int main() {
     std::printf("matches accepted %d, correct %d, initial 3D RMSE %.5f m\n",
                 accepted, correct, rmse3d(init_points, gt_points));
 
-    int mkdir_ret = std::system("mkdir -p gif");
+    int mkdir_ret = cudabot::ensure_dirs({"gif"});
     (void)mkdir_ret;
     cv::VideoWriter video("gif/gpu_sfm_mini.avi",
                           cv::VideoWriter::fourcc('M', 'J', 'P', 'G'),

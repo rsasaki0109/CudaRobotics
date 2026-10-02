@@ -638,7 +638,7 @@ int main() {
                 max_diff, n_compared);
 
     // --- animation: rotate the GPU mesh ------------------------------------
-    if (system("mkdir -p tmp") != 0)
+    if (cudabot::ensure_dirs({"tmp"}) != 0)
         std::fprintf(stderr, "warning: mkdir tmp failed\n");
     cv::VideoWriter video("tmp/gpu_marching_cubes.avi",
                           cv::VideoWriter::fourcc('M', 'J', 'P', 'G'),

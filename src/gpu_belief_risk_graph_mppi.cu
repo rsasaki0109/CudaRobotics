@@ -1115,7 +1115,7 @@ int main() {
                 coordinated.max_social_risk, coordinated.collision_cvar,
                 collision_drop, tail_drop, cvar_drop, sep_gain);
 
-    std::system("mkdir -p gif");
+    cudabot::ensure_dirs({"gif"});
     cv::VideoWriter video("gif/gpu_belief_risk_graph_mppi.avi",
                           cv::VideoWriter::fourcc('M', 'J', 'P', 'G'),
                           VIDEO_FPS, cv::Size(PANEL_W, PANEL_H));

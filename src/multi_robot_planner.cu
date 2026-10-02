@@ -23,6 +23,7 @@
 
 #include <cuda_runtime.h>
 #include "cuda_check.cuh"
+#include "cuda_video.h"
 
 using namespace std;
 
@@ -284,7 +285,7 @@ int main() {
     }
 
     cv::VideoWriter video("gif/multi_robot.avi",
-                          cv::VideoWriter::fourcc('X','V','I','D'), 30, cv::Size(IMG_SIZE, IMG_SIZE));
+                          cudabot::avi_fourcc(), 30, cv::Size(IMG_SIZE, IMG_SIZE));
 
     // CUDA launch config
     int blockSize = 32;
@@ -400,8 +401,8 @@ int main() {
 
     video.release();
     system("ffmpeg -y -i gif/multi_robot.avi "
-           "-vf 'fps=15,scale=400:-1:flags=lanczos' -loop 0 "
-           "gif/multi_robot.gif 2>/dev/null");
+           "-vf \"fps=15,scale=400:-1:flags=lanczos\" -loop 0 "
+           "gif/multi_robot.gif 2>" CUDABOT_NULL_DEVICE);
     std::cout << "GIF saved to gif/multi_robot.gif" << std::endl;
 
     // --- Cleanup ---

@@ -133,7 +133,7 @@ static void render_gif(
     };
   std::vector<float> Xs = sub(X, 4), Ys = sub(Y, 4);
 
-  if (system("mkdir -p tmp") != 0) {
+  if (cudabot::ensure_dirs({"tmp"}) != 0) {
     std::fprintf(stderr, "warning: mkdir tmp failed\n");
   }
   cv::VideoWriter video(

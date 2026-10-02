@@ -3038,7 +3038,7 @@ int main(int argc, char** argv) {
                     s.mean_unilateral_gain, s.normalized_gain);
     }
 
-    std::system("mkdir -p gif");
+    cudabot::ensure_dirs({"gif"});
     int exit_code = opts.check_targets && !target_pass ? 2 : 0;
     bool wrote_json =
         write_showdown_json(opts.json_path, opts.scenario, opts.pressure_mode,

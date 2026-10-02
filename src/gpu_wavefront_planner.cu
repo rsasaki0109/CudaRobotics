@@ -263,7 +263,7 @@ int main() {
                 path_gpu.size(), path_same ? "YES" : "NO", D_gpu[start]);
 
     // ---------- animation: wavefront expanding, then the path
-    if (system("mkdir -p tmp") != 0) std::fprintf(stderr, "warning: mkdir tmp failed\n");
+    if (cudabot::ensure_dirs({"tmp"}) != 0) std::fprintf(stderr, "warning: mkdir tmp failed\n");
     cv::VideoWriter video("tmp/gpu_wavefront_planner.avi",
                           cv::VideoWriter::fourcc('M', 'J', 'P', 'G'),
                           10, cv::Size(PANEL_W, PANEL_H));

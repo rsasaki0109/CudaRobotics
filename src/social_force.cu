@@ -10,6 +10,7 @@
 #include <cuda_runtime.h>
 #include <opencv2/opencv.hpp>
 #include "cuda_check.cuh"
+#include "cuda_video.h"
 
 
 #define N_PED 300
@@ -136,7 +137,7 @@ int main() {
     int img_w = 1000, img_h = 200;
     float scale = img_w / CORRIDOR_LEN;
     cv::VideoWriter video("gif/social_force.avi",
-                          cv::VideoWriter::fourcc('X','V','I','D'), 30, cv::Size(img_w, img_h));
+                          cudabot::avi_fourcc(), 30, cv::Size(img_w, img_h));
 
     std::cout << "Social Force Model with CUDA (" << N_PED << " pedestrians)" << std::endl;
 
@@ -178,8 +179,8 @@ int main() {
 
     video.release();
     system("ffmpeg -y -i gif/social_force.avi "
-           "-vf 'fps=15,scale=800:-1' -loop 0 "
-           "gif/social_force.gif 2>/dev/null");
+           "-vf \"fps=15,scale=800:-1\" -loop 0 "
+           "gif/social_force.gif 2>" CUDABOT_NULL_DEVICE);
     std::cout << "GIF saved to gif/social_force.gif" << std::endl;
 
     cudaFree(d_px); cudaFree(d_py); cudaFree(d_vx); cudaFree(d_vy);

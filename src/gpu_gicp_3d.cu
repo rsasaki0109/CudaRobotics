@@ -556,7 +556,7 @@ int main() {
     compute_cov_kernel<<<blocks_pts, blk>>>(n, d_map, d_map_cov, d_map_ok);
     CUDA_CHECK(cudaDeviceSynchronize());
 
-    std::system("mkdir -p gif");
+    cudabot::ensure_dirs({"gif"});
     cv::VideoWriter video("gif/gpu_gicp_3d.avi",
                           cv::VideoWriter::fourcc('M', 'J', 'P', 'G'),
                           10, cv::Size(PANEL_W, PANEL_H + 60));

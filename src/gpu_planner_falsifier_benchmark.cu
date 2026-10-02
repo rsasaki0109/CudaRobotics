@@ -22,6 +22,7 @@
 #include <vector>
 
 #include "cuda_check.cuh"
+#include "portable_io.h"
 
 namespace cudabot {
 
@@ -482,7 +483,7 @@ int main(int argc, char** argv) {
                     e.accepted_extra ? "+accepted" : "");
     }
 
-    std::system("mkdir -p gif build");
+    cudabot::ensure_dirs({"gif", "build"});
     if (!write_json(opts.json_path, top, summary, gpu_ms, cpu_ms, speedup)) {
         std::fprintf(stderr, "failed to write %s\n", opts.json_path.c_str());
         return 1;

@@ -21,6 +21,7 @@
 #include <cuda_runtime.h>
 #include <curand_kernel.h>
 #include "cuda_check.cuh"
+#include "cuda_video.h"
 
 
 using namespace std;
@@ -479,7 +480,7 @@ int main()
 
     cv::VideoWriter video(
         "gif/comparison_stomp.avi",
-        cv::VideoWriter::fourcc('X', 'V', 'I', 'D'), 15,
+        cudabot::avi_fourcc(), 15,
         cv::Size(W * 2, H));
 
     if (!video.isOpened()) {
@@ -548,8 +549,8 @@ int main()
     cout << "Video saved to gif/comparison_stomp.avi" << endl;
 
     system("ffmpeg -y -i gif/comparison_stomp.avi "
-           "-vf 'fps=15,scale=800:-1:flags=lanczos' -loop 0 "
-           "gif/comparison_stomp.gif 2>/dev/null");
+           "-vf \"fps=15,scale=800:-1:flags=lanczos\" -loop 0 "
+           "gif/comparison_stomp.gif 2>" CUDABOT_NULL_DEVICE);
     cout << "GIF saved to gif/comparison_stomp.gif" << endl;
 
     cv::imshow("comparison_stomp", combined);

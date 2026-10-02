@@ -911,7 +911,7 @@ int main() {
                 guided_best.max_risk, guided_best.mean_route_error, cost_drop,
                 terminal_drop, risk_delta);
 
-    std::system("mkdir -p gif");
+    cudabot::ensure_dirs({"gif"});
     cv::VideoWriter video("gif/gpu_kinodynamic_graph_neural_mppi.avi",
                           cv::VideoWriter::fourcc('M', 'J', 'P', 'G'),
                           VIDEO_FPS, cv::Size(PANEL_W, PANEL_H));

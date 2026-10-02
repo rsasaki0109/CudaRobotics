@@ -244,7 +244,7 @@ static float surf_residual(const std::vector<float>& X,const std::vector<float>&
 // ============================ GIF ============================
 static void render_gif(const std::vector<float>& X,const std::vector<float>& Y,const std::vector<Pose>& traj){
     const int W=1280,H=720,CX=400,CY=380; const float SCALE=300.f,elev=0.30f;
-    if(system("mkdir -p tmp")!=0)std::fprintf(stderr,"warn\n");
+    if(cudabot::ensure_dirs({"tmp"})!=0)std::fprintf(stderr,"warn\n");
     cv::VideoWriter video("tmp/gpu_fgr.avi",cv::VideoWriter::fourcc('M','J','P','G'),16,cv::Size(W,H));
     int nt=traj.size(),Nx=X.size()/3,My=Y.size()/3; const int HOLD=22;
     struct Sp{float sx,sy,d;cv::Scalar c;};

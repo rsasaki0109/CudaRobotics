@@ -836,7 +836,7 @@ static void gifFromAvi(const std::string& avi, const std::string& gif, int fps, 
 }
 static void renderPendulum(const RunResult& r, int steps, float xref) {
     const int W = 640, H = 640, CX = 320, CY = 240; const float L = 220.f;
-    if (system("mkdir tmp") != 0) std::fprintf(stderr, "warn: mkdir\n");
+    if (cudabot::ensure_dirs({"tmp"}) != 0) std::fprintf(stderr, "warn: mkdir\n");
     cv::VideoWriter vw("tmp/gpu_cudampc_pendulum.avi", cv::VideoWriter::fourcc('M', 'J', 'P', 'G'), 30, cv::Size(W, H));
     for (int s = 0; s <= steps; ++s) {
         cv::Mat img(H, W, CV_8UC3, cv::Scalar(24, 24, 30));
@@ -857,7 +857,7 @@ static void renderPendulum(const RunResult& r, int steps, float xref) {
 
 static void renderCartPole(const RunResult& r, int steps) {
     const int W = 800, H = 560, railY = 400; const float PX = 120.f, L = 180.f;
-    if (system("mkdir tmp") != 0) std::fprintf(stderr, "warn: mkdir\n");
+    if (cudabot::ensure_dirs({"tmp"}) != 0) std::fprintf(stderr, "warn: mkdir\n");
     cv::VideoWriter vw("tmp/gpu_cudampc_cartpole.avi", cv::VideoWriter::fourcc('M', 'J', 'P', 'G'), 30, cv::Size(W, H));
     for (int s = 0; s <= steps; ++s) {
         cv::Mat img(H, W, CV_8UC3, cv::Scalar(24, 24, 30));
@@ -881,7 +881,7 @@ static void renderCartPole(const RunResult& r, int steps) {
 static void renderParking(const RunResult& r, int steps, const std::vector<float>& obs, float ca, float cb) {
     const int W = 800, H = 800; const float PX = 34.f;
     auto proj = [&](float x, float y, int& sx, int& sy) { sx = W / 2 + (int)(PX * x); sy = H / 2 - (int)(PX * y); };
-    if (system("mkdir tmp") != 0) std::fprintf(stderr, "warn: mkdir\n");
+    if (cudabot::ensure_dirs({"tmp"}) != 0) std::fprintf(stderr, "warn: mkdir\n");
     cv::VideoWriter vw("tmp/gpu_cudampc_parking.avi", cv::VideoWriter::fourcc('M', 'J', 'P', 'G'), 30, cv::Size(W, H));
     int nobs = (int)obs.size() / 3;
     for (int s = 0; s <= steps; ++s) {

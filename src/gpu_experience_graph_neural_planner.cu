@@ -970,7 +970,7 @@ int main() {
                 gpu_ms, BATCH_QUERIES, N_NODES, MAX_DEGREE, gpu_metrics.expanded,
                 expansion_reduction, avg_expanded, reached_count, BATCH_QUERIES, speedup);
 
-    std::system("mkdir -p gif");
+    cudabot::ensure_dirs({"gif"});
     cv::VideoWriter video("gif/gpu_experience_graph_neural_planner.avi",
                           cv::VideoWriter::fourcc('M', 'J', 'P', 'G'),
                           VIDEO_FPS, cv::Size(PANEL_W, PANEL_H));

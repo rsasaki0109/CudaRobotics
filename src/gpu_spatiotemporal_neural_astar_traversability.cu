@@ -1005,7 +1005,7 @@ int main() {
         display_cells[i].heuristic = dynamic_heuristic[i];
     }
 
-    std::system("mkdir -p gif");
+    cudabot::ensure_dirs({"gif"});
     cv::VideoWriter video("gif/gpu_spatiotemporal_neural_astar_traversability.avi",
                           cv::VideoWriter::fourcc('M', 'J', 'P', 'G'),
                           VIDEO_FPS, cv::Size(PANEL_W, PANEL_H));

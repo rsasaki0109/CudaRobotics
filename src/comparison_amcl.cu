@@ -18,6 +18,7 @@
 #include <cuda_runtime.h>
 #include <curand_kernel.h>
 #include "cuda_check.cuh"
+#include "cuda_video.h"
 
 // ---------------------------------------------------------------------------
 // CUDA error check macro
@@ -547,7 +548,7 @@ int main() {
     cv::namedWindow("comparison_amcl", cv::WINDOW_NORMAL);
     cv::VideoWriter video(
         "gif/comparison_amcl.avi",
-        cv::VideoWriter::fourcc('X', 'V', 'I', 'D'), 30,
+        cudabot::avi_fourcc(), 30,
         cv::Size(COMBINED_W, COMBINED_H));
 
     float time_val = 0.0f;
@@ -755,11 +756,11 @@ int main() {
            cpu_total_ms / step_count, cuda_total_ms / step_count);
 
     // Convert to gif
-    int ret = system("which ffmpeg > /dev/null 2>&1 && "
+    int ret = system("which ffmpeg > " CUDABOT_NULL_DEVICE " 2>&1 && "
         "ffmpeg -y -i gif/comparison_amcl.avi "
         "-vf \"fps=15,scale=400:-1:flags=lanczos\" "
         "-gifflags +transdiff "
-        "gif/comparison_amcl.gif 2>/dev/null && "
+        "gif/comparison_amcl.gif 2>" CUDABOT_NULL_DEVICE " && "
         "echo 'GIF saved' || echo 'ffmpeg not available, skipping gif'");
     (void)ret;
 

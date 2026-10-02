@@ -33,6 +33,7 @@
 #include <cstdlib>
 #include <vector>
 #include "cuda_check.cuh"
+#include "cuda_video.h"
 
 namespace cudabot {
 
@@ -175,7 +176,7 @@ __global__ void render_kernel(float cam_x, float cam_y, float cam_z,
 static void convert_avi_to_gif(const std::string& avi, const std::string& gif, int fps) {
     char cmd[1024];
     std::snprintf(cmd, sizeof(cmd),
-                  "ffmpeg -y -i %s -vf \"fps=%d,scale=720:-1:flags=lanczos,split[a][b];[a]palettegen=stats_mode=diff[p];[b][p]paletteuse=dither=bayer:bayer_scale=5:diff_mode=rectangle\" %s 2>/dev/null",
+                  "ffmpeg -y -i %s -vf \"fps=%d,scale=720:-1:flags=lanczos,split[a][b];[a]palettegen=stats_mode=diff[p];[b][p]paletteuse=dither=bayer:bayer_scale=5:diff_mode=rectangle\" %s 2>" CUDABOT_NULL_DEVICE,
                   avi.c_str(), fps, gif.c_str());
     int rc = std::system(cmd);
     if (rc != 0) std::fprintf(stderr, "ffmpeg failed (%d)\n", rc);
@@ -210,7 +211,7 @@ int main() {
     CUDA_CHECK(cudaMalloc(&d_img, IMG_W * IMG_H * 3));
     std::vector<unsigned char> h_img(IMG_W * IMG_H * 3);
 
-    std::system("mkdir -p gif");
+    cudabot::ensure_dirs({"gif"});
     cv::VideoWriter video("gif/gpu_nerf_volume.avi",
                           cv::VideoWriter::fourcc('M', 'J', 'P', 'G'),
                           24, cv::Size(IMG_W, IMG_H));

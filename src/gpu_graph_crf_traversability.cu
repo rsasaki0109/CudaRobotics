@@ -576,7 +576,7 @@ int main() {
                 gpu_ms, N_NODES, CRF_ITERS, speedup, 100.0f * final_gpu.accuracy,
                 final_gpu.entropy);
 
-    std::system("mkdir -p gif");
+    cudabot::ensure_dirs({"gif"});
     cv::VideoWriter video("gif/gpu_graph_crf_traversability.avi",
                           cv::VideoWriter::fourcc('M', 'J', 'P', 'G'),
                           VIDEO_FPS, cv::Size(PANEL_W, PANEL_H));

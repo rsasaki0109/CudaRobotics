@@ -1629,7 +1629,7 @@ int main() {
                     s.mean_unilateral_gain, s.normalized_gain);
     }
 
-    std::system("mkdir -p gif");
+    cudabot::ensure_dirs({"gif"});
     cv::VideoWriter video("gif/gpu_safe_noregret_game_graph_mppi.avi",
                           cv::VideoWriter::fourcc('M', 'J', 'P', 'G'),
                           VIDEO_FPS, cv::Size(PANEL_W, PANEL_H));

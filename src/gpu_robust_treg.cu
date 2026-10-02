@@ -231,7 +231,7 @@ static TregResult treg_register(const std::vector<float>& X, const std::vector<f
 static void render_gif(const std::vector<float>& X, const std::vector<float>& Y,
                        const std::vector<char>& is_out, const std::vector<Pose>& traj){
     const int W=1280,H=720,CX=380,CY=360; const float SCALE=80.f,elev=0.42f;
-    if(system("mkdir -p tmp")!=0)std::fprintf(stderr,"warn mkdir\n");
+    if(cudabot::ensure_dirs({"tmp"})!=0)std::fprintf(stderr,"warn mkdir\n");
     cv::VideoWriter video("tmp/gpu_robust_treg.avi",cv::VideoWriter::fourcc('M','J','P','G'),18,cv::Size(W,H));
     int nt=(int)traj.size(); const int HOLD=24; int nf=nt+HOLD;
     int Nx=X.size()/3, My=Y.size()/3;

@@ -18,6 +18,7 @@
 
 #include <cuda_runtime.h>
 #include "cuda_check.cuh"
+#include "cuda_video.h"
 
 using namespace std;
 
@@ -350,7 +351,7 @@ int main() {
     string gif_path = "gif/occupancy_grid.gif";
 
     cv::VideoWriter video(avi_path,
-                          cv::VideoWriter::fourcc('X', 'V', 'I', 'D'),
+                          cudabot::avi_fourcc(),
                           30, cv::Size(img_w, img_h));
     if (!video.isOpened()) {
         cerr << "Failed to open video writer at " << avi_path << endl;
@@ -417,7 +418,7 @@ int main() {
 
     // Convert to GIF
     string cmd = "ffmpeg -y -i " + avi_path + " -vf \"fps=15,scale=500:-1:flags=lanczos\" "
-                 + gif_path + " 2>/dev/null";
+                 + gif_path + " 2>" CUDABOT_NULL_DEVICE;
     int ret = system(cmd.c_str());
     if (ret == 0) {
         cout << "GIF saved to " << gif_path << endl;

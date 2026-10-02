@@ -31,6 +31,7 @@
 
 #include <cuda_runtime.h>
 #include "cuda_check.cuh"
+#include "cuda_video.h"
 
 // -------------------------------------------------------------------------
 // Constants
@@ -335,7 +336,7 @@ int main() {
     std::vector<float> dist_cpu, dist_gpu;
 
     cv::VideoWriter video("gif/comparison_esdf.avi",
-                          cv::VideoWriter::fourcc('X', 'V', 'I', 'D'), 30,
+                          cudabot::avi_fourcc(), 30,
                           cv::Size(PANEL_W * 2, PANEL_H));
 
     std::mt19937 rng(7u);
@@ -397,8 +398,8 @@ int main() {
     }
 
     std::system("ffmpeg -y -i gif/comparison_esdf.avi "
-                "-vf 'fps=15,scale=900:-1:flags=lanczos' -loop 0 "
-                "gif/comparison_esdf.gif 2>/dev/null");
+                "-vf \"fps=15,scale=900:-1:flags=lanczos\" -loop 0 "
+                "gif/comparison_esdf.gif 2>" CUDABOT_NULL_DEVICE);
     std::cout << "GIF saved to gif/comparison_esdf.gif" << std::endl;
     return 0;
 }

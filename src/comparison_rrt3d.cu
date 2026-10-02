@@ -21,6 +21,7 @@
 
 #include <cuda_runtime.h>
 #include "cuda_check.cuh"
+#include "cuda_video.h"
 
 
 // ---------------------------------------------------------------------------
@@ -373,7 +374,7 @@ int main() {
     std::string gif_path = "gif/comparison_rrt3d.gif";
 
     cv::VideoWriter video(avi_path,
-                          cv::VideoWriter::fourcc('X', 'V', 'I', 'D'),
+                          cudabot::avi_fourcc(),
                           30, cv::Size(S * 2, S));
     if (!video.isOpened()) {
         std::cerr << "Failed to open video writer at " << avi_path << std::endl;
@@ -608,7 +609,7 @@ int main() {
 
     // Convert to GIF
     std::string cmd = "ffmpeg -y -i " + avi_path +
-        " -vf 'fps=15,scale=800:-1:flags=lanczos' -loop 0 " + gif_path + " 2>/dev/null";
+        " -vf \"fps=15,scale=800:-1:flags=lanczos\" -loop 0 " + gif_path + " 2>" CUDABOT_NULL_DEVICE;
     int ret = system(cmd.c_str());
     if (ret == 0) {
         std::cout << "GIF saved to " << gif_path << std::endl;

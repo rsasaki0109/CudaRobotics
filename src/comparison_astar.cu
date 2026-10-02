@@ -18,6 +18,7 @@
 
 #include <cuda_runtime.h>
 #include "cuda_check.cuh"
+#include "cuda_video.h"
 
 
 using namespace std;
@@ -412,7 +413,7 @@ int main() {
 
     // Video setup
     cv::VideoWriter video("gif/comparison_astar.avi",
-                          cv::VideoWriter::fourcc('X', 'V', 'I', 'D'), 30,
+                          cudabot::avi_fourcc(), 30,
                           cv::Size(panel_h * 2, panel_w));
 
     int steps_per_frame = 8;  // advance multiple steps per video frame
@@ -507,8 +508,8 @@ int main() {
 
     // Convert to gif
     system("ffmpeg -y -i gif/comparison_astar.avi "
-           "-vf 'fps=15,scale=600:-1:flags=lanczos' -loop 0 "
-           "gif/comparison_astar.gif 2>/dev/null");
+           "-vf \"fps=15,scale=600:-1:flags=lanczos\" -loop 0 "
+           "gif/comparison_astar.gif 2>" CUDABOT_NULL_DEVICE);
     std::cout << "GIF saved to gif/comparison_astar.gif" << std::endl;
 
     delete ngoal_cpu;

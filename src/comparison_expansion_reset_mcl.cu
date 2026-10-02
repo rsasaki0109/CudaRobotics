@@ -21,6 +21,7 @@
 #include <cuda_runtime.h>
 #include <curand_kernel.h>
 #include "cuda_check.cuh"
+#include "cuda_video.h"
 
 
 #define PI 3.141592653f
@@ -341,7 +342,7 @@ int main() {
             }
 
     cv::VideoWriter video("gif/comparison_expansion_reset_mcl.avi",
-        cv::VideoWriter::fourcc('X', 'V', 'I', 'D'), 30, cv::Size(PANEL_W * 2, PANEL_H));
+        cudabot::avi_fourcc(), 30, cv::Size(PANEL_W * 2, PANEL_H));
 
     float h_beams[NUM_BEAMS];
     bool kidnapped = false;
@@ -495,8 +496,8 @@ int main() {
 
     video.release();
     system("ffmpeg -y -i gif/comparison_expansion_reset_mcl.avi "
-           "-vf 'fps=15,scale=800:-1:flags=lanczos' -loop 0 "
-           "gif/comparison_expansion_reset_mcl.gif 2>/dev/null");
+           "-vf \"fps=15,scale=800:-1:flags=lanczos\" -loop 0 "
+           "gif/comparison_expansion_reset_mcl.gif 2>" CUDABOT_NULL_DEVICE);
     printf("GIF saved to gif/comparison_expansion_reset_mcl.gif\n");
 
     std_pf.free_all(); exp_pf.free_all();
