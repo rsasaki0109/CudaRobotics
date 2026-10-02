@@ -532,6 +532,10 @@ Executables are written to `bin/`. Single-config generators default to
 (sm_75 + PTX when no GPU is visible, e.g. in CI); override with
 `-DCMAKE_CUDA_ARCHITECTURES="86;89"`.
 
+The full tree is 200+ executables. To build only some of them by default,
+pass a regex: `cmake .. -DCUDABOT_DEMO_FILTER="mppi|esdf"`. Other targets
+stay available through `--target <name>`.
+
 Build and run one demo:
 
 ```bash
