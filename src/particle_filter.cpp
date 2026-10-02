@@ -16,6 +16,7 @@
 
 #include <cuda_runtime.h>
 #include <device_launch_parameters.h>
+#include "display.h"
 
 #define SIM_TIME 50.0
 #define DT 0.1
@@ -245,7 +246,7 @@ int main(){
   std::uniform_real_distribution<> uni_d{1.0, 2.0};
 
   //for visualization
-  cv::namedWindow("pf", cv::WINDOW_NORMAL);
+  cudabot::namedWindow("pf", cv::WINDOW_NORMAL);
   int count = 0;
 
   while(time <= SIM_TIME){
@@ -316,8 +317,8 @@ int main(){
 
     ellipse_drawing(bg, PEst.block(0,0,2,2), xEst.head(2));
 
-    cv::imshow("pf", bg);
-    cv::waitKey(5);
+    cudabot::imshow("pf", bg);
+    cudabot::waitKey(5);
 
     // std::string int_count = std::to_string(count);
     // cv::imwrite("./pngs/"+std::string(5-int_count.length(), '0').append(int_count)+".png", bg);

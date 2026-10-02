@@ -22,6 +22,7 @@
 #include <curand_kernel.h>
 #include "cuda_check.cuh"
 #include "cuda_video.h"
+#include "display.h"
 
 
 using namespace std;
@@ -522,9 +523,9 @@ int main()
         cv::Mat combined;
         cv::hconcat(left, right, combined);
 
-        cv::namedWindow("comparison_stomp", cv::WINDOW_AUTOSIZE);
-        cv::imshow("comparison_stomp", combined);
-        cv::waitKey(1);
+        cudabot::namedWindow("comparison_stomp", cv::WINDOW_AUTOSIZE);
+        cudabot::imshow("comparison_stomp", combined);
+        cudabot::waitKey(1);
         video.write(combined);
 
         if (iter % 10 == 0) {
@@ -553,8 +554,8 @@ int main()
            "gif/comparison_stomp.gif 2>" CUDABOT_NULL_DEVICE);
     cout << "GIF saved to gif/comparison_stomp.gif" << endl;
 
-    cv::imshow("comparison_stomp", combined);
-    cv::waitKey(0);
+    cudabot::imshow("comparison_stomp", combined);
+    cudabot::waitKey(0);
 
     gpu_stomp.cleanup();
 

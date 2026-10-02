@@ -17,6 +17,7 @@
 #include <opencv2/highgui/highgui.hpp>
 #include "cuda_check.cuh"
 #include "cuda_video.h"
+#include "display.h"
 
 // ---------------------------------------------------------------------------
 // Device kernels
@@ -298,7 +299,7 @@ bool CudaRRT::collisionFree(float nx, float ny) {
 
 std::vector<Node> CudaRRT::planning() {
     // Visualization setup
-    cv::namedWindow("rrt", cv::WINDOW_NORMAL);
+    cudabot::namedWindow("rrt", cv::WINDOW_NORMAL);
     int img_size = (int)(rand_max - rand_min);
     int img_reso = 50;
     cv::Mat bg(img_size * img_reso, img_size * img_reso, CV_8UC3, cv::Scalar(255, 255, 255));
@@ -358,9 +359,9 @@ std::vector<Node> CudaRRT::planning() {
         // Visualization: draw edge
         cv::line(bg, toPixel(new_x, new_y), toPixel(nearest.x, nearest.y),
                  cv::Scalar(0, 255, 0), 10);
-        cv::imshow("rrt", bg);
+        cudabot::imshow("rrt", bg);
         video.write(bg);
-        cv::waitKey(5);
+        cudabot::waitKey(5);
         count++;
 
         // Check if goal is reached
@@ -391,11 +392,11 @@ std::vector<Node> CudaRRT::planning() {
             idx = n.parent_idx;
         }
 
-        cv::imshow("rrt", bg);
+        cudabot::imshow("rrt", bg);
         video.write(bg);
         video.release();
         std::cout << "Video saved to videos/rrt.avi" << std::endl;
-        cv::waitKey(0);
+        cudabot::waitKey(0);
     } else {
         std::cout << "no path found within " << max_iter << " iterations" << std::endl;
     }

@@ -20,6 +20,7 @@
 #include <cuda_runtime.h>
 #include "cuda_check.cuh"
 #include "cuda_video.h"
+#include "display.h"
 
 
 using namespace std;
@@ -441,7 +442,7 @@ void hybrid_astar_planning(float sx, float sy, float stheta,
     cv::circle(bg, cv::Point((int)(gx * img_reso), (int)(gy * img_reso)),
                img_reso * 2, cv::Scalar(255, 0, 0), -1);
 
-    cv::namedWindow("hybrid_astar", cv::WINDOW_NORMAL);
+    cudabot::namedWindow("hybrid_astar", cv::WINDOW_NORMAL);
     cv::VideoWriter video("gif/hybrid_astar.avi",
                           cudabot::avi_fourcc(), 30,
                           cv::Size(img_w, img_h));
@@ -529,9 +530,9 @@ void hybrid_astar_planning(float sx, float sy, float stheta,
         }
 
         if (expanded % 20 == 0) {
-            cv::imshow("hybrid_astar", bg);
+            cudabot::imshow("hybrid_astar", bg);
             video.write(bg);
-            cv::waitKey(1);
+            cudabot::waitKey(1);
             frame_count++;
         }
 
@@ -615,7 +616,7 @@ void hybrid_astar_planning(float sx, float sy, float stheta,
     // Write final frames
     for (int f = 0; f < 60; f++) video.write(bg);
 
-    cv::imshow("hybrid_astar", bg);
+    cudabot::imshow("hybrid_astar", bg);
     video.write(bg);
     video.release();
     printf("Video saved to gif/hybrid_astar.avi (%d frames)\n", frame_count);
@@ -626,7 +627,7 @@ void hybrid_astar_planning(float sx, float sy, float stheta,
            "gif/hybrid_astar.gif 2>" CUDABOT_NULL_DEVICE);
     printf("GIF saved to gif/hybrid_astar.gif\n");
 
-    cv::waitKey(0);
+    cudabot::waitKey(0);
 
     // Cleanup
     CUDA_CHECK(cudaFree(d_ox));

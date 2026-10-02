@@ -18,6 +18,7 @@
 #include <opencv2/core/core.hpp>
 #include <opencv2/highgui/highgui.hpp>
 #include "cuda_check.cuh"
+#include "display.h"
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -547,9 +548,9 @@ std::vector<std::pair<float,float>> CudaPRM::planning() {
     cv::circle(img, toPixel(start_x, start_y), 8, cv::Scalar(0, 200, 0), -1);
     cv::circle(img, toPixel(goal_x, goal_y),   8, cv::Scalar(0, 0, 255), -1);
 
-    cv::namedWindow("prm", cv::WINDOW_NORMAL);
-    cv::imshow("prm", img);
-    cv::waitKey(0);
+    cudabot::namedWindow("prm", cv::WINDOW_NORMAL);
+    cudabot::imshow("prm", img);
+    cudabot::waitKey(0);
 
     return path;
 }

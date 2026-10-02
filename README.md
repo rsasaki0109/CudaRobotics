@@ -539,6 +539,11 @@ cmake --build build --target gpu_mppi_racing -j$(nproc)
 ./bin/gpu_mppi_racing
 ```
 
+Demos open OpenCV windows when a display is available. Set
+`CUDABOT_HEADLESS=1` (automatic on Linux without `DISPLAY`/`WAYLAND_DISPLAY`)
+to skip windows and key waits so they run unattended; videos and GIFs are
+still written. `ctest -L demo` runs a set of demos this way.
+
 ## Reproducibility
 
 ```bash

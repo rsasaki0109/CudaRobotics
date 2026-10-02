@@ -28,6 +28,7 @@
 #include <cuda_runtime.h>
 #include "cuda_check.cuh"
 #include "cuda_video.h"
+#include "display.h"
 
 
 using namespace std;
@@ -815,14 +816,14 @@ int main() {
         cv::putText(img, buf, cv::Point(10, 50), cv::FONT_HERSHEY_SIMPLEX,
                     0.6, cv::Scalar(0, 128, 0), 1);
 
-        cv::imshow("orca", img);
+        cudabot::imshow("orca", img);
         video.write(img);
-        int key = cv::waitKey(1);
+        int key = cudabot::waitKey(1);
         if (key == 27) break;
 
         if (reached == N_AGENTS) {
             cout << "All agents reached their goals at t=" << step * DT << "s" << endl;
-            cv::waitKey(0);
+            cudabot::waitKey(0);
             break;
         }
     }

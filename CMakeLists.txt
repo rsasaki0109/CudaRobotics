@@ -985,6 +985,19 @@ set_tests_properties(mppi_reduction_smoke PROPERTIES
   TIMEOUT 60
   LABELS "gpu;mppi;reference")
 
+# Run interactive demos end-to-end without a display (see include/display.h).
+set(CUDABOT_DEMO_SMOKE_DIR ${CMAKE_BINARY_DIR}/demo_smoke)
+file(MAKE_DIRECTORY ${CUDABOT_DEMO_SMOKE_DIR}/gif)
+foreach(demo mppi diff_mppi comparison_mppi esdf_mppi ndt occupancy_grid amcl)
+  add_test(NAME demo_headless_${demo}
+    COMMAND $<TARGET_FILE:${demo}>
+    WORKING_DIRECTORY ${CUDABOT_DEMO_SMOKE_DIR})
+  set_tests_properties(demo_headless_${demo} PROPERTIES
+    ENVIRONMENT "CUDABOT_HEADLESS=1"
+    TIMEOUT 300
+    LABELS "gpu;demo")
+endforeach()
+
 add_test(NAME gpu_planner_showdown_gate
   COMMAND ${PROJECT_SOURCE_DIR}/bin/gpu_planner_showdown_benchmark
     --check

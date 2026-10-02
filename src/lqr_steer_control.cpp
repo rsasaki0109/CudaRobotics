@@ -15,6 +15,7 @@
 #include"cubic_spline.h"
 #include"motion_model.h"
 #include"cpprobotics_types.h"
+#include "display.h"
 
 #define DT 0.1
 #define L 0.5
@@ -168,7 +169,7 @@ void closed_loop_prediction(Vec_f cx, Vec_f cy, Vec_f cyaw, Vec_f ck, Vec_f spee
   int ind = 0;
 
 
-  cv::namedWindow("lqr", cv::WINDOW_NORMAL);
+  cudabot::namedWindow("lqr", cv::WINDOW_NORMAL);
   int count = 0;
 
 
@@ -207,8 +208,8 @@ void closed_loop_prediction(Vec_f cx, Vec_f cy, Vec_f cyaw, Vec_f ck, Vec_f spee
     // long int ms = tp.tv_sec * 1000 + tp.tv_usec / 1000;
     // std::string int_count = std::to_string(ms);
     // cv::imwrite("./pngs/"+int_count+".png", bg);
-    cv::imshow("lqr", bg);
-    cv::waitKey(5);
+    cudabot::imshow("lqr", bg);
+    cudabot::waitKey(5);
   }
 };
 

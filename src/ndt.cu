@@ -25,6 +25,7 @@
 #include <cuda_runtime.h>
 #include "cuda_check.cuh"
 #include "cuda_video.h"
+#include "display.h"
 
 using namespace std;
 
@@ -637,7 +638,7 @@ int main()
         return 1;
     }
 
-    cv::namedWindow("ndt", cv::WINDOW_AUTOSIZE);
+    cudabot::namedWindow("ndt", cv::WINDOW_AUTOSIZE);
 
     // ===== Step 2-3: Newton optimization =====
     float pose_x = init_x;
@@ -709,8 +710,8 @@ int main()
                     cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(50, 255, 50), 1);
 
         video.write(img);
-        cv::imshow("ndt", img);
-        int key = cv::waitKey(200);
+        cudabot::imshow("ndt", img);
+        int key = cudabot::waitKey(200);
         if (key == 27) break;
 
         if (iter == MAX_ITER) break;
@@ -778,8 +779,8 @@ int main()
                         cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(50, 255, 50), 1);
             // Write several copies so it lingers in the gif
             for (int k = 0; k < 15; k++) video.write(final_img);
-            cv::imshow("ndt", final_img);
-            cv::waitKey(500);
+            cudabot::imshow("ndt", final_img);
+            cudabot::waitKey(500);
             break;
         }
     }
@@ -811,7 +812,7 @@ int main()
 
     // Show final image until key press
     printf("Press any key to exit...\n");
-    cv::waitKey(0);
+    cudabot::waitKey(0);
 
     // ===== Cleanup =====
     CUDA_CHECK(cudaFree(d_ref_x));

@@ -18,6 +18,7 @@
 #include"cubic_spline.h"
 #include"motion_model.h"
 #include"cpprobotics_types.h"
+#include "display.h"
 
 #define NX 4
 #define T 6
@@ -359,7 +360,7 @@ void mpc_simulation(Vec_f cx, Vec_f cy, Vec_f cyaw, Vec_f ck, Vec_f speed_profil
   smooth_yaw(cyaw);
 
   // visualization
-  cv::namedWindow("mpc", cv::WINDOW_NORMAL);
+  cudabot::namedWindow("mpc", cv::WINDOW_NORMAL);
   int count = 0;
 
   Vec_f x_h;
@@ -457,8 +458,8 @@ void mpc_simulation(Vec_f cx, Vec_f cy, Vec_f cyaw, Vec_f ck, Vec_f speed_profil
     // std::string int_count = std::to_string(ms);
     // cv::imwrite("./pngs/"+int_count+".png", bg);
 
-    cv::imshow("mpc", bg);
-    cv::waitKey(5);
+    cudabot::imshow("mpc", bg);
+    cudabot::waitKey(5);
     iter_count++;
   }
 };

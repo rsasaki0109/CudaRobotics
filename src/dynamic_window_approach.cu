@@ -18,6 +18,7 @@
 #include <cuda_runtime.h>
 #include "cuda_check.cuh"
 #include "cuda_video.h"
+#include "display.h"
 
 #define PI 3.141592653f
 
@@ -288,7 +289,7 @@ int main() {
     const int threads = 256;
 
     bool terminal = false;
-    cv::namedWindow("dwa", cv::WINDOW_NORMAL);
+    cudabot::namedWindow("dwa", cv::WINDOW_NORMAL);
     cv::VideoWriter video("gif/dwa.avi", cudabot::avi_fourcc(), 30, cv::Size(3500, 3500));
     int count = 0;
 
@@ -381,9 +382,9 @@ int main() {
             }
         }
 
-        cv::imshow("dwa", bg);
+        cudabot::imshow("dwa", bg);
         video.write(bg);
-        cv::waitKey(5);
+        cudabot::waitKey(5);
         count++;
     }
 

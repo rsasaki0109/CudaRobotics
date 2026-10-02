@@ -13,6 +13,7 @@
 #include <cuda_runtime.h>
 #include "cuda_check.cuh"
 #include "cuda_video.h"
+#include "display.h"
 
 
 #define PI_F 3.14159265f
@@ -643,8 +644,8 @@ int main() {
         cv::hconcat(left, right, combined);
         video.write(combined);
 
-        cv::imshow("comparison_orca", combined);
-        if (cv::waitKey(1) == 27) break;
+        cudabot::imshow("comparison_orca", combined);
+        if (cudabot::waitKey(1) == 27) break;
     }
 
     video.release();

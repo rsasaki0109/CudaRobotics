@@ -20,6 +20,7 @@
 
 #include <cuda_runtime.h>
 #include "cuda_check.cuh"
+#include "display.h"
 
 
 // ---------------------------------------------------------------------------
@@ -615,7 +616,7 @@ static std::vector<std::pair<float,float>> extract_path(
 // ---------------------------------------------------------------------------
 std::vector<Node> InformedRRTStar::planning() {
     // Visualization setup
-    cv::namedWindow("informed_rrt_star", cv::WINDOW_NORMAL);
+    cudabot::namedWindow("informed_rrt_star", cv::WINDOW_NORMAL);
     int img_size = (int)(rand_max_ - rand_min_);
     int img_reso = 50;
     cv::Mat bg(img_size * img_reso, img_size * img_reso,
@@ -825,8 +826,8 @@ std::vector<Node> InformedRRTStar::planning() {
                       (int)((goal_y_ - rand_min_) * img_reso)),
             20, cv::Scalar(255, 0, 0), -1);
 
-        cv::imshow("informed_rrt_star", frame);
-        cv::waitKey(5);
+        cudabot::imshow("informed_rrt_star", frame);
+        cudabot::waitKey(5);
     }
 
     // Extract final result
@@ -883,12 +884,12 @@ std::vector<Node> InformedRRTStar::planning() {
                       (int)((goal_y_ - rand_min_) * img_reso)),
             20, cv::Scalar(255, 0, 0), -1);
 
-        cv::imshow("informed_rrt_star", frame);
-        cv::waitKey(0);
+        cudabot::imshow("informed_rrt_star", frame);
+        cudabot::waitKey(0);
     } else {
         std::cout << "No path found within " << max_iter_ << " iterations." << std::endl;
-        cv::imshow("informed_rrt_star", bg);
-        cv::waitKey(0);
+        cudabot::imshow("informed_rrt_star", bg);
+        cudabot::waitKey(0);
     }
 
     return path;

@@ -19,6 +19,7 @@
 
 #include <cuda_runtime.h>
 #include "cuda_check.cuh"
+#include "display.h"
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -615,8 +616,8 @@ void visualize(
     cv::putText(img, "Red: Loop closures", cv::Point(10, 110), cv::FONT_HERSHEY_SIMPLEX, 0.5,
                 cv::Scalar(0, 0, 200), 1);
 
-    cv::imshow("graph_slam", img);
-    cv::waitKey(100);
+    cudabot::imshow("graph_slam", img);
+    cudabot::waitKey(100);
 }
 
 // ===========================================================================
@@ -661,7 +662,7 @@ int main() {
     // Upload initial pose estimate
     CUDA_CHECK(cudaMemcpy(d_poses, odom_poses.data(), n_poses * sizeof(Pose2D), cudaMemcpyHostToDevice));
 
-    cv::namedWindow("graph_slam", cv::WINDOW_AUTOSIZE);
+    cudabot::namedWindow("graph_slam", cv::WINDOW_AUTOSIZE);
 
     // -----------------------------------------------------------------------
     // 3. Gauss-Newton iterations
@@ -721,7 +722,7 @@ int main() {
     }
 
     printf("Optimization complete. Press any key to exit.\n");
-    cv::waitKey(0);
+    cudabot::waitKey(0);
 
     // Cleanup
     cudaFree(d_poses);
