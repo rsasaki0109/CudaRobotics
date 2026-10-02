@@ -19,6 +19,7 @@
 #include <cuda_runtime.h>
 #include "cuda_check.cuh"
 #include "cuda_video.h"
+#include "display.h"
 
 // ---------------------------------------------------------------------------
 // Constants (same as original)
@@ -619,7 +620,7 @@ int main() {
     float c_d = 2.0f, c_d_d = 0.0f, c_d_dd = 0.0f;
     float s0 = 0.0f;
 
-    cv::namedWindow("frenet", cv::WINDOW_NORMAL);
+    cudabot::namedWindow("frenet", cv::WINDOW_NORMAL);
     cv::VideoWriter video("gif/frenet.avi", cudabot::avi_fourcc(), 30, cv::Size(8000, 2000));
     int threads = 256;
 
@@ -709,9 +710,9 @@ int main() {
                     cv::Point2i((int)bg.cols / 2, (int)(bg.rows * 0.1)),
                     cv::FONT_HERSHEY_SIMPLEX, 5, cv::Scalar(0, 0, 0), 10);
 
-        cv::imshow("frenet", bg);
+        cudabot::imshow("frenet", bg);
         video.write(bg);
-        cv::waitKey(5);
+        cudabot::waitKey(5);
     }
 
     video.release();

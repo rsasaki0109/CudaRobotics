@@ -21,6 +21,7 @@
 #include <cuda_runtime.h>
 #include "cuda_check.cuh"
 #include "cuda_video.h"
+#include "display.h"
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -315,7 +316,7 @@ int main() {
     std::vector<int> h_policy(N_STATES);
 
     // Video for value iteration progress
-    cv::namedWindow("value_iteration", cv::WINDOW_NORMAL);
+    cudabot::namedWindow("value_iteration", cv::WINDOW_NORMAL);
     cv::VideoWriter video(
         "gif/value_iteration.avi",
         cudabot::avi_fourcc(), 10, cv::Size(IMG_W, IMG_H));
@@ -364,8 +365,8 @@ int main() {
             snprintf(label, sizeof(label), "CUDA iter=%d", iter);
             draw_value_heatmap(frame, h_V.data(), 0, &path, label, cuda_ms);
             video.write(frame);
-            cv::imshow("value_iteration", frame);
-            cv::waitKey(5);
+            cudabot::imshow("value_iteration", frame);
+            cudabot::waitKey(5);
 
             // Comparison frame
             auto cpu_path = trace_path(cpu_policy.data(), 10, 10, 0);

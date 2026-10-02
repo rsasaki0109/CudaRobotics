@@ -16,6 +16,7 @@
 #include<opencv2/opencv.hpp>
 #include<opencv2/core/core.hpp>
 #include<opencv2/highgui/highgui.hpp>
+#include "display.h"
 
 namespace cpprobotics{
 
@@ -75,7 +76,7 @@ RRT::RRT(Node* start_, Node* end_, std::vector<std::vector<float> > ob_list_, st
 std::vector<Node*> RRT::planning(){
 
 	//visualization
-	cv::namedWindow("rrt", cv::WINDOW_NORMAL);
+	cudabot::namedWindow("rrt", cv::WINDOW_NORMAL);
 	int count=0;
 	int img_size = (int)(rand_area[1] - rand_area[0]);
 	int img_reso = 50;
@@ -123,8 +124,8 @@ std::vector<Node*> RRT::planning(){
 		// std::string int_count = std::to_string(count);
 		// cv::imwrite("./pngs/"+std::string(5-int_count.length(), '0').append(int_count)+".png", bg);
 		count++;
-		cv::imshow("rrt", bg);
-		cv::waitKey(5);
+		cudabot::imshow("rrt", bg);
+		cudabot::waitKey(5);
 
 		if (std::sqrt(std::pow((new_node->x - end->x), 2) + std::pow((new_node->y - end->y), 2)) <= expand_dis){
 			std::cout<<"find path"<<std::endl;
@@ -150,8 +151,8 @@ std::vector<Node*> RRT::planning(){
 	//viosualization
 	// std::string int_count = std::to_string(count);
 	// cv::imwrite("./pngs/"+std::string(5-int_count.length(), '0').append(int_count)+".png", bg);
-	cv::imshow("rrt", bg);
-	cv::waitKey(5);
+	cudabot::imshow("rrt", bg);
+	cudabot::waitKey(5);
 
 	path.push_back(start);
 

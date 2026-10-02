@@ -12,6 +12,7 @@
 #include<opencv2/opencv.hpp>
 #include<opencv2/core/core.hpp>
 #include<opencv2/highgui/highgui.hpp>
+#include "display.h"
 
 #define PI 3.141592653
 
@@ -186,7 +187,7 @@ int main(){
 
   bool terminal = false;
 
-  cv::namedWindow("dwa", cv::WINDOW_NORMAL);
+  cudabot::namedWindow("dwa", cv::WINDOW_NORMAL);
   int count = 0;
 
   for(int i=0; i<1000 && !terminal; i++){
@@ -227,8 +228,8 @@ int main(){
     }
 
 
-    cv::imshow("dwa", bg);
-    cv::waitKey(5);
+    cudabot::imshow("dwa", bg);
+    cudabot::waitKey(5);
 
     // std::string int_count = std::to_string(count);
     // cv::imwrite("./pngs/"+std::string(5-int_count.length(), '0').append(int_count)+".png", bg);

@@ -20,6 +20,7 @@
 
 #include <cuda_runtime.h>
 #include "cuda_check.cuh"
+#include "display.h"
 
 using namespace std;
 
@@ -476,9 +477,9 @@ void draw_result_3d(
     cv::Mat combined;
     cv::hconcat(xy_img, xz_img, combined);
 
-    cv::namedWindow("potential_field_3d", cv::WINDOW_AUTOSIZE);
-    cv::imshow("potential_field_3d", combined);
-    cv::waitKey(0);
+    cudabot::namedWindow("potential_field_3d", cv::WINDOW_AUTOSIZE);
+    cudabot::imshow("potential_field_3d", combined);
+    cudabot::waitKey(0);
 }
 
 // -------------------------------------------------------------------------

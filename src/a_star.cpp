@@ -13,6 +13,7 @@
 #include<opencv2/opencv.hpp>
 #include<opencv2/core/core.hpp>
 #include<opencv2/highgui/highgui.hpp>
+#include "display.h"
 
 using namespace std;
 
@@ -143,7 +144,7 @@ void a_star_planning(float sx, float sy,
   int ywidth = max_oy-min_oy;
 
   //visualization
-  cv::namedWindow("astar", cv::WINDOW_NORMAL);
+  cudabot::namedWindow("astar", cv::WINDOW_NORMAL);
   int count = 0;
   int img_reso = 5;
   cv::Mat bg(img_reso*xwidth,
@@ -223,8 +224,8 @@ void a_star_planning(float sx, float sy,
       // std::string int_count = std::to_string(count);
       // cv::imwrite("./pngs/"+std::string(5-int_count.length(), '0').append(int_count)+".png", bg);
       count++;
-      cv::imshow("astar", bg);
-      cv::waitKey(5);
+      cudabot::imshow("astar", bg);
+      cudabot::waitKey(5);
 
       if (path_cost[node->x][node->y]+motion[i].sum_cost < path_cost[new_node->x][new_node->y]){
         path_cost[new_node->x][new_node->y]=path_cost[node->x][node->y]+motion[i].sum_cost; 
@@ -239,8 +240,8 @@ void a_star_planning(float sx, float sy,
 
   // std::string int_count = std::to_string(count);
   // cv::imwrite("./pngs/"+std::string(5-int_count.length(), '0').append(int_count)+".png", bg);
-  cv::imshow("astar", bg);
-  cv::waitKey(5);
+  cudabot::imshow("astar", bg);
+  cudabot::waitKey(5);
 };
 
 

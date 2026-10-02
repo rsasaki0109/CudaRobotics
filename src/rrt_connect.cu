@@ -12,6 +12,7 @@
 #include <opencv2/opencv.hpp>
 #include "cuda_check.cuh"
 #include "cuda_video.h"
+#include "display.h"
 
 
 #define EXPAND_DIS 0.5f
@@ -128,7 +129,7 @@ int main() {
     std::uniform_real_distribution<float> area_dis(rand_min, rand_max);
 
     int img_size = 17, img_reso = 50;
-    cv::namedWindow("rrt_connect", cv::WINDOW_NORMAL);
+    cudabot::namedWindow("rrt_connect", cv::WINDOW_NORMAL);
     cv::Mat bg(img_size * img_reso, img_size * img_reso, CV_8UC3, cv::Scalar(255, 255, 255));
     std::vector<cv::Mat> frames;
 
@@ -222,8 +223,8 @@ int main() {
 
         if (iter % 3 == 0) {
             frames.push_back(bg.clone());
-            cv::imshow("rrt_connect", bg);
-            cv::waitKey(1);
+            cudabot::imshow("rrt_connect", bg);
+            cudabot::waitKey(1);
         }
         swapped = !swapped;
     }
@@ -257,8 +258,8 @@ int main() {
     }
 
     for (int i = 0; i < 30; i++) { frames.push_back(bg.clone()); }
-    cv::imshow("rrt_connect", bg);
-    cv::waitKey(1);
+    cudabot::imshow("rrt_connect", bg);
+    cudabot::waitKey(1);
 
     // Write video from collected frames
     if (!frames.empty()) {

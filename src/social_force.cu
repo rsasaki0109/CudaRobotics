@@ -11,6 +11,7 @@
 #include <opencv2/opencv.hpp>
 #include "cuda_check.cuh"
 #include "cuda_video.h"
+#include "display.h"
 
 
 #define N_PED 300
@@ -133,7 +134,7 @@ int main() {
 
     int threads = 256, blocks = (N_PED + threads - 1) / threads;
 
-    cv::namedWindow("social_force", cv::WINDOW_NORMAL);
+    cudabot::namedWindow("social_force", cv::WINDOW_NORMAL);
     int img_w = 1000, img_h = 200;
     float scale = img_w / CORRIDOR_LEN;
     cv::VideoWriter video("gif/social_force.avi",
@@ -171,8 +172,8 @@ int main() {
                         cv::Point(10, 15), cv::FONT_HERSHEY_SIMPLEX, 0.4, cv::Scalar(0,0,0), 1);
 
             video.write(bg);
-            cv::imshow("social_force", bg);
-            cv::waitKey(1);
+            cudabot::imshow("social_force", bg);
+            cudabot::waitKey(1);
         }
         frame++;
     }
