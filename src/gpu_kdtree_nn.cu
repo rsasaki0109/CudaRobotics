@@ -40,7 +40,7 @@ namespace cudabot {
 // ----------------------------------------------------------------- constants
 #define N_PTS   40000
 #define N_QUERY 40000
-static const float WORLD = 30.0f;
+static constexpr float WORLD = 30.0f;
 static const int   STACK_MAX = 64;
 
 static const int PANEL_W = 720;

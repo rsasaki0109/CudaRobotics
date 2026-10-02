@@ -30,10 +30,10 @@ using namespace std;
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
-static const float PI = 3.141592653f;
+static constexpr float PI = 3.141592653f;
 
 // NDT grid parameters
-static const float CELL_SIZE    = 2.0f;        // meters per cell
+static constexpr float CELL_SIZE    = 2.0f;        // meters per cell
 static const int   GRID_NX      = 50;          // cells in x
 static const int   GRID_NY      = 50;          // cells in y
 static const int   GRID_TOTAL   = GRID_NX * GRID_NY;
@@ -46,7 +46,7 @@ static const int   MAX_REF      = 4096;        // max reference points
 
 // Newton optimization
 static const int   MAX_ITER     = 30;
-static const float CONV_THRESH  = 0.001f;
+static constexpr float CONV_THRESH  = 0.001f;
 
 // Minimum points per cell for valid distribution
 static const int   MIN_CELL_PTS = 3;

@@ -34,6 +34,7 @@
 
 #include "cuda_check.cuh"
 #include "cuda_video.h"
+#include "cuda_portable.cuh"
 
 namespace cudabot {
 
@@ -46,10 +47,10 @@ static const int   MAX_TRI   = 5;       // MC emits at most 5 triangles per cell
 static const int   SLOT_F    = MAX_TRI * 9;  // 5 tris * 3 verts * 3 coords
 
 // volume axis-aligned bounds (metres)
-static const float GMIN_X = -2.5f, GMIN_Y = -2.5f, GMIN_Z = -1.5f;
-static const float GSPAN  = 5.0f;
-static const float VOXSZ  = GSPAN / (VOX_RES - 1);   // grid spacing
-static const float ISO    = 0.0f;
+static constexpr float GMIN_X = -2.5f, GMIN_Y = -2.5f, GMIN_Z = -1.5f;
+static constexpr float GSPAN  = 5.0f;
+static constexpr float VOXSZ  = GSPAN / (VOX_RES - 1);   // grid spacing
+static constexpr float ISO    = 0.0f;
 
 static const int   PANEL_W = 760;
 static const int   PANEL_H = 600;
@@ -76,7 +77,7 @@ __host__ __device__ static inline float scene_sdf(float x, float y, float z) {
 // of which cube edges are crossed by the iso-surface for configuration `i`;
 // tri_table[i] lists the edges of up to 5 triangles, terminated by -1.
 
-__host__ __device__ static const int EDGE_TABLE[256] = {
+CUDABOT_HD_TABLE int EDGE_TABLE[256] = {
     0x000, 0x109, 0x203, 0x30a, 0x406, 0x50f, 0x605, 0x70c,
     0x80c, 0x905, 0xa0f, 0xb06, 0xc0a, 0xd03, 0xe09, 0xf00,
     0x190, 0x099, 0x393, 0x29a, 0x596, 0x49f, 0x795, 0x69c,
@@ -111,7 +112,7 @@ __host__ __device__ static const int EDGE_TABLE[256] = {
     0x70c, 0x605, 0x50f, 0x406, 0x30a, 0x203, 0x109, 0x000
 };
 
-__host__ __device__ static const int TRI_TABLE[256][16] = {
+CUDABOT_HD_TABLE int TRI_TABLE[256][16] = {
     {-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1},
     {0,8,3,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1},
     {0,1,9,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1},
@@ -374,13 +375,13 @@ __host__ __device__ static const int TRI_TABLE[256][16] = {
 // For configuration bit `b`, the cube corner is `CORNER[b]` in unit-cube
 // coordinates (0 or 1 along x, y, z).  This must match the edge encoding in
 // EDGE_VTX below.
-__host__ __device__ static const int CORNER_DX[8] = {0, 1, 1, 0, 0, 1, 1, 0};
-__host__ __device__ static const int CORNER_DY[8] = {0, 0, 1, 1, 0, 0, 1, 1};
-__host__ __device__ static const int CORNER_DZ[8] = {0, 0, 0, 0, 1, 1, 1, 1};
+CUDABOT_HD_TABLE int CORNER_DX[8] = {0, 1, 1, 0, 0, 1, 1, 0};
+CUDABOT_HD_TABLE int CORNER_DY[8] = {0, 0, 1, 1, 0, 0, 1, 1};
+CUDABOT_HD_TABLE int CORNER_DZ[8] = {0, 0, 0, 0, 1, 1, 1, 1};
 
 // Each edge connects two corners.  Edge 0 = v0-v1, edge 1 = v1-v2, ..., as in
 // Bourke's reference.
-__host__ __device__ static const int EDGE_VTX[12][2] = {
+CUDABOT_HD_TABLE int EDGE_VTX[12][2] = {
     {0,1},{1,2},{2,3},{3,0},
     {4,5},{5,6},{6,7},{7,4},
     {0,4},{1,5},{2,6},{3,7}

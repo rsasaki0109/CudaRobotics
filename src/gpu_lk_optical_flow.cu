@@ -48,7 +48,7 @@ static const int   WIN       = 9;                 // window size (odd)
 static const int   HALF      = WIN / 2;           // 4
 static const int   N_FEAT    = 32 * 32;           // 1024 features on a grid
 static const int   N_ITERS   = 8;                 // LK iterations per level
-static const float DET_FLOOR = 1e-3f;             // Hessian determinant floor
+static constexpr float DET_FLOOR = 1e-3f;             // Hessian determinant floor
 
 static const int   PANEL_W   = 760;
 static const int   PANEL_H   = 600;

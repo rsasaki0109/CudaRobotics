@@ -48,6 +48,7 @@
 
 #include "neural_cdf.cuh"
 #include "cuda_check.cuh"
+#include "cuda_portable.cuh"
 
 
 using namespace std;
@@ -58,8 +59,8 @@ static const int MAX_OBSTACLES = 16;
 static const int MAX_DYNAMIC_OBSTACLES = 8;
 
 // CDF-MPPI control parameters (paper defaults).
-static const float CDF_DT = 0.01f;          // s, one-step replan period
-static const float PI_F = 3.14159265358979323846f;
+static constexpr float CDF_DT = 0.01f;          // s, one-step replan period
+static constexpr float PI_F = 3.14159265358979323846f;
 
 // ======================== Copied task scaffold ========================
 struct Obstacle3D { float x, y, z, r; };
@@ -554,7 +555,7 @@ static Scenario make_7dof_dynamic_avoid() {
 }
 
 // ======================== Utilities (copied) ========================
-static void ensure_build_dir() { mkdir("build", 0755); }
+static void ensure_build_dir() { cudabot::make_dir("build"); }
 
 static vector<string> parse_string_list(const string& text) {
     vector<string> v; string tok; stringstream ss(text);

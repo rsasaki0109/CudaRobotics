@@ -26,15 +26,15 @@ using namespace std;
 static const int GRID_X = 100;
 static const int GRID_Y = 100;
 static const int N_THETA = 72;
-static const float CELL_SIZE = 1.0f;
-static const float WHEELBASE = 2.5f;
-static const float MAX_STEER = 30.0f * M_PI / 180.0f;
+static constexpr float CELL_SIZE = 1.0f;
+static constexpr float WHEELBASE = 2.5f;
+static constexpr float MAX_STEER = 30.0f * M_PI / 180.0f;
 static const int N_STEER = 21;
-static const float STEP_SIZE = 3.0f;
+static constexpr float STEP_SIZE = 3.0f;
 static const int N_SIM_STEPS = 10;
-static const float VEHICLE_LENGTH = 4.0f;
-static const float VEHICLE_WIDTH = 2.0f;
-static const float INF_COST = 1e9f;
+static constexpr float VEHICLE_LENGTH = 4.0f;
+static constexpr float VEHICLE_WIDTH = 2.0f;
+static constexpr float INF_COST = 1e9f;
 
 // -------------------------------------------------------------------------
 // Hybrid A* Node

@@ -38,6 +38,7 @@
 
 #include "autodiff_engine.cuh"
 #include "cuda_check.cuh"
+#include "cuda_portable.cuh"
 
 
 using namespace std;
@@ -654,7 +655,7 @@ static PushScenario make_push_diagonal() {
 }
 
 // ======================== Utilities ========================
-static void ensure_build_dir() { mkdir("build", 0755); }
+static void ensure_build_dir() { cudabot::make_dir("build"); }
 static vector<int> parse_int_list(const string& t) {
     vector<int> v; string tok; stringstream ss(t);
     while (getline(ss, tok, ',')) if (!tok.empty()) v.push_back(max(1, atoi(tok.c_str())));

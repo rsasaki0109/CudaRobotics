@@ -11,7 +11,7 @@
 #include<opencv2/opencv.hpp>
 #include<opencv2/core/core.hpp>
 #include<opencv2/highgui/highgui.hpp>
-#include<sys/time.h>
+#include<chrono>
 #include<Eigen/Eigen>
 #include"cubic_spline.h"
 #include"motion_model.h"
@@ -235,9 +235,8 @@ void closed_loop_prediction(Vec_f cx, Vec_f cy, Vec_f cyaw, Vec_f ck, Vec_f spee
       10);
 
     // save image in build/bin/pngs
-    struct timeval tp;
-    gettimeofday(&tp, NULL);
-    long int ms = tp.tv_sec * 1000 + tp.tv_usec / 1000;
+    long long ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::system_clock::now().time_since_epoch()).count();
     std::string int_count = std::to_string(ms);
     cv::imwrite("./pngs/"+int_count+".png", bg);
     // cv::imshow("lqr_full", bg);

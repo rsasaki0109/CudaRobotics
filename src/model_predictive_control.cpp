@@ -12,7 +12,6 @@
 #include<opencv2/opencv.hpp>
 #include<opencv2/core/core.hpp>
 #include<opencv2/highgui/highgui.hpp>
-#include<sys/time.h>
 #include<Eigen/Eigen>
 #include<cppad/cppad.hpp>
 #include<cppad/ipopt/solve.hpp>

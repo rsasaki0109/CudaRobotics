@@ -61,7 +61,7 @@ namespace cudabot {
 #define N_ILQR 25       // iLQR iterations
 #define MAX_OBS 4
 
-static const float DT = 0.1f;
+static constexpr float DT = 0.1f;
 
 // ---- cost weights (shared host+device, identical to gpu_batched_ilqr.cu) ----
 __host__ __device__ static inline float w_ctrl_v() { return 0.02f; }

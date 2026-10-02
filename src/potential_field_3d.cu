@@ -26,11 +26,11 @@ using namespace std;
 // -------------------------------------------------------------------------
 // Constants
 // -------------------------------------------------------------------------
-const float KP         = 5.0f;     // attractive potential gain
-const float ETA        = 100.0f;   // repulsive potential gain
-const float AREA_WIDTH = 10.0f;    // area margin around obstacles
-const float grid_reso  = 1.0f;     // grid resolution [m]
-const float rr         = 5.0f;     // repulsive influence radius [m]
+constexpr float KP         = 5.0f;     // attractive potential gain
+constexpr float ETA        = 100.0f;   // repulsive potential gain
+constexpr float AREA_WIDTH = 10.0f;    // area margin around obstacles
+constexpr float grid_reso  = 1.0f;     // grid resolution [m]
+constexpr float rr         = 5.0f;     // repulsive influence radius [m]
 
 // Obstacle: (x, y, z, radius)
 struct Obstacle {

@@ -26,16 +26,17 @@
 #include "autodiff_engine.cuh"
 #include "diff_cost.cuh"
 #include "cuda_check.cuh"
+#include "cuda_portable.cuh"
 
 
 using namespace std;
 using namespace cudabot;
 
-static const float WORKSPACE = 50.0f;
+static constexpr float WORKSPACE = 50.0f;
 static const int MAX_OBSTACLES = 16;
 static const int MAX_DYNAMIC_OBSTACLES = 8;
 static const int DEFAULT_T_HORIZON = 36;
-static const float DEFAULT_LAMBDA = 10.0f;
+static constexpr float DEFAULT_LAMBDA = 10.0f;
 
 __constant__ Obstacle d_obstacles_dynbike[MAX_OBSTACLES];
 
@@ -829,7 +830,7 @@ static Scenario make_dynbike_slalom_scene() {
 }
 
 static void ensure_build_dir() {
-    mkdir("build", 0755);
+    cudabot::make_dir("build");
 }
 
 static vector<int> parse_int_list(const string& text) {

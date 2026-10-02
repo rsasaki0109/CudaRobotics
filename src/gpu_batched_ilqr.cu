@@ -55,7 +55,7 @@ namespace cudabot {
 #define MAX_OBS 4      // obstacles in the shared field
 
 static const int    N_PROB = 4096;   // batch size (independent start/goal queries)
-static const float  DT     = 0.1f;
+static constexpr float  DT     = 0.1f;
 
 // ---- cost weights (shared host+device) ----
 __host__ __device__ static inline float w_ctrl_v() { return 0.02f; }
@@ -382,8 +382,8 @@ __global__ void ilqr_batch_kernel(const float* __restrict__ obs, int n_obs,
 // ============================ visualization ============================
 static const int FRAME_W = 1280, FRAME_H = 720;
 static const int FIELD_PX = 700;                 // world square -> pixels
-static const float WORLD = 10.0f;                // world is [0,WORLD]^2
-static const float SCALE = FIELD_PX / WORLD;
+static constexpr float WORLD = 10.0f;                // world is [0,WORLD]^2
+static constexpr float SCALE = FIELD_PX / WORLD;
 static const int OX = 10, OY = 10;               // field top-left in the frame
 
 static inline cv::Point to_px(float wx, float wy) {

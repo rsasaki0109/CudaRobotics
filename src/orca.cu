@@ -38,18 +38,18 @@ using namespace std;
 #define MAX_NEIGHBORS 200   // max half-planes per agent (N_AGENTS-1 + obstacles)
 #define N_OBSTACLES  3
 
-static const float AGENT_RADIUS    = 0.5f;
-static const float MAX_SPEED       = 2.0f;
-static const float TIME_HORIZON    = 5.0f;
-static const float TIME_HORIZON_OBS = 5.0f;
-static const float DT              = 0.05f;
-static const float SIM_TIME        = 30.0f;
-static const float GOAL_TOL        = 0.3f;
-static const float CIRCLE_RADIUS   = 15.0f;
-static const float CIRCLE_CX       = 20.0f;
-static const float CIRCLE_CY       = 20.0f;
-static const float PI_F            = 3.14159265f;
-static const float EPSILON         = 1e-5f;
+static constexpr float AGENT_RADIUS    = 0.5f;
+static constexpr float MAX_SPEED       = 2.0f;
+static constexpr float TIME_HORIZON    = 5.0f;
+static constexpr float TIME_HORIZON_OBS = 5.0f;
+static constexpr float DT              = 0.05f;
+static constexpr float SIM_TIME        = 30.0f;
+static constexpr float GOAL_TOL        = 0.3f;
+static constexpr float CIRCLE_RADIUS   = 15.0f;
+static constexpr float CIRCLE_CX       = 20.0f;
+static constexpr float CIRCLE_CY       = 20.0f;
+static constexpr float PI_F            = 3.14159265f;
+static constexpr float EPSILON         = 1e-5f;
 
 // -------------------------------------------------------------------------
 // ORCA half-plane: point on boundary + outward normal (direction)

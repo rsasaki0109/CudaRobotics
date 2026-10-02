@@ -48,13 +48,13 @@ namespace cudabot {
 #define BLK   128
 static const int    N_PIX   = IMG_W * IMG_H;
 static const int    N_ITERS = 25;
-static const double CXC     = IMG_W * 0.5;
-static const double CYC     = IMG_H * 0.5;
+static constexpr double CXC     = IMG_W * 0.5;
+static constexpr double CYC     = IMG_H * 0.5;
 
 // ground-truth SE(2) the estimator must recover
-static const double GT_TX  = 6.0;
-static const double GT_TY  = -4.0;
-static const double GT_TH  = 0.020;
+static constexpr double GT_TX  = 6.0;
+static constexpr double GT_TY  = -4.0;
+static constexpr double GT_TH  = 0.020;
 
 static const int PANEL_W = 760;
 static const int PANEL_H = 330;

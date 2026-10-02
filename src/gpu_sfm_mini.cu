@@ -26,6 +26,7 @@
 
 #include "cuda_check.cuh"
 #include "cuda_video.h"
+#include "cuda_portable.cuh"
 
 namespace cudabot {
 
@@ -109,7 +110,7 @@ __device__ static inline int hamming_gpu(const unsigned int* a,
 
 static int hamming_cpu(const unsigned int* a, const unsigned int* b) {
     int d = 0;
-    for (int k = 0; k < DESC_WORDS; k++) d += __builtin_popcount(a[k] ^ b[k]);
+    for (int k = 0; k < DESC_WORDS; k++) d += cudabot::popcount32(a[k] ^ b[k]);
     return d;
 }
 
