@@ -19,7 +19,7 @@ LiDAR odometry, rolling voxel mapping, a typed Euclidean signed distance
 field, and model predictive path integral control through reusable CUDA cores
 and ROS~2/Nav2 adapters. We separate causal closed-loop simulation from
 recorded-data shadow execution and from physical cross-device reproduction.
-On an NVIDIA Turing-class consumer GPU, the native stack completes 30 continuous
+On an NVIDIA consumer GPU, the native stack completes 30 continuous
 alternating S-course traversals over 1,059.4 simulated seconds and 352.75~m
 with zero collisions, 0.0035\% final odometry drift, and zero frame-deadline
 misses. On a content-addressed MCD Ouster sequence, GPU odometry processes
@@ -170,7 +170,7 @@ Deadline misses & 0\% \\
 \end{tabular}
 \end{table}
 The command-effect distance equals ground-truth travel, establishing that
-commands affect subsequent plant state and scans. A second run on the same NVIDIA Turing-class consumer GPU also completes 30/30 traversals, but it is repeat evidence rather than
+commands affect subsequent plant state and scans. A second run on the same NVIDIA consumer GPU also completes 30/30 traversals, but it is repeat evidence rather than
 cross-model evidence.
 
 \subsection{Real PointCloud2 Shadow Execution}
@@ -224,7 +224,7 @@ multi-GPU workflow executes the 30-traversal node on two separately labeled
 self-hosted runners, then requires two distinct UUIDs and two distinct model
 names at one commit and source digest.
 
-Current evidence contains one NVIDIA Turing-class consumer GPU node. The
+Current evidence contains one NVIDIA consumer GPU node. The
 \texttt{multi\_gpu\_reproduction} claim remains partial and optional until a
 second distinct physical model passes the same release profile.
 Real-robot closed-loop navigation is also outside the current claim boundary.

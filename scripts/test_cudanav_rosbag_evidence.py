@@ -67,7 +67,7 @@ class CudaNavRosbagEvidenceTest(unittest.TestCase):
                     "name": "Test GPU",
                     "uuid": "GPU-test",
                     "driver_version": "999.0",
-                    "memory_total_mib": "8192",
+                    "memory_total_mib": "redacted",
                 }
             ],
             "input_bag": describe_input(bag),

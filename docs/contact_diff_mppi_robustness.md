@@ -96,7 +96,7 @@ python3 scripts/run_contact_robustness.py \
 ```
 
 Smoke uses 12 episodes and cannot satisfy the paper robustness claim. A
-2026-07-29 local NVIDIA Turing-class consumer GPU smoke validated the full artifact chain: 12/12
+2026-07-29 local NVIDIA consumer GPU smoke validated the full artifact chain: 12/12
 episodes were retained; `box_align_contact_loss` gave Diff-MPPI-3 and
 SOPPI-fast 2/2 versus MPPI 0/2, while every method remained 0/2 on
 `box_align_detour`. This is runner validation, not statistical paper evidence.

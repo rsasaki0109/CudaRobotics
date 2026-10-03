@@ -66,7 +66,7 @@
     "goal_reached": true,
     "gpu": {
       "driver_version": 13020,
-      "name": "NVIDIA Turing-class consumer GPU"
+      "name": "NVIDIA consumer GPU"
     },
     "ground_truth_distance_m": 10.921516948,
     "ground_truth_goal_distance_m": 0.27702105,

@@ -13,9 +13,9 @@
     "multi_gpu": false
   },
   "hardware": {
-    "name": "NVIDIA Turing-class consumer GPU",
+    "name": "NVIDIA consumer GPU",
     "uuid": "GPU-anon-8f11fdb6fe73",
-    "memory_total_mib": 6144,
+    "memory_total_mib": "redacted",
     "driver_version": "596.36"
   },
   "metrics": {

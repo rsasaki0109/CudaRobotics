@@ -91,7 +91,7 @@ def write_run(
                 "name": gpu_name,
                 "uuid": gpu_uuid,
                 "driver_version": "999.0",
-                "memory_total_mib": "8192",
+                "memory_total_mib": "redacted",
             }
         ],
         "traversal_count": 1,

@@ -119,8 +119,8 @@
   "gpu": [
     {
       "driver_version": "596.36",
-      "memory_total_mib": "6144",
-      "name": "NVIDIA Turing-class consumer GPU",
+      "memory_total_mib": "redacted",
+      "name": "NVIDIA consumer GPU",
       "physical_index": "0",
       "uuid": "GPU-anon-8f11fdb6fe73"
     }

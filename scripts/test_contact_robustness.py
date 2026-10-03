@@ -259,7 +259,7 @@ class ContactRobustnessTest(unittest.TestCase):
                     "name": "Test GPU",
                     "uuid": "GPU-test",
                     "driver_version": "999",
-                    "memory_total_mib": "8192",
+                    "memory_total_mib": "redacted",
                 }
             ],
             "matrix": {

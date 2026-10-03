@@ -119,7 +119,7 @@ def write_closed(
                 "name": gpu_name,
                 "uuid": gpu_uuid,
                 "driver_version": "999",
-                "memory_total_mib": "8192",
+                "memory_total_mib": "redacted",
             }
         ],
         "traversal_count": 10,
@@ -211,7 +211,7 @@ def write_rosbag(run: Path) -> dict:
                 "name": "GPU A",
                 "uuid": "GPU-a",
                 "driver_version": "999",
-                "memory_total_mib": "8192",
+                "memory_total_mib": "redacted",
             }
         ],
         "input_bag": source,

@@ -227,7 +227,7 @@ class ContactExternalFidelityTest(unittest.TestCase):
                     "name": "fixture",
                     "uuid": "GPU-fixture",
                     "driver_version": "999",
-                    "memory_total_mib": "8192",
+                    "memory_total_mib": "redacted",
                 }
             ],
             "engine": {

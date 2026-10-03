@@ -10,7 +10,7 @@ fixed-seed smoke results with enough detail to make wins and failures visible.
 - Portable evidence: [`cudanav_rosbag_shadow_release_2026-07-30.json`](cudanav_rosbag_shadow_release_2026-07-30.json)
 - Scope: public Autoware Istanbul PointCloud2 + recorded static TF, with a
   deterministic Path derived from recorded GNSS poses
-- Result: release gate passes on an NVIDIA Turing-class consumer GPU with 793 CUDA MPPI diagnostics,
+- Result: release gate passes on an NVIDIA consumer GPU with 793 CUDA MPPI diagnostics,
   790/790 command-paired point clouds, 4.801 ms solve p95, and all required
   CudaNav output topics retained in a content-addressed MCAP
 - Claim boundary: real-sensor shadow evaluation, not closed-loop navigation

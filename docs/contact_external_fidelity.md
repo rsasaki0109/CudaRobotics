@@ -70,7 +70,7 @@ satisfy the paper's external-fidelity claim.
 
 ## Release result
 
-The 2026-07-28 UTC release run completed all 3,150 episodes on an NVIDIA Turing-class consumer GPU
+The 2026-07-28 UTC release run completed all 3,150 episodes on an NVIDIA consumer GPU
 with MuJoCo 3.11.0. Diff-MPPI-3 reached 0.46 aggregate success, SOPPI-fast
 0.34, and MPPI 0.29 across the fixed matrix. The full 70-cell paired comparison
 family contained three Holm-significant positive Diff-MPPI-3 cells and no

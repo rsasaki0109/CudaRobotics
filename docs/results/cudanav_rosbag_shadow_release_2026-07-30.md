@@ -2,7 +2,7 @@
 
 - Source commit: `c4b91452d079fbfa6b285d80355632a5d1c9c716` (clean)
 - Dataset: `autoware_istanbul_localization_smoke`
-- GPU: NVIDIA Turing-class consumer GPU (`GPU-anon-8f11fdb6fe73`)
+- GPU: NVIDIA consumer GPU (`GPU-anon-8f11fdb6fe73`)
 - Claim boundary: real sensor data with a derived recorded Path; commands do not alter recorded motion.
 
 ## Results

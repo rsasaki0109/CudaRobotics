@@ -8,7 +8,7 @@ warps divide the K dimension and reduce through shared memory.
 
 ## Microbenchmark
 
-- GPU: NVIDIA Turing-class consumer GPU, 6 GB
+- GPU: NVIDIA consumer GPU
 - CUDA: 12.8 compiler; driver 596.36
 - Shape: `T=56`, three controls per step
 - Timing: 20 warmups, 200 iterations, CUDA events

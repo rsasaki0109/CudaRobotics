@@ -4,7 +4,7 @@ GPU KISS-ICP odometry on a content-addressed real PointCloud2 sequence. This is 
 
 - Source commit: `455e013843a77de8b6c78073048c115143cb6edc`
 - Dataset: `autoware_istanbul_localization_smoke`
-- GPU: `NVIDIA Turing-class consumer GPU` (`GPU-anon-8f11fdb6fe73`)
+- GPU: `NVIDIA consumer GPU` (`GPU-anon-8f11fdb6fe73`)
 - Frames / duration: 300 / 29.900 s
 - Declared profile / startup offset: `smoke` / 1.000 s
 - Points per frame (min / mean / max): 932 / 1214.00 / 1281

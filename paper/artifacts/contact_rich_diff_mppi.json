@@ -39,7 +39,7 @@
       ],
       "limitations": [
         "The other four scenario cells are not Holm-significant, and box_align_detour remains 0/30 for every planner.",
-        "All planners calibrated to K=1024 on the reference NVIDIA Turing-class consumer GPU; the equal-budget claim is enforced by the 10 ms slot, not by different selected sample counts."
+        "All planners calibrated to K=1024 on the reference NVIDIA consumer GPU; the equal-budget claim is enforced by the 10 ms slot, not by different selected sample counts."
       ]
     },
     {
@@ -188,7 +188,7 @@
         {
           "path": "docs/results/contact_robustness_2026-07-28_provenance.json",
           "normalization": "text_lf",
-          "sha256": "c960d81a7ee19ebff59a0e468f57c7da6e7114f63f81cc2bea575716cffd6eaf"
+          "sha256": "0a5560965c9c1b5f04bcbf8671e58c413e8e5209bfdd6929e39a1025d9c45fbc"
         }
       ],
       "assertions": [
@@ -310,7 +310,7 @@
         {
           "path": "docs/results/contact_external_fidelity_2026-07-28_provenance.json",
           "normalization": "text_lf",
-          "sha256": "cf1c14a38c846fc8257841866f9e5a60bec3a78bb35233595acfc7b4c4fa8a53"
+          "sha256": "60ac7ae42fc45ac56cf9d5d8923da8329342b2164b7f377cc21b9d1af0b1a160"
         }
       ],
       "assertions": [

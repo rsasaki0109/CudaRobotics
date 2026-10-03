@@ -6,9 +6,9 @@ This chapter is generated from the validated, content-addressed release artifact
 
 | Block | Episodes | Commit | GPU |
 |---|---:|---|---|
-| Robustness | 32,400 | `af4f0542d23e` | NVIDIA Turing-class consumer GPU |
-| Matched compute | 375 calibration + 450 held-out | `a6ca48ae09e4` | NVIDIA Turing-class consumer GPU |
-| MuJoCo transfer | 3,150 | `61b9f518ab09` | NVIDIA Turing-class consumer GPU |
+| Robustness | 32,400 | `af4f0542d23e` | NVIDIA consumer GPU |
+| Matched compute | 375 calibration + 450 held-out | `a6ca48ae09e4` | NVIDIA consumer GPU |
+| MuJoCo transfer | 3,150 | `61b9f518ab09` | NVIDIA consumer GPU |
 
 ## Broad robustness
 
@@ -54,7 +54,7 @@ The full 70-cell family contains 3 Holm-significant positive and 0 negative cell
 - These experiments support a contact-rich, compute-quality result; they do not establish universal planner dominance.
 - SOPPI-fast contains one nominal gradient step and is not a pure sampling-only or pure-SVGD baseline.
 - The MuJoCo task is a custom planar closed-loop sim-to-sim transfer, not a standard manipulator benchmark or real-robot result.
-- All results are from one NVIDIA Turing-class consumer GPU. Independent hardware replication is desirable but is not silently implied.
+- All results are from one NVIDIA consumer GPU. Independent hardware replication is desirable but is not silently implied.
 
 ## Reproduction
 

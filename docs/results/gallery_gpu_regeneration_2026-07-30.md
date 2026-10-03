@@ -4,10 +4,10 @@ Status: **PASS**
 
 Seven README gallery links had no retained source GIF. The corresponding CUDA
 demos were rebuilt and executed from clean source commit
-`6bf402ba7ded5fc56142a60a069f8794f52f6bb0` on an NVIDIA Turing-class consumer GPU
+`6bf402ba7ded5fc56142a60a069f8794f52f6bb0` on an NVIDIA consumer GPU
 (`GPU-anon-8f11fdb6fe73`, driver 596.36).
 
-Environment: Ubuntu 24.04 under WSL2, CUDA 12.6.85 targeting sm_75, OpenCV
+Environment: Ubuntu 24.04 under WSL2, CUDA 12.6.85 targeting the local GPU architecture, OpenCV
 4.6.0, and FFmpeg 6.1.1.
 
 | Demo | Size | Frames | Resolution | SHA-256 |

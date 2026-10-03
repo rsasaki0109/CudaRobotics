@@ -9,7 +9,7 @@ substitute for the required CPython 3.10/3.12 manylinux artifacts.
 - Checkout: clean
 - Embedded source digest: `4c56949ba56ad33f01512323175faf9b96929ddec3e9068d1010f0006248e6c9`
 - Build: CPython 3.12.10, CUDA Toolkit 12.8, Windows amd64
-- GPU: NVIDIA Turing-class consumer GPU, driver 596.36
+- GPU: NVIDIA consumer GPU, driver 596.36
 - Artifact verifier: pass for the sdist and wheel
 - Fresh installed-wheel test: 13 passed, 1 optional PyTorch DLPack test skipped
 - MPPI quickstart: pass, goal reached in 350 steps

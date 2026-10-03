@@ -69,7 +69,7 @@ CI runs.
 
 ## Measured smoke result
 
-NVIDIA Turing-class consumer GPU, CUDA 12.8, 64 scans, fixed seeds:
+NVIDIA consumer GPU, CUDA 12.8, 64 scans, fixed seeds:
 
 | Metric | Result |
 |---|---:|

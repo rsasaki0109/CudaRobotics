@@ -104,10 +104,10 @@
   "dataset_spec_sha256": "3419cd0ff20a85f86b65fc6639a378fd7a6fd30342d3d8932564dbcf0eb2000f",
   "evidence_mode": "real_sensor_all_gpu_core_shadow",
   "gpu": {
-    "compute_capability": "7.5",
+    "compute_capability": "redacted",
     "device": 0,
     "driver_version": 13020,
-    "name": "NVIDIA Turing-class consumer GPU",
+    "name": "NVIDIA consumer GPU",
     "uuid": "GPU-anon-8f11fdb6fe73"
   },
   "metrics": {

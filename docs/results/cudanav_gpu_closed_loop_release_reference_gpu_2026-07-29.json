@@ -55,7 +55,7 @@
   },
   "gpu_identity": {
     "driver_version": "596.36",
-    "name": "NVIDIA Turing-class consumer GPU",
+    "name": "NVIDIA consumer GPU",
     "physical_index": "0",
     "uuid": "GPU-anon-8f11fdb6fe73"
   },
@@ -76,7 +76,7 @@
     "goal_reached": true,
     "gpu": {
       "driver_version": 13020,
-      "name": "NVIDIA Turing-class consumer GPU"
+      "name": "NVIDIA consumer GPU"
     },
     "ground_truth_distance_m": 352.21128604,
     "ground_truth_goal_distance_m": 0.258945763,

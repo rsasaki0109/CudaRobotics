@@ -6,7 +6,7 @@ disabled by default.
 
 ## Wall-gap A/B smoke
 
-- GPU: NVIDIA Turing-class consumer GPU, 6 GB
+- GPU: NVIDIA consumer GPU
 - CUDA compiler: 12.8
 - `T=56`, one optimizer iteration
 - Same source and closed-loop test; only `--use_fast_math` differs
