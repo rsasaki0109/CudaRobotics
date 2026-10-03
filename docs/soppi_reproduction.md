@@ -478,6 +478,12 @@ friction; an axis-aligned path (`oi_face_axis_mppi`,
 [`results/box_detour_axis_path_2026-10-03.md`](results/box_detour_axis_path_2026-10-03.md))
 lifts it to 24/30 on fresh seeds and wins all three hard-plant obstacle cells,
 but fails the two low-wall cells on the smooth plant (0/30, 2/30).
+That failure was a corner-clipping bug in the face approach; with it fixed and
+the axis-aligned path used only when the straight line is blocked
+(`oi_face_auto_mppi`,
+[`results/box_detour_safe_slide_2026-10-03.md`](results/box_detour_safe_slide_2026-10-03.md))
+the four detour cells reach 118/120 on the smooth plant and 113/120 on the
+hard plant, against 52/120 and 18/120 for `soppi_fast` on the same unseen seeds.
 
 | Scenario | Planner | Success | Steps | Final Dist | Cost | Avg ms |
 |---|---|---:|---:|---:|---:|---:|
