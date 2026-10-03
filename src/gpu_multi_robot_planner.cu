@@ -250,14 +250,6 @@ static cv::Mat draw_frame(const std::vector<unsigned char>& occ,
     return img;
 }
 
-static void convert_avi_to_gif(const std::string& avi, const std::string& gif, int fps) {
-    char cmd[1024];
-    std::snprintf(cmd, sizeof(cmd),
-                  "ffmpeg -y -i %s -vf \"fps=%d,scale=900:-1:flags=lanczos,split[a][b];[a]palettegen=stats_mode=diff[p];[b][p]paletteuse=dither=bayer:bayer_scale=5:diff_mode=rectangle\" %s 2>" CUDABOT_NULL_DEVICE,
-                  avi.c_str(), fps, gif.c_str());
-    int rc = std::system(cmd);
-    if (rc != 0) std::fprintf(stderr, "ffmpeg failed (%d)\n", rc);
-}
 
 }  // namespace cudabot
 
@@ -381,8 +373,7 @@ int main() {
     int final_arr = 0; for (auto a : arr_h) if (a) final_arr++;
     std::printf("Sim done.  %d steps, %d / %d arrived  (avg %.2f ms / step)\n",
                 frame_count, final_arr, N_ROBOTS, ms_step_total / std::max(1, frame_count));
-    convert_avi_to_gif("gif/gpu_multi_robot_planner.avi",
-                       "gif/gpu_multi_robot_planner.gif", 12);
+    cudabot::avi_to_gif("gif/gpu_multi_robot_planner.avi", "gif/gpu_multi_robot_planner.gif", 12, 900);
     std::printf("GIF saved to gif/gpu_multi_robot_planner.gif\n");
 
     cudaFree(d_occ); cudaFree(d_goal_cells);

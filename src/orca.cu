@@ -829,9 +829,7 @@ int main() {
     }
 
     video.release();
-    system("ffmpeg -y -i gif/orca.avi "
-           "-vf \"fps=15,scale=400:-1:flags=lanczos\" -loop 0 "
-           "gif/orca.gif 2>" CUDABOT_NULL_DEVICE);
+    cudabot::avi_to_gif_simple("gif/orca.avi", "gif/orca.gif", 15, 400);
     cout << "GIF saved to gif/orca.gif" << endl;
 
     // Cleanup

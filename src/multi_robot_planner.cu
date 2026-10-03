@@ -401,9 +401,7 @@ int main() {
     }
 
     video.release();
-    system("ffmpeg -y -i gif/multi_robot.avi "
-           "-vf \"fps=15,scale=400:-1:flags=lanczos\" -loop 0 "
-           "gif/multi_robot.gif 2>" CUDABOT_NULL_DEVICE);
+    cudabot::avi_to_gif_simple("gif/multi_robot.avi", "gif/multi_robot.gif", 15, 400);
     std::cout << "GIF saved to gif/multi_robot.gif" << std::endl;
 
     // --- Cleanup ---

@@ -589,9 +589,7 @@ int main() {
     std::cout << "Video saved to gif/comparison_pf.avi" << std::endl;
 
     // Convert to gif
-    system("ffmpeg -y -i gif/comparison_pf.avi "
-           "-vf \"fps=15,scale=800:-1:flags=lanczos\" -loop 0 "
-           "gif/comparison_pf.gif 2>" CUDABOT_NULL_DEVICE);
+    cudabot::avi_to_gif_simple("gif/comparison_pf.avi", "gif/comparison_pf.gif", 15, 800);
     std::cout << "GIF saved to gif/comparison_pf.gif" << std::endl;
 
     // Cleanup

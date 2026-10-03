@@ -403,14 +403,6 @@ static int count_visible_host(const std::vector<unsigned char>& occ,
     return c;
 }
 
-static void convert_avi_to_gif(const char* avi, const char* gif, int fps) {
-    char cmd[512];
-    std::snprintf(cmd, sizeof(cmd),
-        "ffmpeg -y -i %s -vf \"fps=%d,scale=1200:-1:flags=lanczos\" -loop 0 %s "
-        "> " CUDABOT_NULL_DEVICE " 2>&1", avi, fps, gif);
-    int rc = std::system(cmd);
-    if (rc != 0) std::fprintf(stderr, "ffmpeg conversion returned %d\n", rc);
-}
 
 // -------------------------------------------------------------------------
 // main
@@ -566,7 +558,7 @@ int main() {
         if (base_done_step >= 0 && vis_done_step >= 0) break;
     }
     video.release();
-    convert_avi_to_gif("gif/visibility_mppi.avi", "gif/visibility_mppi.gif", 15);
+    cudabot::avi_to_gif_simple("gif/visibility_mppi.avi", "gif/visibility_mppi.gif", 15, 1200);
 
     std::printf("Goal reached: baseline step=%d, visibility-aware step=%d\n",
                 base_done_step, vis_done_step);

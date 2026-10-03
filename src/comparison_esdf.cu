@@ -397,9 +397,7 @@ int main() {
                     cpu_per_cell_us / gpu_per_cell_us);
     }
 
-    std::system("ffmpeg -y -i gif/comparison_esdf.avi "
-                "-vf \"fps=15,scale=900:-1:flags=lanczos\" -loop 0 "
-                "gif/comparison_esdf.gif 2>" CUDABOT_NULL_DEVICE);
+    cudabot::avi_to_gif_simple("gif/comparison_esdf.avi", "gif/comparison_esdf.gif", 15, 900);
     std::cout << "GIF saved to gif/comparison_esdf.gif" << std::endl;
     return 0;
 }

@@ -673,9 +673,7 @@ int main()
     video.release();
     std::cout << "Video saved to gif/comparison_icp.avi" << std::endl;
 
-    system("ffmpeg -y -i gif/comparison_icp.avi "
-           "-vf \"fps=10,scale=800:-1:flags=lanczos\" -loop 0 "
-           "gif/comparison_icp.gif 2>" CUDABOT_NULL_DEVICE);
+    cudabot::avi_to_gif_simple("gif/comparison_icp.avi", "gif/comparison_icp.gif", 10, 800);
     std::cout << "GIF saved to gif/comparison_icp.gif" << std::endl;
 
     // Cleanup

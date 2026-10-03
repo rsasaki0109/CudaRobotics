@@ -447,9 +447,7 @@ int main()
     std::cout << "Video saved to gif/icp.avi" << std::endl;
 
     // Convert to gif
-    system("ffmpeg -y -i gif/icp.avi "
-           "-vf \"fps=10,scale=800:-1:flags=lanczos\" -loop 0 "
-           "gif/icp.gif 2>" CUDABOT_NULL_DEVICE);
+    cudabot::avi_to_gif_simple("gif/icp.avi", "gif/icp.gif", 10, 800);
     std::cout << "GIF saved to gif/icp.gif" << std::endl;
 
     // Cleanup

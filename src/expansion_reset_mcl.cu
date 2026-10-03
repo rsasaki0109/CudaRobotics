@@ -753,9 +753,7 @@ int main() {
     }
 
     video.release();
-    system("ffmpeg -y -i gif/expansion_reset_mcl.avi "
-           "-vf \"fps=15,scale=800:-1:flags=lanczos\" -loop 0 "
-           "gif/expansion_reset_mcl.gif 2>" CUDABOT_NULL_DEVICE);
+    cudabot::avi_to_gif_simple("gif/expansion_reset_mcl.avi", "gif/expansion_reset_mcl.gif", 15, 800);
     std::cout << "GIF saved to gif/expansion_reset_mcl.gif" << std::endl;
 
     cudaFree(d_px); cudaFree(d_py); cudaFree(d_ptheta); cudaFree(d_pw);

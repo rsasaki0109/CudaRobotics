@@ -452,14 +452,6 @@ static void render_cloud(cv::Mat& img, const std::vector<float>& xs,
     }
 }
 
-static void convert_avi_to_gif(const char* avi, const char* gif, int fps) {
-    char cmd[512];
-    std::snprintf(cmd, sizeof(cmd),
-        "ffmpeg -y -i %s -vf \"fps=%d,scale=900:-1:flags=lanczos\" -loop 0 %s "
-        "> " CUDABOT_NULL_DEVICE " 2>&1", avi, fps, gif);
-    int rc = std::system(cmd);
-    if (rc != 0) std::fprintf(stderr, "ffmpeg conversion returned %d\n", rc);
-}
 
 // ------------------------------------------------------------------------
 // main
@@ -591,8 +583,7 @@ int main() {
         video.write(frame_img);
     }
     video.release();
-    convert_avi_to_gif("gif/comparison_lidar3d_realistic.avi",
-                       "gif/comparison_lidar3d_realistic.gif", 15);
+    cudabot::avi_to_gif_simple("gif/comparison_lidar3d_realistic.avi", "gif/comparison_lidar3d_realistic.gif", 15, 900);
 
     if (counted > 0) {
         double c_ms = clean_ms_sum / counted;

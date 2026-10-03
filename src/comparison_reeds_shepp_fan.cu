@@ -584,9 +584,7 @@ int main() {
                     gpu_per, cpu_per, cpu_per / gpu_per);
     }
 
-    std::system("ffmpeg -y -i gif/comparison_reeds_shepp_fan.avi "
-                "-vf \"fps=15,scale=900:-1:flags=lanczos\" -loop 0 "
-                "gif/comparison_reeds_shepp_fan.gif 2>" CUDABOT_NULL_DEVICE);
+    cudabot::avi_to_gif_simple("gif/comparison_reeds_shepp_fan.avi", "gif/comparison_reeds_shepp_fan.gif", 15, 900);
     std::cout << "GIF saved to gif/comparison_reeds_shepp_fan.gif" << std::endl;
     return 0;
 }

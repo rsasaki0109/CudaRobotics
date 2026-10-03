@@ -549,9 +549,7 @@ int main()
     video.release();
     cout << "Video saved to gif/comparison_stomp.avi" << endl;
 
-    system("ffmpeg -y -i gif/comparison_stomp.avi "
-           "-vf \"fps=15,scale=800:-1:flags=lanczos\" -loop 0 "
-           "gif/comparison_stomp.gif 2>" CUDABOT_NULL_DEVICE);
+    cudabot::avi_to_gif_simple("gif/comparison_stomp.avi", "gif/comparison_stomp.gif", 15, 800);
     cout << "GIF saved to gif/comparison_stomp.gif" << endl;
 
     cudabot::imshow("comparison_stomp", combined);

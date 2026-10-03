@@ -446,9 +446,7 @@ int main() {
     }
 
     video.release();
-    system("ffmpeg -y -i gif/comparison_diff_mppi.avi "
-           "-vf \"fps=15,scale=400:-1\" -loop 0 "
-           "gif/comparison_diff_mppi.gif 2>" CUDABOT_NULL_DEVICE);
+    cudabot::avi_to_gif_simple("gif/comparison_diff_mppi.avi", "gif/comparison_diff_mppi.gif", 15, 400, false);
 
     standard.cleanup();
     diff.cleanup();

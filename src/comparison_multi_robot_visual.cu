@@ -233,9 +233,7 @@ int main() {
     }
 
     video.release();
-    system("ffmpeg -y -i gif/comparison_multi_robot_visual.avi "
-           "-vf \"fps=20,scale=800:-1:flags=lanczos\" -loop 0 "
-           "gif/comparison_multi_robot_visual.gif 2>" CUDABOT_NULL_DEVICE);
+    cudabot::avi_to_gif_simple("gif/comparison_multi_robot_visual.avi", "gif/comparison_multi_robot_visual.gif", 20, 800);
     printf("GIF saved to gif/comparison_multi_robot_visual.gif\n");
 
     cudaFree(d_px); cudaFree(d_py); cudaFree(d_vx); cudaFree(d_vy);

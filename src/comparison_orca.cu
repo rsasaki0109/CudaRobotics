@@ -649,9 +649,7 @@ int main() {
     }
 
     video.release();
-    system("ffmpeg -y -i gif/comparison_orca.avi "
-           "-vf \"fps=20,scale=800:-1:flags=lanczos\" -loop 0 "
-           "gif/comparison_orca.gif 2>" CUDABOT_NULL_DEVICE);
+    cudabot::avi_to_gif_simple("gif/comparison_orca.avi", "gif/comparison_orca.gif", 20, 800);
 
     printf("GIF saved to gif/comparison_orca.gif\n");
 

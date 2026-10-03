@@ -233,9 +233,7 @@ int main() {
     std::cout << "Comparison video saved to gif/comparison_dwa.avi" << std::endl;
 
     // Convert to gif
-    system("ffmpeg -y -i gif/comparison_dwa.avi "
-           "-vf \"fps=15,scale=800:-1:flags=lanczos\" -loop 0 "
-           "gif/comparison_dwa.gif 2>" CUDABOT_NULL_DEVICE);
+    cudabot::avi_to_gif_simple("gif/comparison_dwa.avi", "gif/comparison_dwa.gif", 15, 800);
     std::cout << "GIF saved to gif/comparison_dwa.gif" << std::endl;
 
     cudaFree(d_ob); cudaFree(d_costs); cudaFree(d_cv); cudaFree(d_cyr); cudaFree(d_mi);

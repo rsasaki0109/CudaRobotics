@@ -545,9 +545,7 @@ int main() {
                     cpu_per_ray_us / gpu_per_ray_us);
     }
 
-    std::system("ffmpeg -y -i gif/comparison_voxel_map.avi "
-                "-vf \"fps=15,scale=900:-1:flags=lanczos\" -loop 0 "
-                "gif/comparison_voxel_map.gif 2>" CUDABOT_NULL_DEVICE);
+    cudabot::avi_to_gif_simple("gif/comparison_voxel_map.avi", "gif/comparison_voxel_map.gif", 15, 900);
     std::cout << "GIF saved to gif/comparison_voxel_map.gif" << std::endl;
     return 0;
 }

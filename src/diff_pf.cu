@@ -770,9 +770,7 @@ int main() {
                 "  DPF untrained     (alpha=0.20)        = %.3f m\n"
                 "  DPF trained       (alpha=%.2f)        = %.3f m\n",
                 rmse_A, rmse_B, alpha_dpf, rmse_C);
-    std::system("ffmpeg -y -i gif/comparison_diff_pf.avi "
-                "-vf \"fps=15,scale=1140:-1:flags=lanczos\" -loop 0 "
-                "gif/comparison_diff_pf.gif 2>" CUDABOT_NULL_DEVICE);
+    cudabot::avi_to_gif_simple("gif/comparison_diff_pf.avi", "gif/comparison_diff_pf.gif", 15, 1140);
     std::cout << "GIF saved to gif/comparison_diff_pf.gif" << std::endl;
     return 0;
 }

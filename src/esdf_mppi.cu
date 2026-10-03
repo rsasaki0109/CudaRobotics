@@ -298,15 +298,6 @@ static void draw_path(cv::Mat& img, const std::vector<cv::Point2f>& path, cv::Sc
 // -------------------------------------------------------------------------
 // AVI -> GIF via system ffmpeg
 // -------------------------------------------------------------------------
-static void convert_avi_to_gif(const char* avi_path, const char* gif_path, int fps) {
-    char cmd[512];
-    std::snprintf(cmd, sizeof(cmd),
-        "ffmpeg -y -i %s -vf \"fps=%d,scale=700:-1:flags=lanczos\" -loop 0 %s "
-        "> " CUDABOT_NULL_DEVICE " 2>&1",
-        avi_path, fps, gif_path);
-    int rc = std::system(cmd);
-    if (rc != 0) std::fprintf(stderr, "ffmpeg conversion returned %d\n", rc);
-}
 
 // -------------------------------------------------------------------------
 // main
@@ -459,7 +450,7 @@ int main() {
     CUDA_CHECK(cudaFree(d_rng));
 
     std::printf("Video saved to %s\n", AVI_PATH);
-    convert_avi_to_gif(AVI_PATH, GIF_PATH, 15);
+    cudabot::avi_to_gif_simple(AVI_PATH, GIF_PATH, 15, 700);
     std::printf("GIF saved to %s\n", GIF_PATH);
     return 0;
 }

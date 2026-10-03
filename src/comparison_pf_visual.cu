@@ -334,9 +334,7 @@ int main() {
     }
 
     video.release();
-    system("ffmpeg -y -i gif/comparison_pf_visual.avi "
-           "-vf \"fps=15,scale=800:-1:flags=lanczos\" -loop 0 "
-           "gif/comparison_pf_visual.gif 2>" CUDABOT_NULL_DEVICE);
+    cudabot::avi_to_gif_simple("gif/comparison_pf_visual.avi", "gif/comparison_pf_visual.gif", 15, 800);
     std::cout << "GIF saved to gif/comparison_pf_visual.gif" << std::endl;
 
     cudaFree(d_px); cudaFree(d_px2); cudaFree(d_pw); cudaFree(d_obs);

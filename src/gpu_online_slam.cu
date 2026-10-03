@@ -418,14 +418,6 @@ static cv::Mat draw_panel(const std::vector<float>& poses,
     return img;
 }
 
-static void convert_avi_to_gif(const std::string& avi, const std::string& gif, int fps) {
-    char cmd[1024];
-    std::snprintf(cmd, sizeof(cmd),
-                  "ffmpeg -y -i %s -vf \"fps=%d,scale=1080:-1:flags=lanczos,split[a][b];[a]palettegen=stats_mode=diff[p];[b][p]paletteuse=dither=bayer:bayer_scale=5:diff_mode=rectangle\" %s 2>" CUDABOT_NULL_DEVICE,
-                  avi.c_str(), fps, gif.c_str());
-    int rc = std::system(cmd);
-    if (rc != 0) std::fprintf(stderr, "ffmpeg failed (%d)\n", rc);
-}
 
 }  // namespace cudabot
 
@@ -781,7 +773,7 @@ int main() {
                     total_step_ms / counted_steps, WINDOW, GN_ITERS, PCG_ITERS,
                     n_loops_added, n_global_passes);
     }
-    convert_avi_to_gif("gif/gpu_online_slam.avi", "gif/gpu_online_slam.gif", VIDEO_FPS);
+    cudabot::avi_to_gif("gif/gpu_online_slam.avi", "gif/gpu_online_slam.gif", VIDEO_FPS, 1080);
     std::printf("GIF saved to gif/gpu_online_slam.gif\n");
 
     cudaFree(d_ei); cudaFree(d_ej); cudaFree(d_ez); cudaFree(d_poses);

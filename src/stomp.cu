@@ -414,9 +414,7 @@ int main()
     cout << "Video saved to gif/stomp.avi" << endl;
 
     // Convert to GIF
-    system("ffmpeg -y -i gif/stomp.avi "
-           "-vf \"fps=15,scale=600:-1:flags=lanczos\" -loop 0 "
-           "gif/stomp.gif 2>" CUDABOT_NULL_DEVICE);
+    cudabot::avi_to_gif_simple("gif/stomp.avi", "gif/stomp.gif", 15, 600);
     cout << "GIF saved to gif/stomp.gif" << endl;
 
     cudabot::imshow("stomp", final_img);
