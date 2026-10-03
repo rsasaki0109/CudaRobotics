@@ -37,9 +37,11 @@ the CPU and timed, so the speed-up is measured, not assumed.
 | | time / control step | note |
 |---|---|---|
 | CPU rollout | `~11.0 ms` | 2048 × 40 single-threaded |
-| **GPU rollout** | **`~0.015 ms`** | one thread / trajectory |
+| **GPU rollout** | **`~0.038 ms`** | one thread / trajectory |
 
-**≈ 740× speed-up.** At that cost the controller plans in real time and the car
+**≈ 290× speed-up.** (Earlier revisions reported ~0.015 ms / ≈ 740×: the GPU
+total was divided by `MAX_STEPS` = 900 although the run ends after 3 laps,
+~353 steps. The figures above apply that correction.) At that cost the controller plans in real time and the car
 actually races: it completes **3/3 laps** of the 122.9 m circuit, **best lap
 6.72 s**, **top speed 16 m/s**, staying on the asphalt throughout.
 
@@ -51,7 +53,8 @@ cd .. && ./bin/gpu_mppi_racing
 ```
 
 Prints the per-step GPU/CPU rollout times + speed-up and the lap times, and
-writes `gif/gpu_mppi_racing.gif`.
+writes `gif/gpu_mppi_racing.gif`. Options (`--help` lists them):
+`--samples N`, `--laps N`, `--steps N`, `--seed N`, `--no-video`, `--headless`.
 
 ## Notes
 

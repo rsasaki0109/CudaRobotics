@@ -34,6 +34,7 @@
 
 #include "cuda_check.cuh"
 #include "cuda_video.h"
+#include "demo_args.h"
 
 namespace cudabot {
 
@@ -224,7 +225,15 @@ static cv::Point w2p(float wx, float wy) {
 }  // namespace cudabot
 using namespace cudabot;
 
-int main() {
+int main(int argc, char** argv) {
+    DemoArgs args(argc, argv, "GPU MPPI autonomous racing on a closed circuit");
+    const int K = args.get_int("samples", K_SAMPLES, "candidate trajectories per step", 1);
+    const int target_laps = args.get_int("laps", TARGET_LAPS, "stop after this many laps", 1);
+    const int max_steps = args.get_int("steps", MAX_STEPS, "maximum control steps", 1);
+    const int seed = args.get_int("seed", 1234, "cuRAND seed", 0);
+    const bool write_video = !args.flag("no-video", "skip the AVI/GIF output");
+    args.finish();
+
     // ---- bake the centreline + progress/distance fields -----------------
     std::vector<float> cs_x(NS), cs_y(NS), cs_s(NS);
     float track_len = 0.0f;
@@ -267,15 +276,15 @@ int main() {
     float *d_nominal, *d_costs, *d_pert, *d_traj;
     curandState* d_rng;
     CUDA_CHECK(cudaMalloc(&d_nominal, T_HORIZON * 2 * sizeof(float)));
-    CUDA_CHECK(cudaMalloc(&d_costs, K_SAMPLES * sizeof(float)));
-    CUDA_CHECK(cudaMalloc(&d_pert, K_SAMPLES * T_HORIZON * 2 * sizeof(float)));
-    CUDA_CHECK(cudaMalloc(&d_traj, K_SAMPLES * T_HORIZON * 2 * sizeof(float)));
-    CUDA_CHECK(cudaMalloc(&d_rng, K_SAMPLES * sizeof(curandState)));
-    init_curand<<<(K_SAMPLES + 127) / 128, 128>>>(d_rng, K_SAMPLES, 1234ULL);
+    CUDA_CHECK(cudaMalloc(&d_costs, K * sizeof(float)));
+    CUDA_CHECK(cudaMalloc(&d_pert, K * T_HORIZON * 2 * sizeof(float)));
+    CUDA_CHECK(cudaMalloc(&d_traj, K * T_HORIZON * 2 * sizeof(float)));
+    CUDA_CHECK(cudaMalloc(&d_rng, K * sizeof(curandState)));
+    init_curand<<<(K + 127) / 128, 128>>>(d_rng, K, (unsigned long long)seed);
 
     std::vector<float> nominal(T_HORIZON * 2, 0.0f);
     for (int t = 0; t < T_HORIZON; t++) nominal[t * 2 + 0] = 3.0f;   // warm start: accelerate
-    std::vector<float> h_costs(K_SAMPLES), h_traj(K_SAMPLES * T_HORIZON * 2);
+    std::vector<float> h_costs(K), h_traj(K * T_HORIZON * 2);
 
     // ---- true car state: start on the track at s=0 ----------------------
     float x0, y0; centerline(0.0f, x0, y0);
@@ -301,9 +310,12 @@ int main() {
     }
     cv::line(bg, w2p(x0, y0 + HALFW), w2p(x0, y0 - HALFW), cv::Scalar(255, 255, 255), 3, cv::LINE_AA);
 
-    cudabot::ensure_dirs({"gif"});
-    cv::VideoWriter video("gif/gpu_mppi_racing.avi",
-                          cv::VideoWriter::fourcc('M', 'J', 'P', 'G'), 30, cv::Size(IMG, IMG));
+    cv::VideoWriter video;
+    if (write_video) {
+        cudabot::ensure_dirs({"gif"});
+        video.open("gif/gpu_mppi_racing.avi",
+                   cv::VideoWriter::fourcc('M', 'J', 'P', 'G'), 30, cv::Size(IMG, IMG));
+    }
 
     cudaEvent_t e0, e1; cudaEventCreate(&e0); cudaEventCreate(&e1);
     float gpu_ms_total = 0.0f, cpu_ms_total = 0.0f; int timing_n = 0;
@@ -311,32 +323,34 @@ int main() {
     int laps = 0; float last_s = 0.0f; float best_lap = 1e9f; float lap_start_t = 0.0f;
     std::vector<float> lap_times;
     float top_speed = 0.0f;
+    int steps_run = 0;
 
-    for (int step = 0; step < MAX_STEPS && laps < TARGET_LAPS; step++) {
+    for (int step = 0; step < max_steps && laps < target_laps; step++) {
+        steps_run++;
         CUDA_CHECK(cudaMemcpy(d_nominal, nominal.data(), T_HORIZON * 2 * sizeof(float), cudaMemcpyHostToDevice));
 
         // --- GPU rollout (timed) ---
         cudaEventRecord(e0);
-        rollout_kernel<<<(K_SAMPLES + 127) / 128, 128>>>(
+        rollout_kernel<<<(K + 127) / 128, 128>>>(
             car_x, car_y, car_th, car_v, d_nominal, d_progress, d_dist,
-            d_costs, d_pert, d_traj, d_rng, K_SAMPLES);
+            d_costs, d_pert, d_traj, d_rng, K);
         cudaEventRecord(e1); cudaEventSynchronize(e1);
         float gms = 0; cudaEventElapsedTime(&gms, e0, e1); gpu_ms_total += gms;
 
-        CUDA_CHECK(cudaMemcpy(h_costs.data(), d_costs, K_SAMPLES * sizeof(float), cudaMemcpyDeviceToHost));
+        CUDA_CHECK(cudaMemcpy(h_costs.data(), d_costs, K * sizeof(float), cudaMemcpyDeviceToHost));
         float min_cost = *std::min_element(h_costs.begin(), h_costs.end());
         float sum_w = 0.0f;
         for (float c : h_costs) sum_w += std::exp(-(c - min_cost) / LAMBDA);
         float eta = 1.0f / std::max(sum_w, 1e-9f);
 
-        weighted_update_kernel<<<1, T_HORIZON>>>(d_costs, d_pert, 1.0f / LAMBDA, eta, min_cost, d_nominal, K_SAMPLES);
+        weighted_update_kernel<<<1, T_HORIZON>>>(d_costs, d_pert, 1.0f / LAMBDA, eta, min_cost, d_nominal, K);
         CUDA_CHECK(cudaMemcpy(nominal.data(), d_nominal, T_HORIZON * 2 * sizeof(float), cudaMemcpyDeviceToHost));
 
         // --- CPU reference rollout (timed, identical work) ---
         if (step % 12 == 0) {
-            std::vector<float> cc(K_SAMPLES);
+            std::vector<float> cc(K);
             auto t0 = std::chrono::high_resolution_clock::now();
-            rollout_cpu(car_x, car_y, car_th, car_v, nominal, h_prog, h_dist, track_len, cc, K_SAMPLES, 99u + step);
+            rollout_cpu(car_x, car_y, car_th, car_v, nominal, h_prog, h_dist, track_len, cc, K, 99u + step);
             auto t1 = std::chrono::high_resolution_clock::now();
             cpu_ms_total += std::chrono::duration<float, std::milli>(t1 - t0).count();
             gpu_ms_total += 0; timing_n++;   // pair with the gpu time recorded this step
@@ -369,10 +383,10 @@ int main() {
         last_s = cur_s;
 
         // --- draw ---
-        CUDA_CHECK(cudaMemcpy(h_traj.data(), d_traj, K_SAMPLES * T_HORIZON * 2 * sizeof(float), cudaMemcpyDeviceToHost));
+        CUDA_CHECK(cudaMemcpy(h_traj.data(), d_traj, K * T_HORIZON * 2 * sizeof(float), cudaMemcpyDeviceToHost));
         cv::Mat img = bg.clone();
         // a sample of candidate rollouts (faint)
-        for (int k = 0; k < K_SAMPLES; k += 40) {
+        for (int k = 0; k < K; k += 40) {
             cv::Point prev = w2p(car_x, car_y);
             for (int t = 0; t < T_HORIZON; t += 2) {
                 cv::Point p = w2p(h_traj[(k * T_HORIZON + t) * 2], h_traj[(k * T_HORIZON + t) * 2 + 1]);
@@ -401,7 +415,7 @@ int main() {
         float speedup = (cpu_ms_total > 0 && timing_n > 0) ? (cpu_ms_total / timing_n) / (gpu_ms_total / (step + 1)) : 0.0f;
         char hud[200];
         std::snprintf(hud, sizeof(hud), "MPPI racing  K=%d x T=%d   speed=%.1f m/s   lap %d/%d   GPU %.2f ms",
-                      K_SAMPLES, T_HORIZON, car_v, laps, TARGET_LAPS, gpu_ms_total / (step + 1));
+                      K, T_HORIZON, car_v, laps, target_laps, gpu_ms_total / (step + 1));
         cv::putText(img, hud, cv::Point(12, 28), cv::FONT_HERSHEY_SIMPLEX, 0.6, cv::Scalar(255, 255, 255), 2, cv::LINE_AA);
         char hud2[200];
         std::snprintf(hud2, sizeof(hud2), "best lap %.2f s   top speed %.1f m/s",
@@ -412,10 +426,10 @@ int main() {
     }
     video.release();
 
-    float gpu_avg = gpu_ms_total / MAX_STEPS;
+    float gpu_avg = steps_run > 0 ? gpu_ms_total / steps_run : 0.0f;
     float cpu_avg = (timing_n > 0) ? cpu_ms_total / timing_n : 0.0f;
     std::printf("\n=== GPU MPPI racing ===\n");
-    std::printf("rollouts/step:    %d trajectories x %d horizon\n", K_SAMPLES, T_HORIZON);
+    std::printf("rollouts/step:    %d trajectories x %d horizon, %d control steps\n", K, T_HORIZON, steps_run);
     std::printf("GPU rollout:      %.3f ms / step\n", gpu_avg);
     std::printf("CPU rollout:      %.3f ms / step (identical work)\n", cpu_avg);
     std::printf("speed-up:         %.1fx (GPU parallel rollout vs single-thread CPU)\n",
@@ -424,8 +438,10 @@ int main() {
     for (size_t i = 0; i < lap_times.size(); i++) std::printf("  lap %zu: %.2f s\n", i + 1, lap_times[i]);
     std::printf("best lap:         %.2f s   top speed %.1f m/s\n", (best_lap < 1e8 ? best_lap : 0.0f), top_speed);
 
-    avi_to_gif("gif/gpu_mppi_racing.avi", "gif/gpu_mppi_racing.gif", 15, 470);
-    std::printf("GIF saved to gif/gpu_mppi_racing.gif\n");
+    if (write_video) {
+        avi_to_gif("gif/gpu_mppi_racing.avi", "gif/gpu_mppi_racing.gif", 15, 470);
+        std::printf("GIF saved to gif/gpu_mppi_racing.gif\n");
+    }
 
     cudaFree(d_progress); cudaFree(d_dist); cudaFree(d_nominal); cudaFree(d_costs);
     cudaFree(d_pert); cudaFree(d_traj); cudaFree(d_rng);

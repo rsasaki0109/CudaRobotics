@@ -30,6 +30,7 @@
 #include "mppi_reduction.cuh"
 #include "cuda_video.h"
 #include "display.h"
+#include "demo_args.h"
 
 using namespace std;
 
@@ -203,10 +204,17 @@ static cv::Point world_to_pixel(float wx, float wy, int img_size, float ws)
 // -------------------------------------------------------------------------
 // Main
 // -------------------------------------------------------------------------
-int main()
+int main(int argc, char** argv)
 {
+    cudabot::DemoArgs args(argc, argv, "CUDA MPPI with a kinematic bicycle model among circular obstacles");
+    const int K = args.get_int("samples", K_SAMPLES, "sampled trajectories per step", 1);
+    const int max_steps = args.get_int("steps", MAX_STEPS, "maximum simulation steps", 1);
+    const int seed = args.get_int("seed", 42, "cuRAND seed", 0);
+    const bool write_video = !args.flag("no-video", "skip the AVI/GIF output");
+    args.finish();
+
     cout << "CUDA MPPI: Model Predictive Path Integral Controller" << endl;
-    cout << "K = " << K_SAMPLES << " samples, T = " << T_HORIZON
+    cout << "K = " << K << " samples, T = " << T_HORIZON
          << " steps, dt = " << DT << "s" << endl;
 
     // Copy obstacle data to constant memory
@@ -227,46 +235,47 @@ int main()
     curandState *d_rand_states;
 
     CUDA_CHECK(cudaMalloc(&d_nominal, ctrl_size * sizeof(float)));
-    CUDA_CHECK(cudaMalloc(&d_costs, K_SAMPLES * sizeof(float)));
-    CUDA_CHECK(cudaMalloc(&d_weights, K_SAMPLES * sizeof(float)));
-    CUDA_CHECK(cudaMalloc(&d_perturbed, K_SAMPLES * ctrl_size * sizeof(float)));
-    CUDA_CHECK(cudaMalloc(&d_trajectories, K_SAMPLES * T_HORIZON * 4 * sizeof(float)));
+    CUDA_CHECK(cudaMalloc(&d_costs, K * sizeof(float)));
+    CUDA_CHECK(cudaMalloc(&d_weights, K * sizeof(float)));
+    CUDA_CHECK(cudaMalloc(&d_perturbed, K * ctrl_size * sizeof(float)));
+    CUDA_CHECK(cudaMalloc(&d_trajectories, K * T_HORIZON * 4 * sizeof(float)));
     CUDA_CHECK(cudaMalloc(&d_min_cost, sizeof(float)));
-    CUDA_CHECK(cudaMalloc(&d_rand_states, K_SAMPLES * sizeof(curandState)));
+    CUDA_CHECK(cudaMalloc(&d_rand_states, K * sizeof(curandState)));
 
     // Init cuRAND
     int block = 256;
-    int grid_rand = (K_SAMPLES + block - 1) / block;
-    init_curand_kernel<<<grid_rand, block>>>(d_rand_states, K_SAMPLES, 42ULL);
+    int grid_rand = (K + block - 1) / block;
+    init_curand_kernel<<<grid_rand, block>>>(d_rand_states, K, (unsigned long long)seed);
     CUDA_CHECK(cudaGetLastError());
     CUDA_CHECK(cudaDeviceSynchronize());
 
     // Visualization setup
     int IMG_SIZE = 800;
-    cv::VideoWriter video(
-        "gif/mppi.avi",
-        cudabot::avi_fourcc(), 20,
-        cv::Size(IMG_SIZE, IMG_SIZE));
+    cv::VideoWriter video;
+    if (write_video) {
+        cudabot::ensure_dirs({"gif"});
+        video.open("gif/mppi.avi", cudabot::avi_fourcc(), 20, cv::Size(IMG_SIZE, IMG_SIZE));
+    }
 
-    if (!video.isOpened()) {
+    if (write_video && !video.isOpened()) {
         cerr << "Failed to open video writer" << endl;
         return 1;
     }
 
     // Host buffers for visualization
     int vis_K = 200;  // subsample for drawing
-    vector<float> h_costs(K_SAMPLES);
-    vector<float> h_trajectories(K_SAMPLES * T_HORIZON * 4);
+    vector<float> h_costs(K);
+    vector<float> h_trajectories(K * T_HORIZON * 4);
 
     // Path history
     vector<float> path_x, path_y;
     path_x.push_back(rx);
     path_y.push_back(ry);
 
-    int grid_K = (K_SAMPLES + block - 1) / block;
+    int grid_K = (K + block - 1) / block;
 
     // ===================== MPPI control loop =====================
-    for (int step = 0; step < MAX_STEPS; step++) {
+    for (int step = 0; step < max_steps; step++) {
 
         // Check goal reached
         float dx_g = rx - GOAL_X;
@@ -283,17 +292,17 @@ int main()
         rollout_kernel<<<grid_K, block>>>(
             rx, ry, rtheta, rv, rsteer,
             d_nominal, d_costs, d_perturbed, d_trajectories, d_rand_states,
-            K_SAMPLES, T_HORIZON, DT, WHEELBASE);
+            K, T_HORIZON, DT, WHEELBASE);
         CUDA_CHECK(cudaGetLastError());
         CUDA_CHECK(cudaDeviceSynchronize());
 
         // 2. Compute weights (softmin)
-        cudabot::launch_softmin_weights(d_costs, d_weights, K_SAMPLES, LAMBDA, d_min_cost);
+        cudabot::launch_softmin_weights(d_costs, d_weights, K, LAMBDA, d_min_cost);
         CUDA_CHECK(cudaGetLastError());
         CUDA_CHECK(cudaDeviceSynchronize());
 
         // 3. Update nominal controls
-        cudabot::launch_weighted_control_update(d_perturbed, d_weights, d_nominal, K_SAMPLES, T_HORIZON * 2);
+        cudabot::launch_weighted_control_update(d_perturbed, d_weights, d_nominal, K, T_HORIZON * 2);
         CUDA_CHECK(cudaGetLastError());
         CUDA_CHECK(cudaDeviceSynchronize());
 
@@ -301,9 +310,9 @@ int main()
         CUDA_CHECK(cudaMemcpy(h_nominal.data(), d_nominal, ctrl_size * sizeof(float), cudaMemcpyDeviceToHost));
 
         // Copy costs and trajectories for visualization
-        CUDA_CHECK(cudaMemcpy(h_costs.data(), d_costs, K_SAMPLES * sizeof(float), cudaMemcpyDeviceToHost));
+        CUDA_CHECK(cudaMemcpy(h_costs.data(), d_costs, K * sizeof(float), cudaMemcpyDeviceToHost));
         CUDA_CHECK(cudaMemcpy(h_trajectories.data(), d_trajectories,
-                              K_SAMPLES * T_HORIZON * 4 * sizeof(float), cudaMemcpyDeviceToHost));
+                              K * T_HORIZON * 4 * sizeof(float), cudaMemcpyDeviceToHost));
 
         // Apply first control to robot
         float accel      = h_nominal[0];
@@ -345,7 +354,7 @@ int main()
 
         // Find min/max cost for color mapping
         float min_cost = FLT_MAX, max_cost = -FLT_MAX;
-        for (int k = 0; k < K_SAMPLES; k++) {
+        for (int k = 0; k < K; k++) {
             if (h_costs[k] < min_cost) min_cost = h_costs[k];
             if (h_costs[k] > max_cost) max_cost = h_costs[k];
         }
@@ -353,8 +362,8 @@ int main()
         if (cost_range < 1e-6f) cost_range = 1.0f;
 
         // Draw subsampled trajectories colored by cost (green=low, red=high)
-        int stride = max(1, K_SAMPLES / vis_K);
-        for (int ki = 0; ki < K_SAMPLES; ki += stride) {
+        int stride = max(1, K / vis_K);
+        for (int ki = 0; ki < K; ki += stride) {
             float norm_cost = (h_costs[ki] - min_cost) / cost_range;
             norm_cost = fminf(fmaxf(norm_cost, 0.0f), 1.0f);
 
@@ -375,7 +384,7 @@ int main()
 
         // Draw best trajectory (lowest cost) as thick blue
         int best_k = 0;
-        for (int k = 1; k < K_SAMPLES; k++) {
+        for (int k = 1; k < K; k++) {
             if (h_costs[k] < h_costs[best_k]) best_k = k;
         }
         {
@@ -429,7 +438,7 @@ int main()
         // Labels
         char buf[256];
         snprintf(buf, sizeof(buf), "MPPI (CUDA K=%d T=%d)  Step %d  v=%.1f",
-                 K_SAMPLES, T_HORIZON, step, rv);
+                 K, T_HORIZON, step, rv);
         cv::putText(img, buf, cv::Point(10, 30),
                     cv::FONT_HERSHEY_SIMPLEX, 0.65, cv::Scalar(0, 0, 0), 2);
         snprintf(buf, sizeof(buf), "Min cost: %.1f  Dist to goal: %.1f",
@@ -469,13 +478,15 @@ int main()
     for (int i = 0; i < 40; i++) video.write(final_img);
 
     video.release();
-    cout << "Video saved to gif/mppi.avi" << endl;
+    if (write_video) {
+        cout << "Video saved to gif/mppi.avi" << endl;
 
-    // Convert to GIF
-    system("ffmpeg -y -i gif/mppi.avi "
-           "-vf \"fps=20,scale=800:-1:flags=lanczos\" -loop 0 "
-           "gif/mppi.gif 2>" CUDABOT_NULL_DEVICE);
-    cout << "GIF saved to gif/mppi.gif" << endl;
+        // Convert to GIF
+        system("ffmpeg -y -i gif/mppi.avi "
+               "-vf \"fps=20,scale=800:-1:flags=lanczos\" -loop 0 "
+               "gif/mppi.gif 2>" CUDABOT_NULL_DEVICE);
+        cout << "GIF saved to gif/mppi.gif" << endl;
+    }
 
     cudabot::imshow("mppi", final_img);
     cudabot::waitKey(0);
