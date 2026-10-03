@@ -6,6 +6,13 @@ on:
     branches: [master]
   pull_request:
     branches: [master]
+    # Docs-only PRs skip the CUDA build (repo-checks.yml still runs). Pushes to
+    # master always build, because they produce the commit-bound evidence.
+    paths-ignore:
+      - "docs/**"
+      - "paper/**"
+      - "gif/**"
+      - "**/*.md"
 
 jobs:
   build:
@@ -16,11 +23,6 @@ jobs:
 
       - name: Verify clean checkout
         run: test -z "$(git status --porcelain)"
-
-      - name: Check for physical GPU identities
-        run: |
-          python3 scripts/redact_gpu_identity.py --check
-          python3 scripts/test_redact_gpu_identity.py
 
       - name: Install CUDA toolkit
         uses: Jimver/cuda-toolkit@v0.2.16
@@ -33,17 +35,32 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             build-essential \
+            ccache \
             cmake \
             libeigen3-dev \
             libopencv-dev \
             python3-matplotlib \
             python3-numpy
 
+      # Compiler cache across runs: master builds save it, every PR restores the
+      # newest one, so unchanged translation units are not recompiled.
+      - name: Restore compiler cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ccache
+          key: ccache-${{ runner.os }}-cuda12.0-${{ github.sha }}
+          restore-keys: ccache-${{ runner.os }}-cuda12.0-
+
       - name: Configure
-        run: cmake -B build
+        run: |
+          ccache --max-size=2G
+          ccache --zero-stats
+          cmake -B build -DCMAKE_CXX_COMPILER_LAUNCHER=ccache -DCMAKE_CUDA_COMPILER_LAUNCHER=ccache
 
       - name: Build
-        run: cmake --build build -j$(nproc)
+        run: |
+          cmake --build build -j$(nproc)
+          ccache --show-stats
 
       # GPU tests (label "gpu") require NVIDIA GPU and cannot run in CI
 
