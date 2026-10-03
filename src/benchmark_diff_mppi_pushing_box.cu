@@ -107,6 +107,8 @@ struct Variant {
     bool oi_face_switch = false;  // path seed walks the pusher around to the pushing face
     bool oi_face_route_actual = false;  // face-switch seed: route the pusher around the actual box
     bool oi_face_aim_final = false;     // ...and on the last path segment aim from the box itself
+    bool oi_axis_path = false;          // plan an axis-aligned object path (one face per segment)
+    float oi_path_margin = 0.05f;       // wall clearance used by plan_object_path
 };
 
 struct EpisodeMetrics {
@@ -512,7 +514,10 @@ static bool face_switch_target(float px, float py, float ox, float oy, float oth
 // Object-level planner for the path-following object reference: A* over box-centre
 // positions at the start heading, clear of the (margin-inflated) wall footprint,
 // then shortcut to line-of-sight waypoints. A clear straight line is used as is.
-static ObjPath plan_object_path(const BoxScenario& sc, float margin = 0.05f, float res = 0.05f) {
+// With axis_aligned the search is 4-connected with a turn penalty and only
+// collinear points are merged, so every segment can be pushed by a single face.
+static ObjPath plan_object_path(const BoxScenario& sc, bool axis_aligned = false,
+                                float margin = 0.05f, float res = 0.05f) {
     BoxParams p = sc.params;
     p.obs_min_x -= margin; p.obs_min_y -= margin; p.obs_max_x += margin; p.obs_max_y += margin;
     auto free_at = [&](float x, float y) {
@@ -529,13 +534,47 @@ static ObjPath plan_object_path(const BoxScenario& sc, float margin = 0.05f, flo
     };
 
     vector<float> px = { sc.ox0, sc.gx }, py = { sc.oy0, sc.gy };
-    if (!segment_free(sc.ox0, sc.oy0, sc.gx, sc.gy)) {
-        const float pad = 1.5f;
-        float x0 = fminf(sc.ox0, sc.gx) - pad, y0 = fminf(sc.oy0, sc.gy) - pad;
-        int W = (int)ceilf((fabsf(sc.gx - sc.ox0) + 2*pad) / res) + 1;
-        int H = (int)ceilf((fabsf(sc.gy - sc.oy0) + 2*pad) / res) + 1;
-        int start = (int)lroundf((sc.oy0 - y0) / res) * W + (int)lroundf((sc.ox0 - x0) / res);
-        int goal  = (int)lroundf((sc.gy  - y0) / res) * W + (int)lroundf((sc.gx  - x0) / res);
+    const float pad = 1.5f;
+    float x0 = fminf(sc.ox0, sc.gx) - pad, y0 = fminf(sc.oy0, sc.gy) - pad;
+    int W = (int)ceilf((fabsf(sc.gx - sc.ox0) + 2*pad) / res) + 1;
+    int H = (int)ceilf((fabsf(sc.gy - sc.oy0) + 2*pad) / res) + 1;
+    int start = (int)lroundf((sc.oy0 - y0) / res) * W + (int)lroundf((sc.ox0 - x0) / res);
+    int goal  = (int)lroundf((sc.gy  - y0) / res) * W + (int)lroundf((sc.gx  - x0) / res);
+    auto set_path = [&](const vector<int>& cells) {
+        px.clear(); py.clear();
+        for (int c : cells) { px.push_back(x0 + (c % W)*res); py.push_back(y0 + (c / W)*res); }
+        px.front() = sc.ox0; py.front() = sc.oy0; px.back() = sc.gx; py.back() = sc.gy;
+    };
+    if (axis_aligned) {
+        // 4-connected A* over (cell, incoming direction) with a turn penalty
+        const float turn_cost = 0.3f;
+        const int di_tab[4] = { 1, -1, 0, 0 }, dj_tab[4] = { 0, 0, 1, -1 };
+        vector<float> g(W*H*4, FLT_MAX);
+        vector<int> parent(W*H*4, -1);
+        priority_queue<pair<float,int>, vector<pair<float,int>>, greater<pair<float,int>>> open;
+        auto h = [&](int c) { return res * (fabsf((float)(c % W - goal % W)) + fabsf((float)(c / W - goal / W))); };
+        for (int d = 0; d < 4; d++) { g[start*4 + d] = 0.0f; open.push({ h(start), start*4 + d }); }
+        int goal_state = -1;
+        while (!open.empty()) {
+            int st = open.top().second; open.pop();
+            int c = st / 4, dir = st % 4;
+            if (c == goal) { goal_state = st; break; }
+            for (int d = 0; d < 4; d++) {
+                int i = c % W + di_tab[d], j = c / W + dj_tab[d];
+                if (i < 0 || j < 0 || i >= W || j >= H) continue;
+                int n = (j * W + i) * 4 + d;
+                float ng = g[st] + res + (d != dir ? turn_cost : 0.0f);
+                if (ng >= g[n] || !free_at(x0 + i*res, y0 + j*res)) continue;
+                g[n] = ng; parent[n] = st; open.push({ ng + h(j * W + i), n });
+            }
+        }
+        if (goal_state >= 0) {
+            vector<int> cells;
+            for (int st = goal_state; st >= 0; st = parent[st]) cells.push_back(st / 4);
+            reverse(cells.begin(), cells.end());
+            set_path(cells);
+        }
+    } else if (!segment_free(sc.ox0, sc.oy0, sc.gx, sc.gy)) {
         vector<float> g(W*H, FLT_MAX);
         vector<int> parent(W*H, -1);
         priority_queue<pair<float,int>, vector<pair<float,int>>, greater<pair<float,int>>> open;
@@ -554,10 +593,10 @@ static ObjPath plan_object_path(const BoxScenario& sc, float margin = 0.05f, flo
             }
         }
         if (parent[goal] >= 0) {
-            px.clear(); py.clear();
-            for (int c = goal; c >= 0; c = parent[c]) { px.push_back(x0 + (c % W)*res); py.push_back(y0 + (c / W)*res); }
-            reverse(px.begin(), px.end()); reverse(py.begin(), py.end());
-            px.front() = sc.ox0; py.front() = sc.oy0; px.back() = sc.gx; py.back() = sc.gy;
+            vector<int> cells;
+            for (int c = goal; c >= 0; c = parent[c]) cells.push_back(c);
+            reverse(cells.begin(), cells.end());
+            set_path(cells);
         }
     }
 
@@ -565,7 +604,13 @@ static ObjPath plan_object_path(const BoxScenario& sc, float margin = 0.05f, flo
     path.x[0] = px[0]; path.y[0] = py[0]; path.s[0] = 0.0f; path.n = 1;
     for (size_t i = 0; i + 1 < px.size() && path.n < MAX_PATH;) {
         size_t j = px.size() - 1;
-        while (j > i + 1 && !segment_free(px[i], py[i], px[j], py[j])) j--;
+        if (axis_aligned) {   // extend while the direction stays the same
+            j = i + 1;
+            while (j + 1 < px.size() &&
+                   fabsf((px[j+1] - px[j]) * (py[j] - py[i]) - (py[j+1] - py[j]) * (px[j] - px[i])) < 1e-6f) j++;
+        } else {
+            while (j > i + 1 && !segment_free(px[i], py[i], px[j], py[j])) j--;
+        }
         path.x[path.n] = px[j]; path.y[path.n] = py[j];
         path.s[path.n] = path.s[path.n-1] + hypotf(px[j] - px[i], py[j] - py[i]);
         path.n++; i = j;
@@ -1202,7 +1247,7 @@ public:
 
     EpisodeRunner(const Variant& v, const BoxScenario& sc, int K, int T, int seed)
         : v_(v), sc_(sc), K_(K), T_(T), seed_(seed) {
-        if (v_.use_object_informed && v_.oi_use_path) path_ = plan_object_path(sc_);
+        if (v_.use_object_informed && v_.oi_use_path) path_ = plan_object_path(sc_, v_.oi_axis_path, v_.oi_path_margin);
         h_nominal_.assign(T_*CTRL_DIM, 0.0f);
         CUDA_CHECK(cudaMalloc(&d_start_, STATE_DIM*sizeof(float)));
         CUDA_CHECK(cudaMalloc(&d_nominal_, T_*CTRL_DIM*sizeof(float)));
@@ -1840,7 +1885,7 @@ int main(int argc, char** argv) {
     int override_soppi_neighbor_count = -1;
     float override_soppi_step_size = -1.0f;
     float override_soppi_bandwidth = -1.0f;
-    float override_oi_seed_blend = -1.0f, override_oi_obj_speed = -1.0f;
+    float override_oi_seed_blend = -1.0f, override_oi_obj_speed = -1.0f, override_oi_path_margin = -1.0f;
     for (int i=1;i<argc;i++){ string a=argv[i];
         if (a=="--quick") quick=true;
         else if (a=="--csv"&&i+1<argc) csv_path=argv[++i];
@@ -1857,6 +1902,7 @@ int main(int argc, char** argv) {
         else if (a=="--override-soppi-bandwidth"&&i+1<argc) override_soppi_bandwidth=(float)atof(argv[++i]);
         else if (a=="--override-oi-seed-blend"&&i+1<argc) override_oi_seed_blend=(float)atof(argv[++i]);
         else if (a=="--override-oi-obj-speed"&&i+1<argc) override_oi_obj_speed=(float)atof(argv[++i]);
+        else if (a=="--override-oi-path-margin"&&i+1<argc) override_oi_path_margin=(float)atof(argv[++i]);
         else if (a=="--dump-traj"&&i+1<argc) dump_traj_prefix=argv[++i];
         // per-episode trajectories from the main sweep: <dir>/<scenario>_<planner>_<seed>.csv
         else if (a=="--traj-dir"&&i+1<argc) traj_dir=argv[++i];
@@ -2098,6 +2144,7 @@ int main(int argc, char** argv) {
     { Variant v; v.name="oi_face_mppi"; v.use_object_informed=true; v.oi_use_path=true; v.oi_face_switch=true; v.oi_ref_weight_pos=1.5f; v.oi_ref_weight_ang=3.0f; v.oi_obj_speed=0.6f; v.oi_ang_speed=1.2f; v.oi_seed_blend=0.12f; variants.push_back(v); }
     { Variant v; v.name="oi_face_route_mppi"; v.use_object_informed=true; v.oi_use_path=true; v.oi_face_switch=true; v.oi_face_route_actual=true; v.oi_ref_weight_pos=1.5f; v.oi_ref_weight_ang=3.0f; v.oi_obj_speed=0.6f; v.oi_ang_speed=1.2f; v.oi_seed_blend=0.12f; variants.push_back(v); }
     { Variant v; v.name="oi_face_track_mppi"; v.use_object_informed=true; v.oi_use_path=true; v.oi_face_switch=true; v.oi_face_route_actual=true; v.oi_face_aim_final=true; v.oi_ref_weight_pos=1.5f; v.oi_ref_weight_ang=3.0f; v.oi_obj_speed=0.6f; v.oi_ang_speed=1.2f; v.oi_seed_blend=0.12f; variants.push_back(v); }
+    { Variant v; v.name="oi_face_axis_mppi"; v.use_object_informed=true; v.oi_use_path=true; v.oi_axis_path=true; v.oi_face_switch=true; v.oi_face_route_actual=true; v.oi_face_aim_final=true; v.oi_ref_weight_pos=1.5f; v.oi_ref_weight_ang=3.0f; v.oi_obj_speed=0.6f; v.oi_ang_speed=1.2f; v.oi_seed_blend=0.12f; variants.push_back(v); }
     { Variant v; v.name="oi_path_slow_mppi"; v.use_object_informed=true; v.oi_use_path=true; v.oi_ref_weight_pos=1.5f; v.oi_ref_weight_ang=3.0f; v.oi_obj_speed=0.6f; v.oi_ang_speed=1.2f; v.oi_seed_blend=0.12f; variants.push_back(v); }
     { Variant v; v.name="diff_mppi_1"; v.grad_steps=1; v.alpha=0.02f; variants.push_back(v); }
     { Variant v; v.name="diff_mppi_3"; v.grad_steps=3; v.alpha=0.010f; variants.push_back(v); }
@@ -2124,6 +2171,7 @@ int main(int argc, char** argv) {
         if (override_soppi_bandwidth >= 0.0f && v.use_soppi_sampling) v.soppi_bandwidth = override_soppi_bandwidth;
         if (override_oi_seed_blend >= 0.0f && v.use_object_informed) v.oi_seed_blend = override_oi_seed_blend;
         if (override_oi_obj_speed >= 0.0f && v.use_object_informed) v.oi_obj_speed = override_oi_obj_speed;
+        if (override_oi_path_margin >= 0.0f && v.oi_use_path) v.oi_path_margin = override_oi_path_margin;
     }
     if (k_values.empty()) k_values = quick ? vector<int>{256} : vector<int>{256, 1024};
     if (seed_count<=0) seed_count = quick ? 4 : 8;
