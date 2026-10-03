@@ -85,3 +85,27 @@ rot / only auto):
 - Four turn cells, one box, `K=256`; one tuned parameter (radius).
 - Rotation is attempted only near the goal; turns that must happen mid-path
   (for example to fit through a gap) are not covered.
+
+## Follow-up: the smooth-plant quarter-turn regression
+
+Investigated on seeds 0-7 and per-episode trajectories; nothing here changed
+the code.
+
+- **Failure shape.** In the offset-500 run, all 25 `oi_face_rot_mppi` failures
+  on the smooth quarter turn have the heading inside the gate (median error
+  0.08 rad) and the position outside it (median 0.37 m, none inside 0.25 m).
+  Traces show the box parked 0.4-0.5 m short of the goal with the right
+  heading, and the pusher hovering around the corner of the face it should
+  push, never pushing.
+- **Ruled out: phase chattering.** A hysteresis latch (start rotating above
+  0.9 x the heading gate, stop below 0.4 x) left the result unchanged (2/8 to
+  3/8 on the quarter turn, identical totals elsewhere).
+- **Ruled out: the rollout heading reference.** Scaling the object-reference
+  heading weight from 3.0 to 1, 0.3 and 0 gave 0-2/8 on the quarter turn, no
+  better than the default.
+- **Remaining hypotheses**, not tested: the task's own heading cost (stage and
+  terminal) under the smooth model's strong rotation coupling makes any
+  slightly off-centre push near the goal look worse than not pushing, the same
+  kind of position/heading stand-off as the 0.27 m plateau in the
+  [`box_align_detour` audit](box_align_detour_audit_2026-10-03.md); or the
+  12 % seed blend is too weak for MPPI to follow the corner walk-around.
