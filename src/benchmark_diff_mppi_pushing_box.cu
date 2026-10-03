@@ -105,6 +105,8 @@ struct Variant {
     float oi_contact_margin = 0.04f;
     bool oi_use_path = false;     // follow plan_object_path() instead of the straight line
     bool oi_face_switch = false;  // path seed walks the pusher around to the pushing face
+    bool oi_face_route_actual = false;  // face-switch seed: route the pusher around the actual box
+    bool oi_face_aim_final = false;     // ...and on the last path segment aim from the box itself
 };
 
 struct EpisodeMetrics {
@@ -444,6 +446,21 @@ struct ObjPath {
     float x[MAX_PATH], y[MAX_PATH], s[MAX_PATH];   // waypoints and cumulative arc length
 };
 
+// Arc length of the point on the path closest to (x, y).
+__host__ __device__ inline float path_progress_f(const ObjPath& path, float x, float y)
+{
+    float best_d = 1e30f, s0 = 0.0f;
+    for (int i = 0; i + 1 < path.n; i++) {
+        float sx = path.x[i+1] - path.x[i], sy = path.y[i+1] - path.y[i];
+        float len = path.s[i+1] - path.s[i];
+        float u = len > 1e-6f ? clampf_local(((x - path.x[i])*sx + (y - path.y[i])*sy) / (len*len), 0.0f, 1.0f) : 0.0f;
+        float qx = path.x[i] + u*sx - x, qy = path.y[i] + u*sy - y;
+        float d = qx*qx + qy*qy;
+        if (d < best_d) { best_d = d; s0 = path.s[i] + u*len; }
+    }
+    return s0;
+}
+
 // object_ref_box_f along a waypoint path: project the current box centre onto the
 // path, then advance obj_speed * dt * step along it.
 __host__ __device__ inline void object_ref_path_f(
@@ -451,15 +468,7 @@ __host__ __device__ inline void object_ref_path_f(
     float dt, float obj_speed, float ang_speed, int step,
     float& rx, float& ry, float& rth)
 {
-    float best_d = 1e30f, s0 = 0.0f;
-    for (int i = 0; i + 1 < path.n; i++) {
-        float sx = path.x[i+1] - path.x[i], sy = path.y[i+1] - path.y[i];
-        float len = path.s[i+1] - path.s[i];
-        float u = len > 1e-6f ? clampf_local(((ox0 - path.x[i])*sx + (oy0 - path.y[i])*sy) / (len*len), 0.0f, 1.0f) : 0.0f;
-        float qx = path.x[i] + u*sx - ox0, qy = path.y[i] + u*sy - oy0;
-        float d = qx*qx + qy*qy;
-        if (d < best_d) { best_d = d; s0 = path.s[i] + u*len; }
-    }
+    float s0 = path_progress_f(path, ox0, oy0);
     float s = fminf(path.s[path.n-1], s0 + fmaxf(0.0f, obj_speed) * dt * static_cast<float>(step));
     int i = 0;
     while (i + 2 < path.n && path.s[i+1] < s) i++;
@@ -1311,9 +1320,21 @@ public:
                 external_plant_step(
                     h_nominal_[0], h_nominal_[1],
                     px_, py_, ox_, oy_, oth_, vx_, vy_, w_);
-            else if (true_plant_hard)
+            else if (true_plant_hard) {
                 push_step_box_hard_f(px_, py_, ox_, oy_, oth_, vx_, vy_, w_, h_nominal_[0], h_nominal_[1], hard_p);
-            else
+                // Rectangle-overlap walls are rigid in the hard plant too: push the box
+                // out and drop the velocity component into the wall. Legacy corner-test
+                // walls stay non-physical here, so published hard-plant rows reproduce.
+                if (plant_p.obstacle_count > 0 && plant_p.obs_full_overlap) {
+                    for (int it = 0; it < 4; it++) {
+                        float nx, ny, pen = box_aabb_overlap_f(ox_, oy_, oth_, plant_p, nx, ny);
+                        if (pen <= 0.0f) break;
+                        ox_ += nx * pen; oy_ += ny * pen;
+                        float vn = vx_ * nx + vy_ * ny;
+                        if (vn < 0.0f) { vx_ -= vn * nx; vy_ -= vn * ny; }
+                    }
+                }
+            } else
                 push_step_box_f(px_, py_, ox_, oy_, oth_, h_nominal_[0], h_nominal_[1], plant_p);
             cum_cost_ += stage_cost_box_f(px_, py_, ox_, oy_, oth_, h_nominal_[0], h_nominal_[1], sc_.gx, sc_.gy, sc_.gth, sc_.params);
             if (box_obstacle_penetration_f(ox_, oy_, oth_, plant_p) > 0.01f) {
@@ -1448,6 +1469,14 @@ private:
                               advance + 1, rx, ry, rth);
             float dx = rx - bx, dy = ry - by, dl = sqrtf(dx*dx + dy*dy);
             if (dl < 1e-4f) { dx = sc_.gx - bx; dy = sc_.gy - by; dl = sqrtf(dx*dx + dy*dy + 1e-9f); }
+            if (advance == 0 && v_.oi_face_route_actual) {
+                // On the final segment, aim from the box itself rather than its projection,
+                // so lateral drift picks a side face; corners are left to the path tangent.
+                if (v_.oi_face_aim_final && path_progress_f(path_, ox, oy) >= path_.s[path_.n-2]) {
+                    dx = rx - ox; dy = ry - oy; dl = sqrtf(dx*dx + dy*dy + 1e-9f);
+                }
+                bx = ox; by = oy;   // the pusher walks around the box where it is
+            }
             float tx, ty;
             bool engaged = face_switch_target(sim_px, sim_py, bx, by, oth, dx / dl, dy / dl, p,
                                               p.push_r + v_.oi_contact_margin + 0.04f, tx, ty);
@@ -2051,6 +2080,8 @@ int main(int argc, char** argv) {
     // Reference speed 0.6 m/s selected on box_detour_* seeds 0-7; oi_path_slow_mppi
     // is the same planner without face switching (ablation).
     { Variant v; v.name="oi_face_mppi"; v.use_object_informed=true; v.oi_use_path=true; v.oi_face_switch=true; v.oi_ref_weight_pos=1.5f; v.oi_ref_weight_ang=3.0f; v.oi_obj_speed=0.6f; v.oi_ang_speed=1.2f; v.oi_seed_blend=0.12f; variants.push_back(v); }
+    { Variant v; v.name="oi_face_route_mppi"; v.use_object_informed=true; v.oi_use_path=true; v.oi_face_switch=true; v.oi_face_route_actual=true; v.oi_ref_weight_pos=1.5f; v.oi_ref_weight_ang=3.0f; v.oi_obj_speed=0.6f; v.oi_ang_speed=1.2f; v.oi_seed_blend=0.12f; variants.push_back(v); }
+    { Variant v; v.name="oi_face_track_mppi"; v.use_object_informed=true; v.oi_use_path=true; v.oi_face_switch=true; v.oi_face_route_actual=true; v.oi_face_aim_final=true; v.oi_ref_weight_pos=1.5f; v.oi_ref_weight_ang=3.0f; v.oi_obj_speed=0.6f; v.oi_ang_speed=1.2f; v.oi_seed_blend=0.12f; variants.push_back(v); }
     { Variant v; v.name="oi_path_slow_mppi"; v.use_object_informed=true; v.oi_use_path=true; v.oi_ref_weight_pos=1.5f; v.oi_ref_weight_ang=3.0f; v.oi_obj_speed=0.6f; v.oi_ang_speed=1.2f; v.oi_seed_blend=0.12f; variants.push_back(v); }
     { Variant v; v.name="diff_mppi_1"; v.grad_steps=1; v.alpha=0.02f; variants.push_back(v); }
     { Variant v; v.name="diff_mppi_3"; v.grad_steps=3; v.alpha=0.010f; variants.push_back(v); }
