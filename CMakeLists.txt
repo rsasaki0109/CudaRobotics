@@ -221,6 +221,8 @@ cudabot_demo(sdf_mppi src/sdf_mppi.cu OPENCV)
 
 cudabot_demo(esdf_mppi src/esdf_mppi.cu OPENCV RELAXED_CONSTEXPR)
 
+cudabot_demo(gpu_esdf_mppi_3d src/gpu_esdf_mppi_3d.cu OPENCV RELAXED_CONSTEXPR)
+
 cudabot_demo(comparison_sdf_nav src/comparison_sdf_nav.cu OPENCV)
 
 cudabot_demo(mini_isaac src/mini_isaac.cu OPENCV)
@@ -706,7 +708,7 @@ set_tests_properties(mppi_reduction_smoke PROPERTIES
 # Run interactive demos end-to-end without a display (see include/display.h).
 set(CUDABOT_DEMO_SMOKE_DIR ${CMAKE_BINARY_DIR}/demo_smoke)
 file(MAKE_DIRECTORY ${CUDABOT_DEMO_SMOKE_DIR}/gif)
-foreach(demo mppi diff_mppi comparison_mppi esdf_mppi ndt occupancy_grid amcl)
+foreach(demo mppi diff_mppi comparison_mppi esdf_mppi gpu_esdf_mppi_3d ndt occupancy_grid amcl)
   add_test(NAME demo_headless_${demo}
     COMMAND $<TARGET_FILE:${demo}>
     WORKING_DIRECTORY ${CUDABOT_DEMO_SMOKE_DIR})
