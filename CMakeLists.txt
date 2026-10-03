@@ -62,6 +62,9 @@ include_directories(${EIGEN3_INCLUDE_DIR})
 if(MSVC)
   # M_PI and friends are opt-in with the MSVC CRT.
   add_compile_definitions(_USE_MATH_DEFINES)
+  # Sources are UTF-8; without this MSVC reads them in the system code page and
+  # warns (C4819) on every file with a non-ASCII comment.
+  add_compile_options("$<$<COMPILE_LANGUAGE:CXX>:/utf-8>" "$<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=/utf-8>")
 endif()
 include_directories(./include)
 
