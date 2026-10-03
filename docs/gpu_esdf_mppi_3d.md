@@ -47,7 +47,8 @@ float rounding).
 
 ```bash
 ./bin/gpu_esdf_mppi_3d             # writes gif/gpu_esdf_mppi_3d.gif
-./bin/gpu_esdf_mppi_3d --help      # --samples, --steps, --seed, --no-video, --headless
+./bin/gpu_esdf_mppi_3d --help      # --samples, --steps, --seed, --no-video, --headless,
+                                   # --movers, --mode, --trials, --mover-speed
 ```
 
 | quantity | value |
@@ -56,17 +57,59 @@ float rounding).
 | Cost-to-go (131,072 voxels, 96 sweeps) | about 3 ms |
 | Rollout batch, K=4096, T=40 | about 0.2 ms GPU vs about 11 ms CPU (single thread) |
 | MPPI per control step (2 iterations) | about 0.5 ms |
-| Result | goal in 69 steps (6.9 s), path 19.0 m, min clearance 0.41 m |
+| Result | goal in 68 steps (6.8 s), path 18.8 m, min clearance 0.43 m |
 
 Timings are from single runs on the development machine and vary between runs.
 Seeds 1, 7, 42 and `--samples 1024` / `16384` also reach the goal without
 collision (70-87 steps). The program exits non-zero if the goal is not reached
 or the vehicle collides; `demo_headless_gpu_esdf_mppi_3d` runs it under CTest.
 
+## Moving obstacles
+
+`--movers N` adds up to eight spheres (0.45 m radius) that move at constant
+velocity beyond the wall and bounce off the walls of their region
+(x 1-15 m, y 9-13.5 m, z 1.5-6 m). The vehicle has to cross their region to
+reach the goal. `--mode` sets how the planner sees them:
+
+| mode | what the rollouts see | per control step |
+|---|---|---|
+| `0` static | the static ESDF only (movers ignored) | the default MPPI work |
+| `1` rebuild | the movers stamped into the occupancy grid at their current positions, ESDF rebuilt by JFA every step | + a full 3D JFA |
+| `2` predict | the static ESDF plus the analytic distance to each mover at its constant-velocity prediction for that rollout step | + 40 x N sphere distances per rollout |
+
+`--trials 30` runs the same 30 mover scenarios for all three modes and prints
+a table ([raw tables](results/gpu_esdf_mppi_3d_dynamic_2026-10-03.md)). Success
+means reaching the goal with no contact against the static map or the movers'
+true positions.
+
+| movers | static | rebuild | predict |
+|---|---:|---:|---:|
+| 4, 1x speed | 26/30 (4 collisions) | 29/30 | **30/30** |
+| 6, 1x speed | 23/30 (7 collisions) | **30/30** | 29/30 |
+| 8, 1x speed | 22/30 (8 collisions) | **30/30** | 29/30 |
+| 6, 2x speed | 21/30 (9 collisions) | 25/30 (5 collisions) | **30/30** |
+| 6, 3x speed | 23/30 (7 collisions) | 27/30 (3 collisions) | **29/30** (1 collision) |
+
+- Ignoring the movers collides in a quarter of the episodes; both
+  mover-aware modes are collision-free at the base speed.
+- Rebuilding the ESDF costs about 2.4 ms per control step against 0.46 ms for
+  prediction (the full JFA dominates).
+- At 2-3x speed, reacting to current positions is no longer enough: rebuild
+  collides 8 times in 60 paired episodes, prediction once (paired exact
+  McNemar on success, 8 vs 1, p = 0.039).
+- Prediction assumes constant velocity, so it does not anticipate bounces;
+  its one fast-speed collision and the occasional timeout come from that.
+
+<img src="https://rsasaki0109.github.io/CudaRobotics/gpu_esdf_mppi_3d_dynamic.gif" width="720"/>
+
+`--movers 6 --mover-speed 2 --mode 2`: red discs are the movers, red lines
+their predicted positions at the end of the 4 s horizon.
+
 ## Limitations
 
 - Point-mass vehicle: no attitude dynamics or thrust limits.
-- The maps are static and built once; the cost-to-go is computed for a single
-  goal.
+- The static map and the cost-to-go are built once; the cost-to-go is computed
+  for a single goal and ignores the movers.
+- Movers are predicted at constant velocity with known state (no estimation).
 - The wavefront runs on a 0.25 m grid, so passages narrower than about two
   coarse voxels plus the vehicle diameter disappear from it.
