@@ -12,7 +12,12 @@
     - The rollout cost is shared host/device code, so the same function
       gives a CPU reference: the demo reports CPU vs GPU rollout time and
       checks that both produce the same costs for the same controls
-    Output: gif/gpu_esdf_mppi_3d.gif (top view + side view slices)
+    - --movers N adds moving spheres beyond the wall; --mode chooses how the
+      planner sees them (ignore, rebuild the ESDF each step, or predict them
+      at constant velocity in the rollout cost) and --trials compares the
+      three modes on the same scenarios
+    Output: gif/gpu_esdf_mppi_3d.gif (top view + side view slices),
+            gif/gpu_esdf_mppi_3d_dynamic.gif with movers
  ************************************************************************/
 
 #include <algorithm>
@@ -21,6 +26,7 @@
 #include <cmath>
 #include <cstdio>
 #include <random>
+#include <string>
 #include <vector>
 
 #include <opencv2/opencv.hpp>
@@ -74,6 +80,18 @@ constexpr float COLLIDE_PENALTY = 200.0f;
 constexpr float W_TERM    = 10.0f;
 
 struct Box { float x0, y0, z0, x1, y1, z1; };
+
+// Moving spherical obstacles (--movers): constant velocity, bouncing inside a
+// box beyond the wall. How the planner sees them depends on --mode.
+constexpr int   MAX_MOVERS = 8;
+constexpr float MOVER_R    = 0.45f;
+struct Movers {
+    int n = 0;
+    float p[MAX_MOVERS][3], v[MAX_MOVERS][3];   // current position and velocity
+};
+enum DynMode { MODE_STATIC = 0, MODE_REBUILD = 1, MODE_PREDICT = 2 };
+static const char* MODE_NAMES[] = {"static", "rebuild", "predict"};
+const float MOVER_BOX[2][3] = {{1.0f, 9.0f, 1.5f}, {15.0f, 13.5f, 6.0f}};
 
 // -------------------------------------------------------------------------
 // Scene
@@ -260,7 +278,8 @@ __host__ __device__ inline void step_dynamics(float s[6], const float a_in[3]) {
 // Cost of a T x 3 acceleration sequence from `start` (position, velocity):
 // cost-to-go for progress, ESDF barrier for clearance.
 __host__ __device__ inline float rollout_cost(const float start[6], const float* controls,
-                                              const float* esdf, const float* ctg) {
+                                              const float* esdf, const float* ctg,
+                                              const Movers& mv, bool predict) {
     float s[6];
     for (int i = 0; i < 6; i++) s[i] = start[i];
     float total = 0.0f;
@@ -270,6 +289,15 @@ __host__ __device__ inline float rollout_cost(const float start[6], const float*
         total += W_GOAL * ctg_at(ctg, s[0], s[1], s[2]);
         total += W_CTRL * (a[0] * a[0] + a[1] * a[1] + a[2] * a[2]);
         float d = esdf_at(esdf, s[0], s[1], s[2]) - ROBOT_R;
+        if (predict) {   // distance to each mover at its constant-velocity prediction
+            float tau = (t + 1) * DT;
+            for (int i = 0; i < mv.n; i++) {
+                float ex = s[0] - (mv.p[i][0] + mv.v[i][0] * tau);
+                float ey = s[1] - (mv.p[i][1] + mv.v[i][1] * tau);
+                float ez = s[2] - (mv.p[i][2] + mv.v[i][2] * tau);
+                d = fminf(d, sqrtf(ex * ex + ey * ey + ez * ez) - MOVER_R - ROBOT_R);
+            }
+        }
         if (d < CLEARANCE) {
             float inv = 1.0f / fmaxf(d, 0.05f) - 1.0f / CLEARANCE;
             total += W_OBS * inv * inv;
@@ -292,7 +320,7 @@ __global__ void init_rng(curandState* states, int n, unsigned long long seed) {
 __global__ void rollout_kernel(const float* __restrict__ d_start, const float* __restrict__ d_ctg,
                                const float* __restrict__ d_nominal, const float* __restrict__ d_esdf,
                                float* __restrict__ d_costs, float* __restrict__ d_perturbed,
-                               curandState* __restrict__ d_rng, int K) {
+                               curandState* __restrict__ d_rng, int K, Movers mv, bool predict) {
     int k = blockIdx.x * blockDim.x + threadIdx.x;
     if (k >= K) return;
     curandState rng = d_rng[k];
@@ -301,7 +329,7 @@ __global__ void rollout_kernel(const float* __restrict__ d_start, const float* _
         u[i] = fminf(fmaxf(d_nominal[i] + SIGMA * curand_normal(&rng), -A_MAX), A_MAX);
     float start[6];
     for (int i = 0; i < 6; i++) start[i] = d_start[i];
-    d_costs[k] = rollout_cost(start, u, d_esdf, d_ctg);
+    d_costs[k] = rollout_cost(start, u, d_esdf, d_ctg, mv, predict);
     d_rng[k] = rng;
 }
 
@@ -314,7 +342,7 @@ static double cpu_rollout_ms(const std::vector<float>& esdf, const std::vector<f
     auto t0 = std::chrono::high_resolution_clock::now();
     for (int k = 0; k < K; k++)
         costs[k] = rollout_cost(start, controls.data() + static_cast<size_t>(k) * T_HORIZON * CTRL_DIM,
-                                esdf.data(), ctg.data());
+                                esdf.data(), ctg.data(), Movers(), false);
     auto t1 = std::chrono::high_resolution_clock::now();
     return std::chrono::duration<double, std::milli>(t1 - t0).count();
 }
@@ -372,8 +400,14 @@ int main(int argc, char** argv) {
     const int K = args.get_int("samples", 4096, "sampled trajectories per iteration", 1);
     const int max_steps = args.get_int("steps", 400, "maximum simulation steps", 1);
     const int seed = args.get_int("seed", 2026, "cuRAND seed", 0);
-    const bool write_video = !args.flag("no-video", "skip the AVI/GIF output");
+    const bool no_video = args.flag("no-video", "skip the AVI/GIF output");
+    const int n_movers = args.get_int("movers", 0, "moving spherical obstacles beyond the wall (max 8)", 0);
+    const int mode_arg = args.get_int("mode", MODE_PREDICT, "with movers: 0 static map, 1 rebuild ESDF each step, 2 predict", 0);
+    const int trials = args.get_int("trials", 0, "with movers: run N episodes per mode and print a table", 0);
+    const float mover_speed = args.get_float("mover-speed", 1.0f, "with movers: speed multiplier (base 0.8-1.5 m/s)");
     args.finish();
+    if (n_movers > MAX_MOVERS || mode_arg > MODE_PREDICT) { std::fprintf(stderr, "--movers <= 8, --mode 0..2\n"); return 2; }
+    const bool write_video = !no_video && trials == 0;
 
     // 1. Scene and 3D ESDF
     std::vector<unsigned char> occ;
@@ -461,10 +495,10 @@ int main(int argc, char** argv) {
     CUDA_CHECK(cudaMemcpy(d_start, state, sizeof(state), cudaMemcpyHostToDevice));
 
     // 4. CPU reference on the first batch: same controls, same cost function
-    rollout_kernel<<<blocks, threads>>>(d_start, d_ctg, d_nominal, d_esdf, d_costs, d_perturbed, d_rng, K);
+    rollout_kernel<<<blocks, threads>>>(d_start, d_ctg, d_nominal, d_esdf, d_costs, d_perturbed, d_rng, K, Movers(), false);
     CUDA_CHECK(cudaDeviceSynchronize());
     auto g0 = std::chrono::high_resolution_clock::now();
-    rollout_kernel<<<blocks, threads>>>(d_start, d_ctg, d_nominal, d_esdf, d_costs, d_perturbed, d_rng, K);
+    rollout_kernel<<<blocks, threads>>>(d_start, d_ctg, d_nominal, d_esdf, d_costs, d_perturbed, d_rng, K, Movers(), false);
     CUDA_CHECK(cudaDeviceSynchronize());
     auto g1 = std::chrono::high_resolution_clock::now();
     double gpu_ms = std::chrono::duration<double, std::milli>(g1 - g0).count();
@@ -479,116 +513,231 @@ int main(int argc, char** argv) {
                 K, T_HORIZON, cpu_ms, gpu_ms, cpu_ms / std::max(gpu_ms, 1e-6), max_rel);
     CUDA_CHECK(cudaMemset(d_nominal, 0, U * sizeof(float)));
 
-    // 5. Closed loop
-    cv::VideoWriter video;
-    if (write_video) {
-        cudabot::ensure_dirs({"gif"});
-        video.open("gif/gpu_esdf_mppi_3d.avi", cudabot::avi_fourcc(), 20, cv::Size(TOP_PX + SIDE_W, TOP_PX));
+    // 5. Closed loop (one episode; with movers, the planner's view depends on mode)
+    const float start_state[6] = {state[0], state[1], state[2], 0.0f, 0.0f, 0.0f};
+    unsigned char* d_occ_dyn = nullptr;
+    float* d_esdf_dyn = nullptr;
+    std::vector<unsigned char> occ_dyn;
+    if (n_movers > 0) {
+        CUDA_CHECK(cudaMalloc(&d_occ_dyn, cells));
+        CUDA_CHECK(cudaMalloc(&d_esdf_dyn, cells * sizeof(float)));
     }
-    std::vector<float> h_nominal(U, 0.0f);
-    std::vector<cv::Point3f> path = {cv::Point3f(state[0], state[1], state[2])};
-    const int SHOW = std::min(K, 48);
-    std::vector<float> h_samples(static_cast<size_t>(SHOW) * U);
-    double mppi_ms = 0.0;
-    float min_clearance = FLT_MAX, path_len = 0.0f;
-    bool reached = false;
-    int steps = 0;
-
-    for (int step = 0; step < max_steps; step++) {
-        CUDA_CHECK(cudaMemcpy(d_start, state, sizeof(state), cudaMemcpyHostToDevice));
-        auto t0 = std::chrono::high_resolution_clock::now();
-        for (int it = 0; it < ITERS_PER_STEP; it++) {
-            rollout_kernel<<<blocks, threads>>>(d_start, d_ctg, d_nominal, d_esdf, d_costs, d_perturbed, d_rng, K);
-            cudabot::launch_softmin_weights(d_costs, d_weights, K, LAMBDA);
-            cudabot::launch_weighted_control_update(d_perturbed, d_weights, d_nominal, K, U);
+    auto init_movers = [&](int episode_seed) {
+        Movers mv;
+        mv.n = n_movers;
+        std::mt19937 rng(static_cast<unsigned>(episode_seed));
+        std::uniform_real_distribution<float> u01(0.0f, 1.0f);
+        for (int i = 0; i < mv.n; i++) {
+            for (int a = 0; a < 3; a++)
+                mv.p[i][a] = MOVER_BOX[0][a] + u01(rng) * (MOVER_BOX[1][a] - MOVER_BOX[0][a]);
+            float speed = mover_speed * (0.8f + 0.7f * u01(rng)), yaw = 6.2832f * u01(rng), climb = 0.3f * (u01(rng) - 0.5f);
+            mv.v[i][0] = speed * std::cos(yaw); mv.v[i][1] = speed * std::sin(yaw); mv.v[i][2] = speed * climb;
         }
-        CUDA_CHECK(cudaDeviceSynchronize());
-        mppi_ms += std::chrono::duration<double, std::milli>(std::chrono::high_resolution_clock::now() - t0).count();
-        CUDA_CHECK(cudaMemcpy(h_nominal.data(), d_nominal, U * sizeof(float), cudaMemcpyDeviceToHost));
-        if (write_video)
-            CUDA_CHECK(cudaMemcpy(h_samples.data(), d_perturbed, h_samples.size() * sizeof(float), cudaMemcpyDeviceToHost));
-
-        // Draw the plan from the pre-step state, then apply the first control.
-        cv::Mat frame;
-        if (write_video) {
-            cv::Mat top = render_top(h_esdf, state[2]), side = render_side(h_esdf, state[1]);
-            auto draw_rollout = [&](const float* u, cv::Scalar color, int width) {
-                float s[6];
-                std::copy(state, state + 6, s);
-                cv::Point pt = top_px(s[0], s[1]), ps = side_px(s[0], s[2]);
-                for (int t = 0; t < T_HORIZON; t++) {
-                    step_dynamics(s, u + t * CTRL_DIM);
-                    cv::Point nt = top_px(s[0], s[1]), ns = side_px(s[0], s[2]);
-                    cv::line(top, pt, nt, color, width, cv::LINE_AA);
-                    cv::line(side, ps, ns, color, width, cv::LINE_AA);
-                    pt = nt; ps = ns;
+        return mv;
+    };
+    auto step_movers = [&](Movers& mv) {
+        for (int i = 0; i < mv.n; i++)
+            for (int a = 0; a < 3; a++) {
+                mv.p[i][a] += mv.v[i][a] * DT;
+                if (mv.p[i][a] < MOVER_BOX[0][a] || mv.p[i][a] > MOVER_BOX[1][a]) {
+                    mv.v[i][a] = -mv.v[i][a];
+                    mv.p[i][a] = std::min(std::max(mv.p[i][a], MOVER_BOX[0][a]), MOVER_BOX[1][a]);
                 }
-            };
-            for (int k = 0; k < SHOW; k++) draw_rollout(h_samples.data() + static_cast<size_t>(k) * U, cv::Scalar(150, 150, 150), 1);
-            for (size_t i = 1; i < path.size(); i++) {
-                cv::line(top, top_px(path[i-1].x, path[i-1].y), top_px(path[i].x, path[i].y), cv::Scalar(255, 255, 255), 2, cv::LINE_AA);
-                cv::line(side, side_px(path[i-1].x, path[i-1].z), side_px(path[i].x, path[i].z), cv::Scalar(255, 255, 255), 2, cv::LINE_AA);
             }
-            draw_rollout(h_nominal.data(), cv::Scalar(0, 230, 255), 2);
-            cv::circle(top, top_px(start_pos[0], start_pos[1]), 6, cv::Scalar(255, 120, 80), cv::FILLED);
-            cv::circle(top, top_px(goal[0], goal[1]), 7, cv::Scalar(80, 255, 80), cv::FILLED);
-            cv::circle(side, side_px(goal[0], goal[2]), 7, cv::Scalar(80, 255, 80), cv::FILLED);
-            cv::circle(top, top_px(state[0], state[1]), 6, cv::Scalar(0, 255, 255), cv::FILLED);
-            cv::circle(side, side_px(state[0], state[2]), 6, cv::Scalar(0, 255, 255), cv::FILLED);
-            frame = cv::Mat(TOP_PX, TOP_PX + SIDE_W, CV_8UC3, cv::Scalar(25, 25, 25));
-            top.copyTo(frame(cv::Rect(0, 0, TOP_PX, TOP_PX)));
-            side.copyTo(frame(cv::Rect(TOP_PX, 0, SIDE_W, SIDE_H)));
-            const float dist = std::sqrt((state[0]-goal[0])*(state[0]-goal[0]) + (state[1]-goal[1])*(state[1]-goal[1]) +
-                                         (state[2]-goal[2])*(state[2]-goal[2]));
-            char lines[5][96];
-            std::snprintf(lines[0], 96, "3D ESDF-MPPI (GPU Jump Flooding + double integrator)");
-            std::snprintf(lines[1], 96, "top: slice at z=%.1f m   side: slice at y=%.1f m", state[2], state[1]);
-            std::snprintf(lines[2], 96, "step %d   dist to goal %.2f m", step, dist);
-            std::snprintf(lines[3], 96, "K=%d T=%d   MPPI %.2f ms/step", K, T_HORIZON, mppi_ms / (step + 1));
-            std::snprintf(lines[4], 96, "min clearance %.2f m", min_clearance == FLT_MAX ? 0.0f : min_clearance);
-            for (int i = 0; i < 5; i++)
-                cv::putText(frame, lines[i], cv::Point(TOP_PX + 12, SIDE_H + 34 * (i + 1)),
-                            cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(230, 230, 230), 1, cv::LINE_AA);
+    };
+    // True clearance of the vehicle: static map and the movers' actual positions.
+    auto clearance = [&](const float* p, const Movers& mv) {
+        float d = esdf_at(h_esdf.data(), p[0], p[1], p[2]) - ROBOT_R;
+        for (int i = 0; i < mv.n; i++)
+            d = std::min(d, std::sqrt((p[0]-mv.p[i][0])*(p[0]-mv.p[i][0]) + (p[1]-mv.p[i][1])*(p[1]-mv.p[i][1]) +
+                                      (p[2]-mv.p[i][2])*(p[2]-mv.p[i][2])) - MOVER_R - ROBOT_R);
+        return d;
+    };
+    // Rebuild mode: stamp the movers' current spheres into the occupancy grid and rerun JFA.
+    auto rebuild_esdf = [&](const Movers& mv) {
+        occ_dyn = occ;
+        const int r = static_cast<int>(std::ceil(MOVER_R / RES));
+        for (int i = 0; i < mv.n; i++) {
+            int ci = static_cast<int>(mv.p[i][0] / RES), cj = static_cast<int>(mv.p[i][1] / RES), ck = static_cast<int>(mv.p[i][2] / RES);
+            for (int k = std::max(0, ck - r); k <= std::min(NZ - 1, ck + r); k++)
+                for (int j = std::max(0, cj - r); j <= std::min(NY - 1, cj + r); j++)
+                    for (int ii = std::max(0, ci - r); ii <= std::min(NX - 1, ci + r); ii++) {
+                        float dx = (ii + 0.5f) * RES - mv.p[i][0], dy = (j + 0.5f) * RES - mv.p[i][1], dz = (k + 0.5f) * RES - mv.p[i][2];
+                        if (dx*dx + dy*dy + dz*dz <= MOVER_R * MOVER_R) occ_dyn[(static_cast<size_t>(k) * NY + j) * NX + ii] = 1u;
+                    }
         }
-
-        float prev[3] = {state[0], state[1], state[2]};
-        step_dynamics(state, h_nominal.data());
-        path.push_back(cv::Point3f(state[0], state[1], state[2]));
-        path_len += std::sqrt((state[0]-prev[0])*(state[0]-prev[0]) + (state[1]-prev[1])*(state[1]-prev[1]) + (state[2]-prev[2])*(state[2]-prev[2]));
-        min_clearance = std::min(min_clearance, esdf_at(h_esdf.data(), state[0], state[1], state[2]) - ROBOT_R);
-        steps = step + 1;
-
-        // Warm start: shift the nominal sequence by one step.
-        std::copy(h_nominal.begin() + CTRL_DIM, h_nominal.end(), h_nominal.begin());
-        std::fill(h_nominal.end() - CTRL_DIM, h_nominal.end(), 0.0f);
-        CUDA_CHECK(cudaMemcpy(d_nominal, h_nominal.data(), U * sizeof(float), cudaMemcpyHostToDevice));
-
-        if (write_video) {
-            video.write(frame);
-            cudabot::imshow("gpu_esdf_mppi_3d", frame);
-            cudabot::waitKey(1);
+        CUDA_CHECK(cudaMemcpy(d_occ_dyn, occ_dyn.data(), cells, cudaMemcpyHostToDevice));
+        jfa3d_init_kernel<<<grd, blk>>>(d_occ_dyn, d_seed_a);
+        int *in_ptr = d_seed_a, *out_ptr = d_seed_b;
+        for (int k = std::max(std::max(NX, NY), NZ) / 2; k >= 1; k /= 2) {
+            jfa3d_step_kernel<<<grd, blk>>>(in_ptr, out_ptr, k);
+            std::swap(in_ptr, out_ptr);
         }
-        float dx = state[0] - goal[0], dy = state[1] - goal[1], dz = state[2] - goal[2];
-        if (std::sqrt(dx * dx + dy * dy + dz * dz) < GOAL_TOL) { reached = true; }
-        if (reached || step + 1 == max_steps) {
-            if (write_video) for (int i = 0; i < 30; i++) video.write(frame);   // hold the last frame
-            break;
+        jfa3d_to_dist_kernel<<<grd, blk>>>(in_ptr, d_esdf_dyn);
+    };
+
+    struct Episode { bool reached = false; int steps = 0; float path_len = 0, min_clearance = FLT_MAX; double ms = 0; };
+    auto run_episode = [&](int mode, int episode_seed, bool video_on) {
+        Episode ep;
+        float st[6];
+        std::copy(start_state, start_state + 6, st);
+        Movers mv = init_movers(episode_seed);
+        init_rng<<<blocks, threads>>>(d_rng, K, static_cast<unsigned long long>(episode_seed));
+        CUDA_CHECK(cudaMemset(d_nominal, 0, U * sizeof(float)));
+        const std::string tag = n_movers > 0 ? "gpu_esdf_mppi_3d_dynamic" : "gpu_esdf_mppi_3d";
+        const std::string avi = "gif/" + tag + ".avi", gif = "gif/" + tag + ".gif";
+        cv::VideoWriter video;
+        if (video_on) {
+            cudabot::ensure_dirs({"gif"});
+            video.open(avi, cudabot::avi_fourcc(), 20, cv::Size(TOP_PX + SIDE_W, TOP_PX));
         }
+        std::vector<float> h_nominal(U, 0.0f);
+        std::vector<cv::Point3f> path = {cv::Point3f(st[0], st[1], st[2])};
+        const int SHOW = std::min(K, 48);
+        std::vector<float> h_samples(static_cast<size_t>(SHOW) * U);
+        const bool predict = n_movers > 0 && mode == MODE_PREDICT;
+
+        for (int step = 0; step < max_steps; step++) {
+            CUDA_CHECK(cudaMemcpy(d_start, st, sizeof(st), cudaMemcpyHostToDevice));
+            auto t0 = std::chrono::high_resolution_clock::now();
+            const float* esdf_now = d_esdf;
+            if (n_movers > 0 && mode == MODE_REBUILD) { rebuild_esdf(mv); esdf_now = d_esdf_dyn; }
+            for (int it = 0; it < ITERS_PER_STEP; it++) {
+                rollout_kernel<<<blocks, threads>>>(d_start, d_ctg, d_nominal, esdf_now, d_costs, d_perturbed, d_rng, K, mv, predict);
+                cudabot::launch_softmin_weights(d_costs, d_weights, K, LAMBDA);
+                cudabot::launch_weighted_control_update(d_perturbed, d_weights, d_nominal, K, U);
+            }
+            CUDA_CHECK(cudaDeviceSynchronize());
+            ep.ms += std::chrono::duration<double, std::milli>(std::chrono::high_resolution_clock::now() - t0).count();
+            CUDA_CHECK(cudaMemcpy(h_nominal.data(), d_nominal, U * sizeof(float), cudaMemcpyDeviceToHost));
+            if (video_on)
+                CUDA_CHECK(cudaMemcpy(h_samples.data(), d_perturbed, h_samples.size() * sizeof(float), cudaMemcpyDeviceToHost));
+
+            // Draw the plan from the pre-step state, then apply the first control.
+            cv::Mat frame;
+            if (video_on) {
+                cv::Mat top = render_top(h_esdf, st[2]), side = render_side(h_esdf, st[1]);
+                auto draw_rollout = [&](const float* u, cv::Scalar color, int width) {
+                    float s2[6];
+                    std::copy(st, st + 6, s2);
+                    cv::Point pt = top_px(s2[0], s2[1]), ps = side_px(s2[0], s2[2]);
+                    for (int t = 0; t < T_HORIZON; t++) {
+                        step_dynamics(s2, u + t * CTRL_DIM);
+                        cv::Point nt = top_px(s2[0], s2[1]), ns = side_px(s2[0], s2[2]);
+                        cv::line(top, pt, nt, color, width, cv::LINE_AA);
+                        cv::line(side, ps, ns, color, width, cv::LINE_AA);
+                        pt = nt; ps = ns;
+                    }
+                };
+                for (int k = 0; k < SHOW; k++) draw_rollout(h_samples.data() + static_cast<size_t>(k) * U, cv::Scalar(150, 150, 150), 1);
+                for (size_t i = 1; i < path.size(); i++) {
+                    cv::line(top, top_px(path[i-1].x, path[i-1].y), top_px(path[i].x, path[i].y), cv::Scalar(255, 255, 255), 2, cv::LINE_AA);
+                    cv::line(side, side_px(path[i-1].x, path[i-1].z), side_px(path[i].x, path[i].z), cv::Scalar(255, 255, 255), 2, cv::LINE_AA);
+                }
+                draw_rollout(h_nominal.data(), cv::Scalar(0, 230, 255), 2);
+                const int mr = static_cast<int>(MOVER_R / WORLD_X * TOP_PX);
+                for (int i = 0; i < mv.n; i++) {
+                    cv::circle(top, top_px(mv.p[i][0], mv.p[i][1]), mr, cv::Scalar(60, 60, 255), cv::FILLED, cv::LINE_AA);
+                    cv::circle(side, side_px(mv.p[i][0], mv.p[i][2]), mr, cv::Scalar(60, 60, 255), cv::FILLED, cv::LINE_AA);
+                    if (predict) {   // where the planner expects it at the end of the horizon
+                        const float tau = T_HORIZON * DT;
+                        cv::line(top, top_px(mv.p[i][0], mv.p[i][1]),
+                                 top_px(mv.p[i][0] + mv.v[i][0] * tau, mv.p[i][1] + mv.v[i][1] * tau), cv::Scalar(60, 60, 255), 1, cv::LINE_AA);
+                    }
+                }
+                cv::circle(top, top_px(start_pos[0], start_pos[1]), 6, cv::Scalar(255, 120, 80), cv::FILLED);
+                cv::circle(top, top_px(goal[0], goal[1]), 7, cv::Scalar(80, 255, 80), cv::FILLED);
+                cv::circle(side, side_px(goal[0], goal[2]), 7, cv::Scalar(80, 255, 80), cv::FILLED);
+                cv::circle(top, top_px(st[0], st[1]), 6, cv::Scalar(0, 255, 255), cv::FILLED);
+                cv::circle(side, side_px(st[0], st[2]), 6, cv::Scalar(0, 255, 255), cv::FILLED);
+                frame = cv::Mat(TOP_PX, TOP_PX + SIDE_W, CV_8UC3, cv::Scalar(25, 25, 25));
+                top.copyTo(frame(cv::Rect(0, 0, TOP_PX, TOP_PX)));
+                side.copyTo(frame(cv::Rect(TOP_PX, 0, SIDE_W, SIDE_H)));
+                const float dist = std::sqrt((st[0]-goal[0])*(st[0]-goal[0]) + (st[1]-goal[1])*(st[1]-goal[1]) +
+                                             (st[2]-goal[2])*(st[2]-goal[2]));
+                char lines[5][96];
+                if (n_movers > 0)
+                    std::snprintf(lines[0], 96, "3D ESDF-MPPI, %d movers, mode: %s", n_movers, MODE_NAMES[mode]);
+                else
+                    std::snprintf(lines[0], 96, "3D ESDF-MPPI (GPU Jump Flooding + double integrator)");
+                std::snprintf(lines[1], 96, "top: slice at z=%.1f m   side: slice at y=%.1f m", st[2], st[1]);
+                std::snprintf(lines[2], 96, "step %d   dist to goal %.2f m", step, dist);
+                std::snprintf(lines[3], 96, "K=%d T=%d   MPPI %.2f ms/step", K, T_HORIZON, ep.ms / (step + 1));
+                std::snprintf(lines[4], 96, "min clearance %.2f m", ep.min_clearance == FLT_MAX ? 0.0f : ep.min_clearance);
+                for (int i = 0; i < 5; i++)
+                    cv::putText(frame, lines[i], cv::Point(TOP_PX + 12, SIDE_H + 34 * (i + 1)),
+                                cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(230, 230, 230), 1, cv::LINE_AA);
+            }
+
+            float prev[3] = {st[0], st[1], st[2]};
+            step_dynamics(st, h_nominal.data());
+            step_movers(mv);
+            path.push_back(cv::Point3f(st[0], st[1], st[2]));
+            ep.path_len += std::sqrt((st[0]-prev[0])*(st[0]-prev[0]) + (st[1]-prev[1])*(st[1]-prev[1]) + (st[2]-prev[2])*(st[2]-prev[2]));
+            ep.min_clearance = std::min(ep.min_clearance, clearance(st, mv));
+            ep.steps = step + 1;
+
+            // Warm start: shift the nominal sequence by one step.
+            std::copy(h_nominal.begin() + CTRL_DIM, h_nominal.end(), h_nominal.begin());
+            std::fill(h_nominal.end() - CTRL_DIM, h_nominal.end(), 0.0f);
+            CUDA_CHECK(cudaMemcpy(d_nominal, h_nominal.data(), U * sizeof(float), cudaMemcpyHostToDevice));
+
+            if (video_on) {
+                video.write(frame);
+                cudabot::imshow("gpu_esdf_mppi_3d", frame);
+                cudabot::waitKey(1);
+            }
+            float dx = st[0] - goal[0], dy = st[1] - goal[1], dz = st[2] - goal[2];
+            if (std::sqrt(dx * dx + dy * dy + dz * dz) < GOAL_TOL) ep.reached = true;
+            if (ep.reached || step + 1 == max_steps) {
+                if (video_on) for (int i = 0; i < 30; i++) video.write(frame);   // hold the last frame
+                break;
+            }
+        }
+        if (video_on) {
+            video.release();
+            std::printf("Video saved to %s\n", avi.c_str());
+            cudabot::avi_to_gif(avi, gif, 20, 900);
+            std::printf("GIF saved to %s\n", gif.c_str());
+        }
+        return ep;
+    };
+
+    bool ok = true;
+    if (trials > 0 && n_movers > 0) {
+        // Same mover scenarios (episode seeds) for every mode, so rows are paired.
+        std::printf("\n%d movers at %.1fx speed, %d episodes per mode (episode seeds %d..%d)\n",
+                    n_movers, mover_speed, trials, seed, seed + trials - 1);
+        std::printf("| mode | success | collisions | timeouts | mean steps | mean min clearance (m) | ms per step |\n|---|---:|---:|---:|---:|---:|---:|\n");
+        for (int mode = MODE_STATIC; mode <= MODE_PREDICT; mode++) {
+            int success = 0, collisions = 0, timeouts = 0;
+            double steps_sum = 0, clear_sum = 0, ms_sum = 0;
+            for (int t = 0; t < trials; t++) {
+                Episode ep = run_episode(mode, seed + t, false);
+                const bool collided = ep.min_clearance < 0.0f;
+                collisions += collided;
+                timeouts += !collided && !ep.reached;
+                success += ep.reached && !collided;
+                steps_sum += ep.steps; clear_sum += ep.min_clearance; ms_sum += ep.ms / std::max(ep.steps, 1);
+                std::printf("  %s seed=%d %s steps=%d min_clearance=%.2f\n", MODE_NAMES[mode], seed + t,
+                            collided ? "COLLISION" : (ep.reached ? "success" : "timeout"), ep.steps, ep.min_clearance);
+            }
+            std::printf("| %s | %d/%d | %d | %d | %.1f | %.2f | %.2f |\n", MODE_NAMES[mode], success, trials, collisions,
+                        timeouts, steps_sum / trials, clear_sum / trials, ms_sum / trials);
+        }
+    } else {
+        const int mode = n_movers > 0 ? mode_arg : MODE_STATIC;
+        Episode ep = run_episode(mode, seed, write_video);
+        std::printf("%s after %d steps (%.1f s); path length %.2f m; min clearance %.2f m (%s)\n",
+                    ep.reached ? "Goal reached" : "Goal NOT reached", ep.steps, ep.steps * DT, ep.path_len, ep.min_clearance,
+                    ep.min_clearance >= 0.0f ? "collision-free" : "COLLISION");
+        std::printf("MPPI: %.3f ms per control step (%d iterations of K=%d, T=%d)\n",
+                    ep.ms / std::max(ep.steps, 1), ITERS_PER_STEP, K, T_HORIZON);
+        ok = ep.reached && ep.min_clearance >= 0.0f;
     }
 
-    std::printf("%s after %d steps (%.1f s); path length %.2f m; min clearance %.2f m (%s)\n",
-                reached ? "Goal reached" : "Goal NOT reached", steps, steps * DT, path_len, min_clearance,
-                min_clearance >= 0.0f ? "collision-free" : "COLLISION");
-    std::printf("MPPI: %.3f ms per control step (%d iterations of K=%d, T=%d)\n",
-                mppi_ms / std::max(steps, 1), ITERS_PER_STEP, K, T_HORIZON);
-
-    if (write_video) {
-        video.release();
-        std::printf("Video saved to gif/gpu_esdf_mppi_3d.avi\n");
-        cudabot::avi_to_gif("gif/gpu_esdf_mppi_3d.avi", "gif/gpu_esdf_mppi_3d.gif", 20, 900);
-        std::printf("GIF saved to gif/gpu_esdf_mppi_3d.gif\n");
-    }
-
+    if (d_occ_dyn) CUDA_CHECK(cudaFree(d_occ_dyn));
+    if (d_esdf_dyn) CUDA_CHECK(cudaFree(d_esdf_dyn));
     CUDA_CHECK(cudaFree(d_occ));
     CUDA_CHECK(cudaFree(d_seed_a));
     CUDA_CHECK(cudaFree(d_seed_b));
@@ -603,5 +752,5 @@ int main(int argc, char** argv) {
     CUDA_CHECK(cudaFree(d_weights));
     CUDA_CHECK(cudaFree(d_perturbed));
     CUDA_CHECK(cudaFree(d_rng));
-    return reached && min_clearance >= 0.0f ? 0 : 1;
+    return ok ? 0 : 1;
 }

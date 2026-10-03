@@ -718,6 +718,14 @@ foreach(demo mppi diff_mppi comparison_mppi esdf_mppi gpu_esdf_mppi_3d ndt occup
     LABELS "gpu;demo")
 endforeach()
 
+add_test(NAME demo_headless_gpu_esdf_mppi_3d_dynamic
+  COMMAND $<TARGET_FILE:gpu_esdf_mppi_3d> --movers 6 --mover-speed 2 --mode 2 --no-video
+  WORKING_DIRECTORY ${CUDABOT_DEMO_SMOKE_DIR})
+set_tests_properties(demo_headless_gpu_esdf_mppi_3d_dynamic PROPERTIES
+  ENVIRONMENT "CUDABOT_HEADLESS=1"
+  TIMEOUT 300
+  LABELS "gpu;demo")
+
 add_test(NAME gpu_planner_showdown_gate
   COMMAND $<TARGET_FILE:gpu_planner_showdown_benchmark>
     --check
