@@ -463,6 +463,11 @@ Adding a face-switching seed (`oi_face_mppi`,
 [`results/box_detour_face_switch_2026-10-03.md`](results/box_detour_face_switch_2026-10-03.md))
 reaches 27/30 on held-out seeds versus 15/30 for `soppi_fast` (paired exact
 McNemar p = 0.004) and 0/30 for the same planner without face switching.
+Routing the pusher around the actual box and aiming from the box on the last
+path segment (`oi_face_track_mppi`,
+[`results/box_detour_face_track_2026-10-03.md`](results/box_detour_face_track_2026-10-03.md))
+lifts the open cell to 29/30 but drops the smooth wall cell to 15/30; on the
+hard-contact plant it is best on both cells (21/30 open, 18/30 wall).
 
 | Scenario | Planner | Success | Steps | Final Dist | Cost | Avg ms |
 |---|---|---:|---:|---:|---:|---:|
