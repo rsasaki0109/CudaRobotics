@@ -75,6 +75,7 @@ struct BoxScenario {
     float pos_tol = 0.20f, ang_tol = 0.25f;
     int max_steps = 200;
     BoxParams params;
+    string seed_as;   // diagnostic companions reuse this scenario's seeds (paired runs)
 };
 
 struct Variant {
@@ -1442,6 +1443,25 @@ static BoxScenario make_box_align_detour() {
     s.params.w_obs = 85.0f;
     return s;
 }
+// Diagnostic companions of box_align_detour, run on its seeds. The penetration test
+// only checks box corners against the wall, and the wall is narrower than the box,
+// so the wall may never bind; the cell also inherits box_align's 0.22 m position
+// gate, which the obstacle-free parent already misses. Removing the wall and
+// widening the gate to box_align_strict's 0.28 m separate the two causes.
+static BoxScenario make_box_align_detour_nowall() {
+    BoxScenario s = make_box_align_detour();
+    s.name = "box_align_detour_nowall";
+    s.params.obstacle_count = 0;
+    s.seed_as = "box_align_detour";
+    return s;
+}
+static BoxScenario make_box_align_detour_gate() {
+    BoxScenario s = make_box_align_detour();
+    s.name = "box_align_detour_gate";
+    s.pos_tol = 0.28f;
+    s.seed_as = "box_align_detour";
+    return s;
+}
 // Contact-loss variant of box_align_strict: orientation-binding gate plus a gap
 // penalty that punishes losing face contact during the rotation arc.
 static BoxScenario make_box_align_contact_loss() {
@@ -1736,10 +1756,14 @@ int main(int argc, char** argv) {
     // box_swivel and box_align_strict are appended LAST so the existing scenarios keep
     // their indices si=0..2 (the per-run seed in the sweep loop is si-dependent);
     // published numbers stay byte-identical.
-    vector<BoxScenario> all_sc = { make_box_turn(), make_box_align(), make_box_pivot(), make_box_swivel(), make_box_align_strict(), make_box_align_detour(), make_box_align_contact_loss(), make_box_align_contact_arc() };
+    vector<BoxScenario> all_sc = { make_box_turn(), make_box_align(), make_box_pivot(), make_box_swivel(), make_box_align_strict(), make_box_align_detour(), make_box_align_contact_loss(), make_box_align_contact_arc(), make_box_align_detour_nowall(), make_box_align_detour_gate() };
     auto scenario_seed_index = [&](const string& name) {
         for (size_t i = 0; i < all_sc.size(); i++)
-            if (all_sc[i].name == name) return static_cast<int>(i);
+            if (all_sc[i].name == name) {
+                if (all_sc[i].seed_as.empty()) return static_cast<int>(i);
+                for (size_t j = 0; j < all_sc.size(); j++)
+                    if (all_sc[j].name == all_sc[i].seed_as) return static_cast<int>(j);
+            }
         return -1;
     };
     vector<BoxScenario> scenarios;

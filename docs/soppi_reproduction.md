@@ -445,6 +445,14 @@ object-level nominal planning / CEM seeding, a deliberately wider companion
 `box_align_detour_arc` acceptance gate, or a geometry audit that explains why
 the current obstacle placement is over-constraining the contact sequence.
 
+Geometry audit, 2026-10-03
+([`results/box_align_detour_audit_2026-10-03.md`](results/box_align_detour_audit_2026-10-03.md)):
+the obstacle is not the constraint. The corner-only penetration test never fires
+because the wall is smaller than the box (0 collisions in 360 episodes), and the
+paired `box_align_detour_nowall` cell scores the same. The binding constraint is
+the 0.22 m position gate inherited from `box_align`; with `box_align_strict`'s
+0.28 m gate (`box_align_detour_gate`) `diff_mppi_3` and `oi_mppi` reach 30/30.
+
 | Scenario | Planner | Success | Steps | Final Dist | Cost | Avg ms |
 |---|---|---:|---:|---:|---:|---:|
 | box_align_contact_loss | mppi | 0.00 | 240.0 | 0.286 | 4.8 | 0.654 |
@@ -551,7 +559,8 @@ with a step-count advantage over MPPI.
    + one nominal grad step reaches **1.00** on strict cell; `box_align_contact_arc`
    documents pure-SOPPI at `1.00` (see `docs/results/soppi_box_pushing_2026-06-10.md`).
 3. Consider caching partial rollout states for the box autodiff score kernel if another speed pass is needed.
-4. For `box_align_detour`, avoid more same-mechanism tuning unless the change
-   alters nominal mode discovery. Preferred next experiments are object-level
-   nominal planning, CEM/object-trajectory seeding, or an explicit wider-gate
-   companion cell that documents the near-miss regime without overselling it.
+4. ~~For `box_align_detour`, avoid more same-mechanism tuning unless the change
+   alters nominal mode discovery.~~ **Audited (2026-10-03)** — the wall never
+   binds and the cell fails on its inherited position gate (see the audit above).
+   A real detour benchmark needs an obstacle that constrains the executed motion
+   before object-level planning can be evaluated on it.
