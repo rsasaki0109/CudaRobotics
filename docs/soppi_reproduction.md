@@ -453,6 +453,13 @@ paired `box_align_detour_nowall` cell scores the same. The binding constraint is
 the 0.22 m position gate inherited from `box_align`; with `box_align_strict`'s
 0.28 m gate (`box_align_detour_gate`) `diff_mppi_3` and `oi_mppi` reach 30/30.
 
+Follow-up cell with a binding wall
+([`results/box_detour_wall_2026-10-03.md`](results/box_detour_wall_2026-10-03.md)):
+on `box_detour_wall`, where a box-wide rigid wall blocks the straight line,
+`soppi_fast` reaches 20/30 by sliding the box along the wall (0/30 without the
+wall), while object-informed planners drop from 12/30 to 0/30; an obstacle-aware
+object path (`oi_path_mppi`) does not help without pusher face switching.
+
 | Scenario | Planner | Success | Steps | Final Dist | Cost | Avg ms |
 |---|---|---:|---:|---:|---:|---:|
 | box_align_contact_loss | mppi | 0.00 | 240.0 | 0.286 | 4.8 | 0.654 |
