@@ -32,6 +32,7 @@
 #include <cuda_runtime.h>
 #include "cuda_check.cuh"
 #include "cuda_video.h"
+#include "jfa.cuh"
 
 // -------------------------------------------------------------------------
 // Constants
@@ -133,65 +134,6 @@ static double cpu_esdf_ms(const std::vector<unsigned char>& occ,
     return std::chrono::duration<double, std::milli>(t1 - t0).count();
 }
 
-// -------------------------------------------------------------------------
-// GPU Jump Flooding
-// -------------------------------------------------------------------------
-__global__ void jfa_init_kernel(const unsigned char* __restrict__ occ,
-                                int* __restrict__ seed, int W, int H) {
-    int x = blockIdx.x * blockDim.x + threadIdx.x;
-    int y = blockIdx.y * blockDim.y + threadIdx.y;
-    if (x >= W || y >= H) return;
-    int idx = y * W + x;
-    seed[idx] = occ[idx] ? idx : -1;
-}
-
-__global__ void jfa_step_kernel(const int* __restrict__ seed_in,
-                                int* __restrict__ seed_out,
-                                int W, int H, int k) {
-    int x = blockIdx.x * blockDim.x + threadIdx.x;
-    int y = blockIdx.y * blockDim.y + threadIdx.y;
-    if (x >= W || y >= H) return;
-    int idx = y * W + x;
-    int best = seed_in[idx];
-    float best_d2 = FLT_MAX;
-    if (best >= 0) {
-        int bx = best % W, by = best / W;
-        int ex = x - bx, ey = y - by;
-        best_d2 = static_cast<float>(ex * ex + ey * ey);
-    }
-    #pragma unroll
-    for (int dy = -1; dy <= 1; dy++) {
-        #pragma unroll
-        for (int dx = -1; dx <= 1; dx++) {
-            if (dx == 0 && dy == 0) continue;
-            int nx = x + dx * k;
-            int ny = y + dy * k;
-            if (nx < 0 || nx >= W || ny < 0 || ny >= H) continue;
-            int s = seed_in[ny * W + nx];
-            if (s < 0) continue;
-            int sx = s % W, sy = s / W;
-            int ex = x - sx, ey = y - sy;
-            float d2 = static_cast<float>(ex * ex + ey * ey);
-            if (d2 < best_d2) { best = s; best_d2 = d2; }
-        }
-    }
-    seed_out[idx] = best;
-}
-
-__global__ void jfa_to_dist_kernel(const int* __restrict__ seed,
-                                   float* __restrict__ dist,
-                                   int W, int H, float res) {
-    int x = blockIdx.x * blockDim.x + threadIdx.x;
-    int y = blockIdx.y * blockDim.y + threadIdx.y;
-    if (x >= W || y >= H) return;
-    int idx = y * W + x;
-    int s = seed[idx];
-    if (s < 0) { dist[idx] = MAX_DIST; return; }
-    int sx = s % W, sy = s / W;
-    int dx = x - sx, dy = y - sy;
-    dist[idx] = sqrtf(static_cast<float>(dx * dx + dy * dy)) * res;
-}
-
 struct GpuEsdf {
     unsigned char* d_occ = nullptr;
     int* d_seed_a = nullptr;
@@ -219,19 +161,10 @@ static double gpu_esdf_ms(GpuEsdf& g, const std::vector<unsigned char>& occ,
     cudaEventCreate(&e0); cudaEventCreate(&e1);
     CUDA_CHECK(cudaMemcpy(g.d_occ, occ.data(), g.W * g.H * sizeof(unsigned char),
                           cudaMemcpyHostToDevice));
-    dim3 block(16, 16);
-    dim3 grid((g.W + 15) / 16, (g.H + 15) / 16);
     cudaEventRecord(e0);
-    jfa_init_kernel<<<grid, block>>>(g.d_occ, g.d_seed_a, g.W, g.H);
-    int* in = g.d_seed_a;
-    int* out = g.d_seed_b;
-    int k = 1;
+    int k = 1;   // first step: the largest power of two below max(W, H)
     while (k * 2 < std::max(g.W, g.H)) k *= 2;
-    for (; k >= 1; k /= 2) {
-        jfa_step_kernel<<<grid, block>>>(in, out, g.W, g.H, k);
-        std::swap(in, out);
-    }
-    jfa_to_dist_kernel<<<grid, block>>>(in, g.d_dist, g.W, g.H, res);
+    cudabot::jfa2d_distance(g.d_occ, g.d_seed_a, g.d_seed_b, g.d_dist, g.W, g.H, res, MAX_DIST, k);
     cudaEventRecord(e1);
     cudaEventSynchronize(e1);
     float ms = 0.0f;

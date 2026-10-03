@@ -41,6 +41,7 @@
 #include "cuda_check.cuh"
 #include "mppi_reduction.cuh"
 #include "cuda_video.h"
+#include "jfa.cuh"
 
 // -------------------------------------------------------------------------
 // World / planner parameters
@@ -123,71 +124,6 @@ static void build_scene(std::vector<unsigned char>& occ,
              14.0f, 27.0f, 4.0f, 18.0f };
     lm_y = { 3.5f, 25.5f,  4.0f, 18.0f,  8.0f, 13.0f, 13.5f, 23.0f,
               4.0f,  20.0f, 28.0f, 27.0f };
-}
-
-// -------------------------------------------------------------------------
-// JFA ESDF kernels
-// -------------------------------------------------------------------------
-__global__ void jfa_init_kernel(const unsigned char* __restrict__ occ,
-                                int* __restrict__ seed, int W, int H) {
-    int x = blockIdx.x * blockDim.x + threadIdx.x;
-    int y = blockIdx.y * blockDim.y + threadIdx.y;
-    if (x >= W || y >= H) return;
-    int idx = y * W + x;
-    seed[idx] = occ[idx] ? idx : -1;
-}
-
-__global__ void jfa_step_kernel(const int* __restrict__ seed_in,
-                                int* __restrict__ seed_out,
-                                int W, int H, int k) {
-    int x = blockIdx.x * blockDim.x + threadIdx.x;
-    int y = blockIdx.y * blockDim.y + threadIdx.y;
-    if (x >= W || y >= H) return;
-    int idx = y * W + x;
-    int best = seed_in[idx];
-    float best_d2 = FLT_MAX;
-    if (best >= 0) {
-        int bx = best % W, by = best / W;
-        int ex = x - bx, ey = y - by;
-        best_d2 = static_cast<float>(ex * ex + ey * ey);
-    }
-    #pragma unroll
-    for (int dy = -1; dy <= 1; dy++) {
-        #pragma unroll
-        for (int dx = -1; dx <= 1; dx++) {
-            if (dx == 0 && dy == 0) continue;
-            int nx = x + dx * k;
-            int ny = y + dy * k;
-            if (nx < 0 || nx >= W || ny < 0 || ny >= H) continue;
-            int s = seed_in[ny * W + nx];
-            if (s < 0) continue;
-            int sx = s % W, sy = s / W;
-            int ex = x - sx, ey = y - sy;
-            float d2 = static_cast<float>(ex * ex + ey * ey);
-            if (d2 < best_d2) { best = s; best_d2 = d2; }
-        }
-    }
-    seed_out[idx] = best;
-}
-
-__global__ void jfa_to_dist_kernel(const int* __restrict__ seed,
-                                   const unsigned char* __restrict__ occ,
-                                   float* __restrict__ dist,
-                                   int W, int H, float res) {
-    int x = blockIdx.x * blockDim.x + threadIdx.x;
-    int y = blockIdx.y * blockDim.y + threadIdx.y;
-    if (x >= W || y >= H) return;
-    int idx = y * W + x;
-    int s = seed[idx];
-    float d;
-    if (s < 0) { d = MAX_DIST; }
-    else {
-        int sx = s % W, sy = s / W;
-        int dx = x - sx, dy = y - sy;
-        d = sqrtf(static_cast<float>(dx * dx + dy * dy)) * res;
-    }
-    if (occ[idx]) d = -d;
-    dist[idx] = d;
 }
 
 // -------------------------------------------------------------------------
@@ -433,13 +369,7 @@ int main() {
     dim3 grd2d((GRID + 15) / 16, (GRID + 15) / 16);
 
     auto t0 = std::chrono::high_resolution_clock::now();
-    jfa_init_kernel<<<grd2d, blk2d>>>(d_occ, d_seed_a, GRID, GRID);
-    int* in_ptr = d_seed_a; int* out_ptr = d_seed_b;
-    for (int k = GRID / 2; k >= 1; k /= 2) {
-        jfa_step_kernel<<<grd2d, blk2d>>>(in_ptr, out_ptr, GRID, GRID, k);
-        std::swap(in_ptr, out_ptr);
-    }
-    jfa_to_dist_kernel<<<grd2d, blk2d>>>(in_ptr, d_occ, d_esdf, GRID, GRID, RES);
+    cudabot::jfa2d_distance(d_occ, d_seed_a, d_seed_b, d_esdf, GRID, GRID, RES, MAX_DIST);
     CUDA_CHECK(cudaDeviceSynchronize());
     auto t1 = std::chrono::high_resolution_clock::now();
     std::printf("ESDF build: %.2f ms\n",
