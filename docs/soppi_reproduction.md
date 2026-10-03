@@ -468,6 +468,11 @@ path segment (`oi_face_track_mppi`,
 [`results/box_detour_face_track_2026-10-03.md`](results/box_detour_face_track_2026-10-03.md))
 lifts the open cell to 29/30 but drops the smooth wall cell to 15/30; on the
 hard-contact plant it is best on both cells (21/30 open, 18/30 wall).
+On two held-out geometries
+([`results/box_detour_generalization_2026-10-03.md`](results/box_detour_generalization_2026-10-03.md))
+face switching still solves most episodes on the smooth plant (25-28/30 for
+`oi_face_mppi`); on the hard plant tracking transfers to the mirrored cell
+(15/30) but not to the far-wall cell (4/30).
 
 | Scenario | Planner | Success | Steps | Final Dist | Cost | Avg ms |
 |---|---|---:|---:|---:|---:|---:|
