@@ -20,6 +20,7 @@
 #include "gpu_mlp.cuh"
 #include "parallel_env.cuh"
 #include "cuda_video.h"
+#include "cuda_check.cuh"
 
 using namespace std;
 using namespace cudabot;
@@ -214,17 +215,17 @@ int main() {
 
         float* d_warm_input = nullptr;
         float* d_warm_target = nullptr;
-        cudaMalloc(&d_warm_input, h_input.size() * sizeof(float));
-        cudaMalloc(&d_warm_target, h_target.size() * sizeof(float));
-        cudaMemcpy(d_warm_input, h_input.data(), h_input.size() * sizeof(float), cudaMemcpyHostToDevice);
-        cudaMemcpy(d_warm_target, h_target.data(), h_target.size() * sizeof(float), cudaMemcpyHostToDevice);
+        CUDA_CHECK(cudaMalloc(&d_warm_input, h_input.size() * sizeof(float)));
+        CUDA_CHECK(cudaMalloc(&d_warm_target, h_target.size() * sizeof(float)));
+        CUDA_CHECK(cudaMemcpy(d_warm_input, h_input.data(), h_input.size() * sizeof(float), cudaMemcpyHostToDevice));
+        CUDA_CHECK(cudaMemcpy(d_warm_target, h_target.data(), h_target.size() * sizeof(float), cudaMemcpyHostToDevice));
 
         for (int i = 0; i < 600; i++) {
             policy.train_step_backprop(d_warm_input, d_warm_target, warm_samples, 0.005f, 1);
         }
 
-        cudaFree(d_warm_input);
-        cudaFree(d_warm_target);
+        CUDA_CHECK(cudaFree(d_warm_input));
+        CUDA_CHECK(cudaFree(d_warm_target));
     }
 
     float* d_obs = nullptr;
@@ -245,22 +246,22 @@ int main() {
     float* d_stats = nullptr;
 
     int total_samples = RL_ENVS * RL_HORIZON;
-    cudaMalloc(&d_obs, RL_ENVS * 4 * sizeof(float));
-    cudaMalloc(&d_logits, RL_ENVS * sizeof(float));
-    cudaMalloc(&d_actions, RL_ENVS * sizeof(float));
-    cudaMalloc(&d_action_bits, RL_ENVS * sizeof(float));
-    cudaMalloc(&d_rewards, RL_ENVS * sizeof(float));
-    cudaMalloc(&d_dones, RL_ENVS * sizeof(int));
-    cudaMalloc(&d_obs_hist, total_samples * 4 * sizeof(float));
-    cudaMalloc(&d_logits_hist, total_samples * sizeof(float));
-    cudaMalloc(&d_action_hist, total_samples * sizeof(float));
-    cudaMalloc(&d_rewards_hist, total_samples * sizeof(float));
-    cudaMalloc(&d_done_hist, total_samples * sizeof(int));
-    cudaMalloc(&d_prev_done, RL_ENVS * sizeof(int));
-    cudaMalloc(&d_prev_done_hist, total_samples * sizeof(int));
-    cudaMalloc(&d_returns, total_samples * sizeof(float));
-    cudaMalloc(&d_output_grad, total_samples * sizeof(float));
-    cudaMalloc(&d_stats, 2 * sizeof(float));
+    CUDA_CHECK(cudaMalloc(&d_obs, RL_ENVS * 4 * sizeof(float)));
+    CUDA_CHECK(cudaMalloc(&d_logits, RL_ENVS * sizeof(float)));
+    CUDA_CHECK(cudaMalloc(&d_actions, RL_ENVS * sizeof(float)));
+    CUDA_CHECK(cudaMalloc(&d_action_bits, RL_ENVS * sizeof(float)));
+    CUDA_CHECK(cudaMalloc(&d_rewards, RL_ENVS * sizeof(float)));
+    CUDA_CHECK(cudaMalloc(&d_dones, RL_ENVS * sizeof(int)));
+    CUDA_CHECK(cudaMalloc(&d_obs_hist, total_samples * 4 * sizeof(float)));
+    CUDA_CHECK(cudaMalloc(&d_logits_hist, total_samples * sizeof(float)));
+    CUDA_CHECK(cudaMalloc(&d_action_hist, total_samples * sizeof(float)));
+    CUDA_CHECK(cudaMalloc(&d_rewards_hist, total_samples * sizeof(float)));
+    CUDA_CHECK(cudaMalloc(&d_done_hist, total_samples * sizeof(int)));
+    CUDA_CHECK(cudaMalloc(&d_prev_done, RL_ENVS * sizeof(int)));
+    CUDA_CHECK(cudaMalloc(&d_prev_done_hist, total_samples * sizeof(int)));
+    CUDA_CHECK(cudaMalloc(&d_returns, total_samples * sizeof(float)));
+    CUDA_CHECK(cudaMalloc(&d_output_grad, total_samples * sizeof(float)));
+    CUDA_CHECK(cudaMalloc(&d_stats, 2 * sizeof(float)));
 
     int threads = 256;
     int blocks = (RL_ENVS + threads - 1) / threads;
@@ -276,18 +277,18 @@ int main() {
             policy.forward_batch(d_obs, d_logits, RL_ENVS, 1);
             sample_policy_kernel<<<blocks, threads>>>(d_logits, d_actions, d_action_bits, RL_ENVS,
                                                       static_cast<unsigned int>(gen * 4099 + t * 17 + 3));
-            cudaMemcpy(d_prev_done, env.done_device(), RL_ENVS * sizeof(int), cudaMemcpyDeviceToDevice);
+            CUDA_CHECK(cudaMemcpy(d_prev_done, env.done_device(), RL_ENVS * sizeof(int), cudaMemcpyDeviceToDevice));
             env.step(d_actions, d_obs, d_rewards, d_dones);
             shape_rewards_kernel<<<blocks, threads>>>(d_obs, d_prev_done, d_dones, d_rewards, RL_ENVS);
 
-            cudaMemcpy(d_obs_hist + t * RL_ENVS * 4, d_obs, RL_ENVS * 4 * sizeof(float), cudaMemcpyDeviceToDevice);
-            cudaMemcpy(d_logits_hist + t * RL_ENVS, d_logits, RL_ENVS * sizeof(float), cudaMemcpyDeviceToDevice);
-            cudaMemcpy(d_action_hist + t * RL_ENVS, d_action_bits, RL_ENVS * sizeof(float), cudaMemcpyDeviceToDevice);
-            cudaMemcpy(d_rewards_hist + t * RL_ENVS, d_rewards, RL_ENVS * sizeof(float), cudaMemcpyDeviceToDevice);
-            cudaMemcpy(d_done_hist + t * RL_ENVS, d_dones, RL_ENVS * sizeof(int), cudaMemcpyDeviceToDevice);
-            cudaMemcpy(d_prev_done_hist + t * RL_ENVS, d_prev_done, RL_ENVS * sizeof(int), cudaMemcpyDeviceToDevice);
+            CUDA_CHECK(cudaMemcpy(d_obs_hist + t * RL_ENVS * 4, d_obs, RL_ENVS * 4 * sizeof(float), cudaMemcpyDeviceToDevice));
+            CUDA_CHECK(cudaMemcpy(d_logits_hist + t * RL_ENVS, d_logits, RL_ENVS * sizeof(float), cudaMemcpyDeviceToDevice));
+            CUDA_CHECK(cudaMemcpy(d_action_hist + t * RL_ENVS, d_action_bits, RL_ENVS * sizeof(float), cudaMemcpyDeviceToDevice));
+            CUDA_CHECK(cudaMemcpy(d_rewards_hist + t * RL_ENVS, d_rewards, RL_ENVS * sizeof(float), cudaMemcpyDeviceToDevice));
+            CUDA_CHECK(cudaMemcpy(d_done_hist + t * RL_ENVS, d_dones, RL_ENVS * sizeof(int), cudaMemcpyDeviceToDevice));
+            CUDA_CHECK(cudaMemcpy(d_prev_done_hist + t * RL_ENVS, d_prev_done, RL_ENVS * sizeof(int), cudaMemcpyDeviceToDevice));
         }
-        cudaDeviceSynchronize();
+        CUDA_CHECK(cudaDeviceSynchronize());
 
         compute_returns_kernel<<<blocks, threads>>>(d_rewards_hist, d_done_hist, d_returns,
                                                     RL_HORIZON, RL_ENVS, GAMMA);
@@ -297,7 +298,7 @@ int main() {
             d_logits_hist, d_action_hist, d_returns, d_prev_done_hist, d_stats, d_output_grad, total_samples);
         policy.apply_output_grad(d_obs_hist, d_output_grad, total_samples, LR, 1);
 
-        cudaMemcpy(h_steps.data(), env.steps_device(), RL_ENVS * sizeof(int), cudaMemcpyDeviceToHost);
+        CUDA_CHECK(cudaMemcpy(h_steps.data(), env.steps_device(), RL_ENVS * sizeof(int), cudaMemcpyDeviceToHost));
         last_mean = accumulate(h_steps.begin(), h_steps.end(), 0.0f) / RL_ENVS;
         history.push_back(last_mean);
         cout << "Generation " << gen + 1 << " / " << RL_GENERATIONS
@@ -309,9 +310,9 @@ int main() {
     float* d_eval_obs = nullptr;
     float* d_eval_logits = nullptr;
     float* d_eval_actions = nullptr;
-    cudaMalloc(&d_eval_obs, 4 * sizeof(float));
-    cudaMalloc(&d_eval_logits, sizeof(float));
-    cudaMalloc(&d_eval_actions, sizeof(float));
+    CUDA_CHECK(cudaMalloc(&d_eval_obs, 4 * sizeof(float)));
+    CUDA_CHECK(cudaMalloc(&d_eval_logits, sizeof(float)));
+    CUDA_CHECK(cudaMalloc(&d_eval_actions, sizeof(float)));
     eval_env.reset_all(999);
 
     cv::VideoWriter video(
@@ -331,7 +332,7 @@ int main() {
         policy.forward_batch(d_eval_obs, d_eval_logits, 1, 1);
         deterministic_policy_kernel<<<1, 1>>>(d_eval_logits, d_eval_actions, 1);
         eval_env.step(d_eval_actions, nullptr, nullptr, nullptr);
-        cudaMemcpy(eval_state, eval_env.states_device(), 4 * sizeof(float), cudaMemcpyDeviceToHost);
+        CUDA_CHECK(cudaMemcpy(eval_state, eval_env.states_device(), 4 * sizeof(float), cudaMemcpyDeviceToHost));
 
         cv::Mat left(360, 420, CV_8UC3);
         cv::Mat right(360, 540, CV_8UC3);
@@ -351,25 +352,25 @@ int main() {
     }
 
     video.release();
-    cudaFree(d_obs);
-    cudaFree(d_logits);
-    cudaFree(d_actions);
-    cudaFree(d_action_bits);
-    cudaFree(d_rewards);
-    cudaFree(d_dones);
-    cudaFree(d_obs_hist);
-    cudaFree(d_logits_hist);
-    cudaFree(d_action_hist);
-    cudaFree(d_rewards_hist);
-    cudaFree(d_done_hist);
-    cudaFree(d_prev_done);
-    cudaFree(d_prev_done_hist);
-    cudaFree(d_returns);
-    cudaFree(d_output_grad);
-    cudaFree(d_stats);
-    cudaFree(d_eval_obs);
-    cudaFree(d_eval_logits);
-    cudaFree(d_eval_actions);
+    CUDA_CHECK(cudaFree(d_obs));
+    CUDA_CHECK(cudaFree(d_logits));
+    CUDA_CHECK(cudaFree(d_actions));
+    CUDA_CHECK(cudaFree(d_action_bits));
+    CUDA_CHECK(cudaFree(d_rewards));
+    CUDA_CHECK(cudaFree(d_dones));
+    CUDA_CHECK(cudaFree(d_obs_hist));
+    CUDA_CHECK(cudaFree(d_logits_hist));
+    CUDA_CHECK(cudaFree(d_action_hist));
+    CUDA_CHECK(cudaFree(d_rewards_hist));
+    CUDA_CHECK(cudaFree(d_done_hist));
+    CUDA_CHECK(cudaFree(d_prev_done));
+    CUDA_CHECK(cudaFree(d_prev_done_hist));
+    CUDA_CHECK(cudaFree(d_returns));
+    CUDA_CHECK(cudaFree(d_output_grad));
+    CUDA_CHECK(cudaFree(d_stats));
+    CUDA_CHECK(cudaFree(d_eval_obs));
+    CUDA_CHECK(cudaFree(d_eval_logits));
+    CUDA_CHECK(cudaFree(d_eval_actions));
 
     cout << "Video saved to gif/mini_isaac_rl.avi" << endl;
     convert_avi_to_gif(AVI_PATH, GIF_PATH, 15);
