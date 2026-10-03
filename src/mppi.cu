@@ -55,7 +55,7 @@ static constexpr float STEER_NOISE_STD = 0.4f;
 
 // Cost weights
 static constexpr float GOAL_WEIGHT     = 1.0f;
-static constexpr float OBS_WEIGHT      = 200.0f;
+static constexpr float OBS_WEIGHT      = 100.0f;
 static constexpr float SPEED_WEIGHT    = 0.1f;
 static constexpr float STEER_WEIGHT    = 5.0f;
 static constexpr float TERMINAL_WEIGHT = 10.0f;
@@ -92,7 +92,7 @@ __global__ void init_curand_kernel(curandState* states, int K, unsigned long lon
 // Kernel: Rollout K trajectories with bicycle model
 // Each thread rolls out one trajectory, accumulates cost
 // Inputs:
-//   state: (x, y, theta, v) - current robot state
+//   state: (x, y, theta, v, steer) - current robot state
 //   d_nominal: [T * 2] nominal control sequence (accel, steer_rate) per step
 // Outputs:
 //   d_costs: [K] total cost for each sample
@@ -100,7 +100,7 @@ __global__ void init_curand_kernel(curandState* states, int K, unsigned long lon
 //   d_trajectories: [K * T * 4] rolled out states (for visualization)
 // -------------------------------------------------------------------------
 __global__ void rollout_kernel(
-    float sx, float sy, float stheta, float sv,
+    float sx, float sy, float stheta, float sv, float ssteer,
     const float* __restrict__ d_nominal,       // [T * 2]
     float* __restrict__ d_costs,               // [K]
     float* __restrict__ d_perturbed,           // [K * T * 2]
@@ -114,7 +114,7 @@ __global__ void rollout_kernel(
     curandState local_state = d_rand_states[k];
 
     float x = sx, y = sy, theta = stheta, v = sv;
-    float steer = 0.0f;  // current steering angle
+    float steer = ssteer;  // start from the robot's actual steering angle
     float cost = 0.0f;
 
     for (int t = 0; t < T; t++) {
@@ -281,7 +281,7 @@ int main()
 
         // 1. Rollout K trajectories
         rollout_kernel<<<grid_K, block>>>(
-            rx, ry, rtheta, rv,
+            rx, ry, rtheta, rv, rsteer,
             d_nominal, d_costs, d_perturbed, d_trajectories, d_rand_states,
             K_SAMPLES, T_HORIZON, DT, WHEELBASE);
         CUDA_CHECK(cudaGetLastError());
