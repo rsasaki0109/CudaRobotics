@@ -39,7 +39,7 @@
       ],
       "limitations": [
         "The other four scenario cells are not Holm-significant, and box_align_detour remains 0/30 for every planner.",
-        "All planners calibrated to K=1024 on the reference GTX 1660 Ti; the equal-budget claim is enforced by the 10 ms slot, not by different selected sample counts."
+        "All planners calibrated to K=1024 on the reference NVIDIA Turing-class consumer GPU; the equal-budget claim is enforced by the 10 ms slot, not by different selected sample counts."
       ]
     },
     {
@@ -188,7 +188,7 @@
         {
           "path": "docs/results/contact_robustness_2026-07-28_provenance.json",
           "normalization": "text_lf",
-          "sha256": "b66c3a502c280b67a9cc154b4b7bf2c9dc4f8073d27144c58dc6a50308741f90"
+          "sha256": "c960d81a7ee19ebff59a0e468f57c7da6e7114f63f81cc2bea575716cffd6eaf"
         }
       ],
       "assertions": [
@@ -310,7 +310,7 @@
         {
           "path": "docs/results/contact_external_fidelity_2026-07-28_provenance.json",
           "normalization": "text_lf",
-          "sha256": "e7b0e86e14dc92ef645064f532342fc7069f22ea9905f4639ad861a3b52fad52"
+          "sha256": "cf1c14a38c846fc8257841866f9e5a60bec3a78bb35233595acfc7b4c4fa8a53"
         }
       ],
       "assertions": [

@@ -227,7 +227,7 @@ survive correction.
 
 ### 4.5 Hardware and evidence freeze
 
-All frozen results were generated on an NVIDIA GeForce GTX 1660 Ti. Each block
+All frozen results were generated on an NVIDIA Turing-class consumer GPU. Each block
 records its source commit, clean/dirty state, GPU identity, commands, matrix
 shape, raw CSV hashes, report hashes, and validator result. Independent
 hardware replication is desirable but is not implied by the current ledger.
@@ -340,7 +340,7 @@ claiming universal hybrid superiority, or asserting real-world manipulation.
 
 ## 8. Limitations
 
-- All frozen experiments use one GTX 1660 Ti.
+- All frozen experiments use one NVIDIA Turing-class consumer GPU.
 - The nominal and hard-contact robustness plants are custom GPU simulations.
 - The external plant is a custom planar MuJoCo MJCF, not a standard
   manipulator suite.

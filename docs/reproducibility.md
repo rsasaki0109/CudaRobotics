@@ -90,6 +90,18 @@ ctest --test-dir build -R check_repro_suite_dry_run --output-on-failure
 
 The actual benchmark suites remain GPU/runtime checks and should be run on a machine with a working NVIDIA CUDA stack.
 
+Committed evidence must not name the physical GPU that produced it. The
+runners record the `nvidia-smi` model name and UUID; before committing new
+results, replace them with an architecture label and a pseudonymous UUID, which
+also refreshes every SHA-256 reference to the rewritten files:
+
+```bash
+python3 scripts/redact_gpu_identity.py --label "NVIDIA <architecture>-class consumer GPU"
+```
+
+The Build workflow runs `scripts/redact_gpu_identity.py --check` and fails on
+any remaining model name or GPU UUID.
+
 ## End-to-End CudaNav Evidence
 
 The autonomy-stack evidence has separate gates because closed-loop simulation,

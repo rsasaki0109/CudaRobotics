@@ -69,7 +69,7 @@ CI runs.
 
 ## Measured smoke result
 
-GTX 1660 Ti, CUDA 12.8, 64 scans, fixed seeds:
+NVIDIA Turing-class consumer GPU, CUDA 12.8, 64 scans, fixed seeds:
 
 | Metric | Result |
 |---|---:|

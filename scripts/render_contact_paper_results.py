@@ -282,7 +282,7 @@ def render() -> str:
         "sampling-only or pure-SVGD baseline.",
         "- The MuJoCo task is a custom planar closed-loop sim-to-sim transfer, "
         "not a standard manipulator benchmark or real-robot result.",
-        "- All results are from one GTX 1660 Ti. Independent hardware "
+        "- All results are from one NVIDIA Turing-class consumer GPU. Independent hardware "
         "replication is desirable but is not silently implied.",
         "",
         "## Reproduction",

@@ -94,7 +94,7 @@ remain in the output; hypothesis outcome is not an integrity gate.
 ## Release result
 
 The 2026-07-28 UTC release run completed 375 calibration and 450 held-out
-evaluation episodes on a GTX 1660 Ti. All three planners selected K=1024 and
+evaluation episodes on an NVIDIA Turing-class consumer GPU. All three planners selected K=1024 and
 were evaluated with the same enforced 10 ms slot. Aggregate real-time success
 was 0.800 for Diff-MPPI-3, 0.673 for MPPI, and 0.793 for SOPPI-fast.
 

@@ -94,7 +94,7 @@ The materialization gate requires positive message counts for every selected
 recorded input and for the derived Path. It rehashes both local bag trees, the
 generator report, and the acquisition inspection by default. The inspection
 binds the selected Drive file ID, exact DB name/size/SHA-256, required-topic
-checks, and dataset-spec digest to the source-bag identity. The GTX 1660 Ti
+checks, and dataset-spec digest to the source-bag identity. The NVIDIA Turing-class consumer GPU
 ROS 2 release replay now passes with 793 CUDA MPPI diagnostics, 790/790
 point-cloud/command pairs, 4.801 ms solve p95, and 3.535 m minimum measured
 front clearance. See

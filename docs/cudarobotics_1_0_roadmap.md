@@ -40,7 +40,7 @@ explicit failure reporting across the complete loop.
 | GPU odometry | Reusable voxel-hash KISS-ICP core, lifecycle ROS component, exact-master Jazzy CI, and 804 odometry outputs in the content-addressed Istanbul ROS 2 GPU shadow release | Complete |
 | Mapping | Rolling voxel map, exact typed ESDF, lifecycle nodes, exact-master Jazzy CI, and 796 occupancy plus 794 ESDF outputs in the Istanbul ROS 2 GPU shadow release | Complete |
 | Nav2 integration | Voxel costmap plugin, CUDA MPPI, deterministic closed-loop bringup; ROS 2 GPU release passes 30/30 traversals over 1325.5 seconds; public real-sensor shadow release passes 793 GPU control cycles with retained MCAP | Complete |
-| Reproducibility | Exact-master Jazzy CI passes; MCD 1,190-scan all-GPU release, clean UUID-bound ROS 2 closed-loop release, and content-addressed Istanbul real-rosbag shadow release pass on the GTX 1660 Ti | Acquire the fresh-clone, published-image, and deployed-docs attestations from one immutable tag; multi-GPU is an optional extension |
+| Reproducibility | Exact-master Jazzy CI passes; MCD 1,190-scan all-GPU release, clean UUID-bound ROS 2 closed-loop release, and content-addressed Istanbul real-rosbag shadow release pass on the NVIDIA Turing-class consumer GPU | Acquire the fresh-clone, published-image, and deployed-docs attestations from one immutable tag; multi-GPU is an optional extension |
 | Contact paper | Published 32,400-episode robustness, exact 10 ms matched-compute, 3,150-episode closed-loop MuJoCo evidence, ready ledger, anonymous IEEE conference source, generated figures, and content-bound bundle/archive contracts | Select the final venue mode and real anonymous artifact URL; optional independent-hardware replication |
 | Papers | Contact-rich Diff-MPPI and CudaNav systems ledgers are `ready: true`; frozen Markdown and anonymous IEEE sources are machine-checked and CI-compilable. CudaNav ROS 2 closed-loop and real-data shadow claims are supported | Publish the final contact bundle after URL selection; multi-GPU remains an optional partial claim |
 
@@ -97,7 +97,7 @@ Initial components:
 
 KISS-ICP gates:
 
-- total odometry time at or below 12 ms per scan on the GTX 1660 Ti reference
+- total odometry time at or below 12 ms per scan on the NVIDIA Turing-class consumer GPU reference
   run;
 - voxel-hash versus exhaustive-reference translation ATE delta below 0.1 mm;
 - no hash overflow at the supported 200k-point local-map capacity;
@@ -193,7 +193,7 @@ The release matrix should cover:
 - CUDA MPPI versus the Nav2 CPU controller;
 - synthetic, recorded/shadow, and closed-loop simulation evidence;
 - fixed seeds with at least three repetitions for benchmark claims;
-- the reference GTX 1660 Ti and at least one newer desktop GPU;
+- the reference NVIDIA Turing-class consumer GPU and at least one newer desktop GPU;
 - Jetson as either a tested target or an explicitly experimental target.
 
 ## Epic 4: v0.4 Python CudaNav

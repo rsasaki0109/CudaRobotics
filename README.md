@@ -108,7 +108,7 @@ can track improvements using the privacy-preserving
 | **CudaNav deterministic closed-loop bringup** | [`docs/cudanav_closed_loop.md`](docs/cudanav_closed_loop.md) |
 | **CudaNav native all-GPU 30-traversal release** | [`docs/results/cudanav_gpu_closed_loop_release_2026-07-29.md`](docs/results/cudanav_gpu_closed_loop_release_2026-07-29.md) |
 | **CudaNav multi-GPU reproducibility matrix** | [`docs/cudanav_multi_gpu.md`](docs/cudanav_multi_gpu.md) |
-| **CudaNav physical GPU matrix — GTX 1660 Ti node** | [`docs/results/cudanav_gpu_closed_loop_release_gtx1660ti_2026-07-29.md`](docs/results/cudanav_gpu_closed_loop_release_gtx1660ti_2026-07-29.md) |
+| **CudaNav physical GPU matrix — NVIDIA Turing-class consumer GPU node** | [`docs/results/cudanav_gpu_closed_loop_release_reference_gpu_2026-07-29.md`](docs/results/cudanav_gpu_closed_loop_release_reference_gpu_2026-07-29.md) |
 | **CudaNav complete autonomy evidence suite** | [`docs/cudanav_autonomy_suite.md`](docs/cudanav_autonomy_suite.md) |
 | **MathematicalRobotics native migration** | [`docs/mathr_port.md`](docs/mathr_port.md) |
 | **MathematicalRobotics full migration ledger** | [`docs/mathr_migration_matrix.md`](docs/mathr_migration_matrix.md) |

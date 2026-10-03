@@ -2,7 +2,7 @@
 
 - Source commit: `c4b91452d079fbfa6b285d80355632a5d1c9c716` (clean)
 - Dataset: `autoware_istanbul_localization_smoke`
-- GPU: NVIDIA GeForce GTX 1660 Ti (`GPU-f635286a-d68f-5039-cbc9-22d7f295b3a3`)
+- GPU: NVIDIA Turing-class consumer GPU (`GPU-anon-8f11fdb6fe73`)
 - Claim boundary: real sensor data with a derived recorded Path; commands do not alter recorded motion.
 
 ## Results

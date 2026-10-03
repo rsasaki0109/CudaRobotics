@@ -58,8 +58,8 @@ complete evidence directories to the aggregation machine. Then import them:
 python scripts/run_cudanav_multi_gpu.py \
   --evidence-kind ros2-smoke \
   --output-dir build/cudanav_multi_gpu/cross_machine_001 \
-  --import-run imported/gtx_1660_ti/run_00 \
-  --import-run imported/rtx_4070/run_00
+  --import-run imported/node_a/run_00 \
+  --import-run imported/node_b/run_00
 
 python scripts/validate_cudanav_multi_gpu.py \
   build/cudanav_multi_gpu/cross_machine_001
@@ -72,8 +72,8 @@ the identical commit, copy each complete child directory, and aggregate:
 python scripts/run_cudanav_multi_gpu.py \
   --evidence-kind native-release \
   --output-dir build/cudanav_multi_gpu/native_cross_machine \
-  --import-run imported/gtx_1660_ti/run_00 \
-  --import-run imported/rtx_4070/run_00
+  --import-run imported/node_a/run_00 \
+  --import-run imported/node_b/run_00
 ```
 
 Every imported directory is independently checked as CudaNav smoke evidence

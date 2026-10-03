@@ -81,7 +81,7 @@ quality gates pass.
 ## GPU KISS-ICP release result
 
 The standalone timed-odometry release gate passed on commit `d240161` using an
-NVIDIA GeForce GTX 1660 Ti:
+NVIDIA Turing-class consumer GPU:
 
 - 1,190 deskewed frames over 118.902 seconds;
 - 326.021 m reference path;

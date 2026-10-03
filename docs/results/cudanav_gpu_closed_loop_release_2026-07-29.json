@@ -68,7 +68,7 @@
     "goal_reached": true,
     "gpu": {
       "driver_version": 13020,
-      "name": "NVIDIA GeForce GTX 1660 Ti"
+      "name": "NVIDIA Turing-class consumer GPU"
     },
     "ground_truth_distance_m": 352.748343586,
     "ground_truth_goal_distance_m": 0.295621395,

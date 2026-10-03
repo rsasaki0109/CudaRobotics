@@ -20,7 +20,7 @@ field, and model predictive path integral control through reusable C++/CUDA
 cores and ROS 2/Nav2 adapters. The evaluation separates three claims that are
 frequently conflated: command-driven closed-loop simulation, recorded-data
 shadow execution, and cross-device reproduction. In a continuous native
-closed loop on an NVIDIA GeForce GTX 1660 Ti, CudaNav completes 30 alternating
+closed loop on an NVIDIA Turing-class consumer GPU, CudaNav completes 30 alternating
 S-course traversals over 1,059.4 simulated seconds and 352.75 m with zero
 collisions, 0.0035% final odometry drift, and zero 150 ms frame-deadline
 misses. On a content-addressed MCD Ouster sequence, the timed GPU KISS-ICP core
@@ -157,7 +157,7 @@ The repository contains lifecycle components for GPU KISS-ICP, voxel mapping,
 and ESDF; a typed distance-field message; a Nav2 voxel costmap layer; and the
 CUDA MPPI controller plugin. Shared launch and configuration files connect the
 components. Source and contract tests are complete, exact-commit Jazzy CI is
-green, and a clean GTX 1660 Ti release-profile ROS 2 runtime attestation
+green, and a clean NVIDIA Turing-class consumer GPU release-profile ROS 2 runtime attestation
 retains the required MCAP topics.
 
 ## 4. Evidence model
@@ -189,7 +189,7 @@ The following IDs are authoritative and are checked against the manuscript:
 | `integrated_gpu_stack` | Supported | Jazzy compile/plugin CI plus UUID-bound ROS 2 GPU runtime release |
 | `closed_loop_autonomy` | Supported | 30/30 ROS 2 traversals, retained MCAP/video, zero collisions |
 | `real_data_shadow` | Supported | Native MCD release plus public Istanbul ROS 2 shadow release |
-| `multi_gpu_reproduction` | Partial | Optional cross-device extension; one UUID-bound GTX 1660 Ti node |
+| `multi_gpu_reproduction` | Partial | Optional cross-device extension; one UUID-bound NVIDIA Turing-class consumer GPU node |
 
 ## 5. Experimental protocol
 
@@ -237,8 +237,8 @@ future sensor messages.
 
 ### 5.3 Hardware and reproducibility
 
-The current physical evidence node is an NVIDIA GeForce GTX 1660 Ti with UUID
-`GPU-f635286a-d68f-5039-cbc9-22d7f295b3a3`. The matrix validator requires a
+The current physical evidence node is an NVIDIA Turing-class consumer GPU with UUID
+`GPU-anon-8f11fdb6fe73`. The matrix validator requires a
 clean checkout, identical 40-character source commit and source digest,
 distinct physical UUIDs and model names, complete release metrics, and
 unchanged result/trajectory hashes. Two runs on the same model do not satisfy
@@ -273,7 +273,7 @@ is sampled from the 10,594-row trajectory while retaining every traversal
 boundary. Its sidecar binds the source result, trajectory, renderer, frame
 inventory, and GIF hash.
 
-An independently frozen GTX 1660 Ti matrix node at the same native contract
+An independently frozen NVIDIA Turing-class consumer GPU matrix node at the same native contract
 also completes 30/30 traversals over 1,005.0 seconds and 352.211 m with zero
 collisions, 0.00153% final drift, zero deadline misses, 0.617 ms MPPI p95, and
 6.417 ms frame p95. This is useful repeat evidence on one physical GPU, not the
@@ -403,7 +403,7 @@ geometry, but shadow commands cannot influence future scans. The ROS 2
 Istanbul runtime therefore supports latency, rollout-validity, mapping, and
 clearance claims without becoming a real-robot closed-loop claim.
 
-Physical GPU release evidence is limited to one GTX 1660 Ti. The optional
+Physical GPU release evidence is limited to one NVIDIA Turing-class consumer GPU. The optional
 matrix claim would require a second GPU UUID and model at an identical source
 commit and digest. The manuscript and ledger keep that claim partial without
 using it to qualify the supported single-GPU systems results.

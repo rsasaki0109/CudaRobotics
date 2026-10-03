@@ -17,6 +17,11 @@ jobs:
       - name: Verify clean checkout
         run: test -z "$(git status --porcelain)"
 
+      - name: Check for physical GPU identities
+        run: |
+          python3 scripts/redact_gpu_identity.py --check
+          python3 scripts/test_redact_gpu_identity.py
+
       - name: Install CUDA toolkit
         uses: Jimver/cuda-toolkit@v0.2.16
         with:

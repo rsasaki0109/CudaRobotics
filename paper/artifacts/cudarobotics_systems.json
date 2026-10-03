@@ -30,7 +30,7 @@
     },
     {
       "id": "real_gpu_odometry",
-      "statement": "The reusable timed GPU KISS-ICP core processes 1,190 MCD Ouster frames over 118.902 seconds with 0.815 m ATE RMSE and 0.472 percent final drift on an NVIDIA GeForce GTX 1660 Ti.",
+      "statement": "The reusable timed GPU KISS-ICP core processes 1,190 MCD Ouster frames over 118.902 seconds with 0.815 m ATE RMSE and 0.472 percent final drift on an NVIDIA Turing-class consumer GPU.",
       "submission_required": true,
       "status": "supported",
       "evidence": [
@@ -124,12 +124,12 @@
       "submission_required": false,
       "status": "partial",
       "evidence": [
-        "native_gpu_matrix_gtx1660ti_node",
-        "native_gpu_matrix_gtx1660ti_report",
+        "native_gpu_matrix_reference_gpu_node",
+        "native_gpu_matrix_reference_gpu_report",
         "multi_gpu_release"
       ],
       "limitations": [
-        "The NVIDIA GeForce GTX 1660 Ti node is complete and UUID-bound; a second distinct physical GPU model has not been run.",
+        "The NVIDIA Turing-class consumer GPU node is complete and UUID-bound; a second distinct physical GPU model has not been run.",
         "This optional cross-device claim is not used to authorize the v1 release or systems-paper submission."
       ]
     }
@@ -390,7 +390,7 @@
         {
           "path": "docs/results/cudanav_kiss_icp_mcd_ntu_day_02_2026-07-29.json",
           "normalization": "text_lf",
-          "sha256": "5321207ed165bc51f9c91088fc683fd2c2e4cb7999338314ce5a125f952a8186"
+          "sha256": "0662cbbf5c7b712cf3ca8bfac1c9ccb8d112b88832f7953e9139256fe562ef68"
         }
       ],
       "assertions": [
@@ -457,7 +457,7 @@
         {
           "path": "docs/results/cudanav_all_gpu_mcd_ntu_day_02_2026-07-30.json",
           "normalization": "text_lf",
-          "sha256": "cca9c9e02075952ae55fc4a1e71a53e8b28ddd354ae032bec518c4c7b349d272"
+          "sha256": "77dce67b6b23102d6ca82d39d7d6c0b2ec5ee4ab0e78f31a2abfe3981a71ed57"
         }
       ],
       "assertions": [
@@ -584,7 +584,7 @@
         {
           "path": "docs/results/cudanav_kiss_icp_real_2026-07-29.json",
           "normalization": "text_lf",
-          "sha256": "76866419464d5e96ff8899a6f17e59014d265831dab4ca0d1f2a00a835119a72"
+          "sha256": "1250d9ffef42f4542292181b83928ed4fd5c4ff80c32f54cd9beac144e571bf4"
         }
       ],
       "assertions": [
@@ -660,7 +660,7 @@
         {
           "path": "docs/results/cudanav_kiss_icp_real_2026-07-29.md",
           "normalization": "text_lf",
-          "sha256": "2dc788ccbed83fda3bebba06c4261586ceff604c05bd97eab4036faa00de8738"
+          "sha256": "eb4d0b61c9a267386fc62391c16aa9de9fcd89b2ffd8e0e2b83f0c9fbd8c9089"
         }
       ]
     },
@@ -680,7 +680,7 @@
         {
           "path": "docs/results/cudanav_real_gpu_stack_2026-07-29.json",
           "normalization": "text_lf",
-          "sha256": "9afd2ef7736d9c053e0d4d0da4c51604addf75aa5860a8895ea3d1d842071549"
+          "sha256": "938d39872dc6c2885149c96a19c22f6091556d9124f7539459d5acc18f165817"
         }
       ],
       "assertions": [
@@ -796,7 +796,7 @@
         {
           "path": "docs/results/cudanav_real_gpu_stack_2026-07-29.md",
           "normalization": "text_lf",
-          "sha256": "947cad893db3ce9621b5acde7d176e7c8b591efdd80680d0cacf0c4614e4d68a"
+          "sha256": "696969ba833a26262fc9bc8950bd9fe8b2e9820e4687a639e7a129b9d5f89743"
         }
       ]
     },
@@ -818,7 +818,7 @@
         {
           "path": "docs/results/cudanav_gpu_closed_loop_2026-07-29.json",
           "normalization": "text_lf",
-          "sha256": "56520c65876a2a1b7368e70ac7acd7b8bf841c6fef4f890473e18b286fc3d081"
+          "sha256": "57683c6bf3e5794b29b39b1402de4411dcf2011f30f75d8a2da823707b3b1f9f"
         }
       ],
       "assertions": [
@@ -944,7 +944,7 @@
         {
           "path": "docs/results/cudanav_gpu_closed_loop_release_2026-07-29.json",
           "normalization": "text_lf",
-          "sha256": "d183566cf8f15979ddebfffff0287f974f4dc7d3d1125c5e9c02a911c7766919"
+          "sha256": "90c362d10666557a1d795f4293c7628c024c27c0c8f2a4cba14d1a362177f9d2"
         }
       ],
       "assertions": [
@@ -1280,7 +1280,7 @@
       ]
     },
     {
-      "id": "native_gpu_matrix_gtx1660ti_node",
+      "id": "native_gpu_matrix_reference_gpu_node",
       "status": "complete",
       "kind": "json_assertions",
       "generator_command": [
@@ -1289,17 +1289,17 @@
         "--profile",
         "release",
         "--output-dir",
-        "build/cudanav_multi_gpu/native_nodes/gtx1660ti_5bc4446",
+        "build/cudanav_multi_gpu/native_nodes/reference_gpu_5bc4446",
         "--publish-json",
-        "docs/results/cudanav_gpu_closed_loop_release_gtx1660ti_2026-07-29.json",
+        "docs/results/cudanav_gpu_closed_loop_release_reference_gpu_2026-07-29.json",
         "--publish-markdown",
-        "docs/results/cudanav_gpu_closed_loop_release_gtx1660ti_2026-07-29.md"
+        "docs/results/cudanav_gpu_closed_loop_release_reference_gpu_2026-07-29.md"
       ],
       "artifacts": [
         {
-          "path": "docs/results/cudanav_gpu_closed_loop_release_gtx1660ti_2026-07-29.json",
+          "path": "docs/results/cudanav_gpu_closed_loop_release_reference_gpu_2026-07-29.json",
           "normalization": "text_lf",
-          "sha256": "b2829b377e55bb41f611da23e90dd16d275f72e7661dbe344c4bdbbc9b1e58d8"
+          "sha256": "efe153b59a8371a0c492f90b288d9c99cac7173548213bbfc963f255a72bde54"
         }
       ],
       "assertions": [
@@ -1316,12 +1316,12 @@
         {
           "json_path": "gpu_identity.name",
           "op": "eq",
-          "value": "NVIDIA GeForce GTX 1660 Ti"
+          "value": "NVIDIA Turing-class consumer GPU"
         },
         {
           "json_path": "gpu_identity.uuid",
           "op": "eq",
-          "value": "GPU-f635286a-d68f-5039-cbc9-22d7f295b3a3"
+          "value": "GPU-anon-8f11fdb6fe73"
         },
         {
           "json_path": "checks.gpu_binding",
@@ -1356,7 +1356,7 @@
       ]
     },
     {
-      "id": "native_gpu_matrix_gtx1660ti_report",
+      "id": "native_gpu_matrix_reference_gpu_report",
       "status": "complete",
       "kind": "file_set",
       "generator_command": [
@@ -1365,13 +1365,13 @@
         "--profile",
         "release",
         "--output-dir",
-        "build/cudanav_multi_gpu/native_nodes/gtx1660ti_5bc4446",
+        "build/cudanav_multi_gpu/native_nodes/reference_gpu_5bc4446",
         "--publish-markdown",
-        "docs/results/cudanav_gpu_closed_loop_release_gtx1660ti_2026-07-29.md"
+        "docs/results/cudanav_gpu_closed_loop_release_reference_gpu_2026-07-29.md"
       ],
       "artifacts": [
         {
-          "path": "docs/results/cudanav_gpu_closed_loop_release_gtx1660ti_2026-07-29.md",
+          "path": "docs/results/cudanav_gpu_closed_loop_release_reference_gpu_2026-07-29.md",
           "normalization": "text_lf",
           "sha256": "e64b13298e5f38e29d47700fe1bfcd5a9fdb876a8a089fa2d7336446766ca6e0"
         }
@@ -1397,7 +1397,7 @@
         {
           "path": "docs/results/cudanav_ros_gpu_closed_loop_release_2026-07-30.json",
           "normalization": "text_lf",
-          "sha256": "77374b884a7a38e6786aea4a88973333c580307fb5d4937890be2f4a300cf61d"
+          "sha256": "5e19eddaefebff2e5c02c3303bb1d8364058e0284cfa4545e469cb5070e75f93"
         }
       ],
       "assertions": [
@@ -1469,7 +1469,7 @@
         {
           "path": "docs/results/cudanav_ros_gpu_closed_loop_release_2026-07-30.md",
           "normalization": "text_lf",
-          "sha256": "b47d9d29b59c66227f29c02573fb2853cc82263035cefb683385ad4e61f831d1"
+          "sha256": "e388349a524f4fa0b067cacca814598a23b13e4f562eb5664691b47696ca1fb8"
         }
       ]
     },
@@ -1490,7 +1490,7 @@
         {
           "path": "docs/results/cudanav_rosbag_shadow_release_2026-07-30.json",
           "normalization": "text_lf",
-          "sha256": "e46e91be1aa1f2de6397b338a33226f499ba1bffd3c1799c6385dbb2ace2b513"
+          "sha256": "d6c20fba83b88336ffc8d7cc3168b75db813f9a242fc104dfb8473a2131d41de"
         }
       ],
       "assertions": [
@@ -1566,7 +1566,7 @@
         {
           "path": "docs/results/cudanav_rosbag_shadow_release_2026-07-30.md",
           "normalization": "text_lf",
-          "sha256": "0a35d81722ac7ada395111d76674181577e75ab0197c490a207a2ba632090a62"
+          "sha256": "f8265983e89da7d46397fc0c4ed418c891da0733d6485e6abdf115800a203d44"
         }
       ]
     },

@@ -8,7 +8,7 @@ deterministic partial-overlap input and satisfies the default accuracy gate.
 
 Environment:
 
-- GPU: NVIDIA GeForce GTX 1660 Ti
+- GPU: NVIDIA Turing-class consumer GPU
 - Driver: 596.36
 - CUDA Toolkit: 12.8
 - Python: 3.12.10

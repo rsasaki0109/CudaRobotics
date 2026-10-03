@@ -36,7 +36,7 @@ MuJoCo plant. The evidence does not establish universal planner dominance.
 SOPPI-fast contains one nominal gradient step, so it is not a pure SVGD or
 sampling-only baseline. The MuJoCo block is a custom planar sim-to-sim transfer,
 not a standard manipulator benchmark or real-robot result. All frozen results
-were collected on one GTX 1660 Ti; independent-hardware replication remains
+were collected on one NVIDIA Turing-class consumer GPU; independent-hardware replication remains
 desirable.
 
 ## Submission Source and Remaining Packaging

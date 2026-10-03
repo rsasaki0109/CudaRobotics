@@ -15,6 +15,6 @@ The clean `6eb0d0dca5ced88bf5ff788f61bbc76267a2a573` checkout completed 30 alter
 | Diagnostic errors / warnings | 0 / 0 | 0 / 0 |
 | Maximum failure counter | 0 | 0 |
 
-Hardware was an NVIDIA GeForce GTX 1660 Ti (`GPU-f635286a-d68f-5039-cbc9-22d7f295b3a3`, driver 596.36). The retained MCAP contains 1,233,851,559 bytes and is bound by tree SHA-256 `935face2588f0930ba2bc0348d82cfc775a1ae655837bb5097a32894b1d32859`; its MCAP payload SHA-256 is `15f05316c66b8b45e9808238eb3196ace5d8ad0e59e965c1dce007fd4beae433`.
+Hardware was an NVIDIA Turing-class consumer GPU (`GPU-anon-8f11fdb6fe73`, driver 596.36). The retained MCAP contains 1,233,851,559 bytes and is bound by tree SHA-256 `935face2588f0930ba2bc0348d82cfc775a1ae655837bb5097a32894b1d32859`; its MCAP payload SHA-256 is `15f05316c66b8b45e9808238eb3196ace5d8ad0e59e965c1dce007fd4beae433`.
 
 This is closed-loop simulation evidence, not real-data replay or multi-GPU reproduction. The large MCAP, trajectory, and GIF are retained locally and content-bound by the adjacent portable JSON.

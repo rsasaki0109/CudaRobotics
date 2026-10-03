@@ -204,9 +204,9 @@
       {
         "driver_version": "596.36",
         "memory_total_mib": "6144",
-        "name": "NVIDIA GeForce GTX 1660 Ti",
+        "name": "NVIDIA Turing-class consumer GPU",
         "physical_index": "0",
-        "uuid": "GPU-f635286a-d68f-5039-cbc9-22d7f295b3a3"
+        "uuid": "GPU-anon-8f11fdb6fe73"
       }
     ],
     "integrity_gate": {

@@ -4,7 +4,7 @@ Real PointCloud2 shadow execution through GPU KISS-ICP, rolling voxel mapping, G
 
 - Source commit: `614af5681fd757d298ea835c98988f2cd930de5b`
 - Dataset: `autoware_istanbul_localization_smoke`
-- GPU: `NVIDIA GeForce GTX 1660 Ti` (`GPU-f635286a-d68f-5039-cbc9-22d7f295b3a3`)
+- GPU: `NVIDIA Turing-class consumer GPU` (`GPU-anon-8f11fdb6fe73`)
 - Profile / startup offset: `smoke` / 1.000 s
 - Frames / duration: 300 / 29.900 s
 - ATE RMSE / final drift: 0.779 m / 2.985%

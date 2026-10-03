@@ -107,8 +107,8 @@
     "compute_capability": "7.5",
     "device": 0,
     "driver_version": 13020,
-    "name": "NVIDIA GeForce GTX 1660 Ti",
-    "uuid": "GPU-f635286a-d68f-5039-cbc9-22d7f295b3a3"
+    "name": "NVIDIA Turing-class consumer GPU",
+    "uuid": "GPU-anon-8f11fdb6fe73"
   },
   "metrics": {
     "ate_rmse_m": 0.8191171787,

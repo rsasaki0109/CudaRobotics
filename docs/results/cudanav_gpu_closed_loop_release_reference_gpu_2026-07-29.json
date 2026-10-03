@@ -55,9 +55,9 @@
   },
   "gpu_identity": {
     "driver_version": "596.36",
-    "name": "NVIDIA GeForce GTX 1660 Ti",
+    "name": "NVIDIA Turing-class consumer GPU",
     "physical_index": "0",
-    "uuid": "GPU-f635286a-d68f-5039-cbc9-22d7f295b3a3"
+    "uuid": "GPU-anon-8f11fdb6fe73"
   },
   "metrics": {
     "all_colliding_evaluations": 0,
@@ -76,7 +76,7 @@
     "goal_reached": true,
     "gpu": {
       "driver_version": 13020,
-      "name": "NVIDIA GeForce GTX 1660 Ti"
+      "name": "NVIDIA Turing-class consumer GPU"
     },
     "ground_truth_distance_m": 352.21128604,
     "ground_truth_goal_distance_m": 0.258945763,
