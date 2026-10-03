@@ -390,7 +390,7 @@
         {
           "path": "docs/results/cudanav_kiss_icp_mcd_ntu_day_02_2026-07-29.json",
           "normalization": "text_lf",
-          "sha256": "5321207ed165bc51f9c91088fc683fd2c2e4cb7999338314ce5a125f952a8186"
+          "sha256": "2493c242aa4c5982625bbe9b2ca4e6b49777822182cd234bf4dbc1fce1835ae9"
         }
       ],
       "assertions": [
@@ -457,7 +457,7 @@
         {
           "path": "docs/results/cudanav_all_gpu_mcd_ntu_day_02_2026-07-30.json",
           "normalization": "text_lf",
-          "sha256": "cca9c9e02075952ae55fc4a1e71a53e8b28ddd354ae032bec518c4c7b349d272"
+          "sha256": "2cf078e231fdf5ff837efc6f96c8619d75a2d8f0f7fcfd0d3f59937a64564fe4"
         }
       ],
       "assertions": [
@@ -584,7 +584,7 @@
         {
           "path": "docs/results/cudanav_kiss_icp_real_2026-07-29.json",
           "normalization": "text_lf",
-          "sha256": "76866419464d5e96ff8899a6f17e59014d265831dab4ca0d1f2a00a835119a72"
+          "sha256": "c6e3642e52783a5ef443e7e68aac2d5729eb3a39366efe874b384e2a76073321"
         }
       ],
       "assertions": [
@@ -660,7 +660,7 @@
         {
           "path": "docs/results/cudanav_kiss_icp_real_2026-07-29.md",
           "normalization": "text_lf",
-          "sha256": "2dc788ccbed83fda3bebba06c4261586ceff604c05bd97eab4036faa00de8738"
+          "sha256": "a2a0c02d05e48bf5740a6c2233c9257e95858822be8c4180d17c48f6ee3535e4"
         }
       ]
     },
@@ -680,7 +680,7 @@
         {
           "path": "docs/results/cudanav_real_gpu_stack_2026-07-29.json",
           "normalization": "text_lf",
-          "sha256": "9afd2ef7736d9c053e0d4d0da4c51604addf75aa5860a8895ea3d1d842071549"
+          "sha256": "b87d9343a3c1731cd8de3bf9972ed5393dde187a2d6f83e2545e2651539e1f61"
         }
       ],
       "assertions": [
@@ -796,7 +796,7 @@
         {
           "path": "docs/results/cudanav_real_gpu_stack_2026-07-29.md",
           "normalization": "text_lf",
-          "sha256": "947cad893db3ce9621b5acde7d176e7c8b591efdd80680d0cacf0c4614e4d68a"
+          "sha256": "5ddf9230839a26ea6630cdb7652bab45a637f36b43836ed72fbcf27ad58b7b1d"
         }
       ]
     },
@@ -818,7 +818,7 @@
         {
           "path": "docs/results/cudanav_gpu_closed_loop_2026-07-29.json",
           "normalization": "text_lf",
-          "sha256": "56520c65876a2a1b7368e70ac7acd7b8bf841c6fef4f890473e18b286fc3d081"
+          "sha256": "8dda522cbb529814587b7f9a5516951c93ea3823a214f866575a7ef9628e75af"
         }
       ],
       "assertions": [
@@ -944,7 +944,7 @@
         {
           "path": "docs/results/cudanav_gpu_closed_loop_release_2026-07-29.json",
           "normalization": "text_lf",
-          "sha256": "d183566cf8f15979ddebfffff0287f974f4dc7d3d1125c5e9c02a911c7766919"
+          "sha256": "95b1c4df9c6d4683ecf7c44f564541acad92b8dde20a874a4f7924097bc74a97"
         }
       ],
       "assertions": [
@@ -1299,7 +1299,7 @@
         {
           "path": "docs/results/cudanav_gpu_closed_loop_release_reference_gpu_2026-07-29.json",
           "normalization": "text_lf",
-          "sha256": "b2829b377e55bb41f611da23e90dd16d275f72e7661dbe344c4bdbbc9b1e58d8"
+          "sha256": "8d76e93747708e7a2319c22afc74271028c219b005adb7421bc21d56dbe1196c"
         }
       ],
       "assertions": [
@@ -1397,7 +1397,7 @@
         {
           "path": "docs/results/cudanav_ros_gpu_closed_loop_release_2026-07-30.json",
           "normalization": "text_lf",
-          "sha256": "77374b884a7a38e6786aea4a88973333c580307fb5d4937890be2f4a300cf61d"
+          "sha256": "0ab53f3c6a71ad75814305f48cfb946d76c688e0d6e1485b02e727bcf4738008"
         }
       ],
       "assertions": [
@@ -1469,7 +1469,7 @@
         {
           "path": "docs/results/cudanav_ros_gpu_closed_loop_release_2026-07-30.md",
           "normalization": "text_lf",
-          "sha256": "b47d9d29b59c66227f29c02573fb2853cc82263035cefb683385ad4e61f831d1"
+          "sha256": "7f67ad465de45af00859f2e691b6281e867293bddc9c5282311d087b40bd542d"
         }
       ]
     },
@@ -1490,7 +1490,7 @@
         {
           "path": "docs/results/cudanav_rosbag_shadow_release_2026-07-30.json",
           "normalization": "text_lf",
-          "sha256": "e46e91be1aa1f2de6397b338a33226f499ba1bffd3c1799c6385dbb2ace2b513"
+          "sha256": "e053e892a1edd45fe5f579d2fb344b7b86e76409f514f9393664d4acd0c69b00"
         }
       ],
       "assertions": [
@@ -1566,7 +1566,7 @@
         {
           "path": "docs/results/cudanav_rosbag_shadow_release_2026-07-30.md",
           "normalization": "text_lf",
-          "sha256": "0a35d81722ac7ada395111d76674181577e75ab0197c490a207a2ba632090a62"
+          "sha256": "53aac74d676015d0445305664af1a955f4012369231e4a1080c98fb5c6480496"
         }
       ]
     },

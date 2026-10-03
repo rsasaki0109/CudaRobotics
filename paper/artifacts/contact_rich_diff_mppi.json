@@ -188,7 +188,7 @@
         {
           "path": "docs/results/contact_robustness_2026-07-28_provenance.json",
           "normalization": "text_lf",
-          "sha256": "b66c3a502c280b67a9cc154b4b7bf2c9dc4f8073d27144c58dc6a50308741f90"
+          "sha256": "0a5560965c9c1b5f04bcbf8671e58c413e8e5209bfdd6929e39a1025d9c45fbc"
         }
       ],
       "assertions": [
@@ -310,7 +310,7 @@
         {
           "path": "docs/results/contact_external_fidelity_2026-07-28_provenance.json",
           "normalization": "text_lf",
-          "sha256": "e7b0e86e14dc92ef645064f532342fc7069f22ea9905f4639ad861a3b52fad52"
+          "sha256": "60ac7ae42fc45ac56cf9d5d8923da8329342b2164b7f377cc21b9d1af0b1a160"
         }
       ],
       "assertions": [
