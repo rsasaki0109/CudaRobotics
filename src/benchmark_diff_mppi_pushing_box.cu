@@ -1746,6 +1746,22 @@ static BoxScenario make_box_detour_wall() {
     s.params.w_obs = 85.0f;
     return s;
 }
+// Held-out geometries for the face-switching planners (never used for tuning):
+// the mirror image (goal to the left, the straight line clips the wall's left
+// end) and the wall moved up with the goal shifted to match.
+static BoxScenario make_box_detour_wall_left() {
+    BoxScenario s = make_box_detour_wall();
+    s.name = "box_detour_wall_left";
+    s.gx = 0.7f;
+    return s;
+}
+static BoxScenario make_box_detour_wall_far() {
+    BoxScenario s = make_box_detour_wall();
+    s.name = "box_detour_wall_far";
+    s.gx = 2.4f; s.gy = 3.2f;
+    s.params.obs_min_y = 2.30f; s.params.obs_max_y = 2.50f;
+    return s;
+}
 static BoxScenario make_box_detour_open() {
     BoxScenario s = make_box_detour_wall();
     s.name = "box_detour_open";
@@ -2052,7 +2068,7 @@ int main(int argc, char** argv) {
     // box_swivel and box_align_strict are appended LAST so the existing scenarios keep
     // their indices si=0..2 (the per-run seed in the sweep loop is si-dependent);
     // published numbers stay byte-identical.
-    vector<BoxScenario> all_sc = { make_box_turn(), make_box_align(), make_box_pivot(), make_box_swivel(), make_box_align_strict(), make_box_align_detour(), make_box_align_contact_loss(), make_box_align_contact_arc(), make_box_align_detour_nowall(), make_box_align_detour_gate(), make_box_detour_wall(), make_box_detour_open() };
+    vector<BoxScenario> all_sc = { make_box_turn(), make_box_align(), make_box_pivot(), make_box_swivel(), make_box_align_strict(), make_box_align_detour(), make_box_align_contact_loss(), make_box_align_contact_arc(), make_box_align_detour_nowall(), make_box_align_detour_gate(), make_box_detour_wall(), make_box_detour_open(), make_box_detour_wall_left(), make_box_detour_wall_far() };
     auto scenario_seed_index = [&](const string& name) {
         for (size_t i = 0; i < all_sc.size(); i++)
             if (all_sc[i].name == name) {
