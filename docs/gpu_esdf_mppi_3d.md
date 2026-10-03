@@ -77,6 +77,7 @@ reach the goal. `--mode` sets how the planner sees them:
 | `1` rebuild | the movers stamped into the occupancy grid at their current positions, ESDF rebuilt by JFA every step | + a full 3D JFA |
 | `2` predict | the static ESDF plus the analytic distance to each mover at its constant-velocity prediction for that rollout step | + 40 x N sphere distances per rollout |
 | `3` predict_bounce | as `2`, with reflections at the movers' region bounds | same as `2` |
+| `4` rebuild_local | as `1`, but only voxel windows around the movers are recomputed (below) | + about 0.15 ms |
 
 `--trials 30` runs the same 30 mover scenarios for all three modes and prints
 a table ([raw tables](results/gpu_esdf_mppi_3d_dynamic_2026-10-03.md)). Success
@@ -119,6 +120,35 @@ not reproduced on these scenarios.
 
 `--movers 6 --mover-speed 2 --mode 2`: red discs are the movers, red lines
 their predicted positions at the end of the 4 s horizon.
+
+### Local ESDF update
+
+Rebuilding the whole ESDF for every control step is wasteful when only the
+movers change. They only add occupancy on top of the static map, so the
+updated distance is the static ESDF or the distance to the nearest mover,
+whichever is smaller, and the movers can only change the rollout cost where
+that distance is inside the clearance band. `--mode 4` therefore recomputes an
+axis-aligned voxel window around each mover (sphere radius + vehicle radius +
+clearance + two voxels), after restoring last step's windows to the static
+values (`esdf_window_kernel`).
+
+At start-up the demo compares it with a full rebuild on the first mover
+layout: over the roughly 580k voxels inside the clearance band the largest
+difference is 0.125 m (one voxel; the full rebuild measures to voxelized
+spheres, the local update to the analytic sphere). With 6 movers the update
+takes about 0.15 ms against about 1.9 ms for the full JFA.
+
+Same 30 scenarios as above (episode seeds 1000-1029):
+
+| movers | rebuild | rebuild_local | predict |
+|---|---:|---:|---:|
+| 6, 1x speed | 30/30, 2.38 ms/step | 30/30, **0.57 ms/step** | 29/30, 0.46 ms/step |
+| 6, 2x speed | 25/30 (5 collisions), 2.40 ms/step | 25/30 (5 collisions), **0.61 ms/step** | **30/30**, 0.46 ms/step |
+
+The local update reproduces the full rebuild's outcome on 30/30 and 28/30
+scenarios at about a quarter of the cost. It does not change the conclusion
+above: with fast movers, any map that only reflects their current positions
+still collides, and prediction is needed.
 
 ## Limitations
 
