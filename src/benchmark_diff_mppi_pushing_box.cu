@@ -108,6 +108,8 @@ struct Variant {
     bool oi_face_route_actual = false;  // face-switch seed: route the pusher around the actual box
     bool oi_face_aim_final = false;     // ...and on the last path segment aim from the box itself
     bool oi_axis_path = false;          // plan an axis-aligned object path (one face per segment)
+    bool oi_face_safe_slide = false;    // face-switch seed: engage only within the face span
+    bool oi_axis_when_blocked = false;  // use the axis-aligned path only if the straight line is blocked
     float oi_path_margin = 0.05f;       // wall clearance used by plan_object_path
 };
 
@@ -488,9 +490,12 @@ __host__ __device__ inline void object_ref_path_f(
 // outside that face it gets the next waypoint around the box instead: the corner
 // of the pushing face if it is beside the box, or first a corner of the opposite
 // face if it is behind it. All waypoints keep `clear` from the box surface.
+// With safe_slide the pusher only engages once it is within the face's span; when
+// it is past the face plane but beyond the corner it first slides toward the face
+// centre with a full radius of clearance, instead of clipping the corner.
 static bool face_switch_target(float px, float py, float ox, float oy, float oth,
                                float dirx, float diry, const BoxParams& p, float clear,
-                               float& tx, float& ty) {
+                               float& tx, float& ty, bool safe_slide = false) {
     float c = cosf(oth), s = sinf(oth);
     float lx = c*(px - ox) + s*(py - oy), ly = -s*(px - ox) + c*(py - oy);
     float dlx = c*dirx + s*diry, dly = -s*dirx + c*diry;
@@ -502,7 +507,12 @@ static bool face_switch_target(float px, float py, float ox, float oy, float oth
     float side = ut >= 0.0f ? 1.0f : -1.0f;
     float wn, wt;
     bool engaged = un >= hn + 0.5f * p.push_r;
-    if (engaged)                                  { wn = hn + clear;    wt = 0.0f; }
+    if (safe_slide && engaged && fabsf(ut) > ht + 0.5f * p.push_r) {
+        engaged = false;
+        if (un >= hn + p.push_r + 0.02f) { wn = fmaxf(un, hn + p.push_r + 0.04f); wt = 0.0f; }   // slide clear
+        else                             { wn = hn + clear;                      wt = side * (ht + clear); }
+    }
+    else if (engaged)                             { wn = hn + clear;    wt = 0.0f; }
     else if (fabsf(ut) >= ht + 0.5f * p.push_r)   { wn = hn + clear;    wt = side * (ht + clear); }
     else                                          { wn = -(hn + clear); wt = side * (ht + clear); }
     float wlx = nx*wn + (along_x ? 0.0f : wt), wly = ny*wn + (along_x ? wt : 0.0f);
@@ -517,7 +527,7 @@ static bool face_switch_target(float px, float py, float ox, float oy, float oth
 // With axis_aligned the search is 4-connected with a turn penalty and only
 // collinear points are merged, so every segment can be pushed by a single face.
 static ObjPath plan_object_path(const BoxScenario& sc, bool axis_aligned = false,
-                                float margin = 0.05f, float res = 0.05f) {
+                                float margin = 0.05f, float res = 0.05f, bool axis_when_blocked = false) {
     BoxParams p = sc.params;
     p.obs_min_x -= margin; p.obs_min_y -= margin; p.obs_max_x += margin; p.obs_max_y += margin;
     auto free_at = [&](float x, float y) {
@@ -534,6 +544,7 @@ static ObjPath plan_object_path(const BoxScenario& sc, bool axis_aligned = false
     };
 
     vector<float> px = { sc.ox0, sc.gx }, py = { sc.oy0, sc.gy };
+    if (axis_aligned && axis_when_blocked && segment_free(sc.ox0, sc.oy0, sc.gx, sc.gy)) axis_aligned = false;
     const float pad = 1.5f;
     float x0 = fminf(sc.ox0, sc.gx) - pad, y0 = fminf(sc.oy0, sc.gy) - pad;
     int W = (int)ceilf((fabsf(sc.gx - sc.ox0) + 2*pad) / res) + 1;
@@ -1247,7 +1258,7 @@ public:
 
     EpisodeRunner(const Variant& v, const BoxScenario& sc, int K, int T, int seed)
         : v_(v), sc_(sc), K_(K), T_(T), seed_(seed) {
-        if (v_.use_object_informed && v_.oi_use_path) path_ = plan_object_path(sc_, v_.oi_axis_path, v_.oi_path_margin);
+        if (v_.use_object_informed && v_.oi_use_path) path_ = plan_object_path(sc_, v_.oi_axis_path, v_.oi_path_margin, 0.05f, v_.oi_axis_when_blocked);
         h_nominal_.assign(T_*CTRL_DIM, 0.0f);
         CUDA_CHECK(cudaMalloc(&d_start_, STATE_DIM*sizeof(float)));
         CUDA_CHECK(cudaMalloc(&d_nominal_, T_*CTRL_DIM*sizeof(float)));
@@ -1524,7 +1535,8 @@ private:
             }
             float tx, ty;
             bool engaged = face_switch_target(sim_px, sim_py, bx, by, oth, dx / dl, dy / dl, p,
-                                              p.push_r + v_.oi_contact_margin + 0.04f, tx, ty);
+                                              p.push_r + v_.oi_contact_margin + 0.04f, tx, ty,
+                                              v_.oi_face_safe_slide);
             if (engaged) {
                 // push: aim at the contact point behind the box's next reference pose
                 face_switch_target(sim_px, sim_py, rx, ry, oth, dx / dl, dy / dl, p,
@@ -2145,6 +2157,10 @@ int main(int argc, char** argv) {
     { Variant v; v.name="oi_face_route_mppi"; v.use_object_informed=true; v.oi_use_path=true; v.oi_face_switch=true; v.oi_face_route_actual=true; v.oi_ref_weight_pos=1.5f; v.oi_ref_weight_ang=3.0f; v.oi_obj_speed=0.6f; v.oi_ang_speed=1.2f; v.oi_seed_blend=0.12f; variants.push_back(v); }
     { Variant v; v.name="oi_face_track_mppi"; v.use_object_informed=true; v.oi_use_path=true; v.oi_face_switch=true; v.oi_face_route_actual=true; v.oi_face_aim_final=true; v.oi_ref_weight_pos=1.5f; v.oi_ref_weight_ang=3.0f; v.oi_obj_speed=0.6f; v.oi_ang_speed=1.2f; v.oi_seed_blend=0.12f; variants.push_back(v); }
     { Variant v; v.name="oi_face_axis_mppi"; v.use_object_informed=true; v.oi_use_path=true; v.oi_axis_path=true; v.oi_face_switch=true; v.oi_face_route_actual=true; v.oi_face_aim_final=true; v.oi_ref_weight_pos=1.5f; v.oi_ref_weight_ang=3.0f; v.oi_obj_speed=0.6f; v.oi_ang_speed=1.2f; v.oi_seed_blend=0.12f; variants.push_back(v); }
+    { Variant v; v.name="oi_face_axis_safe_mppi"; v.use_object_informed=true; v.oi_use_path=true; v.oi_axis_path=true; v.oi_face_safe_slide=true; v.oi_face_switch=true; v.oi_face_route_actual=true; v.oi_face_aim_final=true; v.oi_ref_weight_pos=1.5f; v.oi_ref_weight_ang=3.0f; v.oi_obj_speed=0.6f; v.oi_ang_speed=1.2f; v.oi_seed_blend=0.12f; variants.push_back(v); }
+    { Variant v; v.name="oi_face_track_safe_mppi"; v.use_object_informed=true; v.oi_use_path=true; v.oi_face_safe_slide=true; v.oi_face_switch=true; v.oi_face_route_actual=true; v.oi_face_aim_final=true; v.oi_ref_weight_pos=1.5f; v.oi_ref_weight_ang=3.0f; v.oi_obj_speed=0.6f; v.oi_ang_speed=1.2f; v.oi_seed_blend=0.12f; variants.push_back(v); }
+    // axis-aligned path when the straight line is blocked, straight path otherwise
+    { Variant v; v.name="oi_face_auto_mppi"; v.use_object_informed=true; v.oi_use_path=true; v.oi_axis_path=true; v.oi_axis_when_blocked=true; v.oi_face_safe_slide=true; v.oi_face_switch=true; v.oi_face_route_actual=true; v.oi_face_aim_final=true; v.oi_ref_weight_pos=1.5f; v.oi_ref_weight_ang=3.0f; v.oi_obj_speed=0.6f; v.oi_ang_speed=1.2f; v.oi_seed_blend=0.12f; variants.push_back(v); }
     { Variant v; v.name="oi_path_slow_mppi"; v.use_object_informed=true; v.oi_use_path=true; v.oi_ref_weight_pos=1.5f; v.oi_ref_weight_ang=3.0f; v.oi_obj_speed=0.6f; v.oi_ang_speed=1.2f; v.oi_seed_blend=0.12f; variants.push_back(v); }
     { Variant v; v.name="diff_mppi_1"; v.grad_steps=1; v.alpha=0.02f; variants.push_back(v); }
     { Variant v; v.name="diff_mppi_3"; v.grad_steps=3; v.alpha=0.010f; variants.push_back(v); }
