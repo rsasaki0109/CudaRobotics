@@ -15,12 +15,14 @@
     - --movers N adds moving spheres beyond the wall; --mode chooses how the
       planner sees them (ignore, rebuild the ESDF each step, or predict them
       at constant velocity in the rollout cost) and --trials compares the
-      three modes on the same scenarios
+      modes on the same scenarios; mode 4 updates the ESDF only in voxel
+      windows around the movers instead of rerunning the full JFA
     Output: gif/gpu_esdf_mppi_3d.gif (top view + side view slices),
             gif/gpu_esdf_mppi_3d_dynamic.gif with movers
  ************************************************************************/
 
 #include <algorithm>
+#include <array>
 #include <cfloat>
 #include <chrono>
 #include <cmath>
@@ -90,8 +92,8 @@ struct Movers {
     float p[MAX_MOVERS][3], v[MAX_MOVERS][3];   // current position and velocity
     float lo[3], hi[3];                          // region they bounce inside
 };
-enum DynMode { MODE_STATIC = 0, MODE_REBUILD = 1, MODE_PREDICT = 2, MODE_PREDICT_BOUNCE = 3 };
-static const char* MODE_NAMES[] = {"static", "rebuild", "predict", "predict_bounce"};
+enum DynMode { MODE_STATIC = 0, MODE_REBUILD = 1, MODE_PREDICT = 2, MODE_PREDICT_BOUNCE = 3, MODE_REBUILD_LOCAL = 4 };
+static const char* MODE_NAMES[] = {"static", "rebuild", "predict", "predict_bounce", "rebuild_local"};
 
 // Mover coordinate after tau seconds: constant velocity, or with reflections at the
 // region bounds (a triangle wave) when bounce is set.
@@ -202,6 +204,30 @@ __global__ void jfa3d_to_dist_kernel(const int* __restrict__ seed, float* __rest
     int sx, sy, sz; unflatten(s, sx, sy, sz);
     int dx = x - sx, dy = y - sy, dz = z - sz;
     dist[idx] = fminf(MAX_DIST, sqrtf(static_cast<float>(dx * dx + dy * dy + dz * dz)) * RES);
+}
+
+// Local ESDF update for movers. Movers only add occupancy on top of the static
+// map, so inside a voxel window the distance is the static ESDF or the distance to
+// the nearest mover sphere, whichever is smaller; with restore the window gets its
+// static values back. Windows extend past each sphere by the vehicle radius plus
+// the clearance band, so outside them the movers never change the rollout cost.
+__global__ void esdf_window_kernel(const float* __restrict__ esdf_static, float* __restrict__ esdf_out,
+                                   int x0, int y0, int z0, int wx, int wy, int wz, Movers mv, bool restore) {
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    int j = blockIdx.y * blockDim.y + threadIdx.y;
+    int k = blockIdx.z * blockDim.z + threadIdx.z;
+    if (i >= wx || j >= wy || k >= wz) return;
+    int x = x0 + i, y = y0 + j, z = z0 + k;
+    size_t idx = (static_cast<size_t>(z) * NY + y) * NX + x;
+    float d = esdf_static[idx];
+    if (!restore) {
+        float px = (x + 0.5f) * RES, py = (y + 0.5f) * RES, pz = (z + 0.5f) * RES;
+        for (int m = 0; m < mv.n; m++) {
+            float ex = px - mv.p[m][0], ey = py - mv.p[m][1], ez = pz - mv.p[m][2];
+            d = fminf(d, fmaxf(0.0f, sqrtf(ex * ex + ey * ey + ez * ez) - MOVER_R));
+        }
+    }
+    esdf_out[idx] = d;
 }
 
 // -------------------------------------------------------------------------
@@ -413,11 +439,11 @@ int main(int argc, char** argv) {
     const int seed = args.get_int("seed", 2026, "cuRAND seed", 0);
     const bool no_video = args.flag("no-video", "skip the AVI/GIF output");
     const int n_movers = args.get_int("movers", 0, "moving spherical obstacles beyond the wall (max 8)", 0);
-    const int mode_arg = args.get_int("mode", MODE_PREDICT, "with movers: 0 static map, 1 rebuild ESDF, 2 predict, 3 predict with bounces", 0);
+    const int mode_arg = args.get_int("mode", MODE_PREDICT, "with movers: 0 static map, 1 rebuild ESDF, 2 predict, 3 predict with bounces, 4 local ESDF update", 0);
     const int trials = args.get_int("trials", 0, "with movers: run N episodes per mode and print a table", 0);
     const float mover_speed = args.get_float("mover-speed", 1.0f, "with movers: speed multiplier (base 0.8-1.5 m/s)");
     args.finish();
-    if (n_movers > MAX_MOVERS || mode_arg > MODE_PREDICT_BOUNCE) { std::fprintf(stderr, "--movers <= 8, --mode 0..3\n"); return 2; }
+    if (n_movers > MAX_MOVERS || mode_arg > MODE_REBUILD_LOCAL) { std::fprintf(stderr, "--movers <= 8, --mode 0..4\n"); return 2; }
     const bool write_video = !no_video && trials == 0;
 
     // 1. Scene and 3D ESDF
@@ -588,12 +614,41 @@ int main(int argc, char** argv) {
         jfa3d_to_dist_kernel<<<grd, blk>>>(in_ptr, d_esdf_dyn);
     };
 
+    // Rebuild-local mode: restore last step's windows to the static ESDF, then write
+    // the movers' current spheres into new windows (see esdf_window_kernel).
+    std::vector<std::array<int, 6>> prev_windows;
+    auto local_update_esdf = [&](const Movers& mv) {
+        dim3 wblk(8, 8, 4);
+        auto launch = [&](const std::array<int, 6>& w, bool restore) {
+            dim3 wgrd((w[3] + 7) / 8, (w[4] + 7) / 8, (w[5] + 3) / 4);
+            esdf_window_kernel<<<wgrd, wblk>>>(d_esdf, d_esdf_dyn, w[0], w[1], w[2], w[3], w[4], w[5], mv, restore);
+        };
+        for (const auto& w : prev_windows) launch(w, true);
+        prev_windows.clear();
+        const float half = MOVER_R + ROBOT_R + CLEARANCE + 2.0f * RES;
+        const int lim[3] = {NX, NY, NZ};
+        for (int m = 0; m < mv.n; m++) {
+            std::array<int, 6> w;
+            for (int a = 0; a < 3; a++) {
+                int lo = std::max(0, static_cast<int>(std::floor((mv.p[m][a] - half) / RES)));
+                int hi = std::min(lim[a] - 1, static_cast<int>(std::ceil((mv.p[m][a] + half) / RES)));
+                w[a] = lo; w[3 + a] = hi - lo + 1;
+            }
+            prev_windows.push_back(w);
+        }
+        for (const auto& w : prev_windows) launch(w, false);
+    };
+
     struct Episode { bool reached = false; int steps = 0; float path_len = 0, min_clearance = FLT_MAX; double ms = 0; };
     auto run_episode = [&](int mode, int episode_seed, bool video_on) {
         Episode ep;
         float st[6];
         std::copy(start_state, start_state + 6, st);
         Movers mv = init_movers(episode_seed);
+        if (n_movers > 0 && mode == MODE_REBUILD_LOCAL) {
+            CUDA_CHECK(cudaMemcpy(d_esdf_dyn, d_esdf, cells * sizeof(float), cudaMemcpyDeviceToDevice));
+            prev_windows.clear();
+        }
         init_rng<<<blocks, threads>>>(d_rng, K, static_cast<unsigned long long>(episode_seed));
         CUDA_CHECK(cudaMemset(d_nominal, 0, U * sizeof(float)));
         const std::string tag = n_movers > 0 ? "gpu_esdf_mppi_3d_dynamic" : "gpu_esdf_mppi_3d";
@@ -614,6 +669,7 @@ int main(int argc, char** argv) {
             auto t0 = std::chrono::high_resolution_clock::now();
             const float* esdf_now = d_esdf;
             if (n_movers > 0 && mode == MODE_REBUILD) { rebuild_esdf(mv); esdf_now = d_esdf_dyn; }
+            if (n_movers > 0 && mode == MODE_REBUILD_LOCAL) { local_update_esdf(mv); esdf_now = d_esdf_dyn; }
             for (int it = 0; it < ITERS_PER_STEP; it++) {
                 rollout_kernel<<<blocks, threads>>>(d_start, d_ctg, d_nominal, esdf_now, d_costs, d_perturbed, d_rng, K, mv, predict);
                 cudabot::launch_softmin_weights(d_costs, d_weights, K, LAMBDA);
@@ -720,13 +776,38 @@ int main(int argc, char** argv) {
         return ep;
     };
 
+    if (n_movers > 0) {
+        // Check the local update against a full rebuild on the first mover layout,
+        // over voxels where either says the vehicle is inside the clearance band.
+        Movers mv = init_movers(seed);
+        rebuild_esdf(mv);
+        std::vector<float> full(cells), local(cells);
+        CUDA_CHECK(cudaMemcpy(full.data(), d_esdf_dyn, cells * sizeof(float), cudaMemcpyDeviceToHost));
+        CUDA_CHECK(cudaMemcpy(d_esdf_dyn, d_esdf, cells * sizeof(float), cudaMemcpyDeviceToDevice));
+        prev_windows.clear();
+        auto l0 = std::chrono::high_resolution_clock::now();
+        local_update_esdf(mv);
+        CUDA_CHECK(cudaDeviceSynchronize());
+        double local_ms = std::chrono::duration<double, std::milli>(std::chrono::high_resolution_clock::now() - l0).count();
+        CUDA_CHECK(cudaMemcpy(local.data(), d_esdf_dyn, cells * sizeof(float), cudaMemcpyDeviceToHost));
+        float max_diff = 0.0f;
+        size_t band = 0;
+        for (size_t v = 0; v < cells; v++) {
+            if (std::min(full[v], local[v]) >= ROBOT_R + CLEARANCE) continue;
+            band++;
+            max_diff = std::max(max_diff, std::fabs(full[v] - local[v]));
+        }
+        std::printf("Local ESDF update (%d windows): %.3f ms; max |local - full rebuild| %.3f m over %zu voxels in the clearance band\n",
+                    n_movers, local_ms, max_diff, band);
+    }
+
     bool ok = true;
     if (trials > 0 && n_movers > 0) {
         // Same mover scenarios (episode seeds) for every mode, so rows are paired.
         std::printf("\n%d movers at %.1fx speed, %d episodes per mode (episode seeds %d..%d)\n",
                     n_movers, mover_speed, trials, seed, seed + trials - 1);
         std::printf("| mode | success | collisions | timeouts | mean steps | mean min clearance (m) | ms per step |\n|---|---:|---:|---:|---:|---:|---:|\n");
-        for (int mode = MODE_STATIC; mode <= MODE_PREDICT_BOUNCE; mode++) {
+        for (int mode = MODE_STATIC; mode <= MODE_REBUILD_LOCAL; mode++) {
             int success = 0, collisions = 0, timeouts = 0;
             double steps_sum = 0, clear_sum = 0, ms_sum = 0;
             for (int t = 0; t < trials; t++) {

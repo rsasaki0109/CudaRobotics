@@ -95,3 +95,31 @@ Fresh scenarios, all four modes. The 6-mover 3x and 8-mover 3x runs use 30 scena
 | predict | 30/30 | 0 | 0 | 89.4 | 0.38 | 0.47 |
 | predict_bounce | 29/30 | 0 | 1 | 105.5 | 0.41 | 0.51 |
 ```
+
+## Local ESDF update (episode seeds 1000-1029)
+
+All five modes on the original scenarios, including `--mode 4` (rebuild_local).
+
+```
+Local ESDF update (6 windows): 0.151 ms; max |local - full rebuild| 0.125 m over 575419 voxels in the clearance band
+6 movers at 1.0x speed, 30 episodes per mode (episode seeds 1000..1029)
+| mode | success | collisions | timeouts | mean steps | mean min clearance (m) | ms per step |
+|---|---:|---:|---:|---:|---:|---:|
+| static | 23/30 | 7 | 0 | 84.0 | 0.21 | 0.45 |
+| rebuild | 30/30 | 0 | 0 | 92.2 | 0.40 | 2.38 |
+| predict | 29/30 | 0 | 1 | 100.6 | 0.41 | 0.46 |
+| predict_bounce | 29/30 | 0 | 1 | 91.1 | 0.41 | 0.47 |
+| rebuild_local | 30/30 | 0 | 0 | 88.8 | 0.41 | 0.57 |
+```
+
+```
+Local ESDF update (6 windows): 0.187 ms; max |local - full rebuild| 0.125 m over 575419 voxels in the clearance band
+6 movers at 2.0x speed, 30 episodes per mode (episode seeds 1000..1029)
+| mode | success | collisions | timeouts | mean steps | mean min clearance (m) | ms per step |
+|---|---:|---:|---:|---:|---:|---:|
+| static | 21/30 | 9 | 0 | 84.0 | 0.16 | 0.47 |
+| rebuild | 25/30 | 5 | 0 | 89.6 | 0.24 | 2.40 |
+| predict | 30/30 | 0 | 0 | 90.6 | 0.39 | 0.46 |
+| predict_bounce | 30/30 | 0 | 0 | 84.7 | 0.41 | 0.48 |
+| rebuild_local | 25/30 | 5 | 0 | 92.1 | 0.26 | 0.61 |
+```
