@@ -3,10 +3,10 @@
 
 Benchmark and release tooling records the GPU model name and UUID reported by
 ``nvidia-smi``. Those strings identify the machine that produced the evidence,
-so committed files carry a generic architecture label and a pseudonymous UUID
-instead:
+so committed files carry a generic label and a pseudonymous UUID instead, and
+drop details that reveal the generation (compute capability, memory size):
 
-    python3 scripts/redact_gpu_identity.py --label "NVIDIA consumer GPU"
+    python3 scripts/redact_gpu_identity.py
     python3 scripts/redact_gpu_identity.py --check
 
 The pseudonym is a stable hash of the real UUID, so distinct devices stay
@@ -39,6 +39,16 @@ GPU_UUID = re.compile(
 )
 PLACEHOLDER_UUID = "GPU-00000000-0000-0000-0000-000000000000"
 SHA256_PREFIX_MIN = 12
+# Details that narrow the model down to a generation or a single SKU.
+DETAILS = (
+    (re.compile(r'("compute_capability"\s*:\s*)"\d+\.\d+"'), r'\1"redacted"'),
+    (re.compile(r'("memory_total_mib"\s*:\s*)"?\d+"?'), r'\1"redacted"'),
+    (re.compile(r"\b(GPU),\s*\d+\s*GB\b"), r"\1"),
+    (re.compile(r"\btargeting sm_\d+"), "targeting the local GPU architecture"),
+)
+ARCH_LABEL = re.compile(
+    r"\b(?:Kepler|Maxwell|Pascal|Volta|Turing|Ampere|Ada|Hopper|Blackwell)-class\b"
+)
 
 
 def tracked_files() -> list[str]:
@@ -69,8 +79,12 @@ def pseudonym(match: re.Match[str]) -> str:
     return "GPU-anon-" + hashlib.sha256(uuid.lower().encode("ascii")).hexdigest()[:12]
 
 
-def redact(text: str, label: str) -> str:
+def redact(text: str, label: str, relabel: tuple[str, ...] = ()) -> str:
+    for old in relabel:
+        text = text.replace(old, label)
     text = PROSE_MODEL.sub(lambda _: label, text)
+    for pattern, replacement in DETAILS:
+        text = pattern.sub(replacement, text)
     if label[:1].lower() in "aeiou" or label.startswith(("NVIDIA", "RTX")):
         text = re.sub(r"\b([aA])(\s+)(?=" + re.escape(label) + ")", r"\1n\2", text)
     text = SLUG_MODEL.sub(SLUG, text)
@@ -81,6 +95,8 @@ def findings(path: str, text: str) -> list[str]:
     found = []
     for pattern in (PROSE_MODEL, SLUG_MODEL):
         found += [f"{path}: GPU model '{m.group(0)}'" for m in pattern.finditer(text)]
+    for pattern in [p for p, _ in DETAILS] + [ARCH_LABEL]:
+        found += [f"{path}: GPU detail '{m.group(0)}'" for m in pattern.finditer(text)]
     found += [
         f"{path}: GPU UUID '{m.group(0)}'"
         for m in GPU_UUID.finditer(text)
@@ -108,6 +124,10 @@ def replace_digests(text: str, digests: dict[str, str]) -> str:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--label", default=DEFAULT_LABEL, help="public name for redacted GPUs")
+    parser.add_argument(
+        "--relabel", action="append", default=[], metavar="OLD",
+        help="earlier label to replace with --label (repeatable)",
+    )
     parser.add_argument("--check", action="store_true", help="report leaks without editing")
     args = parser.parse_args()
 
@@ -129,7 +149,8 @@ def main() -> int:
             )
         return 1 if leaks else 0
 
-    redacted = {path: redact(text, args.label) for path, text in texts.items()}
+    relabel = tuple(args.relabel)
+    redacted = {path: redact(text, args.label, relabel) for path, text in texts.items()}
     # Rewriting a file changes its digest, and rewriting a digest reference
     # changes the digest of the file holding it, so iterate to a fixed point.
     digests: dict[str, str] = {}

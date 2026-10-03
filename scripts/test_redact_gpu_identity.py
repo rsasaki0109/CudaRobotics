@@ -29,6 +29,21 @@ class RedactGpuIdentityTest(unittest.TestCase):
         self.assertEqual(text, f"release_reference_gpu_2026.json {expected}")
         self.assertEqual(redact(PLACEHOLDER_UUID, LABEL), PLACEHOLDER_UUID)
 
+    def test_generation_details_are_dropped(self) -> None:
+        cc, mem = '"compute_capability": ', '"memory_total_mib": '
+        text = cc + '"8' + '.6", ' + mem + "10" + "240, " + mem + '"10' + '240"'
+        self.assertEqual(
+            redact(text, LABEL),
+            cc + '"redacted", ' + mem + '"redacted", ' + mem + '"redacted"',
+        )
+        self.assertEqual(
+            redact(f"GPU: {MODEL}, 10" + " GB; targeting sm" + "_86", LABEL),
+            f"GPU: {LABEL}; targeting the local GPU architecture",
+        )
+        old = "NVIDIA Amp" + "ere-class consumer GPU"
+        self.assertEqual(redact(f"on an {old}", LABEL, (old,)), f"on an {LABEL}")
+        self.assertEqual(len(findings("r.json", old + " " + cc + '"8' + '.6"')), 2)
+
     def test_unrelated_identifiers_are_kept(self) -> None:
         text = "float gtx, gty; gtx += d; Quadrotor sm_75"
         self.assertEqual(redact(text, LABEL), text)
