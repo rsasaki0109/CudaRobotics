@@ -417,8 +417,8 @@ The most visually striking GPU demos, where massive parallelism really shows.
 |---|---|
 | <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_mppi_racing.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/comparison_diff_mppi.gif" width="400"/> |
 | MPPI autonomous racing | MPPI vs Diff-MPPI |
-| <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_mppi_zoo_dynamic_crossing.gif" width="400"/> | |
-| MPPI zoo: vanilla vs `step_mppi_smooth` on `dynamic_crossing` | |
+| <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_mppi_zoo_dynamic_crossing.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_esdf_mppi_3d.gif" width="400"/> |
+| MPPI zoo: vanilla vs `step_mppi_smooth` on `dynamic_crossing` | [3D ESDF-MPPI](docs/gpu_esdf_mppi_3d.md): through a window with a GPU distance field + cost-to-go |
 | <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_wavefront_planner.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_diffusion_planner.gif" width="400"/> |
 | Wavefront planner | Diffusion planner |
 | <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_batched_ilqr.gif" width="400"/> | <img src="https://rsasaki0109.github.io/CudaRobotics/sdf_mppi.gif" width="400"/> |
