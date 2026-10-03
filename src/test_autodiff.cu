@@ -1,6 +1,7 @@
 #include "autodiff_engine.cuh"
 #include <cstdio>
 #include <cmath>
+#include "cuda_check.cuh"
 
 using namespace cudabot;
 
@@ -167,14 +168,14 @@ bool test_gpu_kernel() {
     printf("[Test 3] GPU kernel autodiff test\n");
 
     float* d_results;
-    cudaMalloc(&d_results, 6 * sizeof(float));
+    CUDA_CHECK(cudaMalloc(&d_results, 6 * sizeof(float)));
 
     test_autodiff_kernel<<<1, 1>>>(d_results);
-    cudaDeviceSynchronize();
+    CUDA_CHECK(cudaDeviceSynchronize());
 
     float results[6];
-    cudaMemcpy(results, d_results, 6 * sizeof(float), cudaMemcpyDeviceToHost);
-    cudaFree(d_results);
+    CUDA_CHECK(cudaMemcpy(results, d_results, 6 * sizeof(float), cudaMemcpyDeviceToHost));
+    CUDA_CHECK(cudaFree(d_results));
 
     // sin(1)*1^2 = 0.8415
     float expected_val = std::sin(1.0f);

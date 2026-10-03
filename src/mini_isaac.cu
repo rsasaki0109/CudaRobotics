@@ -18,6 +18,7 @@
 
 #include "parallel_env.cuh"
 #include "cuda_video.h"
+#include "cuda_check.cuh"
 
 using namespace std;
 using namespace cudabot;
@@ -102,10 +103,10 @@ int main() {
     float* d_obs = nullptr;
     float* d_rewards = nullptr;
     int* d_dones = nullptr;
-    cudaMalloc(&d_actions, N_ENVS * sizeof(float));
-    cudaMalloc(&d_obs, N_ENVS * 4 * sizeof(float));
-    cudaMalloc(&d_rewards, N_ENVS * sizeof(float));
-    cudaMalloc(&d_dones, N_ENVS * sizeof(int));
+    CUDA_CHECK(cudaMalloc(&d_actions, N_ENVS * sizeof(float)));
+    CUDA_CHECK(cudaMalloc(&d_obs, N_ENVS * 4 * sizeof(float)));
+    CUDA_CHECK(cudaMalloc(&d_rewards, N_ENVS * sizeof(float)));
+    CUDA_CHECK(cudaMalloc(&d_dones, N_ENVS * sizeof(int)));
 
     vector<int> h_steps(N_ENVS);
     vector<int> h_dones(N_ENVS);
@@ -131,11 +132,11 @@ int main() {
                                                           frame_idx * STEPS_PER_FRAME + sub);
             env.step(d_actions, d_obs, d_rewards, d_dones);
         }
-        cudaDeviceSynchronize();
+        CUDA_CHECK(cudaDeviceSynchronize());
 
-        cudaMemcpy(h_state, env.states_device(), 4 * sizeof(float), cudaMemcpyDeviceToHost);
-        cudaMemcpy(h_steps.data(), env.steps_device(), N_ENVS * sizeof(int), cudaMemcpyDeviceToHost);
-        cudaMemcpy(h_dones.data(), env.done_device(), N_ENVS * sizeof(int), cudaMemcpyDeviceToHost);
+        CUDA_CHECK(cudaMemcpy(h_state, env.states_device(), 4 * sizeof(float), cudaMemcpyDeviceToHost));
+        CUDA_CHECK(cudaMemcpy(h_steps.data(), env.steps_device(), N_ENVS * sizeof(int), cudaMemcpyDeviceToHost));
+        CUDA_CHECK(cudaMemcpy(h_dones.data(), env.done_device(), N_ENVS * sizeof(int), cudaMemcpyDeviceToHost));
 
         int done_count = accumulate(h_dones.begin(), h_dones.end(), 0);
         float mean_steps = accumulate(h_steps.begin(), h_steps.end(), 0.0f) / N_ENVS;
@@ -162,10 +163,10 @@ int main() {
     }
 
     video.release();
-    cudaFree(d_actions);
-    cudaFree(d_obs);
-    cudaFree(d_rewards);
-    cudaFree(d_dones);
+    CUDA_CHECK(cudaFree(d_actions));
+    CUDA_CHECK(cudaFree(d_obs));
+    CUDA_CHECK(cudaFree(d_rewards));
+    CUDA_CHECK(cudaFree(d_dones));
 
     cout << "Video saved to gif/mini_isaac.avi" << endl;
     convert_avi_to_gif(AVI_PATH, GIF_PATH, 15);

@@ -14,6 +14,7 @@
 
 #include "neural_sdf_nav.cuh"
 #include "cuda_video.h"
+#include "cuda_check.cuh"
 
 using namespace std;
 using namespace cudabot;
@@ -112,17 +113,17 @@ int main() {
     cout << "Training loss: " << train_loss << endl;
 
     float* d_field = nullptr;
-    cudaMalloc(&d_field, FIELD_RES * FIELD_RES * sizeof(float));
+    CUDA_CHECK(cudaMalloc(&d_field, FIELD_RES * FIELD_RES * sizeof(float)));
     int threads = 256;
     int blocks = (FIELD_RES * FIELD_RES + threads - 1) / threads;
     cv::Point2f start(0.8f, 0.9f);
     cv::Point2f goal(9.1f, 9.0f);
     compute_sdf_potential_kernel<<<blocks, threads>>>(mlp.device_weights(), d_field, FIELD_RES, goal.x, goal.y);
-    cudaDeviceSynchronize();
+    CUDA_CHECK(cudaDeviceSynchronize());
 
     vector<float> field(FIELD_RES * FIELD_RES);
-    cudaMemcpy(field.data(), d_field, field.size() * sizeof(float), cudaMemcpyDeviceToHost);
-    cudaFree(d_field);
+    CUDA_CHECK(cudaMemcpy(field.data(), d_field, field.size() * sizeof(float), cudaMemcpyDeviceToHost));
+    CUDA_CHECK(cudaFree(d_field));
 
     vector<cv::Point2f> path;
     path.push_back(start);

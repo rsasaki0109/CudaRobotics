@@ -3,6 +3,7 @@
 #include <cmath>
 #include <vector>
 #include <chrono>
+#include "cuda_check.cuh"
 
 using namespace cudabot;
 
@@ -19,10 +20,10 @@ bool test_xor() {
 
     float* d_input;
     float* d_target;
-    cudaMalloc(&d_input, 8 * sizeof(float));
-    cudaMalloc(&d_target, 4 * sizeof(float));
-    cudaMemcpy(d_input, h_input, 8 * sizeof(float), cudaMemcpyHostToDevice);
-    cudaMemcpy(d_target, h_target, 4 * sizeof(float), cudaMemcpyHostToDevice);
+    CUDA_CHECK(cudaMalloc(&d_input, 8 * sizeof(float)));
+    CUDA_CHECK(cudaMalloc(&d_target, 4 * sizeof(float)));
+    CUDA_CHECK(cudaMemcpy(d_input, h_input, 8 * sizeof(float), cudaMemcpyHostToDevice));
+    CUDA_CHECK(cudaMemcpy(d_target, h_target, 4 * sizeof(float), cudaMemcpyHostToDevice));
 
     // 2 input, 4 hidden, 1 hidden layer, 1 output
     GpuMLP mlp(2, 4, 1, 1);
@@ -39,10 +40,10 @@ bool test_xor() {
 
     // Verify predictions
     float* d_output;
-    cudaMalloc(&d_output, 4 * sizeof(float));
+    CUDA_CHECK(cudaMalloc(&d_output, 4 * sizeof(float)));
     mlp.forward_batch(d_input, d_output, batch_size, 1);  // tanh activation
     float h_output[4];
-    cudaMemcpy(h_output, d_output, 4 * sizeof(float), cudaMemcpyDeviceToHost);
+    CUDA_CHECK(cudaMemcpy(h_output, d_output, 4 * sizeof(float), cudaMemcpyDeviceToHost));
 
     printf("  Predictions: ");
     for (int i = 0; i < 4; i++) printf("%.3f ", h_output[i]);
@@ -50,9 +51,9 @@ bool test_xor() {
     for (int i = 0; i < 4; i++) printf("%.3f ", h_target[i]);
     printf("\n");
 
-    cudaFree(d_input);
-    cudaFree(d_target);
-    cudaFree(d_output);
+    CUDA_CHECK(cudaFree(d_input));
+    CUDA_CHECK(cudaFree(d_target));
+    CUDA_CHECK(cudaFree(d_output));
 
     bool pass = loss < 0.01f;
     printf("  %s (loss=%.6f %s 0.01)\n\n", pass ? "PASS" : "FAIL", loss, pass ? "<" : ">=");
@@ -85,10 +86,10 @@ bool test_sdf() {
 
     float* d_input;
     float* d_target;
-    cudaMalloc(&d_input, n_samples * 2 * sizeof(float));
-    cudaMalloc(&d_target, n_samples * sizeof(float));
-    cudaMemcpy(d_input, h_input.data(), n_samples * 2 * sizeof(float), cudaMemcpyHostToDevice);
-    cudaMemcpy(d_target, h_target.data(), n_samples * sizeof(float), cudaMemcpyHostToDevice);
+    CUDA_CHECK(cudaMalloc(&d_input, n_samples * 2 * sizeof(float)));
+    CUDA_CHECK(cudaMalloc(&d_target, n_samples * sizeof(float)));
+    CUDA_CHECK(cudaMemcpy(d_input, h_input.data(), n_samples * 2 * sizeof(float), cudaMemcpyHostToDevice));
+    CUDA_CHECK(cudaMemcpy(d_target, h_target.data(), n_samples * sizeof(float), cudaMemcpyHostToDevice));
 
     // 2 input, 16 hidden, 2 hidden layers, 1 output
     GpuMLP mlp(2, 16, 2, 1);
@@ -103,8 +104,8 @@ bool test_sdf() {
     }
     printf("  Final loss: %.6f\n", loss);
 
-    cudaFree(d_input);
-    cudaFree(d_target);
+    CUDA_CHECK(cudaFree(d_input));
+    CUDA_CHECK(cudaFree(d_target));
 
     bool pass = loss < 0.05f;
     printf("  %s (loss=%.6f %s 0.05)\n\n", pass ? "PASS" : "FAIL", loss, pass ? "<" : ">=");
@@ -122,11 +123,11 @@ bool test_batch_speed() {
     // Create random input on device
     float* d_input;
     float* d_output;
-    cudaMalloc(&d_input, N * input_dim * sizeof(float));
-    cudaMalloc(&d_output, N * output_dim * sizeof(float));
+    CUDA_CHECK(cudaMalloc(&d_input, N * input_dim * sizeof(float)));
+    CUDA_CHECK(cudaMalloc(&d_output, N * output_dim * sizeof(float)));
 
     // Initialize input to zeros (just for speed test)
-    cudaMemset(d_input, 0, N * input_dim * sizeof(float));
+    CUDA_CHECK(cudaMemset(d_input, 0, N * input_dim * sizeof(float)));
 
     // 4 input, 32 hidden, 2 layers, 2 output
     GpuMLP mlp(input_dim, 32, 2, output_dim);
@@ -153,8 +154,8 @@ bool test_batch_speed() {
 
     cudaEventDestroy(start);
     cudaEventDestroy(stop);
-    cudaFree(d_input);
-    cudaFree(d_output);
+    CUDA_CHECK(cudaFree(d_input));
+    CUDA_CHECK(cudaFree(d_output));
 
     bool pass = true;  // Speed test always passes
     printf("  PASS\n\n");
