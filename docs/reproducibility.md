@@ -98,7 +98,13 @@ tree was dirty and each test's result and time, but not the GPU model.
 
 `gpu_planner_showdown_gate` includes a runtime target (15 ms per planning
 cycle), so it depends on the GPU's speed and can fail on slower cards even when
-every quality target is met.
+every quality target is met. For local checks on such a card, relax only that
+threshold (the planner's own 15 ms budget and the quality targets stay as they
+are):
+
+```bash
+CUDABOT_SHOWDOWN_RUNTIME_MS=30 python3 scripts/run_gpu_checks.py
+```
 
 ## CI Contract
 

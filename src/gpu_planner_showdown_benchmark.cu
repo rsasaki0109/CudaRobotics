@@ -76,7 +76,19 @@ constexpr int SHOWDOWN_REACH_TARGET = N_ROBOTS;
 constexpr int SHOWDOWN_DEADLOCK_TARGET = 0;
 constexpr float SHOWDOWN_CVAR_TARGET = 26.5f;
 constexpr float SHOWDOWN_RESIDUAL_TARGET = 12.0f;
-constexpr float SHOWDOWN_RUNTIME_TARGET_MS = 15.0f;
+constexpr float SHOWDOWN_RUNTIME_TARGET_MS = 15.0f;   // also the adaptive planner's time budget
+
+// Runtime threshold of the target check. The published target is
+// SHOWDOWN_RUNTIME_TARGET_MS; CUDABOT_SHOWDOWN_RUNTIME_MS relaxes only the check
+// (not the planner's budget) for local runs on slower GPUs.
+static float showdown_check_runtime_ms() {
+    static const float value = [] {
+        const char* env = std::getenv("CUDABOT_SHOWDOWN_RUNTIME_MS");
+        float v = env ? std::strtof(env, nullptr) : 0.0f;
+        return v > 0.0f ? v : SHOWDOWN_RUNTIME_TARGET_MS;
+    }();
+    return value;
+}
 constexpr float INF_COST = 1.0e20f;
 
 struct RobotSpec {
@@ -1239,7 +1251,7 @@ static bool showdown_target_pass(const ShowdownRow& row) {
         && row.metrics.collisions <= SHOWDOWN_COLLISION_TARGET
         && row.metrics.collision_cvar <= SHOWDOWN_CVAR_TARGET
         && row.residual_pct <= SHOWDOWN_RESIDUAL_TARGET
-        && row.runtime_ms <= SHOWDOWN_RUNTIME_TARGET_MS;
+        && row.runtime_ms <= showdown_check_runtime_ms();
 }
 
 static void print_showdown_row(const ShowdownRow& row) {
@@ -1436,7 +1448,7 @@ static bool write_showdown_json(const std::string& path,
                  "\"residual_pct_max\":%.6f,\"runtime_ms_max\":%.6f},\n",
                  SHOWDOWN_REACH_TARGET, SHOWDOWN_DEADLOCK_TARGET,
                  SHOWDOWN_COLLISION_TARGET, SHOWDOWN_CVAR_TARGET,
-                 SHOWDOWN_RESIDUAL_TARGET, SHOWDOWN_RUNTIME_TARGET_MS);
+                 SHOWDOWN_RESIDUAL_TARGET, showdown_check_runtime_ms());
     std::fprintf(fp,
                  "  \"training\":{\"samples\":%d,\"initial_loss\":%.8f,"
                  "\"final_loss\":%.8f,\"epochs\":%d},\n",
@@ -2539,7 +2551,7 @@ static cv::Mat draw_frame(const std::vector<RobotSpec>& robots,
                   scenario_name.c_str(), N_ROBOTS, ROLLOUTS_PER_ROBOT,
                   HORIZON, N_GAME_PASSES,
                   SHOWDOWN_COLLISION_TARGET, SHOWDOWN_CVAR_TARGET,
-                  SHOWDOWN_RESIDUAL_TARGET, SHOWDOWN_RUNTIME_TARGET_MS,
+                  SHOWDOWN_RESIDUAL_TARGET, showdown_check_runtime_ms(),
                   gpu_ms, speedup);
     cv::putText(img, buf, cv::Point(12, 28),
                 cv::FONT_HERSHEY_SIMPLEX, 0.43, cv::Scalar(245, 245, 245), 1, cv::LINE_AA);
@@ -2976,7 +2988,7 @@ int main(int argc, char** argv) {
     std::printf("Showdown hard target: reach %d/%d, deadlocks <= %d, collisions <= %d, CVaR <= %.1f, residual <= %.1f%%, runtime <= %.1f ms\n",
                 SHOWDOWN_REACH_TARGET, N_ROBOTS, SHOWDOWN_DEADLOCK_TARGET,
                 SHOWDOWN_COLLISION_TARGET, SHOWDOWN_CVAR_TARGET,
-                SHOWDOWN_RESIDUAL_TARGET, SHOWDOWN_RUNTIME_TARGET_MS);
+                SHOWDOWN_RESIDUAL_TARGET, showdown_check_runtime_ms());
     std::vector<ShowdownRow> showdown_rows;
     showdown_rows.push_back(ShowdownRow{"ORCA-like reciprocal", orca_like,
                                         orca_ms, -1.0f});
