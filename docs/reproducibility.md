@@ -80,6 +80,26 @@ Optional MuJoCo tasks are skipped when their binaries are missing unless `--stri
 This keeps the main suite usable on CUDA-only machines while still documenting how to reproduce the
 standard-environment checks.
 
+## GPU Checks
+
+CI runners have no GPU, so the CTest suite labelled `gpu` (GPU smoke tests,
+headless demos, benchmark gates; 20 tests) only runs on a machine with an NVIDIA
+GPU. Before merging a change to CUDA code, run:
+
+```bash
+python3 scripts/run_gpu_checks.py --build      # build what the tests need, then run them
+python3 scripts/run_gpu_checks.py --labels gpu,cpu --json build/gpu_checks.json
+```
+
+It works with single- and multi-config (Visual Studio) build directories,
+prints one line per test plus the last lines of output for each failure, and
+exits non-zero on any failure. The JSON report records the commit, whether the
+tree was dirty and each test's result and time, but not the GPU model.
+
+`gpu_planner_showdown_gate` includes a runtime target (15 ms per planning
+cycle), so it depends on the GPU's speed and can fail on slower cards even when
+every quality target is met.
+
 ## CI Contract
 
 The CTest target `check_repro_suite_dry_run` validates the runner and manifest path without requiring a GPU:
