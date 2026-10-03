@@ -473,6 +473,11 @@ On two held-out geometries
 face switching still solves most episodes on the smooth plant (25-28/30 for
 `oi_face_mppi`); on the hard plant tracking transfers to the mirrored cell
 (15/30) but not to the far-wall cell (4/30).
+The far-wall failure is a diagonal object path that one face cannot push under
+friction; an axis-aligned path (`oi_face_axis_mppi`,
+[`results/box_detour_axis_path_2026-10-03.md`](results/box_detour_axis_path_2026-10-03.md))
+lifts it to 24/30 on fresh seeds and wins all three hard-plant obstacle cells,
+but fails the two low-wall cells on the smooth plant (0/30, 2/30).
 
 | Scenario | Planner | Success | Steps | Final Dist | Cost | Avg ms |
 |---|---|---:|---:|---:|---:|---:|
