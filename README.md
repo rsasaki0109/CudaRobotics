@@ -548,6 +548,10 @@ Demos open OpenCV windows when a display is available. Set
 to skip windows and key waits so they run unattended; videos and GIFs are
 still written. `ctest -L demo` runs a set of demos this way.
 
+Demos built on `include/demo_args.h` (currently `mppi` and `gpu_mppi_racing`)
+take options instead of needing a recompile, e.g.
+`./bin/gpu_mppi_racing --samples 4096 --laps 1 --no-video`; `--help` lists them.
+
 ## Reproducibility
 
 ```bash
