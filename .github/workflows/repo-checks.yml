@@ -1,0 +1,25 @@
+name: Repo checks
+
+# Fast checks that apply to every change, including docs-only ones that skip
+# the CUDA build.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+jobs:
+  checks:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verify clean checkout
+        run: test -z "$(git status --porcelain)"
+
+      - name: Check for physical GPU identities
+        run: |
+          python3 scripts/redact_gpu_identity.py --check
+          python3 scripts/test_redact_gpu_identity.py
