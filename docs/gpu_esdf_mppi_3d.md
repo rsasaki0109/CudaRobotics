@@ -76,6 +76,7 @@ reach the goal. `--mode` sets how the planner sees them:
 | `0` static | the static ESDF only (movers ignored) | the default MPPI work |
 | `1` rebuild | the movers stamped into the occupancy grid at their current positions, ESDF rebuilt by JFA every step | + a full 3D JFA |
 | `2` predict | the static ESDF plus the analytic distance to each mover at its constant-velocity prediction for that rollout step | + 40 x N sphere distances per rollout |
+| `3` predict_bounce | as `2`, with reflections at the movers' region bounds | same as `2` |
 
 `--trials 30` runs the same 30 mover scenarios for all three modes and prints
 a table ([raw tables](results/gpu_esdf_mppi_3d_dynamic_2026-10-03.md)). Success
@@ -97,8 +98,22 @@ true positions.
 - At 2-3x speed, reacting to current positions is no longer enough: rebuild
   collides 8 times in 60 paired episodes, prediction once (paired exact
   McNemar on success, 8 vs 1, p = 0.039).
-- Prediction assumes constant velocity, so it does not anticipate bounces;
-  its one fast-speed collision and the occasional timeout come from that.
+- Prediction assumes constant velocity, so it does not anticipate bounces.
+
+`--mode 3` (`predict_bounce`) predicts each coordinate with reflections at the
+region bounds (a triangle wave), so bounces within the 4 s horizon are
+anticipated. On fresh scenarios (episode seeds from 2000) it did not help:
+
+| movers | rebuild | predict | predict_bounce |
+|---|---:|---:|---:|
+| 6, 2x speed (60 scenarios) | 53/60 (7 collisions) | **60/60** | **60/60** |
+| 6, 3x speed (30 scenarios) | 25/30 (5 collisions) | **30/30** | 29/30 (1 timeout) |
+| 8, 3x speed (30 scenarios) | 23/30 (7 collisions) | **30/30** | 29/30 (1 timeout) |
+
+Constant-velocity prediction is already at the ceiling on these scenarios;
+modelling bounces only makes the plans slightly more cautious (two timeouts,
+more steps). The earlier constant-velocity failures attributed to bounces are
+not reproduced on these scenarios.
 
 <img src="https://rsasaki0109.github.io/CudaRobotics/gpu_esdf_mppi_3d_dynamic.gif" width="720"/>
 

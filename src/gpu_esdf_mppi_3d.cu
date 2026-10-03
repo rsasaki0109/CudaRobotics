@@ -88,9 +88,20 @@ constexpr float MOVER_R    = 0.45f;
 struct Movers {
     int n = 0;
     float p[MAX_MOVERS][3], v[MAX_MOVERS][3];   // current position and velocity
+    float lo[3], hi[3];                          // region they bounce inside
 };
-enum DynMode { MODE_STATIC = 0, MODE_REBUILD = 1, MODE_PREDICT = 2 };
-static const char* MODE_NAMES[] = {"static", "rebuild", "predict"};
+enum DynMode { MODE_STATIC = 0, MODE_REBUILD = 1, MODE_PREDICT = 2, MODE_PREDICT_BOUNCE = 3 };
+static const char* MODE_NAMES[] = {"static", "rebuild", "predict", "predict_bounce"};
+
+// Mover coordinate after tau seconds: constant velocity, or with reflections at the
+// region bounds (a triangle wave) when bounce is set.
+__host__ __device__ inline float predict_coord(float x0, float v, float tau, float lo, float hi, bool bounce) {
+    float x = x0 + v * tau;
+    if (!bounce) return x;
+    float L = hi - lo, y = fmodf(x - lo, 2.0f * L);
+    if (y < 0.0f) y += 2.0f * L;
+    return lo + (y <= L ? y : 2.0f * L - y);
+}
 const float MOVER_BOX[2][3] = {{1.0f, 9.0f, 1.5f}, {15.0f, 13.5f, 6.0f}};
 
 // -------------------------------------------------------------------------
@@ -279,7 +290,7 @@ __host__ __device__ inline void step_dynamics(float s[6], const float a_in[3]) {
 // cost-to-go for progress, ESDF barrier for clearance.
 __host__ __device__ inline float rollout_cost(const float start[6], const float* controls,
                                               const float* esdf, const float* ctg,
-                                              const Movers& mv, bool predict) {
+                                              const Movers& mv, int predict) {
     float s[6];
     for (int i = 0; i < 6; i++) s[i] = start[i];
     float total = 0.0f;
@@ -289,12 +300,12 @@ __host__ __device__ inline float rollout_cost(const float start[6], const float*
         total += W_GOAL * ctg_at(ctg, s[0], s[1], s[2]);
         total += W_CTRL * (a[0] * a[0] + a[1] * a[1] + a[2] * a[2]);
         float d = esdf_at(esdf, s[0], s[1], s[2]) - ROBOT_R;
-        if (predict) {   // distance to each mover at its constant-velocity prediction
+        if (predict) {   // distance to each mover at its predicted position (1: linear, 2: bouncing)
             float tau = (t + 1) * DT;
             for (int i = 0; i < mv.n; i++) {
-                float ex = s[0] - (mv.p[i][0] + mv.v[i][0] * tau);
-                float ey = s[1] - (mv.p[i][1] + mv.v[i][1] * tau);
-                float ez = s[2] - (mv.p[i][2] + mv.v[i][2] * tau);
+                float ex = s[0] - predict_coord(mv.p[i][0], mv.v[i][0], tau, mv.lo[0], mv.hi[0], predict == 2);
+                float ey = s[1] - predict_coord(mv.p[i][1], mv.v[i][1], tau, mv.lo[1], mv.hi[1], predict == 2);
+                float ez = s[2] - predict_coord(mv.p[i][2], mv.v[i][2], tau, mv.lo[2], mv.hi[2], predict == 2);
                 d = fminf(d, sqrtf(ex * ex + ey * ey + ez * ez) - MOVER_R - ROBOT_R);
             }
         }
@@ -320,7 +331,7 @@ __global__ void init_rng(curandState* states, int n, unsigned long long seed) {
 __global__ void rollout_kernel(const float* __restrict__ d_start, const float* __restrict__ d_ctg,
                                const float* __restrict__ d_nominal, const float* __restrict__ d_esdf,
                                float* __restrict__ d_costs, float* __restrict__ d_perturbed,
-                               curandState* __restrict__ d_rng, int K, Movers mv, bool predict) {
+                               curandState* __restrict__ d_rng, int K, Movers mv, int predict) {
     int k = blockIdx.x * blockDim.x + threadIdx.x;
     if (k >= K) return;
     curandState rng = d_rng[k];
@@ -402,11 +413,11 @@ int main(int argc, char** argv) {
     const int seed = args.get_int("seed", 2026, "cuRAND seed", 0);
     const bool no_video = args.flag("no-video", "skip the AVI/GIF output");
     const int n_movers = args.get_int("movers", 0, "moving spherical obstacles beyond the wall (max 8)", 0);
-    const int mode_arg = args.get_int("mode", MODE_PREDICT, "with movers: 0 static map, 1 rebuild ESDF each step, 2 predict", 0);
+    const int mode_arg = args.get_int("mode", MODE_PREDICT, "with movers: 0 static map, 1 rebuild ESDF, 2 predict, 3 predict with bounces", 0);
     const int trials = args.get_int("trials", 0, "with movers: run N episodes per mode and print a table", 0);
     const float mover_speed = args.get_float("mover-speed", 1.0f, "with movers: speed multiplier (base 0.8-1.5 m/s)");
     args.finish();
-    if (n_movers > MAX_MOVERS || mode_arg > MODE_PREDICT) { std::fprintf(stderr, "--movers <= 8, --mode 0..2\n"); return 2; }
+    if (n_movers > MAX_MOVERS || mode_arg > MODE_PREDICT_BOUNCE) { std::fprintf(stderr, "--movers <= 8, --mode 0..3\n"); return 2; }
     const bool write_video = !no_video && trials == 0;
 
     // 1. Scene and 3D ESDF
@@ -525,6 +536,7 @@ int main(int argc, char** argv) {
     auto init_movers = [&](int episode_seed) {
         Movers mv;
         mv.n = n_movers;
+        for (int a = 0; a < 3; a++) { mv.lo[a] = MOVER_BOX[0][a]; mv.hi[a] = MOVER_BOX[1][a]; }
         std::mt19937 rng(static_cast<unsigned>(episode_seed));
         std::uniform_real_distribution<float> u01(0.0f, 1.0f);
         for (int i = 0; i < mv.n; i++) {
@@ -595,7 +607,7 @@ int main(int argc, char** argv) {
         std::vector<cv::Point3f> path = {cv::Point3f(st[0], st[1], st[2])};
         const int SHOW = std::min(K, 48);
         std::vector<float> h_samples(static_cast<size_t>(SHOW) * U);
-        const bool predict = n_movers > 0 && mode == MODE_PREDICT;
+        const int predict = n_movers == 0 ? 0 : mode == MODE_PREDICT ? 1 : mode == MODE_PREDICT_BOUNCE ? 2 : 0;
 
         for (int step = 0; step < max_steps; step++) {
             CUDA_CHECK(cudaMemcpy(d_start, st, sizeof(st), cudaMemcpyHostToDevice));
@@ -639,10 +651,15 @@ int main(int argc, char** argv) {
                 for (int i = 0; i < mv.n; i++) {
                     cv::circle(top, top_px(mv.p[i][0], mv.p[i][1]), mr, cv::Scalar(60, 60, 255), cv::FILLED, cv::LINE_AA);
                     cv::circle(side, side_px(mv.p[i][0], mv.p[i][2]), mr, cv::Scalar(60, 60, 255), cv::FILLED, cv::LINE_AA);
-                    if (predict) {   // where the planner expects it at the end of the horizon
-                        const float tau = T_HORIZON * DT;
-                        cv::line(top, top_px(mv.p[i][0], mv.p[i][1]),
-                                 top_px(mv.p[i][0] + mv.v[i][0] * tau, mv.p[i][1] + mv.v[i][1] * tau), cv::Scalar(60, 60, 255), 1, cv::LINE_AA);
+                    if (predict) {   // where the planner expects it over the horizon
+                        cv::Point prev_pt = top_px(mv.p[i][0], mv.p[i][1]);
+                        for (int t = 1; t <= T_HORIZON; t++) {
+                            float tau = t * DT;
+                            cv::Point pt = top_px(predict_coord(mv.p[i][0], mv.v[i][0], tau, mv.lo[0], mv.hi[0], predict == 2),
+                                                  predict_coord(mv.p[i][1], mv.v[i][1], tau, mv.lo[1], mv.hi[1], predict == 2));
+                            cv::line(top, prev_pt, pt, cv::Scalar(60, 60, 255), 1, cv::LINE_AA);
+                            prev_pt = pt;
+                        }
                     }
                 }
                 cv::circle(top, top_px(start_pos[0], start_pos[1]), 6, cv::Scalar(255, 120, 80), cv::FILLED);
@@ -709,7 +726,7 @@ int main(int argc, char** argv) {
         std::printf("\n%d movers at %.1fx speed, %d episodes per mode (episode seeds %d..%d)\n",
                     n_movers, mover_speed, trials, seed, seed + trials - 1);
         std::printf("| mode | success | collisions | timeouts | mean steps | mean min clearance (m) | ms per step |\n|---|---:|---:|---:|---:|---:|---:|\n");
-        for (int mode = MODE_STATIC; mode <= MODE_PREDICT; mode++) {
+        for (int mode = MODE_STATIC; mode <= MODE_PREDICT_BOUNCE; mode++) {
             int success = 0, collisions = 0, timeouts = 0;
             double steps_sum = 0, clear_sum = 0, ms_sum = 0;
             for (int t = 0; t < trials; t++) {
