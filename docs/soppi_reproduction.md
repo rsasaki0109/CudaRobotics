@@ -459,6 +459,10 @@ on `box_detour_wall`, where a box-wide rigid wall blocks the straight line,
 `soppi_fast` reaches 20/30 by sliding the box along the wall (0/30 without the
 wall), while object-informed planners drop from 12/30 to 0/30; an obstacle-aware
 object path (`oi_path_mppi`) does not help without pusher face switching.
+Adding a face-switching seed (`oi_face_mppi`,
+[`results/box_detour_face_switch_2026-10-03.md`](results/box_detour_face_switch_2026-10-03.md))
+reaches 27/30 on held-out seeds versus 15/30 for `soppi_fast` (paired exact
+McNemar p = 0.004) and 0/30 for the same planner without face switching.
 
 | Scenario | Planner | Success | Steps | Final Dist | Cost | Avg ms |
 |---|---|---:|---:|---:|---:|---:|

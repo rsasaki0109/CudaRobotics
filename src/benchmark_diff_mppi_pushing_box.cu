@@ -104,6 +104,7 @@ struct Variant {
     float oi_seed_blend = 0.10f;
     float oi_contact_margin = 0.04f;
     bool oi_use_path = false;     // follow plan_object_path() instead of the straight line
+    bool oi_face_switch = false;  // path seed walks the pusher around to the pushing face
 };
 
 struct EpisodeMetrics {
@@ -471,6 +472,34 @@ __host__ __device__ inline void object_ref_path_f(
     rth = wrapf(oth0 + (need >= 0.0f ? astep : -astep));
 }
 
+// Pusher target for moving the box along (dirx, diry) by pushing on the face whose
+// outward normal is most opposite to that direction. When the pusher is not yet
+// outside that face it gets the next waypoint around the box instead: the corner
+// of the pushing face if it is beside the box, or first a corner of the opposite
+// face if it is behind it. All waypoints keep `clear` from the box surface.
+static bool face_switch_target(float px, float py, float ox, float oy, float oth,
+                               float dirx, float diry, const BoxParams& p, float clear,
+                               float& tx, float& ty) {
+    float c = cosf(oth), s = sinf(oth);
+    float lx = c*(px - ox) + s*(py - oy), ly = -s*(px - ox) + c*(py - oy);
+    float dlx = c*dirx + s*diry, dly = -s*dirx + c*diry;
+    bool along_x = fabsf(dlx) * p.hy >= fabsf(dly) * p.hx;   // which face pair pushes best
+    float nx = along_x ? (dlx >= 0.0f ? -1.0f : 1.0f) : 0.0f;  // outward normal of the pushing face
+    float ny = along_x ? 0.0f : (dly >= 0.0f ? -1.0f : 1.0f);
+    float hn = along_x ? p.hx : p.hy, ht = along_x ? p.hy : p.hx;
+    float un = lx*nx + ly*ny, ut = along_x ? ly : lx;          // normal / tangential coordinates
+    float side = ut >= 0.0f ? 1.0f : -1.0f;
+    float wn, wt;
+    bool engaged = un >= hn + 0.5f * p.push_r;
+    if (engaged)                                  { wn = hn + clear;    wt = 0.0f; }
+    else if (fabsf(ut) >= ht + 0.5f * p.push_r)   { wn = hn + clear;    wt = side * (ht + clear); }
+    else                                          { wn = -(hn + clear); wt = side * (ht + clear); }
+    float wlx = nx*wn + (along_x ? 0.0f : wt), wly = ny*wn + (along_x ? wt : 0.0f);
+    tx = ox + c*wlx - s*wly;
+    ty = oy + s*wlx + c*wly;
+    return engaged;
+}
+
 // Object-level planner for the path-following object reference: A* over box-centre
 // positions at the start heading, clear of the (margin-inflated) wall footprint,
 // then shortcut to line-of-sight waypoints. A clear straight line is used as is.
@@ -799,7 +828,7 @@ __global__ void rollout_object_informed_kernel(
     const float* d_start, const float* d_nominal, float* d_costs, float* d_perturbed,
     curandState* d_rng, BoxParams p, float gx, float gy, float gth, int K, int T,
     float sigma, bool use_low_pass, float lp_alpha, float oi_ref_weight_pos,
-    float oi_ref_weight_ang, float oi_obj_speed, float oi_ang_speed, ObjPath path)
+    float oi_ref_weight_ang, float oi_obj_speed, float oi_ang_speed, ObjPath path, int ref_delay)
 {
     int k = blockIdx.x * blockDim.x + threadIdx.x;
     if (k >= K) return;
@@ -828,7 +857,7 @@ __global__ void rollout_object_informed_kernel(
         cost += stage_cost_box_f(px, py, ox, oy, oth, ux, uy, gx, gy, gth, p);
         float rx, ry, rth;
         if (path.n >= 2)
-            object_ref_path_f(path, ox0, oy0, oth0, gth, p.dt, oi_obj_speed, oi_ang_speed, t + 1, rx, ry, rth);
+            object_ref_path_f(path, ox0, oy0, oth0, gth, p.dt, oi_obj_speed, oi_ang_speed, max(0, t + 1 - ref_delay), rx, ry, rth);
         else
             object_ref_box_f(ox0, oy0, oth0, gx, gy, gth, p.dt, oi_obj_speed, oi_ang_speed, t + 1, rx, ry, rth);
         float ex = ox - rx, ey = oy - ry, eth = wrapf(oth - rth);
@@ -1360,7 +1389,7 @@ private:
                 d_start_, d_nominal_, d_costs_, d_perturbed_, d_rng_,
                 sc_.params, sc_.gx, sc_.gy, sc_.gth, K_, T_, v_.sigma,
                 v_.use_low_pass_sampling, v_.lp_alpha, v_.oi_ref_weight_pos,
-                v_.oi_ref_weight_ang, v_.oi_obj_speed, v_.oi_ang_speed, path_);
+                v_.oi_ref_weight_ang, v_.oi_obj_speed, v_.oi_ang_speed, path_, ref_delay_);
         else if (v_.use_low_pass_sampling)
             rollout_low_pass_kernel<<<(K_+b-1)/b,b>>>(
                 d_start_, d_nominal_, d_costs_, d_perturbed_, d_rng_,
@@ -1401,9 +1430,49 @@ private:
     }
     void warmup() { for (int i = 0; i < 3; i++) controller_update(); }
 
+    // Face-switching seed: walk the pusher around the box to the face that pushes
+    // along the path, holding the object reference until it gets there. Sets
+    // ref_delay_ (steps before the box is expected to move) for the rollout cost.
+    void seed_face_switch_nominal(float px, float py, float ox, float oy, float oth) {
+        const BoxParams& p = sc_.params;
+        float blend = clampf_local(v_.oi_seed_blend, 0.0f, 1.0f);
+        float sim_px = px, sim_py = py;
+        float bx = ox, by = oy;               // box pose the pusher plans around
+        int advance = 0;
+        ref_delay_ = 0;
+        for (int t = 0; t < T_; t++) {
+            float rx, ry, rth;
+            object_ref_path_f(path_, ox, oy, oth, sc_.gth, p.dt, v_.oi_obj_speed, v_.oi_ang_speed,
+                              advance, bx, by, rth);
+            object_ref_path_f(path_, ox, oy, oth, sc_.gth, p.dt, v_.oi_obj_speed, v_.oi_ang_speed,
+                              advance + 1, rx, ry, rth);
+            float dx = rx - bx, dy = ry - by, dl = sqrtf(dx*dx + dy*dy);
+            if (dl < 1e-4f) { dx = sc_.gx - bx; dy = sc_.gy - by; dl = sqrtf(dx*dx + dy*dy + 1e-9f); }
+            float tx, ty;
+            bool engaged = face_switch_target(sim_px, sim_py, bx, by, oth, dx / dl, dy / dl, p,
+                                              p.push_r + v_.oi_contact_margin + 0.04f, tx, ty);
+            if (engaged) {
+                // push: aim at the contact point behind the box's next reference pose
+                face_switch_target(sim_px, sim_py, rx, ry, oth, dx / dl, dy / dl, p,
+                                   p.push_r - 0.02f, tx, ty);
+                advance++;
+            } else if (advance == 0) {
+                ref_delay_++;
+            }
+            float ux = clampf_local((tx - sim_px) / p.dt, -p.u_max, p.u_max);
+            float uy = clampf_local((ty - sim_py) / p.dt, -p.u_max, p.u_max);
+            int base = t * CTRL_DIM;
+            h_nominal_[base + 0] = (1.0f - blend) * h_nominal_[base + 0] + blend * ux;
+            h_nominal_[base + 1] = (1.0f - blend) * h_nominal_[base + 1] + blend * uy;
+            sim_px += p.dt * h_nominal_[base + 0];
+            sim_py += p.dt * h_nominal_[base + 1];
+        }
+    }
+
     void seed_object_informed_nominal(
         float px, float py, float ox, float oy, float oth) {
         if (!v_.use_object_informed || v_.oi_seed_blend <= 0.0f) return;
+        if (v_.oi_face_switch && path_.n >= 2) { seed_face_switch_nominal(px, py, ox, oy, oth); return; }
         const BoxParams& p = sc_.params;
         float blend = clampf_local(v_.oi_seed_blend, 0.0f, 1.0f);
         float sim_px = px, sim_py = py;
@@ -1531,6 +1600,7 @@ private:
 
     Variant v_; BoxScenario sc_; int K_, T_, seed_;
     ObjPath path_;                          // object-level path (oi_use_path variants only)
+    int ref_delay_ = 0;                     // face-switch seed: steps before the box moves
     HardParams hard_p_;                     // hard-contact params (true plant and/or fidelity-arm rollout)
     float px_=0,py_=0,ox_=0,oy_=0,oth_=0;
     float vx_=0,vy_=0,w_=0;                 // box velocity (hard true plant only)
@@ -1725,6 +1795,7 @@ int main(int argc, char** argv) {
     int override_soppi_neighbor_count = -1;
     float override_soppi_step_size = -1.0f;
     float override_soppi_bandwidth = -1.0f;
+    float override_oi_seed_blend = -1.0f, override_oi_obj_speed = -1.0f;
     for (int i=1;i<argc;i++){ string a=argv[i];
         if (a=="--quick") quick=true;
         else if (a=="--csv"&&i+1<argc) csv_path=argv[++i];
@@ -1739,6 +1810,8 @@ int main(int argc, char** argv) {
         else if (a=="--override-soppi-neighbors"&&i+1<argc) override_soppi_neighbor_count=max(0,atoi(argv[++i]));
         else if (a=="--override-soppi-step-size"&&i+1<argc) override_soppi_step_size=(float)atof(argv[++i]);
         else if (a=="--override-soppi-bandwidth"&&i+1<argc) override_soppi_bandwidth=(float)atof(argv[++i]);
+        else if (a=="--override-oi-seed-blend"&&i+1<argc) override_oi_seed_blend=(float)atof(argv[++i]);
+        else if (a=="--override-oi-obj-speed"&&i+1<argc) override_oi_obj_speed=(float)atof(argv[++i]);
         else if (a=="--dump-traj"&&i+1<argc) dump_traj_prefix=argv[++i];
         // per-episode trajectories from the main sweep: <dir>/<scenario>_<planner>_<seed>.csv
         else if (a=="--traj-dir"&&i+1<argc) traj_dir=argv[++i];
@@ -1974,6 +2047,11 @@ int main(int argc, char** argv) {
     { Variant v; v.name="oi_lp_mppi"; v.use_object_informed=true; v.use_low_pass_sampling=true; v.lp_alpha=0.25f; v.oi_ref_weight_pos=1.5f; v.oi_ref_weight_ang=3.0f; v.oi_obj_speed=1.2f; v.oi_ang_speed=1.2f; v.oi_seed_blend=0.10f; variants.push_back(v); }
     // oi_mppi following an obstacle-aware object path instead of the straight line.
     { Variant v; v.name="oi_path_mppi"; v.use_object_informed=true; v.oi_use_path=true; v.oi_ref_weight_pos=1.5f; v.oi_ref_weight_ang=3.0f; v.oi_obj_speed=1.2f; v.oi_ang_speed=1.2f; v.oi_seed_blend=0.12f; variants.push_back(v); }
+    // oi_path_mppi whose seed walks the pusher around the box to the pushing face.
+    // Reference speed 0.6 m/s selected on box_detour_* seeds 0-7; oi_path_slow_mppi
+    // is the same planner without face switching (ablation).
+    { Variant v; v.name="oi_face_mppi"; v.use_object_informed=true; v.oi_use_path=true; v.oi_face_switch=true; v.oi_ref_weight_pos=1.5f; v.oi_ref_weight_ang=3.0f; v.oi_obj_speed=0.6f; v.oi_ang_speed=1.2f; v.oi_seed_blend=0.12f; variants.push_back(v); }
+    { Variant v; v.name="oi_path_slow_mppi"; v.use_object_informed=true; v.oi_use_path=true; v.oi_ref_weight_pos=1.5f; v.oi_ref_weight_ang=3.0f; v.oi_obj_speed=0.6f; v.oi_ang_speed=1.2f; v.oi_seed_blend=0.12f; variants.push_back(v); }
     { Variant v; v.name="diff_mppi_1"; v.grad_steps=1; v.alpha=0.02f; variants.push_back(v); }
     { Variant v; v.name="diff_mppi_3"; v.grad_steps=3; v.alpha=0.010f; variants.push_back(v); }
     { Variant v; v.name="diff_mppi_5"; v.grad_steps=5; v.alpha=0.008f; variants.push_back(v); }
@@ -1997,6 +2075,8 @@ int main(int argc, char** argv) {
         if (override_soppi_neighbor_count >= 0 && v.use_soppi_sampling) v.soppi_neighbor_count = override_soppi_neighbor_count;
         if (override_soppi_step_size >= 0.0f && v.use_soppi_sampling) v.soppi_step_size = override_soppi_step_size;
         if (override_soppi_bandwidth >= 0.0f && v.use_soppi_sampling) v.soppi_bandwidth = override_soppi_bandwidth;
+        if (override_oi_seed_blend >= 0.0f && v.use_object_informed) v.oi_seed_blend = override_oi_seed_blend;
+        if (override_oi_obj_speed >= 0.0f && v.use_object_informed) v.oi_obj_speed = override_oi_obj_speed;
     }
     if (k_values.empty()) k_values = quick ? vector<int>{256} : vector<int>{256, 1024};
     if (seed_count<=0) seed_count = quick ? 4 : 8;
