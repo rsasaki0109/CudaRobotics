@@ -51,7 +51,7 @@ static constexpr float STEER_NOISE_STD = 0.4f;
 
 // Cost weights
 static constexpr float GOAL_WEIGHT     = 1.0f;
-static constexpr float OBS_WEIGHT      = 200.0f;
+static constexpr float OBS_WEIGHT      = 100.0f;
 static constexpr float SPEED_WEIGHT    = 0.1f;
 static constexpr float STEER_WEIGHT    = 5.0f;
 static constexpr float TERMINAL_WEIGHT = 10.0f;
@@ -84,7 +84,7 @@ __global__ void init_curand_kernel(curandState* states, int K, unsigned long lon
 }
 
 __global__ void rollout_kernel(
-    float sx, float sy, float stheta, float sv,
+    float sx, float sy, float stheta, float sv, float ssteer,
     const float* __restrict__ d_nominal,
     float* __restrict__ d_costs,
     float* __restrict__ d_perturbed,
@@ -98,7 +98,7 @@ __global__ void rollout_kernel(
     curandState local_state = d_rand_states[k];
 
     float x = sx, y = sy, theta = stheta, v = sv;
-    float steer = 0.0f;
+    float steer = ssteer;  // start from the robot's actual steering angle
     float cost = 0.0f;
 
     for (int t = 0; t < T; t++) {
@@ -218,7 +218,7 @@ struct CpuMPPI {
         // Rollout K samples
         for (int k = 0; k < K; k++) {
             float x = rx, y = ry, theta = rtheta, v = rv;
-            float steer = 0.0f;
+            float steer = rsteer;
             float cost = 0.0f;
 
             for (int t = 0; t < T_HORIZON; t++) {
@@ -370,7 +370,7 @@ struct GpuMPPI {
         CUDA_CHECK(cudaMemcpy(d_nominal, h_nominal.data(), ctrl_size * sizeof(float), cudaMemcpyHostToDevice));
 
         rollout_kernel<<<grid_K, block>>>(
-            rx, ry, rtheta, rv,
+            rx, ry, rtheta, rv, rsteer,
             d_nominal, d_costs, d_perturbed, d_trajectories, d_rand_states,
             K, T_HORIZON, DT, WHEELBASE);
         CUDA_CHECK(cudaGetLastError());
