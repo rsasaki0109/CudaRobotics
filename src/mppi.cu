@@ -482,9 +482,7 @@ int main(int argc, char** argv)
         cout << "Video saved to gif/mppi.avi" << endl;
 
         // Convert to GIF
-        system("ffmpeg -y -i gif/mppi.avi "
-               "-vf \"fps=20,scale=800:-1:flags=lanczos\" -loop 0 "
-               "gif/mppi.gif 2>" CUDABOT_NULL_DEVICE);
+        cudabot::avi_to_gif_simple("gif/mppi.avi", "gif/mppi.gif", 20, 800);
         cout << "GIF saved to gif/mppi.gif" << endl;
     }
 

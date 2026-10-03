@@ -520,14 +520,6 @@ static double compute_rmse(const std::vector<float>& a, const std::vector<float>
     return std::sqrt(s / std::max(1, cnt));
 }
 
-static void convert_avi_to_gif(const char* avi, const char* gif, int fps) {
-    char cmd[512];
-    std::snprintf(cmd, sizeof(cmd),
-        "ffmpeg -y -i %s -vf \"fps=%d,scale=1100:-1:flags=lanczos\" -loop 0 %s "
-        "> " CUDABOT_NULL_DEVICE " 2>&1", avi, fps, gif);
-    int rc = std::system(cmd);
-    if (rc != 0) std::fprintf(stderr, "ffmpeg conversion returned %d\n", rc);
-}
 
 // -------------------------------------------------------------------------
 // main
@@ -734,8 +726,7 @@ int main() {
         }
     }
     video.release();
-    convert_avi_to_gif("gif/gpu_bundle_adjustment.avi",
-                       "gif/gpu_bundle_adjustment.gif", 4);
+    cudabot::avi_to_gif_simple("gif/gpu_bundle_adjustment.avi", "gif/gpu_bundle_adjustment.gif", 4, 1100);
 
     // Final RMSE
     CUDA_CHECK(cudaMemcpy(h_poses_cur.data(), d_poses,

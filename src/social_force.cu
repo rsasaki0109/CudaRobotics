@@ -179,9 +179,7 @@ int main() {
     }
 
     video.release();
-    system("ffmpeg -y -i gif/social_force.avi "
-           "-vf \"fps=15,scale=800:-1\" -loop 0 "
-           "gif/social_force.gif 2>" CUDABOT_NULL_DEVICE);
+    cudabot::avi_to_gif_simple("gif/social_force.avi", "gif/social_force.gif", 15, 800, false);
     std::cout << "GIF saved to gif/social_force.gif" << std::endl;
 
     cudaFree(d_px); cudaFree(d_py); cudaFree(d_vx); cudaFree(d_vy);

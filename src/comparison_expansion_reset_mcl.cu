@@ -495,9 +495,7 @@ int main() {
     }
 
     video.release();
-    system("ffmpeg -y -i gif/comparison_expansion_reset_mcl.avi "
-           "-vf \"fps=15,scale=800:-1:flags=lanczos\" -loop 0 "
-           "gif/comparison_expansion_reset_mcl.gif 2>" CUDABOT_NULL_DEVICE);
+    cudabot::avi_to_gif_simple("gif/comparison_expansion_reset_mcl.avi", "gif/comparison_expansion_reset_mcl.gif", 15, 800);
     printf("GIF saved to gif/comparison_expansion_reset_mcl.gif\n");
 
     std_pf.free_all(); exp_pf.free_all();

@@ -888,9 +888,7 @@ int main() {
     if (cuda_iter_count > 0)
         std::cout << "CUDA avg: " << cuda_total_ms / cuda_iter_count << " ms/iter" << std::endl;
 
-    system("ffmpeg -y -i gif/comparison_rrtstar.avi "
-           "-vf \"fps=15,scale=800:-1:flags=lanczos\" -loop 0 "
-           "gif/comparison_rrtstar.gif 2>" CUDABOT_NULL_DEVICE);
+    cudabot::avi_to_gif_simple("gif/comparison_rrtstar.avi", "gif/comparison_rrtstar.gif", 15, 800);
     std::cout << "GIF saved to gif/comparison_rrtstar.gif" << std::endl;
 
     return 0;

@@ -29,13 +29,6 @@ static const int N_ENVS = 4096;
 static const int FRAMES = 220;
 static const int STEPS_PER_FRAME = 3;
 
-static void convert_avi_to_gif(const char* avi_path, const char* gif_path, int fps = 15) {
-    char cmd[1024];
-    std::snprintf(cmd, sizeof(cmd),
-                  "ffmpeg -y -i %s -vf \"fps=%d,scale=640:-1\" -loop 0 %s 2>" CUDABOT_NULL_DEVICE,
-                  avi_path, fps, gif_path);
-    std::system(cmd);
-}
 
 __global__ void heuristic_actions_kernel(const float* d_states, float* d_actions, int n_envs, int frame_idx) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
@@ -169,7 +162,7 @@ int main() {
     CUDA_CHECK(cudaFree(d_dones));
 
     cout << "Video saved to gif/mini_isaac.avi" << endl;
-    convert_avi_to_gif(AVI_PATH, GIF_PATH, 15);
+    cudabot::avi_to_gif_simple(AVI_PATH, GIF_PATH, 15, 640, false);
     cout << "GIF saved to gif/mini_isaac.gif" << endl;
     return 0;
 }

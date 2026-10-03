@@ -35,13 +35,6 @@ static const int POLICY_HIDDEN = 32;
 static constexpr float GAMMA = 0.99f;
 static constexpr float LR = 0.003f;
 
-static void convert_avi_to_gif(const char* avi_path, const char* gif_path, int fps = 15) {
-    char cmd[1024];
-    std::snprintf(cmd, sizeof(cmd),
-                  "ffmpeg -y -i %s -vf \"fps=%d,scale=720:-1\" -loop 0 %s 2>" CUDABOT_NULL_DEVICE,
-                  avi_path, fps, gif_path);
-    std::system(cmd);
-}
 
 __global__ void sample_policy_kernel(const float* d_logits, float* d_actions, float* d_action_bits,
                                      int n_envs, unsigned int seed) {
@@ -373,7 +366,7 @@ int main() {
     CUDA_CHECK(cudaFree(d_eval_actions));
 
     cout << "Video saved to gif/mini_isaac_rl.avi" << endl;
-    convert_avi_to_gif(AVI_PATH, GIF_PATH, 15);
+    cudabot::avi_to_gif_simple(AVI_PATH, GIF_PATH, 15, 720, false);
     cout << "GIF saved to gif/mini_isaac_rl.gif" << endl;
     return 0;
 }

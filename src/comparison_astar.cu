@@ -507,9 +507,7 @@ int main() {
     std::cout << "Video saved to gif/comparison_astar.avi (" << frame_count << " frames)" << std::endl;
 
     // Convert to gif
-    system("ffmpeg -y -i gif/comparison_astar.avi "
-           "-vf \"fps=15,scale=600:-1:flags=lanczos\" -loop 0 "
-           "gif/comparison_astar.gif 2>" CUDABOT_NULL_DEVICE);
+    cudabot::avi_to_gif_simple("gif/comparison_astar.avi", "gif/comparison_astar.gif", 15, 600);
     std::cout << "GIF saved to gif/comparison_astar.gif" << std::endl;
 
     delete ngoal_cpu;

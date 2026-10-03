@@ -627,9 +627,7 @@ int main()
     video.release();
     cout << "Video saved to gif/comparison_mppi.avi" << endl;
 
-    system("ffmpeg -y -i gif/comparison_mppi.avi "
-           "-vf \"fps=20,scale=800:-1:flags=lanczos\" -loop 0 "
-           "gif/comparison_mppi.gif 2>" CUDABOT_NULL_DEVICE);
+    cudabot::avi_to_gif_simple("gif/comparison_mppi.avi", "gif/comparison_mppi.gif", 20, 800);
     cout << "GIF saved to gif/comparison_mppi.gif" << endl;
 
     cudabot::imshow("comparison_mppi", combined);

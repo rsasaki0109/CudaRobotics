@@ -231,9 +231,7 @@ int main() {
     }
 
     video.release();
-    system("ffmpeg -y -i gif/comparison_multi_robot.avi "
-           "-vf \"fps=20,scale=800:-1:flags=lanczos\" -loop 0 "
-           "gif/comparison_multi_robot.gif 2>" CUDABOT_NULL_DEVICE);
+    cudabot::avi_to_gif_simple("gif/comparison_multi_robot.avi", "gif/comparison_multi_robot.gif", 20, 800);
 
     printf("CPU avg: %.4f ms/step, CUDA avg: %.4f ms/step\n", cpu_total/steps, cuda_total/steps);
     printf("GIF saved to gif/comparison_multi_robot.gif\n");

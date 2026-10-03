@@ -318,6 +318,8 @@ cudabot_demo(comparison_occupancy_grid src/comparison_occupancy_grid.cu OPENCV)
 
 cudabot_demo(comparison_esdf src/comparison_esdf.cu OPENCV RELAXED_CONSTEXPR)
 
+cudabot_demo(comparison_esdf_3d src/comparison_esdf_3d.cu OPENCV RELAXED_CONSTEXPR)
+
 cudabot_demo(pf_esdf src/pf_esdf.cu OPENCV RELAXED_CONSTEXPR)
 
 cudabot_demo(comparison_rrtstar_rewire src/comparison_rrtstar_rewire.cu OPENCV RELAXED_CONSTEXPR)

@@ -421,9 +421,7 @@ int main() {
                     cpu_ms, N_CPU, gpu_ms, N_GPU, gpu_us, cpu_us, cpu_us / gpu_us);
     }
 
-    std::system("ffmpeg -y -i gif/comparison_gaussian_splatting.avi "
-                "-vf \"fps=15,scale=900:-1:flags=lanczos\" -loop 0 "
-                "gif/comparison_gaussian_splatting.gif 2>" CUDABOT_NULL_DEVICE);
+    cudabot::avi_to_gif_simple("gif/comparison_gaussian_splatting.avi", "gif/comparison_gaussian_splatting.gif", 15, 900);
     std::cout << "GIF saved to gif/comparison_gaussian_splatting.gif" << std::endl;
 
     cudaFree(d_check);

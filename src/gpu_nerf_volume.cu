@@ -173,14 +173,6 @@ __global__ void render_kernel(float cam_x, float cam_y, float cam_z,
     img_bgr[idx + 2] = to_u8(accR);
 }
 
-static void convert_avi_to_gif(const std::string& avi, const std::string& gif, int fps) {
-    char cmd[1024];
-    std::snprintf(cmd, sizeof(cmd),
-                  "ffmpeg -y -i %s -vf \"fps=%d,scale=720:-1:flags=lanczos,split[a][b];[a]palettegen=stats_mode=diff[p];[b][p]paletteuse=dither=bayer:bayer_scale=5:diff_mode=rectangle\" %s 2>" CUDABOT_NULL_DEVICE,
-                  avi.c_str(), fps, gif.c_str());
-    int rc = std::system(cmd);
-    if (rc != 0) std::fprintf(stderr, "ffmpeg failed (%d)\n", rc);
-}
 
 }  // namespace cudabot
 
@@ -288,7 +280,7 @@ int main() {
         std::printf("Avg per-frame render time: %.2f ms (%dx%d, %d samples/ray)\n",
                     total_ms / counted, IMG_W, IMG_H, N_SAMPLES);
     }
-    convert_avi_to_gif("gif/gpu_nerf_volume.avi", "gif/gpu_nerf_volume.gif", 24);
+    cudabot::avi_to_gif("gif/gpu_nerf_volume.avi", "gif/gpu_nerf_volume.gif", 24, 720);
     std::printf("GIF saved to gif/gpu_nerf_volume.gif\n");
 
     cudaFree(d_img);

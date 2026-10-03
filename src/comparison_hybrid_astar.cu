@@ -783,9 +783,7 @@ int main() {
     video.release();
     printf("Video saved to gif/comparison_hybrid_astar.avi (%d frames)\n", frame_count);
 
-    system("ffmpeg -y -i gif/comparison_hybrid_astar.avi "
-           "-vf \"fps=15,scale=1200:-1:flags=lanczos\" -loop 0 "
-           "gif/comparison_hybrid_astar.gif 2>" CUDABOT_NULL_DEVICE);
+    cudabot::avi_to_gif_simple("gif/comparison_hybrid_astar.avi", "gif/comparison_hybrid_astar.gif", 15, 1200);
     printf("GIF saved to gif/comparison_hybrid_astar.gif\n");
 
     // Cleanup

@@ -316,14 +316,6 @@ static cv::Mat render_tree(const std::vector<float>& pts,
     return img;
 }
 
-static void convert_avi_to_gif(const char* avi, const char* gif, int fps) {
-    char cmd[512];
-    std::snprintf(cmd, sizeof(cmd),
-        "ffmpeg -y -i %s -vf \"fps=%d,scale=900:-1:flags=lanczos\" -loop 0 %s "
-        "> " CUDABOT_NULL_DEVICE " 2>&1", avi, fps, gif);
-    int rc = std::system(cmd);
-    if (rc != 0) std::fprintf(stderr, "ffmpeg conversion returned %d\n", rc);
-}
 
 // -------------------------------------------------------------------------
 // main
@@ -375,8 +367,7 @@ int main() {
     }
     for (int f = 0; f < 12; f++) video.write(combined);
     video.release();
-    convert_avi_to_gif("gif/comparison_rrtstar_rewire.avi",
-                       "gif/comparison_rrtstar_rewire.gif", 4);
+    cudabot::avi_to_gif_simple("gif/comparison_rrtstar_rewire.avi", "gif/comparison_rrtstar_rewire.gif", 4, 900);
 
     double cpu_per_us = cpu_ms * 1.0e3 / (static_cast<double>(N_CPU) * ITERS);
     double gpu_per_us = gpu_ms * 1.0e3 / (static_cast<double>(N_GPU) * ITERS);

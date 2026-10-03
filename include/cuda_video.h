@@ -46,4 +46,19 @@ inline void avi_to_gif(const std::string& avi, const std::string& gif,
     if (rc != 0) std::fprintf(stderr, "ffmpeg failed (%d) for %s\n", rc, gif.c_str());
 }
 
+// The demos' original single-pass conversion (scale, optional lanczos, loop
+// forever). Kept so regenerated GIFs match the published ones; new demos should
+// prefer avi_to_gif.
+inline void avi_to_gif_simple(const std::string& avi, const std::string& gif,
+                              int fps, int scale_w, bool lanczos = true) {
+    const size_t slash = gif.find_last_of("/\\");
+    if (slash != std::string::npos) ensure_dirs({gif.substr(0, slash).c_str()});
+    char cmd[1024];
+    std::snprintf(cmd, sizeof(cmd),
+                  "ffmpeg -y -i %s -vf \"fps=%d,scale=%d:-1%s\" -loop 0 %s 2>" CUDABOT_NULL_DEVICE,
+                  avi.c_str(), fps, scale_w, lanczos ? ":flags=lanczos" : "", gif.c_str());
+    int rc = std::system(cmd);
+    if (rc != 0) std::fprintf(stderr, "ffmpeg failed (%d) for %s\n", rc, gif.c_str());
+}
+
 }  // namespace cudabot

@@ -622,9 +622,7 @@ void hybrid_astar_planning(float sx, float sy, float stheta,
     printf("Video saved to gif/hybrid_astar.avi (%d frames)\n", frame_count);
 
     // Convert to gif
-    system("ffmpeg -y -i gif/hybrid_astar.avi "
-           "-vf \"fps=15,scale=600:-1:flags=lanczos\" -loop 0 "
-           "gif/hybrid_astar.gif 2>" CUDABOT_NULL_DEVICE);
+    cudabot::avi_to_gif_simple("gif/hybrid_astar.avi", "gif/hybrid_astar.gif", 15, 600);
     printf("GIF saved to gif/hybrid_astar.gif\n");
 
     cudabot::waitKey(0);

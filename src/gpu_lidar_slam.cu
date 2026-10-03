@@ -380,14 +380,6 @@ static cv::Mat render_gt(const std::vector<unsigned char>& occ_gt,
     return out;
 }
 
-static void convert_avi_to_gif(const char* avi, const char* gif, int fps) {
-    char cmd[512];
-    std::snprintf(cmd, sizeof(cmd),
-        "ffmpeg -y -i %s -vf \"fps=%d,scale=1100:-1:flags=lanczos\" -loop 0 %s "
-        "> " CUDABOT_NULL_DEVICE " 2>&1", avi, fps, gif);
-    int rc = std::system(cmd);
-    if (rc != 0) std::fprintf(stderr, "ffmpeg conversion returned %d\n", rc);
-}
 
 // -------------------------------------------------------------------------
 // main
@@ -582,7 +574,7 @@ int main() {
         prev_gt_x = gt_x; prev_gt_y = gt_y; prev_gt_yaw = gt_yaw;
     }
     video.release();
-    convert_avi_to_gif("gif/gpu_lidar_slam.avi", "gif/gpu_lidar_slam.gif", 15);
+    cudabot::avi_to_gif_simple("gif/gpu_lidar_slam.avi", "gif/gpu_lidar_slam.gif", 15, 1100);
 
     if (counted_frames > 0) {
         std::printf("Avg per-frame GPU time (scan + ICP + map): %.2f ms (%d rays)\n",

@@ -283,14 +283,6 @@ static void draw_pose(cv::Mat& img, float wx, float wy, cv::Scalar color, int r)
     cv::circle(img, cv::Point(sx, sy), r, color, 2);
 }
 
-static void convert_avi_to_gif(const char* avi, const char* gif, int fps) {
-    char cmd[512];
-    std::snprintf(cmd, sizeof(cmd),
-        "ffmpeg -y -i %s -vf \"fps=%d,scale=900:-1:flags=lanczos\" -loop 0 %s "
-        "> " CUDABOT_NULL_DEVICE " 2>&1", avi, fps, gif);
-    int rc = std::system(cmd);
-    if (rc != 0) std::fprintf(stderr, "ffmpeg conversion returned %d\n", rc);
-}
 
 // -------------------------------------------------------------------------
 // main
@@ -488,7 +480,7 @@ int main() {
     }
 
     video.release();
-    convert_avi_to_gif("gif/pf_esdf.avi", "gif/pf_esdf.gif", 15);
+    cudabot::avi_to_gif_simple("gif/pf_esdf.avi", "gif/pf_esdf.gif", 15, 900);
 
     if (rmse_counted > 0) {
         double rmse_h = std::sqrt(rmse_h_sum / rmse_counted);

@@ -418,9 +418,7 @@ int main() {
                     cpu_per_cand_us / gpu_per_cand_us);
     }
 
-    std::system("ffmpeg -y -i gif/comparison_collision_check.avi "
-                "-vf \"fps=15,scale=900:-1:flags=lanczos\" -loop 0 "
-                "gif/comparison_collision_check.gif 2>" CUDABOT_NULL_DEVICE);
+    cudabot::avi_to_gif_simple("gif/comparison_collision_check.avi", "gif/comparison_collision_check.gif", 15, 900);
     std::cout << "GIF saved to gif/comparison_collision_check.gif" << std::endl;
     return 0;
 }

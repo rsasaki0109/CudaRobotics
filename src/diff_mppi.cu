@@ -457,9 +457,7 @@ int main() {
     }
 
     video.release();
-    system("ffmpeg -y -i gif/diff_mppi.avi "
-           "-vf \"fps=15,scale=400:-1\" -loop 0 "
-           "gif/diff_mppi.gif 2>" CUDABOT_NULL_DEVICE);
+    cudabot::avi_to_gif_simple("gif/diff_mppi.avi", "gif/diff_mppi.gif", 15, 400, false);
 
     CUDA_CHECK(cudaFree(d_nominal));
     CUDA_CHECK(cudaFree(d_costs));

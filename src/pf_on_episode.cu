@@ -496,9 +496,7 @@ int main() {
     }
 
     video.release();
-    system("ffmpeg -y -i gif/pf_on_episode.avi "
-           "-vf \"fps=15,scale=800:-1:flags=lanczos\" -loop 0 "
-           "gif/pf_on_episode.gif 2>" CUDABOT_NULL_DEVICE);
+    cudabot::avi_to_gif_simple("gif/pf_on_episode.avi", "gif/pf_on_episode.gif", 15, 800);
     std::cout << "GIF saved to gif/pf_on_episode.gif" << std::endl;
 
     cudaFree(d_ep_beams); cudaFree(d_ep_v); cudaFree(d_ep_omega);

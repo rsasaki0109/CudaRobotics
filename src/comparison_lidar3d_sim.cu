@@ -507,9 +507,7 @@ int main() {
                     gpu_us_ray, cpu_us_ray, cpu_us_ray / gpu_us_ray);
     }
 
-    std::system("ffmpeg -y -i gif/comparison_lidar3d_sim.avi "
-                "-vf \"fps=15,scale=900:-1:flags=lanczos\" -loop 0 "
-                "gif/comparison_lidar3d_sim.gif 2>" CUDABOT_NULL_DEVICE);
+    cudabot::avi_to_gif_simple("gif/comparison_lidar3d_sim.avi", "gif/comparison_lidar3d_sim.gif", 15, 900);
     std::cout << "GIF saved to gif/comparison_lidar3d_sim.gif" << std::endl;
 
     cudaFree(d_prims);

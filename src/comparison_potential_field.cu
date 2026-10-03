@@ -413,9 +413,7 @@ int main() {
     cout << "Video saved to gif/comparison_potential_field.avi" << endl;
 
     // Convert to gif
-    system("ffmpeg -y -i gif/comparison_potential_field.avi "
-           "-vf \"fps=15,scale=800:-1:flags=lanczos\" -loop 0 "
-           "gif/comparison_potential_field.gif 2>" CUDABOT_NULL_DEVICE);
+    cudabot::avi_to_gif_simple("gif/comparison_potential_field.avi", "gif/comparison_potential_field.gif", 15, 800);
     cout << "GIF saved to gif/comparison_potential_field.gif" << endl;
 
     // Cleanup

@@ -391,12 +391,8 @@ int main() {
     printf("\nTotal: CPU %.1fms, CUDA %.1fms, Speedup: %.1fx\n",
            total_cpu_ms, total_cuda_ms, total_cpu_ms / total_cuda_ms);
 
-    system("ffmpeg -y -i gif/value_iteration.avi "
-           "-vf \"fps=10,scale=600:-1:flags=lanczos\" -loop 0 "
-           "gif/value_iteration.gif 2>" CUDABOT_NULL_DEVICE);
-    system("ffmpeg -y -i gif/comparison_value_iteration.avi "
-           "-vf \"fps=10,scale=800:-1:flags=lanczos\" -loop 0 "
-           "gif/comparison_value_iteration.gif 2>" CUDABOT_NULL_DEVICE);
+    cudabot::avi_to_gif_simple("gif/value_iteration.avi", "gif/value_iteration.gif", 10, 600);
+    cudabot::avi_to_gif_simple("gif/comparison_value_iteration.avi", "gif/comparison_value_iteration.gif", 10, 800);
     std::cout << "GIF saved to gif/value_iteration.gif and gif/comparison_value_iteration.gif" << std::endl;
 
     cudaFree(d_V_in); cudaFree(d_V_out); cudaFree(d_policy);
