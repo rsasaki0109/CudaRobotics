@@ -484,6 +484,11 @@ the axis-aligned path used only when the straight line is blocked
 [`results/box_detour_safe_slide_2026-10-03.md`](results/box_detour_safe_slide_2026-10-03.md))
 the four detour cells reach 118/120 on the smooth plant and 113/120 on the
 hard plant, against 52/120 and 18/120 for `soppi_fast` on the same unseen seeds.
+A rotation phase for detours that end with a reorientation (`oi_face_rot_mppi`,
+[`results/box_detour_rotation_2026-10-03.md`](results/box_detour_rotation_2026-10-03.md))
+reaches 111/120 over four turn cells on the hard plant and 67/120 on the smooth
+plant (where the quarter turn regresses), against 0-2/120 for the sampling
+baselines.
 
 | Scenario | Planner | Success | Steps | Final Dist | Cost | Avg ms |
 |---|---|---:|---:|---:|---:|---:|
