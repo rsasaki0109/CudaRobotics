@@ -34,6 +34,7 @@
 #include <cuda_runtime.h>
 #include "cuda_check.cuh"
 #include "cuda_video.h"
+#include "jfa.cuh"
 
 // -------------------------------------------------------------------------
 // Constants
@@ -139,80 +140,6 @@ static double cpu_esdf3d_ms(const std::vector<unsigned char>& occ,
     return std::chrono::duration<double, std::milli>(t1 - t0).count();
 }
 
-// -------------------------------------------------------------------------
-// GPU 3D Jump Flooding
-// -------------------------------------------------------------------------
-__device__ __forceinline__ void unflatten(int idx, int W, int H,
-                                          int& x, int& y, int& z) {
-    x = idx % W;
-    y = (idx / W) % H;
-    z = idx / (W * H);
-}
-
-__global__ void jfa3d_init_kernel(const unsigned char* __restrict__ occ,
-                                  int* __restrict__ seed,
-                                  int W, int H, int D) {
-    int x = blockIdx.x * blockDim.x + threadIdx.x;
-    int y = blockIdx.y * blockDim.y + threadIdx.y;
-    int z = blockIdx.z * blockDim.z + threadIdx.z;
-    if (x >= W || y >= H || z >= D) return;
-    int idx = (z * H + y) * W + x;
-    seed[idx] = occ[idx] ? idx : -1;
-}
-
-__global__ void jfa3d_step_kernel(const int* __restrict__ seed_in,
-                                  int* __restrict__ seed_out,
-                                  int W, int H, int D, int k) {
-    int x = blockIdx.x * blockDim.x + threadIdx.x;
-    int y = blockIdx.y * blockDim.y + threadIdx.y;
-    int z = blockIdx.z * blockDim.z + threadIdx.z;
-    if (x >= W || y >= H || z >= D) return;
-    int idx = (z * H + y) * W + x;
-    int best = seed_in[idx];
-    float best_d2 = FLT_MAX;
-    if (best >= 0) {
-        int bx, by, bz; unflatten(best, W, H, bx, by, bz);
-        int ex = x - bx, ey = y - by, ez = z - bz;
-        best_d2 = static_cast<float>(ex * ex + ey * ey + ez * ez);
-    }
-    #pragma unroll
-    for (int dz = -1; dz <= 1; dz++) {
-        #pragma unroll
-        for (int dy = -1; dy <= 1; dy++) {
-            #pragma unroll
-            for (int dx = -1; dx <= 1; dx++) {
-                if (dx == 0 && dy == 0 && dz == 0) continue;
-                int nx = x + dx * k;
-                int ny = y + dy * k;
-                int nz = z + dz * k;
-                if (nx < 0 || nx >= W || ny < 0 || ny >= H || nz < 0 || nz >= D) continue;
-                int s = seed_in[(nz * H + ny) * W + nx];
-                if (s < 0) continue;
-                int sx, sy, sz; unflatten(s, W, H, sx, sy, sz);
-                int ex = x - sx, ey = y - sy, ez = z - sz;
-                float d2 = static_cast<float>(ex * ex + ey * ey + ez * ez);
-                if (d2 < best_d2) { best = s; best_d2 = d2; }
-            }
-        }
-    }
-    seed_out[idx] = best;
-}
-
-__global__ void jfa3d_to_dist_kernel(const int* __restrict__ seed,
-                                     float* __restrict__ dist,
-                                     int W, int H, int D, float res) {
-    int x = blockIdx.x * blockDim.x + threadIdx.x;
-    int y = blockIdx.y * blockDim.y + threadIdx.y;
-    int z = blockIdx.z * blockDim.z + threadIdx.z;
-    if (x >= W || y >= H || z >= D) return;
-    int idx = (z * H + y) * W + x;
-    int s = seed[idx];
-    if (s < 0) { dist[idx] = MAX_DIST; return; }
-    int sx, sy, sz; unflatten(s, W, H, sx, sy, sz);
-    int dx = x - sx, dy = y - sy, dz = z - sz;
-    dist[idx] = sqrtf(static_cast<float>(dx * dx + dy * dy + dz * dz)) * res;
-}
-
 static double gpu_esdf3d_ms(const std::vector<unsigned char>& occ,
                             int W, int H, int D, float res,
                             std::vector<float>& dist) {
@@ -232,15 +159,7 @@ static double gpu_esdf3d_ms(const std::vector<unsigned char>& occ,
 
     CUDA_CHECK(cudaDeviceSynchronize());
     auto t0 = std::chrono::high_resolution_clock::now();
-    jfa3d_init_kernel<<<grd, blk>>>(d_occ, d_seed_a, W, H, D);
-    int* in_ptr = d_seed_a;
-    int* out_ptr = d_seed_b;
-    int kmax = std::max(std::max(W, H), D) / 2;
-    for (int k = kmax; k >= 1; k /= 2) {
-        jfa3d_step_kernel<<<grd, blk>>>(in_ptr, out_ptr, W, H, D, k);
-        std::swap(in_ptr, out_ptr);
-    }
-    jfa3d_to_dist_kernel<<<grd, blk>>>(in_ptr, d_dist, W, H, D, res);
+    cudabot::jfa3d_distance(d_occ, d_seed_a, d_seed_b, d_dist, W, H, D, res, MAX_DIST);
     CUDA_CHECK(cudaDeviceSynchronize());
     auto t1 = std::chrono::high_resolution_clock::now();
 

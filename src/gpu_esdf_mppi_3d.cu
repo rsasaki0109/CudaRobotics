@@ -40,6 +40,7 @@
 #include "demo_args.h"
 #include "display.h"
 #include "mppi_reduction.cuh"
+#include "jfa.cuh"
 
 // -------------------------------------------------------------------------
 // World / ESDF grid
@@ -144,66 +145,6 @@ static std::vector<Box> build_scene(std::vector<unsigned char>& occ) {
     occ.assign(static_cast<size_t>(NX) * NY * NZ, 0u);
     for (const Box& b : boxes) stamp_box(occ, b);
     return boxes;
-}
-
-// -------------------------------------------------------------------------
-// GPU 3D Jump Flooding (from comparison_esdf_3d.cu)
-// -------------------------------------------------------------------------
-__device__ __forceinline__ void unflatten(int idx, int& x, int& y, int& z) {
-    x = idx % NX;
-    y = (idx / NX) % NY;
-    z = idx / (NX * NY);
-}
-
-__global__ void jfa3d_init_kernel(const unsigned char* __restrict__ occ, int* __restrict__ seed) {
-    int x = blockIdx.x * blockDim.x + threadIdx.x;
-    int y = blockIdx.y * blockDim.y + threadIdx.y;
-    int z = blockIdx.z * blockDim.z + threadIdx.z;
-    if (x >= NX || y >= NY || z >= NZ) return;
-    int idx = (z * NY + y) * NX + x;
-    seed[idx] = occ[idx] ? idx : -1;
-}
-
-__global__ void jfa3d_step_kernel(const int* __restrict__ seed_in, int* __restrict__ seed_out, int k) {
-    int x = blockIdx.x * blockDim.x + threadIdx.x;
-    int y = blockIdx.y * blockDim.y + threadIdx.y;
-    int z = blockIdx.z * blockDim.z + threadIdx.z;
-    if (x >= NX || y >= NY || z >= NZ) return;
-    int idx = (z * NY + y) * NX + x;
-    int best = seed_in[idx];
-    float best_d2 = FLT_MAX;
-    if (best >= 0) {
-        int bx, by, bz; unflatten(best, bx, by, bz);
-        int ex = x - bx, ey = y - by, ez = z - bz;
-        best_d2 = static_cast<float>(ex * ex + ey * ey + ez * ez);
-    }
-    for (int dz = -1; dz <= 1; dz++)
-        for (int dy = -1; dy <= 1; dy++)
-            for (int dx = -1; dx <= 1; dx++) {
-                if (dx == 0 && dy == 0 && dz == 0) continue;
-                int nx = x + dx * k, ny = y + dy * k, nz = z + dz * k;
-                if (nx < 0 || nx >= NX || ny < 0 || ny >= NY || nz < 0 || nz >= NZ) continue;
-                int s = seed_in[(nz * NY + ny) * NX + nx];
-                if (s < 0) continue;
-                int sx, sy, sz; unflatten(s, sx, sy, sz);
-                int ex = x - sx, ey = y - sy, ez = z - sz;
-                float d2 = static_cast<float>(ex * ex + ey * ey + ez * ez);
-                if (d2 < best_d2) { best = s; best_d2 = d2; }
-            }
-    seed_out[idx] = best;
-}
-
-__global__ void jfa3d_to_dist_kernel(const int* __restrict__ seed, float* __restrict__ dist) {
-    int x = blockIdx.x * blockDim.x + threadIdx.x;
-    int y = blockIdx.y * blockDim.y + threadIdx.y;
-    int z = blockIdx.z * blockDim.z + threadIdx.z;
-    if (x >= NX || y >= NY || z >= NZ) return;
-    int idx = (z * NY + y) * NX + x;
-    int s = seed[idx];
-    if (s < 0) { dist[idx] = MAX_DIST; return; }
-    int sx, sy, sz; unflatten(s, sx, sy, sz);
-    int dx = x - sx, dy = y - sy, dz = z - sz;
-    dist[idx] = fminf(MAX_DIST, sqrtf(static_cast<float>(dx * dx + dy * dy + dz * dz)) * RES);
 }
 
 // Local ESDF update for movers. Movers only add occupancy on top of the static
@@ -461,13 +402,7 @@ int main(int argc, char** argv) {
 
     dim3 blk(8, 8, 4), grd((NX + 7) / 8, (NY + 7) / 8, (NZ + 3) / 4);
     auto build_esdf = [&]() {
-        jfa3d_init_kernel<<<grd, blk>>>(d_occ, d_seed_a);
-        int *in_ptr = d_seed_a, *out_ptr = d_seed_b;
-        for (int k = std::max(std::max(NX, NY), NZ) / 2; k >= 1; k /= 2) {
-            jfa3d_step_kernel<<<grd, blk>>>(in_ptr, out_ptr, k);
-            std::swap(in_ptr, out_ptr);
-        }
-        jfa3d_to_dist_kernel<<<grd, blk>>>(in_ptr, d_esdf);
+        cudabot::jfa3d_distance(d_occ, d_seed_a, d_seed_b, d_esdf, NX, NY, NZ, RES, MAX_DIST, true);
         CUDA_CHECK(cudaDeviceSynchronize());
     };
     build_esdf();   // warm-up (module load / JIT)
@@ -605,13 +540,7 @@ int main(int argc, char** argv) {
                     }
         }
         CUDA_CHECK(cudaMemcpy(d_occ_dyn, occ_dyn.data(), cells, cudaMemcpyHostToDevice));
-        jfa3d_init_kernel<<<grd, blk>>>(d_occ_dyn, d_seed_a);
-        int *in_ptr = d_seed_a, *out_ptr = d_seed_b;
-        for (int k = std::max(std::max(NX, NY), NZ) / 2; k >= 1; k /= 2) {
-            jfa3d_step_kernel<<<grd, blk>>>(in_ptr, out_ptr, k);
-            std::swap(in_ptr, out_ptr);
-        }
-        jfa3d_to_dist_kernel<<<grd, blk>>>(in_ptr, d_esdf_dyn);
+        cudabot::jfa3d_distance(d_occ_dyn, d_seed_a, d_seed_b, d_esdf_dyn, NX, NY, NZ, RES, MAX_DIST, true);
     };
 
     // Rebuild-local mode: restore last step's windows to the static ESDF, then write

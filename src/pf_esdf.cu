@@ -36,6 +36,7 @@
 #include <curand_kernel.h>
 #include "cuda_check.cuh"
 #include "cuda_video.h"
+#include "jfa.cuh"
 
 // -------------------------------------------------------------------------
 // World / sensor
@@ -56,65 +57,6 @@ constexpr float SENSOR_SIGMA = 0.4f;
 constexpr float MOTION_SIGMA = 0.15f;
 constexpr int   PANEL_W = 600;
 constexpr int   PANEL_H = 450;
-
-// -------------------------------------------------------------------------
-// JFA ESDF kernels (mirror src/comparison_esdf.cu, fixed grid)
-// -------------------------------------------------------------------------
-__global__ void jfa_init_kernel(const unsigned char* __restrict__ occ,
-                                int* __restrict__ seed, int W, int H) {
-    int x = blockIdx.x * blockDim.x + threadIdx.x;
-    int y = blockIdx.y * blockDim.y + threadIdx.y;
-    if (x >= W || y >= H) return;
-    int idx = y * W + x;
-    seed[idx] = occ[idx] ? idx : -1;
-}
-
-__global__ void jfa_step_kernel(const int* __restrict__ seed_in,
-                                int* __restrict__ seed_out,
-                                int W, int H, int k) {
-    int x = blockIdx.x * blockDim.x + threadIdx.x;
-    int y = blockIdx.y * blockDim.y + threadIdx.y;
-    if (x >= W || y >= H) return;
-    int idx = y * W + x;
-    int best = seed_in[idx];
-    float best_d2 = FLT_MAX;
-    if (best >= 0) {
-        int bx = best % W, by = best / W;
-        int ex = x - bx, ey = y - by;
-        best_d2 = static_cast<float>(ex * ex + ey * ey);
-    }
-    #pragma unroll
-    for (int dy = -1; dy <= 1; dy++) {
-        #pragma unroll
-        for (int dx = -1; dx <= 1; dx++) {
-            if (dx == 0 && dy == 0) continue;
-            int nx = x + dx * k;
-            int ny = y + dy * k;
-            if (nx < 0 || nx >= W || ny < 0 || ny >= H) continue;
-            int s = seed_in[ny * W + nx];
-            if (s < 0) continue;
-            int sx = s % W, sy = s / W;
-            int ex = x - sx, ey = y - sy;
-            float d2 = static_cast<float>(ex * ex + ey * ey);
-            if (d2 < best_d2) { best = s; best_d2 = d2; }
-        }
-    }
-    seed_out[idx] = best;
-}
-
-__global__ void jfa_to_dist_kernel(const int* __restrict__ seed,
-                                   float* __restrict__ dist,
-                                   int W, int H, float res) {
-    int x = blockIdx.x * blockDim.x + threadIdx.x;
-    int y = blockIdx.y * blockDim.y + threadIdx.y;
-    if (x >= W || y >= H) return;
-    int idx = y * W + x;
-    int s = seed[idx];
-    if (s < 0) { dist[idx] = MAX_DIST; return; }
-    int sx = s % W, sy = s / W;
-    int dx = x - sx, dy = y - sy;
-    dist[idx] = sqrtf(static_cast<float>(dx * dx + dy * dy)) * res;
-}
 
 // -------------------------------------------------------------------------
 // PF kernels
@@ -308,16 +250,7 @@ int main() {
     CUDA_CHECK(cudaMalloc(&d_seed_b, GRID_W * GRID_H * sizeof(int)));
     CUDA_CHECK(cudaMalloc(&d_esdf,   GRID_W * GRID_H * sizeof(float)));
     CUDA_CHECK(cudaMemcpy(d_occ, occ.data(), occ.size(), cudaMemcpyHostToDevice));
-    dim3 blk2d(16, 16);
-    dim3 grd2d((GRID_W + 15) / 16, (GRID_H + 15) / 16);
-    jfa_init_kernel<<<grd2d, blk2d>>>(d_occ, d_seed_a, GRID_W, GRID_H);
-    int *in_ptr = d_seed_a, *out_ptr = d_seed_b;
-    int kmax = std::max(GRID_W, GRID_H) / 2;
-    for (int k = kmax; k >= 1; k /= 2) {
-        jfa_step_kernel<<<grd2d, blk2d>>>(in_ptr, out_ptr, GRID_W, GRID_H, k);
-        std::swap(in_ptr, out_ptr);
-    }
-    jfa_to_dist_kernel<<<grd2d, blk2d>>>(in_ptr, d_esdf, GRID_W, GRID_H, RES);
+    cudabot::jfa2d_distance(d_occ, d_seed_a, d_seed_b, d_esdf, GRID_W, GRID_H, RES, MAX_DIST);
     CUDA_CHECK(cudaDeviceSynchronize());
 
     // Allocate two parallel PFs (handcrafted + esdf-lookup)
