@@ -1,0 +1,63 @@
+name: Windows MSVC
+
+# Keeps the MSVC build working (see #233). The runner has no GPU, so this
+# compiles a representative subset of CUDA targets and runs the CPU tests.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [master]
+    paths:
+      - "src/**"
+      - "include/**"
+      - "tests/**"
+      - "cmake/**"
+      - "CMakeLists.txt"
+      - ".github/workflows/windows-msvc.yml"
+  pull_request:
+    branches: [master]
+    paths:
+      - "src/**"
+      - "include/**"
+      - "tests/**"
+      - "cmake/**"
+      - "CMakeLists.txt"
+      - ".github/workflows/windows-msvc.yml"
+
+jobs:
+  build:
+    runs-on: windows-2022
+    timeout-minutes: 90
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install CUDA toolkit
+        uses: Jimver/cuda-toolkit@v0.2.36
+        with:
+          cuda: "12.9.1"
+          method: network
+          sub-packages: '["nvcc", "cudart", "curand", "curand_dev", "thrust", "visual_studio_integration"]'
+
+      - name: Install OpenCV and Eigen
+        shell: pwsh
+        run: |
+          choco install opencv -y --no-progress
+          vcpkg install eigen3:x64-windows
+          "C:\tools\opencv\build\x64\vc16\bin" | Out-File -FilePath $env:GITHUB_PATH -Append
+
+      - name: Configure
+        shell: pwsh
+        run: >
+          cmake -S . -B build -G "Visual Studio 17 2022" -A x64
+          -DCMAKE_CUDA_ARCHITECTURES=75
+          -DOpenCV_DIR="C:/tools/opencv/build"
+          -DEigen3_DIR="C:/vcpkg/installed/x64-windows/share/eigen3"
+          -DCUDABOT_DEMO_FILTER="^(mppi|esdf_mppi|gpu_esdf_mppi_3d|comparison_mppi|benchmark_diff_mppi_pushing_box|gpu_mppi_racing|gpu_cudampc|pf|amcl|test_autodiff|test_gpu_mlp|mppi_reduction_smoke|test_host_math|test_lie_group_math|test_imu_preintegration|test_robust_loss|test_g2o_io|test_graph_optimization|test_mathr_native|test_imu_graph|test_graph_g2o)$"
+
+      - name: Build
+        run: cmake --build build --config Release --parallel
+
+      - name: Run CPU tests
+        working-directory: build
+        run: ctest -C Release -L cpu --output-on-failure

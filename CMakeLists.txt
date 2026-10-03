@@ -663,8 +663,8 @@ target_compile_options(test_imu_preintegration_gpu PRIVATE
 ##############################
 
 # GPU tests (require NVIDIA GPU)
-add_test(NAME test_autodiff COMMAND ${PROJECT_SOURCE_DIR}/bin/test_autodiff)
-add_test(NAME test_gpu_mlp COMMAND ${PROJECT_SOURCE_DIR}/bin/test_gpu_mlp)
+add_test(NAME test_autodiff COMMAND $<TARGET_FILE:test_autodiff>)
+add_test(NAME test_gpu_mlp COMMAND $<TARGET_FILE:test_gpu_mlp>)
 set_tests_properties(test_autodiff test_gpu_mlp PROPERTIES
   TIMEOUT 60
   LABELS "gpu")
@@ -719,7 +719,7 @@ foreach(demo mppi diff_mppi comparison_mppi esdf_mppi gpu_esdf_mppi_3d ndt occup
 endforeach()
 
 add_test(NAME gpu_planner_showdown_gate
-  COMMAND ${PROJECT_SOURCE_DIR}/bin/gpu_planner_showdown_benchmark
+  COMMAND $<TARGET_FILE:gpu_planner_showdown_benchmark>
     --check
     --no-video
     --scenario baseline
@@ -730,7 +730,7 @@ set_tests_properties(gpu_planner_showdown_gate PROPERTIES
   LABELS "gpu;showdown;benchmark")
 
 add_test(NAME gpu_planner_falsifier_gate
-  COMMAND ${PROJECT_SOURCE_DIR}/bin/gpu_planner_falsifier_benchmark
+  COMMAND $<TARGET_FILE:gpu_planner_falsifier_benchmark>
     --check
     --json ${CMAKE_BINARY_DIR}/gpu_planner_falsifier_benchmark.json
   WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
@@ -997,59 +997,59 @@ set_tests_properties(validate_design_workflow check_design_regressions check_sca
   LABELS "python")
 
 # CPU tests (no GPU required)
-add_test(NAME test_host_math COMMAND ${PROJECT_SOURCE_DIR}/bin/test_host_math)
+add_test(NAME test_host_math COMMAND $<TARGET_FILE:test_host_math>)
 set_tests_properties(test_host_math PROPERTIES
   TIMEOUT 10
   LABELS "cpu")
 
-add_test(NAME test_lie_group_math COMMAND ${PROJECT_SOURCE_DIR}/bin/test_lie_group_math)
+add_test(NAME test_lie_group_math COMMAND $<TARGET_FILE:test_lie_group_math>)
 set_tests_properties(test_lie_group_math PROPERTIES
   TIMEOUT 10
   LABELS "cpu;math")
 
-add_test(NAME test_imu_preintegration COMMAND ${PROJECT_SOURCE_DIR}/bin/test_imu_preintegration)
+add_test(NAME test_imu_preintegration COMMAND $<TARGET_FILE:test_imu_preintegration>)
 set_tests_properties(test_imu_preintegration PROPERTIES
   TIMEOUT 10
   LABELS "cpu;math;imu")
 
-add_test(NAME test_robust_loss COMMAND ${PROJECT_SOURCE_DIR}/bin/test_robust_loss)
+add_test(NAME test_robust_loss COMMAND $<TARGET_FILE:test_robust_loss>)
 set_tests_properties(test_robust_loss PROPERTIES
   TIMEOUT 10
   LABELS "cpu;math;robust")
 
-add_test(NAME test_g2o_io COMMAND ${PROJECT_SOURCE_DIR}/bin/test_g2o_io)
+add_test(NAME test_g2o_io COMMAND $<TARGET_FILE:test_g2o_io>)
 set_tests_properties(test_g2o_io PROPERTIES
   TIMEOUT 10
   LABELS "cpu;math;graph")
 
-add_test(NAME test_graph_optimization COMMAND ${PROJECT_SOURCE_DIR}/bin/test_graph_optimization)
+add_test(NAME test_graph_optimization COMMAND $<TARGET_FILE:test_graph_optimization>)
 set_tests_properties(test_graph_optimization PROPERTIES
   TIMEOUT 10
   LABELS "cpu;math;graph")
 
-add_test(NAME test_mathr_native COMMAND ${PROJECT_SOURCE_DIR}/bin/test_mathr_native)
+add_test(NAME test_mathr_native COMMAND $<TARGET_FILE:test_mathr_native>)
 set_tests_properties(test_mathr_native PROPERTIES
   TIMEOUT 10
   LABELS "cpu;math;geometry;filter")
 
-add_test(NAME test_imu_graph COMMAND ${PROJECT_SOURCE_DIR}/bin/test_imu_graph)
+add_test(NAME test_imu_graph COMMAND $<TARGET_FILE:test_imu_graph>)
 set_tests_properties(test_imu_graph PROPERTIES
   TIMEOUT 10
   LABELS "cpu;math;imu;graph")
 
-add_test(NAME test_graph_g2o COMMAND ${PROJECT_SOURCE_DIR}/bin/test_graph_g2o)
+add_test(NAME test_graph_g2o COMMAND $<TARGET_FILE:test_graph_g2o>)
 set_tests_properties(test_graph_g2o PROPERTIES
   TIMEOUT 10
   LABELS "cpu;math;graph;g2o")
 
-add_test(NAME test_projection_gpu COMMAND ${PROJECT_SOURCE_DIR}/bin/test_projection_gpu)
+add_test(NAME test_projection_gpu COMMAND $<TARGET_FILE:test_projection_gpu>)
 set_tests_properties(test_projection_gpu PROPERTIES
   TIMEOUT 60
   LABELS "gpu;math;geometry"
   SKIP_RETURN_CODE 77)
 
 add_test(NAME test_imu_preintegration_gpu
-  COMMAND ${PROJECT_SOURCE_DIR}/bin/test_imu_preintegration_gpu)
+  COMMAND $<TARGET_FILE:test_imu_preintegration_gpu>)
 set_tests_properties(test_imu_preintegration_gpu PROPERTIES
   TIMEOUT 60
   LABELS "gpu;math;imu;graph"
