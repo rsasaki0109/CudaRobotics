@@ -110,6 +110,8 @@ struct Variant {
     bool oi_axis_path = false;          // plan an axis-aligned object path (one face per segment)
     bool oi_face_safe_slide = false;    // face-switch seed: engage only within the face span
     bool oi_axis_when_blocked = false;  // use the axis-aligned path only if the straight line is blocked
+    bool oi_face_rotate = false;        // face-switch seed: off-centre pushes to turn the box near the goal
+    float oi_rot_radius = 0.8f;         // ...within this distance of the goal (selected on seeds 0-7)
     float oi_path_margin = 0.05f;       // wall clearance used by plan_object_path
 };
 
@@ -493,15 +495,14 @@ __host__ __device__ inline void object_ref_path_f(
 // With safe_slide the pusher only engages once it is within the face's span; when
 // it is past the face plane but beyond the corner it first slides toward the face
 // centre with a full radius of clearance, instead of clipping the corner.
-static bool face_switch_target(float px, float py, float ox, float oy, float oth,
-                               float dirx, float diry, const BoxParams& p, float clear,
-                               float& tx, float& ty, bool safe_slide = false) {
+// Pusher target for pushing a given box face (along_x picks the x faces, nsign the
+// side) at tangential offset wt_contact from the face centre; see face_switch_target.
+static bool face_route_target(float px, float py, float ox, float oy, float oth,
+                              bool along_x, float nsign, float wt_contact, const BoxParams& p,
+                              float clear, float& tx, float& ty, bool safe_slide) {
     float c = cosf(oth), s = sinf(oth);
     float lx = c*(px - ox) + s*(py - oy), ly = -s*(px - ox) + c*(py - oy);
-    float dlx = c*dirx + s*diry, dly = -s*dirx + c*diry;
-    bool along_x = fabsf(dlx) * p.hy >= fabsf(dly) * p.hx;   // which face pair pushes best
-    float nx = along_x ? (dlx >= 0.0f ? -1.0f : 1.0f) : 0.0f;  // outward normal of the pushing face
-    float ny = along_x ? 0.0f : (dly >= 0.0f ? -1.0f : 1.0f);
+    float nx = along_x ? nsign : 0.0f, ny = along_x ? 0.0f : nsign;   // outward normal of the pushing face
     float hn = along_x ? p.hx : p.hy, ht = along_x ? p.hy : p.hx;
     float un = lx*nx + ly*ny, ut = along_x ? ly : lx;          // normal / tangential coordinates
     float side = ut >= 0.0f ? 1.0f : -1.0f;
@@ -509,16 +510,26 @@ static bool face_switch_target(float px, float py, float ox, float oy, float oth
     bool engaged = un >= hn + 0.5f * p.push_r;
     if (safe_slide && engaged && fabsf(ut) > ht + 0.5f * p.push_r) {
         engaged = false;
-        if (un >= hn + p.push_r + 0.02f) { wn = fmaxf(un, hn + p.push_r + 0.04f); wt = 0.0f; }   // slide clear
+        if (un >= hn + p.push_r + 0.02f) { wn = fmaxf(un, hn + p.push_r + 0.04f); wt = wt_contact; }   // slide clear
         else                             { wn = hn + clear;                      wt = side * (ht + clear); }
     }
-    else if (engaged)                             { wn = hn + clear;    wt = 0.0f; }
+    else if (engaged)                             { wn = hn + clear;    wt = wt_contact; }
     else if (fabsf(ut) >= ht + 0.5f * p.push_r)   { wn = hn + clear;    wt = side * (ht + clear); }
     else                                          { wn = -(hn + clear); wt = side * (ht + clear); }
     float wlx = nx*wn + (along_x ? 0.0f : wt), wly = ny*wn + (along_x ? wt : 0.0f);
     tx = ox + c*wlx - s*wly;
     ty = oy + s*wlx + c*wly;
     return engaged;
+}
+
+static bool face_switch_target(float px, float py, float ox, float oy, float oth,
+                               float dirx, float diry, const BoxParams& p, float clear,
+                               float& tx, float& ty, bool safe_slide = false) {
+    float c = cosf(oth), s = sinf(oth);
+    float dlx = c*dirx + s*diry, dly = -s*dirx + c*diry;
+    bool along_x = fabsf(dlx) * p.hy >= fabsf(dly) * p.hx;   // which face pair pushes best
+    float nsign = along_x ? (dlx >= 0.0f ? -1.0f : 1.0f) : (dly >= 0.0f ? -1.0f : 1.0f);
+    return face_route_target(px, py, ox, oy, oth, along_x, nsign, 0.0f, p, clear, tx, ty, safe_slide);
 }
 
 // Object-level planner for the path-following object reference: A* over box-centre
@@ -1534,10 +1545,11 @@ private:
                 bx = ox; by = oy;   // the pusher walks around the box where it is
             }
             float tx, ty;
-            bool engaged = face_switch_target(sim_px, sim_py, bx, by, oth, dx / dl, dy / dl, p,
-                                              p.push_r + v_.oi_contact_margin + 0.04f, tx, ty,
-                                              v_.oi_face_safe_slide);
-            if (engaged) {
+            if (v_.oi_face_rotate && seed_rotation_target(sim_px, sim_py, ox, oy, oth, tx, ty)) {
+                // rotation phase: the object reference stays at the goal pose
+            } else if (face_switch_target(sim_px, sim_py, bx, by, oth, dx / dl, dy / dl, p,
+                                          p.push_r + v_.oi_contact_margin + 0.04f, tx, ty,
+                                          v_.oi_face_safe_slide)) {
                 // push: aim at the contact point behind the box's next reference pose
                 face_switch_target(sim_px, sim_py, rx, ry, oth, dx / dl, dy / dl, p,
                                    p.push_r - 0.02f, tx, ty);
@@ -1553,6 +1565,41 @@ private:
             sim_px += p.dt * h_nominal_[base + 0];
             sim_py += p.dt * h_nominal_[base + 1];
         }
+    }
+
+    // Rotation phase of the face-switching seed: near the goal with heading still off,
+    // push one box face near its end so the push turns the box the right way. Of the
+    // four faces, prefer the one whose push also moves the box toward the goal, then
+    // the one nearest the pusher. Returns false outside the rotation phase.
+    bool seed_rotation_target(float px, float py, float ox, float oy, float oth, float& tx, float& ty) {
+        const BoxParams& p = sc_.params;
+        float need = wrapf(sc_.gth - oth);
+        float ex = sc_.gx - ox, ey = sc_.gy - oy, dist = sqrtf(ex*ex + ey*ey);
+        if (dist > v_.oi_rot_radius || fabsf(need) <= 0.5f * sc_.ang_tol) return false;
+        float c = cosf(oth), s = sinf(oth);
+        float best = -1e30f;
+        for (int axis = 0; axis < 2; axis++) for (int k = 0; k < 2; k++) {
+            bool along_x = axis == 0;
+            float nsign = k ? 1.0f : -1.0f;
+            float nlx = along_x ? nsign : 0.0f, nly = along_x ? 0.0f : nsign;
+            float tlx = along_x ? 0.0f : 1.0f, tly = along_x ? 1.0f : 0.0f;
+            float ht = along_x ? p.hy : p.hx, hn = along_x ? p.hx : p.hy;
+            // force -n at contact n*hn + t*e gives torque -e (t x n); pick e's sign from need
+            float cross = tlx*nly - tly*nlx;
+            float e = -(need >= 0.0f ? 1.0f : -1.0f) * (cross >= 0.0f ? 1.0f : -1.0f) * (ht - 0.03f);
+            float fx = -(c*nlx - s*nly), fy = -(s*nlx + c*nly);
+            float clx = nlx*hn + tlx*e, cly = nly*hn + tly*e;
+            float cx = ox + c*clx - s*cly, cy = oy + s*clx + c*cly;
+            float align = dist > 0.05f ? (fx*ex + fy*ey) / dist : 0.0f;
+            float score = align - 0.3f * sqrtf((cx - px)*(cx - px) + (cy - py)*(cy - py));
+            if (score <= best) continue;
+            best = score;
+            if (face_route_target(px, py, ox, oy, oth, along_x, nsign, e, p,
+                                  p.push_r + v_.oi_contact_margin + 0.04f, tx, ty, true))
+                face_route_target(px, py, ox, oy, oth, along_x, nsign, e, p,
+                                  p.push_r - 0.04f, tx, ty, true);
+        }
+        return true;
     }
 
     void seed_object_informed_nominal(
@@ -1819,6 +1866,35 @@ static BoxScenario make_box_detour_wall_far() {
     s.params.obs_min_y = 2.30f; s.params.obs_max_y = 2.50f;
     return s;
 }
+// Detour plus a final reorientation (+0.9 rad, 0.25 rad gate): the face-switching
+// seed pushes face centres, so any rotation has to come from somewhere else.
+// box_open_turn is the same task without the wall, on the same seeds.
+static BoxScenario make_box_detour_turn() {
+    BoxScenario s = make_box_detour_wall();
+    s.name = "box_detour_turn";
+    s.gth = 0.9f; s.ang_tol = 0.25f;
+    return s;
+}
+static BoxScenario make_box_open_turn() {
+    BoxScenario s = make_box_detour_turn();
+    s.name = "box_open_turn";
+    s.params.obstacle_count = 0;
+    s.seed_as = "box_detour_turn";
+    return s;
+}
+// Larger reorientations on the same detour: a quarter turn and a reverse turn.
+static BoxScenario make_box_detour_turn90() {
+    BoxScenario s = make_box_detour_turn();
+    s.name = "box_detour_turn90";
+    s.gth = 1.5708f;
+    return s;
+}
+static BoxScenario make_box_detour_turn_neg() {
+    BoxScenario s = make_box_detour_turn();
+    s.name = "box_detour_turn_neg";
+    s.gth = -1.2f;
+    return s;
+}
 static BoxScenario make_box_detour_open() {
     BoxScenario s = make_box_detour_wall();
     s.name = "box_detour_open";
@@ -1898,6 +1974,7 @@ int main(int argc, char** argv) {
     float override_soppi_step_size = -1.0f;
     float override_soppi_bandwidth = -1.0f;
     float override_oi_seed_blend = -1.0f, override_oi_obj_speed = -1.0f, override_oi_path_margin = -1.0f;
+    float override_oi_rot_radius = -1.0f;
     for (int i=1;i<argc;i++){ string a=argv[i];
         if (a=="--quick") quick=true;
         else if (a=="--csv"&&i+1<argc) csv_path=argv[++i];
@@ -1915,6 +1992,7 @@ int main(int argc, char** argv) {
         else if (a=="--override-oi-seed-blend"&&i+1<argc) override_oi_seed_blend=(float)atof(argv[++i]);
         else if (a=="--override-oi-obj-speed"&&i+1<argc) override_oi_obj_speed=(float)atof(argv[++i]);
         else if (a=="--override-oi-path-margin"&&i+1<argc) override_oi_path_margin=(float)atof(argv[++i]);
+        else if (a=="--override-oi-rot-radius"&&i+1<argc) override_oi_rot_radius=(float)atof(argv[++i]);
         else if (a=="--dump-traj"&&i+1<argc) dump_traj_prefix=argv[++i];
         // per-episode trajectories from the main sweep: <dir>/<scenario>_<planner>_<seed>.csv
         else if (a=="--traj-dir"&&i+1<argc) traj_dir=argv[++i];
@@ -2126,7 +2204,7 @@ int main(int argc, char** argv) {
     // box_swivel and box_align_strict are appended LAST so the existing scenarios keep
     // their indices si=0..2 (the per-run seed in the sweep loop is si-dependent);
     // published numbers stay byte-identical.
-    vector<BoxScenario> all_sc = { make_box_turn(), make_box_align(), make_box_pivot(), make_box_swivel(), make_box_align_strict(), make_box_align_detour(), make_box_align_contact_loss(), make_box_align_contact_arc(), make_box_align_detour_nowall(), make_box_align_detour_gate(), make_box_detour_wall(), make_box_detour_open(), make_box_detour_wall_left(), make_box_detour_wall_far() };
+    vector<BoxScenario> all_sc = { make_box_turn(), make_box_align(), make_box_pivot(), make_box_swivel(), make_box_align_strict(), make_box_align_detour(), make_box_align_contact_loss(), make_box_align_contact_arc(), make_box_align_detour_nowall(), make_box_align_detour_gate(), make_box_detour_wall(), make_box_detour_open(), make_box_detour_wall_left(), make_box_detour_wall_far(), make_box_detour_turn(), make_box_open_turn(), make_box_detour_turn90(), make_box_detour_turn_neg() };
     auto scenario_seed_index = [&](const string& name) {
         for (size_t i = 0; i < all_sc.size(); i++)
             if (all_sc[i].name == name) {
@@ -2159,6 +2237,7 @@ int main(int argc, char** argv) {
     { Variant v; v.name="oi_face_axis_mppi"; v.use_object_informed=true; v.oi_use_path=true; v.oi_axis_path=true; v.oi_face_switch=true; v.oi_face_route_actual=true; v.oi_face_aim_final=true; v.oi_ref_weight_pos=1.5f; v.oi_ref_weight_ang=3.0f; v.oi_obj_speed=0.6f; v.oi_ang_speed=1.2f; v.oi_seed_blend=0.12f; variants.push_back(v); }
     { Variant v; v.name="oi_face_axis_safe_mppi"; v.use_object_informed=true; v.oi_use_path=true; v.oi_axis_path=true; v.oi_face_safe_slide=true; v.oi_face_switch=true; v.oi_face_route_actual=true; v.oi_face_aim_final=true; v.oi_ref_weight_pos=1.5f; v.oi_ref_weight_ang=3.0f; v.oi_obj_speed=0.6f; v.oi_ang_speed=1.2f; v.oi_seed_blend=0.12f; variants.push_back(v); }
     { Variant v; v.name="oi_face_track_safe_mppi"; v.use_object_informed=true; v.oi_use_path=true; v.oi_face_safe_slide=true; v.oi_face_switch=true; v.oi_face_route_actual=true; v.oi_face_aim_final=true; v.oi_ref_weight_pos=1.5f; v.oi_ref_weight_ang=3.0f; v.oi_obj_speed=0.6f; v.oi_ang_speed=1.2f; v.oi_seed_blend=0.12f; variants.push_back(v); }
+    { Variant v; v.name="oi_face_rot_mppi"; v.use_object_informed=true; v.oi_use_path=true; v.oi_axis_path=true; v.oi_axis_when_blocked=true; v.oi_face_safe_slide=true; v.oi_face_rotate=true; v.oi_face_switch=true; v.oi_face_route_actual=true; v.oi_face_aim_final=true; v.oi_ref_weight_pos=1.5f; v.oi_ref_weight_ang=3.0f; v.oi_obj_speed=0.6f; v.oi_ang_speed=1.2f; v.oi_seed_blend=0.12f; variants.push_back(v); }
     // axis-aligned path when the straight line is blocked, straight path otherwise
     { Variant v; v.name="oi_face_auto_mppi"; v.use_object_informed=true; v.oi_use_path=true; v.oi_axis_path=true; v.oi_axis_when_blocked=true; v.oi_face_safe_slide=true; v.oi_face_switch=true; v.oi_face_route_actual=true; v.oi_face_aim_final=true; v.oi_ref_weight_pos=1.5f; v.oi_ref_weight_ang=3.0f; v.oi_obj_speed=0.6f; v.oi_ang_speed=1.2f; v.oi_seed_blend=0.12f; variants.push_back(v); }
     { Variant v; v.name="oi_path_slow_mppi"; v.use_object_informed=true; v.oi_use_path=true; v.oi_ref_weight_pos=1.5f; v.oi_ref_weight_ang=3.0f; v.oi_obj_speed=0.6f; v.oi_ang_speed=1.2f; v.oi_seed_blend=0.12f; variants.push_back(v); }
@@ -2188,6 +2267,7 @@ int main(int argc, char** argv) {
         if (override_oi_seed_blend >= 0.0f && v.use_object_informed) v.oi_seed_blend = override_oi_seed_blend;
         if (override_oi_obj_speed >= 0.0f && v.use_object_informed) v.oi_obj_speed = override_oi_obj_speed;
         if (override_oi_path_margin >= 0.0f && v.oi_use_path) v.oi_path_margin = override_oi_path_margin;
+        if (override_oi_rot_radius >= 0.0f && v.oi_face_rotate) v.oi_rot_radius = override_oi_rot_radius;
     }
     if (k_values.empty()) k_values = quick ? vector<int>{256} : vector<int>{256, 1024};
     if (seed_count<=0) seed_count = quick ? 4 : 8;
