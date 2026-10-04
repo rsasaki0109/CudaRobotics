@@ -93,6 +93,48 @@ All rows are collision-free.
 - **Which to use:** `oi_face_rot_turnpath_mppi` when the model matches the plant or the passage gives nothing to pivot on; `oi_face_rot_anchor_mppi` under strong contact mismatch.
 - **Open:** making the planned turn robust to the hard plant's sliding, for example by turning while the box rests against a wall, as the hard plant does on its own.
 
+## Follow-up: making the turn robust to the hard plant (negative)
+
+Three attempts on the development seeds; none is kept in the code. Successes out of 30:
+
+| Change to `oi_face_rot_turnpath_mppi` | smooth: turn | smooth: return | hard: turn | hard: return |
+|---|---:|---:|---:|---:|
+| none | 30 | 29 | 18 | 30 |
+| a replan from an off-layer heading starts by turning back to the layer | 30 | 29 | 17 | 28 |
+| latch a made turn only after the box has moved 0.3 m past it | **30** | **30** | 12 | 23 |
+
+**Falling back to the earlier planner when a turn takes too long** was ruled out before trying it. The hard-plant failures make their first turn as fast as the successes (33-53 steps against 32-53), so a timeout would not fire.
+
+**Where the hard plant fails.** All 12 hard-plant failures are on the turn cell.
+- After the turn the box keeps rotating (momentum) to 2-3 rad and slides along the wall.
+- Replans from those poses often find no path, because the box cannot sweep there.
+- Re-opening the turn when the heading drifts (the latch) makes the smooth plant perfect, but on the hard plant the extra turning pushes spin the box more.
+
+The robust version probably needs to damp the box's rotation before it reaches the target heading. That is a model the controller does not have: the smooth model has no momentum.
+
+**A fourth attempt: braking from the measured spin rate.** The spin rate is estimated from the last two control steps, and the turn aims from the heading the box will have tau seconds ahead. A box still spinning toward the target is then pushed the other way.
+
+On the development seeds the hard plant's total over both gap cells (of 60) peaked at tau = 0.15 s:
+
+| tau (s) | 0 | 0.05 | 0.1 | 0.15 | 0.2 | 0.3 | 0.5 |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| hard plant | 48 | 48 | 51 | **54** | 49 | 43 | 46 |
+
+The smooth plant stayed at 58-60.
+
+The peak did not survive fresh seeds (1600-1699, 100 per cell), with `oi_face_rot_turnpath_mppi` as the comparison:
+
+| Plant | `oi_face_rot_turnpath_mppi` | with tau = 0.15 | Paired (only braked / only turnpath) |
+|---|---:|---:|---|
+| smooth | 192/200 | 197/200 | return 5 / 0, p = 0.06 |
+| hard | 183/200 | 172/200 | return 2 / 11, p = 0.02 |
+
+The development gain was noise on 30 seeds, and on the hard plant the braking hurts. It is not kept.
+
+The same run reproduces the planner comparison of the main evaluation on new seeds:
+- smooth plant: anchor 71, turnpath 192 of 200;
+- hard plant: anchor 193, turnpath 183 of 200.
+
 ## Limitations
 
 - One box, two gap cells, `K=256`.
