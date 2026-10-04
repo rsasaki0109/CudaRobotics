@@ -15,9 +15,10 @@
     CPU baseline: 1 thread, two nested loops, with chase-the-parent
     propagation after each adoption. N_CPU = 2,000.
     GPU kernel:   1 thread per node, candidate parent selection done in
-                  parallel; cost propagation done via 4 fixed-point
-                  iterations (more nodes => more iterations needed).
-                  N_GPU = 200,000 (100x larger forest).
+                  parallel over a uniform grid (cell = rewire radius, so
+                  a node only scans its 3x3 cells); cost propagation done
+                  via 4 fixed-point iterations (more nodes => more
+                  iterations needed). N_GPU = 200,000 (100x larger forest).
 
     Headline metric: per-node rewire throughput.
  ************************************************************************/
@@ -45,6 +46,11 @@ constexpr int   N_OBS = 12;
 constexpr float OBS_RADIUS = 1.6f;
 constexpr int   PANEL = 540;
 constexpr int   ITERS = 4;
+// Neighbour grid for the GPU rewire. Cells are slightly larger than the
+// radius so every neighbour within it is in the 3x3 cells around a node.
+constexpr float GRID_CELL = REWIRE_RADIUS * 1.001f;
+constexpr int   GRID_DIM = static_cast<int>(WORLD / GRID_CELL) + 1;
+constexpr int   GRID_CELLS = GRID_DIM * GRID_DIM;
 
 struct Disk { float cx, cy, r; };
 
@@ -176,32 +182,91 @@ static double cpu_rewire_ms(const std::vector<float>& pts,
 // -------------------------------------------------------------------------
 // GPU rewire kernels
 // -------------------------------------------------------------------------
-__global__ void rewire_kernel(const float* __restrict__ pts,
-                              const float* __restrict__ cost_in,
+__host__ __device__ static inline int grid_coord(float v) {
+    int c = static_cast<int>(v / GRID_CELL);
+    return c < 0 ? 0 : (c >= GRID_DIM ? GRID_DIM - 1 : c);
+}
+
+__global__ void grid_count_kernel(const float* __restrict__ pts, int N,
+                                  int* __restrict__ cell_count) {
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i >= N) return;
+    int c = grid_coord(pts[i * 2 + 1]) * GRID_DIM + grid_coord(pts[i * 2]);
+    atomicAdd(&cell_count[c], 1);
+}
+
+// Exclusive scan of the few hundred cell counts; one thread is enough.
+__global__ void grid_scan_kernel(const int* __restrict__ cell_count,
+                                 int* __restrict__ cell_start,
+                                 int* __restrict__ cell_fill) {
+    if (blockIdx.x != 0 || threadIdx.x != 0) return;
+    int sum = 0;
+    for (int c = 0; c < GRID_CELLS; c++) {
+        cell_start[c] = sum;
+        cell_fill[c] = 0;
+        sum += cell_count[c];
+    }
+    cell_start[GRID_CELLS] = sum;
+}
+
+__global__ void grid_scatter_kernel(const float* __restrict__ pts, int N,
+                                    const int* __restrict__ cell_start,
+                                    int* __restrict__ cell_fill,
+                                    int* __restrict__ cell_node,
+                                    float2* __restrict__ cell_pts) {
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i >= N) return;
+    float x = pts[i * 2], y = pts[i * 2 + 1];
+    int c = grid_coord(y) * GRID_DIM + grid_coord(x);
+    int k = cell_start[c] + atomicAdd(&cell_fill[c], 1);
+    cell_node[k] = i;
+    cell_pts[k] = make_float2(x, y);
+}
+
+// Same choice as a scan over all j in index order: the cheapest collision-free
+// parent below the current cost, the smallest index on ties (the grid visits
+// nodes in a different order, so ties are broken explicitly).
+__global__ void rewire_kernel(const float* __restrict__ cost_in,
                               int* __restrict__ parent_out,
                               float* __restrict__ cost_out,
                               const Disk* __restrict__ obs, int n_ob,
+                              const int* __restrict__ cell_start,
+                              const int* __restrict__ cell_node,
+                              const float2* __restrict__ cell_pts,
                               int N, float radius) {
-    int i = blockIdx.x * blockDim.x + threadIdx.x;
-    if (i == 0 || i >= N) {
-        if (i < N) { cost_out[i] = cost_in[i]; }
+    // Threads take nodes in grid order: the lanes of a warp then scan the same
+    // cells in step, so their loads of neighbour data are shared.
+    int t = blockIdx.x * blockDim.x + threadIdx.x;
+    if (t >= N) return;
+    int i = cell_node[t];
+    if (i == 0) {
+        cost_out[i] = cost_in[i];
         return;
     }
-    float xi = pts[i * 2], yi = pts[i * 2 + 1];
+    float xi = cell_pts[t].x, yi = cell_pts[t].y;
     float best_cost = cost_in[i];
     int   best_par  = -1;
     float r2 = radius * radius;
-    for (int j = 0; j < N; j++) {
-        if (j == i) continue;
-        float xj = pts[j * 2], yj = pts[j * 2 + 1];
-        float dx = xi - xj, dy = yi - yj;
-        float d2 = dx * dx + dy * dy;
-        if (d2 > r2) continue;
-        float d = sqrtf(d2);
-        float c = cost_in[j] + d;
-        if (c < best_cost && seg_clear(xi, yi, xj, yj, obs, n_ob)) {
-            best_cost = c;
-            best_par  = j;
+    int gx = grid_coord(xi), gy = grid_coord(yi);
+    for (int cy = max(gy - 1, 0); cy <= min(gy + 1, GRID_DIM - 1); cy++) {
+        for (int cx = max(gx - 1, 0); cx <= min(gx + 1, GRID_DIM - 1); cx++) {
+            int c = cy * GRID_DIM + cx;
+            for (int k = cell_start[c]; k < cell_start[c + 1]; k++) {
+                int j = cell_node[k];
+                if (j == i) continue;
+                float2 pj = cell_pts[k];
+                float dx = xi - pj.x, dy = yi - pj.y;
+                float d2 = dx * dx + dy * dy;
+                if (d2 > r2) continue;
+                float d = sqrtf(d2);
+                float c_j = cost_in[j] + d;
+                bool better = c_j < best_cost
+                           || (c_j == best_cost && best_par >= 0 && j < best_par);
+                if (better && seg_clear(xi, yi, pj.x, pj.y, obs, n_ob)) {
+                    best_cost = c_j;
+                    best_par  = j;
+                }
+            }
         }
     }
     if (best_par >= 0) {
@@ -235,6 +300,16 @@ static double gpu_rewire_ms(const std::vector<float>& pts,
     CUDA_CHECK(cudaMalloc(&d_parent, N * sizeof(int)));
     CUDA_CHECK(cudaMalloc(&d_cost_a, N * sizeof(float)));
     CUDA_CHECK(cudaMalloc(&d_cost_b, N * sizeof(float)));
+    int* d_cell_count = nullptr;
+    int* d_cell_start = nullptr;
+    int* d_cell_fill = nullptr;
+    int* d_cell_node = nullptr;
+    float2* d_cell_pts = nullptr;
+    CUDA_CHECK(cudaMalloc(&d_cell_count, GRID_CELLS * sizeof(int)));
+    CUDA_CHECK(cudaMalloc(&d_cell_start, (GRID_CELLS + 1) * sizeof(int)));
+    CUDA_CHECK(cudaMalloc(&d_cell_fill, GRID_CELLS * sizeof(int)));
+    CUDA_CHECK(cudaMalloc(&d_cell_node, N * sizeof(int)));
+    CUDA_CHECK(cudaMalloc(&d_cell_pts, N * sizeof(float2)));
     CUDA_CHECK(cudaMemcpy(d_pts, pts.data(), pts.size() * sizeof(float),
                           cudaMemcpyHostToDevice));
     CUDA_CHECK(cudaMemcpy(d_obs, obs.data(), n_ob * sizeof(Disk),
@@ -249,13 +324,21 @@ static double gpu_rewire_ms(const std::vector<float>& pts,
 
     CUDA_CHECK(cudaDeviceSynchronize());
     auto t0 = std::chrono::high_resolution_clock::now();
+    // The grid build is part of the timed rewire.
+    CUDA_CHECK(cudaMemsetAsync(d_cell_count, 0, GRID_CELLS * sizeof(int)));
+    grid_count_kernel<<<blocks, threads>>>(d_pts, N, d_cell_count);
+    grid_scan_kernel<<<1, 1>>>(d_cell_count, d_cell_start, d_cell_fill);
+    grid_scatter_kernel<<<blocks, threads>>>(d_pts, N, d_cell_start, d_cell_fill,
+                                             d_cell_node, d_cell_pts);
     float* in_ptr = d_cost_a;
     float* out_ptr = d_cost_b;
     for (int it = 0; it < iters; it++) {
-        rewire_kernel<<<blocks, threads>>>(d_pts, in_ptr, d_parent, out_ptr,
-                                           d_obs, n_ob, N, REWIRE_RADIUS);
+        rewire_kernel<<<blocks, threads>>>(in_ptr, d_parent, out_ptr,
+                                           d_obs, n_ob, d_cell_start, d_cell_node,
+                                           d_cell_pts, N, REWIRE_RADIUS);
         std::swap(in_ptr, out_ptr);
     }
+    CUDA_CHECK(cudaGetLastError());
     CUDA_CHECK(cudaDeviceSynchronize());
     auto t1 = std::chrono::high_resolution_clock::now();
 
@@ -268,6 +351,11 @@ static double gpu_rewire_ms(const std::vector<float>& pts,
     CUDA_CHECK(cudaFree(d_parent));
     CUDA_CHECK(cudaFree(d_cost_a));
     CUDA_CHECK(cudaFree(d_cost_b));
+    CUDA_CHECK(cudaFree(d_cell_count));
+    CUDA_CHECK(cudaFree(d_cell_start));
+    CUDA_CHECK(cudaFree(d_cell_fill));
+    CUDA_CHECK(cudaFree(d_cell_node));
+    CUDA_CHECK(cudaFree(d_cell_pts));
     return std::chrono::duration<double, std::milli>(t1 - t0).count();
 }
 
