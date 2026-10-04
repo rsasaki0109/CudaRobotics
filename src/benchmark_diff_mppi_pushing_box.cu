@@ -124,6 +124,9 @@ struct Variant {
                                         //    more than 0.1 m for this many stalled steps (0: off)
     float oi_slide_hysteresis = 0.0f;   // face-switch seed: once engaged, stay engaged this far past
                                         // the face span (stops push / slide-clear flipping; 0: off)
+    float oi_push_actual_dist = -1.0f;  // face-switch seed: once the box is farther than this from
+                                        // its reference pose, aim the first push from the actual
+                                        // box instead (<0: never)
     float oi_path_margin = 0.05f;       // wall clearance used by plan_object_path
 };
 
@@ -1630,6 +1633,10 @@ private:
                               advance, bx, by, rth);
             object_ref_path_f(path_, ox, oy, oth, sc_.gth, p.dt, v_.oi_obj_speed, v_.oi_ang_speed,
                               advance + 1, rx, ry, rth);
+            // The next reference pose relative to the actual box, and how far the box is
+            // from its reference pose (oi_push_actual_dist).
+            float ax = ox + (rx - bx), ay = oy + (ry - by);
+            float ref_off = hypotf(bx - ox, by - oy);
             float dx = rx - bx, dy = ry - by, dl = sqrtf(dx*dx + dy*dy);
             if (dl < 1e-4f) { dx = sc_.gx - bx; dy = sc_.gy - by; dl = sqrtf(dx*dx + dy*dy + 1e-9f); }
             if (advance == 0 && v_.oi_face_route_actual) {
@@ -1647,9 +1654,16 @@ private:
                                           p.push_r + v_.oi_contact_margin + 0.04f, tx, ty,
                                           v_.oi_face_safe_slide,
                                           engaged_prev ? v_.oi_slide_hysteresis : 0.0f)) {
-                // push: aim at the contact point behind the box's next reference pose
-                face_switch_target(sim_px, sim_py, rx, ry, oth, dx / dl, dy / dl, p,
-                                   p.push_r - 0.02f, tx, ty);
+                // push: aim at the contact point behind the box's next reference pose.
+                // When the box has left the path (for example pushed up against the
+                // wall), that pose can be far from the box: the engagement test above
+                // uses the actual box, so the push target flips between the two every
+                // step. oi_push_actual_dist aims the first push from the actual box when it is
+                // that far off; closer in, the reference pose's offset steers the box back.
+                bool from_actual = v_.oi_push_actual_dist >= 0.0f && ref_off > v_.oi_push_actual_dist
+                                && advance == 0 && v_.oi_face_route_actual;
+                face_switch_target(sim_px, sim_py, from_actual ? ax : rx, from_actual ? ay : ry,
+                                   oth, dx / dl, dy / dl, p, p.push_r - 0.02f, tx, ty);
                 advance++;
                 engaged_prev = true;
                 if (t == 0 && commit) seed_engaged_ = true;
@@ -2098,6 +2112,7 @@ int main(int argc, char** argv) {
     int override_oi_stall_unblocked = -1;
     int override_oi_stall_consistent_steps = -1;
     float override_oi_slide_hysteresis = -1.0f;
+    float override_oi_push_actual_dist = -2.0f;
     for (int i=1;i<argc;i++){ string a=argv[i];
         if (a=="--quick") quick=true;
         else if (a=="--csv"&&i+1<argc) csv_path=argv[++i];
@@ -2125,6 +2140,7 @@ int main(int argc, char** argv) {
         else if (a=="--override-oi-stall-unblocked"&&i+1<argc) override_oi_stall_unblocked=atoi(argv[++i]);
         else if (a=="--override-oi-stall-consistent-steps"&&i+1<argc) override_oi_stall_consistent_steps=atoi(argv[++i]);
         else if (a=="--override-oi-slide-hysteresis"&&i+1<argc) override_oi_slide_hysteresis=(float)atof(argv[++i]);
+        else if (a=="--override-oi-push-actual-dist"&&i+1<argc) override_oi_push_actual_dist=(float)atof(argv[++i]);
         else if (a=="--dump-traj"&&i+1<argc) dump_traj_prefix=argv[++i];
         // per-episode trajectories from the main sweep: <dir>/<scenario>_<planner>_<seed>.csv
         else if (a=="--traj-dir"&&i+1<argc) traj_dir=argv[++i];
@@ -2381,6 +2397,9 @@ int main(int argc, char** argv) {
     // ...with a stall that also needs the pusher to stay within 0.10 m over 20 steps,
     // after 40 still steps (selected on seeds 0-29; see box_detour_pusher_stall).
     { Variant v; v.name="oi_face_rot_pstall_mppi"; v.use_object_informed=true; v.oi_use_path=true; v.oi_axis_path=true; v.oi_axis_when_blocked=true; v.oi_face_safe_slide=true; v.oi_face_rotate=true; v.oi_face_switch=true; v.oi_face_route_actual=true; v.oi_face_aim_final=true; v.oi_ref_weight_pos=1.5f; v.oi_ref_weight_ang=3.0f; v.oi_obj_speed=0.6f; v.oi_ang_speed=1.2f; v.oi_seed_blend=0.12f; v.oi_near_seed_blend=0.6f; v.oi_rot_radius=1.0f; v.oi_stall_steps=40; v.oi_stall_pusher_dist=0.10f; v.oi_stall_pusher_window=20; v.oi_stall_blend=0.6f; variants.push_back(v); }
+    // ...and aims the first push from the actual box when it is more than 0.3 m from its
+    // reference pose (selected on seeds 0-29 and 1100-1299; see box_detour_push_anchor).
+    { Variant v; v.name="oi_face_rot_anchor_mppi"; v.use_object_informed=true; v.oi_use_path=true; v.oi_axis_path=true; v.oi_axis_when_blocked=true; v.oi_face_safe_slide=true; v.oi_face_rotate=true; v.oi_face_switch=true; v.oi_face_route_actual=true; v.oi_face_aim_final=true; v.oi_ref_weight_pos=1.5f; v.oi_ref_weight_ang=3.0f; v.oi_obj_speed=0.6f; v.oi_ang_speed=1.2f; v.oi_seed_blend=0.12f; v.oi_near_seed_blend=0.6f; v.oi_rot_radius=1.0f; v.oi_stall_steps=40; v.oi_stall_pusher_dist=0.10f; v.oi_stall_pusher_window=20; v.oi_stall_blend=0.6f; v.oi_push_actual_dist=0.30f; variants.push_back(v); }
     // axis-aligned path when the straight line is blocked, straight path otherwise
     { Variant v; v.name="oi_face_auto_mppi"; v.use_object_informed=true; v.oi_use_path=true; v.oi_axis_path=true; v.oi_axis_when_blocked=true; v.oi_face_safe_slide=true; v.oi_face_switch=true; v.oi_face_route_actual=true; v.oi_face_aim_final=true; v.oi_ref_weight_pos=1.5f; v.oi_ref_weight_ang=3.0f; v.oi_obj_speed=0.6f; v.oi_ang_speed=1.2f; v.oi_seed_blend=0.12f; variants.push_back(v); }
     { Variant v; v.name="oi_path_slow_mppi"; v.use_object_informed=true; v.oi_use_path=true; v.oi_ref_weight_pos=1.5f; v.oi_ref_weight_ang=3.0f; v.oi_obj_speed=0.6f; v.oi_ang_speed=1.2f; v.oi_seed_blend=0.12f; variants.push_back(v); }
@@ -2420,6 +2439,7 @@ int main(int argc, char** argv) {
         if (override_oi_stall_unblocked >= 0 && v.oi_face_switch) v.oi_stall_unblocked = override_oi_stall_unblocked != 0;
         if (override_oi_stall_consistent_steps >= 0 && v.oi_face_switch) v.oi_stall_consistent_steps = override_oi_stall_consistent_steps;
         if (override_oi_slide_hysteresis >= 0.0f && v.oi_face_switch) v.oi_slide_hysteresis = override_oi_slide_hysteresis;
+        if (override_oi_push_actual_dist > -1.5f && v.oi_face_switch) v.oi_push_actual_dist = override_oi_push_actual_dist;
     }
     if (k_values.empty()) k_values = quick ? vector<int>{256} : vector<int>{256, 1024};
     if (seed_count<=0) seed_count = quick ? 4 : 8;
