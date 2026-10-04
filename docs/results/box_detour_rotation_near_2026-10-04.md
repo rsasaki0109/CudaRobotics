@@ -72,7 +72,7 @@ No seed is solved by `oi_face_rot_mppi` and lost by `oi_face_rot_near_mppi` on a
 
 - **The smooth-plant quarter turn is solved:** 3/30 to 29/30 against the rotation phase alone, and 9/30 for `oi_face_auto_mppi`. The regression the earlier note reported is gone.
 - **The +0.9 rad turn is solved on both plants:** 30/30 each. It had the same stall, less often.
-- **The remaining failures** are the open turn on the smooth plant (23/30) and the reverse turn on both plants (26/30). Neither moved much, so they are a different failure.
+- **The remaining failures** are the open turn on the smooth plant (23/30) and the reverse turn on both plants (26/30). Neither moved much, so they are a different failure. See [`box_detour_turn_residuals_2026-10-04.md`](box_detour_turn_residuals_2026-10-04.md): a 1.0 m rotation radius fixes the reverse turn; the open turn stays open.
 - **Detour cells:** stay at 120/120 on both plants.
 
 ## Limitations

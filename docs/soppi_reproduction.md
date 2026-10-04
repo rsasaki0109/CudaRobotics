@@ -494,6 +494,11 @@ A stronger seed blend near the goal (`oi_face_rot_near_mppi`,
 removes the regression: on fresh seeds the turn cells reach 108/120 on the
 smooth plant (quarter turn 29/30) and 116/120 on the hard plant, with the four
 detour cells at 120/120 on both.
+Widening the rotation radius to 1.0 m (`oi_face_rot_wide_mppi`,
+[`results/box_detour_turn_residuals_2026-10-04.md`](results/box_detour_turn_residuals_2026-10-04.md))
+fixes the reverse turn on the smooth plant (23/30 to 30/30 on confirmation
+seeds) without losing a detour episode; a stall-triggered seed boost fixes the
+open turn too but loses detour episodes, so it is recorded, not recommended.
 
 | Scenario | Planner | Success | Steps | Final Dist | Cost | Avg ms |
 |---|---|---:|---:|---:|---:|---:|

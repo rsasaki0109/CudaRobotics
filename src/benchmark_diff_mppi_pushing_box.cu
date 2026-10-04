@@ -113,6 +113,8 @@ struct Variant {
     bool oi_face_rotate = false;        // face-switch seed: off-centre pushes to turn the box near the goal
     float oi_rot_radius = 0.8f;         // ...within this distance of the goal (selected on seeds 0-7)
     float oi_near_seed_blend = -1.0f;   // face-switch seed blend within oi_rot_radius (<0: oi_seed_blend)
+    int oi_stall_steps = 0;             // face-switch seed: after this many steps without box motion...
+    float oi_stall_blend = 0.6f;        // ...blend the seed this strongly (0 steps: off)
     float oi_path_margin = 0.05f;       // wall clearance used by plan_object_path
 };
 
@@ -1317,6 +1319,7 @@ public:
         warmup();
         fill(h_nominal_.begin(), h_nominal_.end(), 0.0f);
         reset_rng();
+        stall_ox_ = ox_; stall_oy_ = oy_; stall_oth_ = oth_; stall_count_ = 0;
 
         // True plant params: contact mobility scaled by plant_gain_scale (the
         // controller's model, used in rollout/grad below, keeps sc_.params).
@@ -1527,6 +1530,14 @@ private:
         float blend = clampf_local(v_.oi_seed_blend, 0.0f, 1.0f);
         if (v_.oi_near_seed_blend >= 0.0f && hypotf(sc_.gx - ox, sc_.gy - oy) <= v_.oi_rot_radius)
             blend = clampf_local(v_.oi_near_seed_blend, 0.0f, 1.0f);
+        // Stall: the box has not moved for oi_stall_steps control steps.
+        if (hypotf(ox - stall_ox_, oy - stall_oy_) > 0.01f || fabsf(wrapf(oth - stall_oth_)) > 0.02f) {
+            stall_ox_ = ox; stall_oy_ = oy; stall_oth_ = oth; stall_count_ = 0;
+        } else {
+            stall_count_++;
+        }
+        if (v_.oi_stall_steps > 0 && stall_count_ >= v_.oi_stall_steps)
+            blend = fmaxf(blend, clampf_local(v_.oi_stall_blend, 0.0f, 1.0f));
         float sim_px = px, sim_py = py;
         float bx = ox, by = oy;               // box pose the pusher plans around
         int advance = 0;
@@ -1737,6 +1748,8 @@ private:
     Variant v_; BoxScenario sc_; int K_, T_, seed_;
     ObjPath path_;                          // object-level path (oi_use_path variants only)
     int ref_delay_ = 0;                     // face-switch seed: steps before the box moves
+    float stall_ox_ = 0, stall_oy_ = 0, stall_oth_ = 0;   // box pose when it last moved
+    int stall_count_ = 0;                   // control steps since then
     HardParams hard_p_;                     // hard-contact params (true plant and/or fidelity-arm rollout)
     float px_=0,py_=0,ox_=0,oy_=0,oth_=0;
     float vx_=0,vy_=0,w_=0;                 // box velocity (hard true plant only)
@@ -1979,6 +1992,8 @@ int main(int argc, char** argv) {
     float override_oi_seed_blend = -1.0f, override_oi_obj_speed = -1.0f, override_oi_path_margin = -1.0f;
     float override_oi_rot_radius = -1.0f;
     float override_oi_near_seed_blend = -1.0f;
+    int override_oi_stall_steps = -1;
+    float override_oi_stall_blend = -1.0f;
     for (int i=1;i<argc;i++){ string a=argv[i];
         if (a=="--quick") quick=true;
         else if (a=="--csv"&&i+1<argc) csv_path=argv[++i];
@@ -1998,6 +2013,8 @@ int main(int argc, char** argv) {
         else if (a=="--override-oi-path-margin"&&i+1<argc) override_oi_path_margin=(float)atof(argv[++i]);
         else if (a=="--override-oi-rot-radius"&&i+1<argc) override_oi_rot_radius=(float)atof(argv[++i]);
         else if (a=="--override-oi-near-seed-blend"&&i+1<argc) override_oi_near_seed_blend=(float)atof(argv[++i]);
+        else if (a=="--override-oi-stall-steps"&&i+1<argc) override_oi_stall_steps=atoi(argv[++i]);
+        else if (a=="--override-oi-stall-blend"&&i+1<argc) override_oi_stall_blend=(float)atof(argv[++i]);
         else if (a=="--dump-traj"&&i+1<argc) dump_traj_prefix=argv[++i];
         // per-episode trajectories from the main sweep: <dir>/<scenario>_<planner>_<seed>.csv
         else if (a=="--traj-dir"&&i+1<argc) traj_dir=argv[++i];
@@ -2246,6 +2263,11 @@ int main(int argc, char** argv) {
     // Rotation phase plus a stronger seed near the goal: the 12 % blend lets MPPI
     // park the box beside the goal after a turn (near blend selected on seeds 0-7).
     { Variant v; v.name="oi_face_rot_near_mppi"; v.use_object_informed=true; v.oi_use_path=true; v.oi_axis_path=true; v.oi_axis_when_blocked=true; v.oi_face_safe_slide=true; v.oi_face_rotate=true; v.oi_face_switch=true; v.oi_face_route_actual=true; v.oi_face_aim_final=true; v.oi_ref_weight_pos=1.5f; v.oi_ref_weight_ang=3.0f; v.oi_obj_speed=0.6f; v.oi_ang_speed=1.2f; v.oi_seed_blend=0.12f; v.oi_near_seed_blend=0.6f; variants.push_back(v); }
+    // ...with a 1.0 m rotation radius (selected on seeds 0-29; see box_detour_turn_residuals).
+    { Variant v; v.name="oi_face_rot_wide_mppi"; v.use_object_informed=true; v.oi_use_path=true; v.oi_axis_path=true; v.oi_axis_when_blocked=true; v.oi_face_safe_slide=true; v.oi_face_rotate=true; v.oi_face_switch=true; v.oi_face_route_actual=true; v.oi_face_aim_final=true; v.oi_ref_weight_pos=1.5f; v.oi_ref_weight_ang=3.0f; v.oi_obj_speed=0.6f; v.oi_ang_speed=1.2f; v.oi_seed_blend=0.12f; v.oi_near_seed_blend=0.6f; v.oi_rot_radius=1.0f; variants.push_back(v); }
+    // ...and also the same 0.6 blend whenever the box has not moved for 20 steps. Kept
+    // as a recorded trade-off: it fixes the smooth open turn but loses detour episodes.
+    { Variant v; v.name="oi_face_rot_stall_mppi"; v.use_object_informed=true; v.oi_use_path=true; v.oi_axis_path=true; v.oi_axis_when_blocked=true; v.oi_face_safe_slide=true; v.oi_face_rotate=true; v.oi_face_switch=true; v.oi_face_route_actual=true; v.oi_face_aim_final=true; v.oi_ref_weight_pos=1.5f; v.oi_ref_weight_ang=3.0f; v.oi_obj_speed=0.6f; v.oi_ang_speed=1.2f; v.oi_seed_blend=0.12f; v.oi_near_seed_blend=0.6f; v.oi_rot_radius=1.0f; v.oi_stall_steps=20; v.oi_stall_blend=0.6f; variants.push_back(v); }
     // axis-aligned path when the straight line is blocked, straight path otherwise
     { Variant v; v.name="oi_face_auto_mppi"; v.use_object_informed=true; v.oi_use_path=true; v.oi_axis_path=true; v.oi_axis_when_blocked=true; v.oi_face_safe_slide=true; v.oi_face_switch=true; v.oi_face_route_actual=true; v.oi_face_aim_final=true; v.oi_ref_weight_pos=1.5f; v.oi_ref_weight_ang=3.0f; v.oi_obj_speed=0.6f; v.oi_ang_speed=1.2f; v.oi_seed_blend=0.12f; variants.push_back(v); }
     { Variant v; v.name="oi_path_slow_mppi"; v.use_object_informed=true; v.oi_use_path=true; v.oi_ref_weight_pos=1.5f; v.oi_ref_weight_ang=3.0f; v.oi_obj_speed=0.6f; v.oi_ang_speed=1.2f; v.oi_seed_blend=0.12f; variants.push_back(v); }
@@ -2277,6 +2299,8 @@ int main(int argc, char** argv) {
         if (override_oi_path_margin >= 0.0f && v.oi_use_path) v.oi_path_margin = override_oi_path_margin;
         if (override_oi_rot_radius >= 0.0f && v.oi_face_rotate) v.oi_rot_radius = override_oi_rot_radius;
         if (override_oi_near_seed_blend >= 0.0f && v.oi_face_switch) v.oi_near_seed_blend = override_oi_near_seed_blend;
+        if (override_oi_stall_steps >= 0 && v.oi_face_switch) v.oi_stall_steps = override_oi_stall_steps;
+        if (override_oi_stall_blend >= 0.0f && v.oi_face_switch) v.oi_stall_blend = override_oi_stall_blend;
     }
     if (k_values.empty()) k_values = quick ? vector<int>{256} : vector<int>{256, 1024};
     if (seed_count<=0) seed_count = quick ? 4 : 8;
