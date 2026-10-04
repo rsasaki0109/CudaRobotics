@@ -391,21 +391,51 @@ __host__ __device__ static inline void route_point(const RobotSpec& r,
     intent_route_point(r, r.route, progress, x, y);
 }
 
-__host__ __device__ static inline float route_distance(const RobotSpec& r,
+constexpr int ROUTE_SEGMENTS = 18;
+
+// Vertices of a robot's route polyline. They depend only on the robot, so a
+// rollout computes them once instead of at every step.
+struct RoutePolyline {
+    float x[ROUTE_SEGMENTS + 1];
+    float y[ROUTE_SEGMENTS + 1];
+};
+
+// Per-robot data shared by all of that robot's rollouts.
+struct RobotContext {
+    RoutePolyline route;
+    float peer_weight[N_ROBOTS];   // crossing * priority factor of each peer
+};
+
+__host__ __device__ static inline void make_route_polyline(const RobotSpec& r,
+                                                           RoutePolyline& poly) {
+    for (int i = 0; i <= ROUTE_SEGMENTS; i++) {
+        float p = static_cast<float>(i) / static_cast<float>(ROUTE_SEGMENTS);
+        route_point(r, p, poly.x[i], poly.y[i]);
+    }
+}
+
+__host__ __device__ static inline void make_robot_context(const RobotSpec* robots,
+                                                          int robot_id,
+                                                          RobotContext& ctx) {
+    make_route_polyline(robots[robot_id], ctx.route);
+    for (int j = 0; j < N_ROBOTS; j++) {
+        float crossing = (robots[robot_id].route == robots[j].route) ? 0.40f : 1.0f;
+        float priority = 0.82f + 0.42f * robots[j].priority;
+        ctx.peer_weight[j] = crossing * priority;
+    }
+}
+
+__host__ __device__ static inline float route_distance(const RoutePolyline& poly,
                                                        float x,
                                                        float y,
                                                        float* progress_out) {
     float best = 1.0e9f;
     float best_p = 0.0f;
-    float prev_x;
-    float prev_y;
-    route_point(r, 0.0f, prev_x, prev_y);
-    constexpr int SEGMENTS = 18;
-    for (int i = 1; i <= SEGMENTS; i++) {
-        float p1 = static_cast<float>(i) / static_cast<float>(SEGMENTS);
-        float bx;
-        float by;
-        route_point(r, p1, bx, by);
+    float prev_x = poly.x[0];
+    float prev_y = poly.y[0];
+    for (int i = 1; i <= ROUTE_SEGMENTS; i++) {
+        float bx = poly.x[i];
+        float by = poly.y[i];
         float vx = bx - prev_x;
         float vy = by - prev_y;
         float len2 = fmaxf(vx * vx + vy * vy, 1.0e-6f);
@@ -415,7 +445,7 @@ __host__ __device__ static inline float route_distance(const RobotSpec& r,
         float d = sqrtf(sqr(x - px) + sqr(y - py));
         if (d < best) {
             best = d;
-            best_p = (static_cast<float>(i - 1) + u) / static_cast<float>(SEGMENTS);
+            best_p = (static_cast<float>(i - 1) + u) / static_cast<float>(ROUTE_SEGMENTS);
         }
         prev_x = bx;
         prev_y = by;
@@ -424,11 +454,20 @@ __host__ __device__ static inline float route_distance(const RobotSpec& r,
     return best;
 }
 
+__host__ __device__ static inline float route_distance(const RobotSpec& r,
+                                                       float x,
+                                                       float y,
+                                                       float* progress_out) {
+    RoutePolyline poly;
+    make_route_polyline(r, poly);
+    return route_distance(poly, x, y, progress_out);
+}
+
 __host__ __device__ static inline int stale_intent_prior(int robot_id) {
     return (robot_id + 1) & 3;
 }
 
-__host__ __device__ static inline void planned_graph_message(const RobotSpec* robots,
+__host__ __device__ static inline void planned_graph_message(const float* peer_weight,
                                                              const float* peer_x,
                                                              const float* peer_y,
                                                              int robot_id,
@@ -449,7 +488,6 @@ __host__ __device__ static inline void planned_graph_message(const RobotSpec* ro
     min_sep = 1.0e6f;
     int k = step < HORIZON ? step : HORIZON - 1;
     int kn = step + 3 < HORIZON ? step + 3 : HORIZON - 1;
-    const RobotSpec& self = robots[robot_id];
     for (int j = 0; j < N_ROBOTS; j++) {
         if (j == robot_id) continue;
         float px = peer_x[j * HORIZON + k];
@@ -474,12 +512,10 @@ __host__ __device__ static inline void planned_graph_message(const RobotSpec* ro
         pvy /= plen;
         float closing_axis = clampf(-(ux * pvx + uy * pvy), 0.0f, 1.0f);
         float closing = 1.0f - clampf(d / 3.4f, 0.0f, 1.0f);
-        float crossing = (self.route == robots[j].route) ? 0.40f : 1.0f;
-        float priority = 0.82f + 0.42f * robots[j].priority;
         float hard_close = sep < GAME_COLLISION_MARGIN
                          ? 1.25f * sqr(GAME_COLLISION_MARGIN - sep)
                          : 0.0f;
-        float w = crossing * priority
+        float w = peer_weight[j]
                 * (0.20f * expf(-0.5f * d2 / 1.45f)
                    + 1.80f * closing * closing
                    + 0.55f * closing_axis * closing
@@ -503,6 +539,7 @@ __host__ __device__ static inline void planned_graph_message(const RobotSpec* ro
 }
 
 __host__ __device__ static inline void rollout_step(const RobotSpec* robots,
+                                                    const RobotContext& ctx,
                                                     const float* beliefs,
                                                     const float* peer_x,
                                                     const float* peer_y,
@@ -522,7 +559,7 @@ __host__ __device__ static inline void rollout_step(const RobotSpec* robots,
                                                     float& terrain) {
     const RobotSpec& r = robots[robot_id];
     float progress = 0.0f;
-    route_error = route_distance(r, s.x, s.y, &progress);
+    route_error = route_distance(ctx.route, s.x, s.y, &progress);
     float priority_phase = best_response ? 0.05f * (r.priority - 0.62f) : 0.0f;
     float lookahead = progress + 0.14f + priority_phase + 0.04f * hash_unit(rollout, step / 6, 3);
     float tx;
@@ -532,7 +569,7 @@ __host__ __device__ static inline void rollout_step(const RobotSpec* robots,
     float mx;
     float my;
     if (best_response && peer_x && peer_y) {
-        planned_graph_message(robots, peer_x, peer_y, robot_id, s.x, s.y, step,
+        planned_graph_message(ctx.peer_weight, peer_x, peer_y, robot_id, s.x, s.y, step,
                               mx, my, social_risk, tail_risk, belief_uncertainty, min_sep);
     } else {
         mx = 0.0f;
@@ -591,13 +628,17 @@ __host__ __device__ static inline void rollout_step(const RobotSpec* robots,
     prev_steer = steer;
 }
 
+// sample_x/sample_y, when not null, receive the rollout's HORIZON states.
 __host__ __device__ static inline RolloutResult evaluate_rollout(const RobotSpec* robots,
+                                                                 const RobotContext& ctx,
                                                                  const float* beliefs,
                                                                  const float* peer_x,
                                                                  const float* peer_y,
                                                                  int robot_id,
                                                                  int rollout,
-                                                                 int best_response) {
+                                                                 int best_response,
+                                                                 float* sample_x = nullptr,
+                                                                 float* sample_y = nullptr) {
     const RobotSpec& r = robots[robot_id];
     Pose2 s{r.sx, r.sy, r.theta0};
     float blind_cost = 0.0f;
@@ -618,9 +659,13 @@ __host__ __device__ static inline RolloutResult evaluate_rollout(const RobotSpec
         float route_error;
         float smooth;
         float terrain;
-        rollout_step(robots, beliefs, peer_x, peer_y, robot_id, rollout, k, best_response,
-                     s, prev_speed, prev_steer, social_risk, tail_risk, belief_uncertainty,
-                     step_min_sep, route_error, smooth, terrain);
+        rollout_step(robots, ctx, beliefs, peer_x, peer_y, robot_id, rollout, k,
+                     best_response, s, prev_speed, prev_steer, social_risk, tail_risk,
+                     belief_uncertainty, step_min_sep, route_error, smooth, terrain);
+        if (sample_x) {
+            sample_x[k] = s.x;
+            sample_y[k] = s.y;
+        }
         float obstacle = terrain > 5.0f ? 8.0f * sqr(terrain - 5.0f) : 0.0f;
         float base_step = 0.62f * terrain + 1.35f * route_error * route_error
                         + 0.20f * sqr(prev_steer / MAX_STEER) + smooth + obstacle;
@@ -646,7 +691,7 @@ __host__ __device__ static inline RolloutResult evaluate_rollout(const RobotSpec
     }
 
     float terminal = sqrtf(sqr(r.gx - s.x) + sqr(r.gy - s.y));
-    float final_route = route_distance(r, s.x, s.y, nullptr);
+    float final_route = route_distance(ctx.route, s.x, s.y, nullptr);
     float terminal_weight = best_response ? 460.0f : 118.0f;
     float terminal_cost = terminal_weight * terminal * terminal + 8.5f * final_route;
     blind_cost += terminal_cost;
@@ -666,6 +711,10 @@ __host__ __device__ static inline RolloutResult evaluate_rollout(const RobotSpec
     return out;
 }
 
+// All threads of a block plan for the same robot, so its RobotContext is built
+// once per block in shared memory.
+static_assert(ROLLOUTS_PER_ROBOT % THREADS == 0, "a block must not span two robots");
+
 __global__ void rollout_kernel(const RobotSpec* __restrict__ robots,
                                const float* __restrict__ beliefs,
                                const float* __restrict__ peer_x,
@@ -674,33 +723,19 @@ __global__ void rollout_kernel(const RobotSpec* __restrict__ robots,
                                RolloutResult* __restrict__ results,
                                float* __restrict__ sample_x,
                                float* __restrict__ sample_y) {
+    __shared__ RobotContext ctx;
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
-    int total = N_ROBOTS * ROLLOUTS_PER_ROBOT;
-    if (idx >= total) return;
-    int robot_id = idx / ROLLOUTS_PER_ROBOT;
-    int rollout = idx - robot_id * ROLLOUTS_PER_ROBOT;
-    results[idx] = evaluate_rollout(robots, beliefs, peer_x, peer_y, robot_id, rollout,
-                                    best_response);
+    int robot_id = (blockIdx.x * blockDim.x) / ROLLOUTS_PER_ROBOT;
+    if (threadIdx.x == 0) make_robot_context(robots, robot_id, ctx);
+    __syncthreads();
 
-    if (!best_response || robot_id >= SAMPLE_ROBOTS || rollout >= SAMPLE_ROLLOUTS) return;
-    Pose2 s{robots[robot_id].sx, robots[robot_id].sy, robots[robot_id].theta0};
-    float prev_speed = 0.70f;
-    float prev_steer = 0.0f;
+    int rollout = idx - robot_id * ROLLOUTS_PER_ROBOT;
+    bool record = best_response && robot_id < SAMPLE_ROBOTS && rollout < SAMPLE_ROLLOUTS;
     int sample_base = (robot_id * SAMPLE_ROLLOUTS + rollout) * HORIZON;
-    for (int k = 0; k < HORIZON; k++) {
-        float social_risk;
-        float tail_risk;
-        float belief_uncertainty;
-        float min_sep;
-        float route_error;
-        float smooth;
-        float terrain;
-        rollout_step(robots, beliefs, peer_x, peer_y, robot_id, rollout, k, best_response,
-                     s, prev_speed, prev_steer, social_risk, tail_risk,
-                     belief_uncertainty, min_sep, route_error, smooth, terrain);
-        sample_x[sample_base + k] = s.x;
-        sample_y[sample_base + k] = s.y;
-    }
+    results[idx] = evaluate_rollout(robots, ctx, beliefs, peer_x, peer_y, robot_id, rollout,
+                                    best_response,
+                                    record ? sample_x + sample_base : nullptr,
+                                    record ? sample_y + sample_base : nullptr);
 }
 
 static std::vector<RobotSpec> make_robots(const ScenarioConfig& scenario) {
@@ -871,10 +906,12 @@ static double evaluate_cpu_rollouts(const std::vector<RobotSpec>& robots,
                                     std::vector<RolloutResult>& out) {
     out.resize(N_ROBOTS * ROLLOUTS_PER_ROBOT);
     auto begin = std::chrono::high_resolution_clock::now();
+    RobotContext ctx;
     for (int robot = 0; robot < N_ROBOTS; robot++) {
+        make_robot_context(robots.data(), robot, ctx);
         for (int rollout = 0; rollout < ROLLOUTS_PER_ROBOT; rollout++) {
             int idx = robot * ROLLOUTS_PER_ROBOT + rollout;
-            out[idx] = evaluate_rollout(robots.data(), beliefs.data(), peer_x, peer_y,
+            out[idx] = evaluate_rollout(robots.data(), ctx, beliefs.data(), peer_x, peer_y,
                                         robot, rollout, best_response);
         }
     }
@@ -907,7 +944,9 @@ static void reconstruct_paths(const std::vector<RobotSpec>& robots,
                               std::vector<float>& path_y) {
     path_x.assign(N_ROBOTS * HORIZON, 0.0f);
     path_y.assign(N_ROBOTS * HORIZON, 0.0f);
+    RobotContext ctx;
     for (int robot = 0; robot < N_ROBOTS; robot++) {
+        make_robot_context(robots.data(), robot, ctx);
         Pose2 s{robots[robot].sx, robots[robot].sy, robots[robot].theta0};
         float prev_speed = 0.70f;
         float prev_steer = 0.0f;
@@ -919,9 +958,10 @@ static void reconstruct_paths(const std::vector<RobotSpec>& robots,
             float route_error;
             float smooth;
             float terrain;
-            rollout_step(robots.data(), beliefs.data(), peer_x, peer_y, robot, selected[robot],
-                         k, best_response, s, prev_speed, prev_steer, social_risk,
-                         tail_risk, belief_uncertainty, min_sep, route_error, smooth, terrain);
+            rollout_step(robots.data(), ctx, beliefs.data(), peer_x, peer_y, robot,
+                         selected[robot], k, best_response, s, prev_speed, prev_steer,
+                         social_risk, tail_risk, belief_uncertainty, min_sep, route_error,
+                         smooth, terrain);
             path_x[robot * HORIZON + k] = s.x;
             path_y[robot * HORIZON + k] = s.y;
         }
