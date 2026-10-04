@@ -38,6 +38,30 @@ canonical idiom: **one thread = one IK solve**.
 - **On the GPU the 32 restarts for all 1024 targets cost about 10 ms**, roughly 120-300x faster than the serial CPU batch. The range reflects a GPU shared with other work while this was measured.
 - **CPU and GPU agree:** they give the same outcome (solved or not) on 100% of the 32768 (target, restart) pairs.
 
+## Collision-aware IK
+
+The second part of the demo adds six sphere obstacles in front of the arm. The arm's links are approximated by 0.06 m spheres, three per link segment.
+
+**Targets.** The 1024 targets are taken from configurations that are collision-free with at least 2 cm of clearance and whose flange is within 12 cm of an obstacle surface. So every target has a collision-free solution, and it sits next to an obstacle. 55266 random configurations were drawn to find them.
+
+**Success** here also needs a collision-free final configuration.
+
+**Two solvers, both run with the same restarts:**
+- **pose-only:** the damped-least-squares IK above, ignoring the obstacles.
+- **null-space avoidance:** the same IK plus a step down the collision cost's gradient, projected into the null space of the pose task (`g - J^T (J J^T + lambda^2 I)^-1 J g`, gain 20). It uses the arm's redundant seventh degree of freedom to move the links away from the obstacles without disturbing the pose.
+
+| Restarts (best of) | 1 | 4 | 8 | 16 | 32 |
+|---|---:|---:|---:|---:|---:|
+| pose-only, solved collision-free | 28.1% | 73.0% | 90.1% | 97.5% | 99.4% |
+| null-space avoidance | 29.2% | 74.6% | 91.7% | 97.9% | 99.4% |
+
+**Reading:**
+- **Collisions are common.** Next to an obstacle, 27.8% of the pose-only IK solutions collide.
+- **Restarts and selection solve it anyway.** Keeping the best collision-free restart reaches 99.4% with 32 restarts: the restarts land in different IK branches, and some of those clear the obstacles.
+- **Null-space avoidance adds 1-2 points at 1-16 restarts and nothing at 32.** Gains of 50-200 gave the same picture. With one redundant degree of freedom, self-motion rarely moves a colliding branch into a free one, while a different restart often lands in one.
+- **On a GPU the cheap answer is more restarts.**
+- **CPU / GPU:** the collision-aware batch takes 3.7-3.9 s on the CPU and 16 ms on the GPU, with the same outcome on 100% of solves.
+
 ## Reproduce
 
 ```bash
@@ -47,8 +71,9 @@ cmake --build build --target gpu_batched_ik -j$(nproc)
 ./bin/gpu_batched_ik --check --no-video    # the CTest gate (gpu_batched_ik_gate)
 ```
 
-`--check` exits non-zero unless the best-of-32 success rate is at least 99% and
-CPU and GPU agree on at least 99% of the solves. CTest runs it as
+`--check` exits non-zero unless the best-of-32 success rate is at least 99%
+(pose-only) and at least 95% (collision-aware), and CPU and GPU agree on at least
+99% of the solves. CTest runs it as
 `gpu_batched_ik_gate` (labels `gpu;manipulation;ik`).
 
 Generated files:
