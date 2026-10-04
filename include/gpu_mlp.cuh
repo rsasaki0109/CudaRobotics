@@ -279,6 +279,25 @@ __global__ inline void mlp_loss_kernel(
     *d_loss = total_loss / batch_size;
 }
 
+// Lanes of a warp handle different samples but accumulate into the same weight
+// gradients. With many warps, per-lane atomics all contend on one address, so
+// warp_reduce sums the warp first and issues one atomic; with few warps the
+// shuffles cost more than they save. warp_reduce must be uniform, and then all
+// 32 lanes must call this with the same addr (block size a multiple of 32).
+__device__ inline void mlp_grad_atomic_add(float* addr, float v, bool warp_reduce) {
+    if (!warp_reduce) {
+        atomicAdd(addr, v);
+        return;
+    }
+    for (int offset = 16; offset > 0; offset >>= 1) {
+        v += __shfl_down_sync(0xffffffffu, v, offset);
+    }
+    if ((threadIdx.x & 31) == 0) atomicAdd(addr, v);
+}
+
+// Batch size from which the backprop kernels reduce gradients per warp.
+static constexpr int MLP_WARP_REDUCE_MIN_BATCH = 512;
+
 __global__ inline void mlp_backprop_batch_kernel(
     const float* weights,
     float* d_grads,
@@ -292,8 +311,11 @@ __global__ inline void mlp_backprop_batch_kernel(
     int activation,
     float* d_loss
 ) {
+    // Lanes past the batch stay active for the warp reductions; they replay the
+    // last sample with zero weight.
     int sample_idx = blockIdx.x * blockDim.x + threadIdx.x;
-    if (sample_idx >= batch_size) return;
+    bool valid = sample_idx < batch_size;
+    if (!valid) sample_idx = batch_size - 1;
 
     if (hidden_dim > MLP_MAX_HIDDEN || n_layers > MLP_MAX_LAYERS || output_dim > MLP_MAX_OUTPUT) {
         return;
@@ -301,7 +323,8 @@ __global__ inline void mlp_backprop_batch_kernel(
 
     const float* input = d_input + sample_idx * input_dim;
     const float* target = d_target + sample_idx * output_dim;
-    float inv_batch = 1.0f / batch_size;
+    float inv_batch = valid ? 1.0f / batch_size : 0.0f;
+    bool warp_reduce = batch_size >= MLP_WARP_REDUCE_MIN_BATCH;
 
     float pre[MLP_MAX_LAYERS][MLP_MAX_HIDDEN];
     float actv[MLP_MAX_LAYERS][MLP_MAX_HIDDEN];
@@ -351,14 +374,15 @@ __global__ inline void mlp_backprop_batch_kernel(
         delta_out[j] = err;
         sample_loss += err * err;
     }
-    atomicAdd(d_loss, sample_loss * inv_batch);
+    mlp_grad_atomic_add(d_loss, sample_loss * inv_batch, warp_reduce);
 
     // output gradients
     for (int j = 0; j < output_dim; j++) {
-        atomicAdd(&d_grads[output_b_offset + j], delta_out[j] * inv_batch);
+        mlp_grad_atomic_add(&d_grads[output_b_offset + j], delta_out[j] * inv_batch,
+                            warp_reduce);
         for (int i = 0; i < hidden_dim; i++) {
-            atomicAdd(&d_grads[output_w_offset + i * output_dim + j],
-                      delta_out[j] * actv[n_layers - 1][i] * inv_batch);
+            mlp_grad_atomic_add(&d_grads[output_w_offset + i * output_dim + j],
+                                delta_out[j] * actv[n_layers - 1][i] * inv_batch, warp_reduce);
         }
     }
 
@@ -377,10 +401,11 @@ __global__ inline void mlp_backprop_batch_kernel(
         layer_offset -= hidden_dim * hidden_dim + hidden_dim;
         int bias_offset = layer_offset + hidden_dim * hidden_dim;
         for (int j = 0; j < hidden_dim; j++) {
-            atomicAdd(&d_grads[bias_offset + j], delta_cur[j] * inv_batch);
+            mlp_grad_atomic_add(&d_grads[bias_offset + j], delta_cur[j] * inv_batch,
+                                warp_reduce);
             for (int i = 0; i < hidden_dim; i++) {
-                atomicAdd(&d_grads[layer_offset + i * hidden_dim + j],
-                          delta_cur[j] * actv[l - 1][i] * inv_batch);
+                mlp_grad_atomic_add(&d_grads[layer_offset + i * hidden_dim + j],
+                                    delta_cur[j] * actv[l - 1][i] * inv_batch, warp_reduce);
             }
         }
 
@@ -397,9 +422,11 @@ __global__ inline void mlp_backprop_batch_kernel(
     // input -> first hidden gradients
     int first_bias_offset = input_dim * hidden_dim;
     for (int j = 0; j < hidden_dim; j++) {
-        atomicAdd(&d_grads[first_bias_offset + j], delta_cur[j] * inv_batch);
+        mlp_grad_atomic_add(&d_grads[first_bias_offset + j], delta_cur[j] * inv_batch,
+                            warp_reduce);
         for (int i = 0; i < input_dim; i++) {
-            atomicAdd(&d_grads[i * hidden_dim + j], delta_cur[j] * input[i] * inv_batch);
+            mlp_grad_atomic_add(&d_grads[i * hidden_dim + j],
+                                delta_cur[j] * input[i] * inv_batch, warp_reduce);
         }
     }
 }
@@ -416,8 +443,11 @@ __global__ inline void mlp_backprop_output_grad_kernel(
     int batch_size,
     int activation
 ) {
+    // Lanes past the batch stay active for the warp reductions; they replay the
+    // last sample with zero weight.
     int sample_idx = blockIdx.x * blockDim.x + threadIdx.x;
-    if (sample_idx >= batch_size) return;
+    bool valid = sample_idx < batch_size;
+    if (!valid) sample_idx = batch_size - 1;
 
     if (hidden_dim > MLP_MAX_HIDDEN || n_layers > MLP_MAX_LAYERS || output_dim > MLP_MAX_OUTPUT) {
         return;
@@ -425,7 +455,8 @@ __global__ inline void mlp_backprop_output_grad_kernel(
 
     const float* input = d_input + sample_idx * input_dim;
     const float* output_grad = d_output_grad + sample_idx * output_dim;
-    float inv_batch = 1.0f / batch_size;
+    float inv_batch = valid ? 1.0f / batch_size : 0.0f;
+    bool warp_reduce = batch_size >= MLP_WARP_REDUCE_MIN_BATCH;
 
     float pre[MLP_MAX_LAYERS][MLP_MAX_HIDDEN];
     float actv[MLP_MAX_LAYERS][MLP_MAX_HIDDEN];
@@ -463,10 +494,11 @@ __global__ inline void mlp_backprop_output_grad_kernel(
 
     for (int j = 0; j < output_dim; j++) {
         delta_out[j] = output_grad[j];
-        atomicAdd(&d_grads[output_b_offset + j], delta_out[j] * inv_batch);
+        mlp_grad_atomic_add(&d_grads[output_b_offset + j], delta_out[j] * inv_batch,
+                            warp_reduce);
         for (int i = 0; i < hidden_dim; i++) {
-            atomicAdd(&d_grads[output_w_offset + i * output_dim + j],
-                      delta_out[j] * actv[n_layers - 1][i] * inv_batch);
+            mlp_grad_atomic_add(&d_grads[output_w_offset + i * output_dim + j],
+                                delta_out[j] * actv[n_layers - 1][i] * inv_batch, warp_reduce);
         }
     }
 
@@ -483,10 +515,11 @@ __global__ inline void mlp_backprop_output_grad_kernel(
         layer_offset -= hidden_dim * hidden_dim + hidden_dim;
         int bias_offset = layer_offset + hidden_dim * hidden_dim;
         for (int j = 0; j < hidden_dim; j++) {
-            atomicAdd(&d_grads[bias_offset + j], delta_cur[j] * inv_batch);
+            mlp_grad_atomic_add(&d_grads[bias_offset + j], delta_cur[j] * inv_batch,
+                                warp_reduce);
             for (int i = 0; i < hidden_dim; i++) {
-                atomicAdd(&d_grads[layer_offset + i * hidden_dim + j],
-                          delta_cur[j] * actv[l - 1][i] * inv_batch);
+                mlp_grad_atomic_add(&d_grads[layer_offset + i * hidden_dim + j],
+                                    delta_cur[j] * actv[l - 1][i] * inv_batch, warp_reduce);
             }
         }
 
@@ -502,9 +535,11 @@ __global__ inline void mlp_backprop_output_grad_kernel(
 
     int first_bias_offset = input_dim * hidden_dim;
     for (int j = 0; j < hidden_dim; j++) {
-        atomicAdd(&d_grads[first_bias_offset + j], delta_cur[j] * inv_batch);
+        mlp_grad_atomic_add(&d_grads[first_bias_offset + j], delta_cur[j] * inv_batch,
+                            warp_reduce);
         for (int i = 0; i < input_dim; i++) {
-            atomicAdd(&d_grads[i * hidden_dim + j], delta_cur[j] * input[i] * inv_batch);
+            mlp_grad_atomic_add(&d_grads[i * hidden_dim + j],
+                                delta_cur[j] * input[i] * inv_batch, warp_reduce);
         }
     }
 }
