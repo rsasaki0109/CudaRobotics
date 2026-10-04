@@ -66,23 +66,62 @@ Thirty seeds per cell cannot resolve a cost of a few episodes, so the detour cel
 | `oi_face_rot_stall_mppi` | 386/400 | 396/400 | 0 / 16, p = 3e-5 |
 | `oi_face_rot_pstall_mppi` | 396/400 | 398/400 | 1 / 5, p = 0.22 |
 
+### A second detour run (seeds 1100-1299, wall and open cells)
+
+A further 200 seeds on `box_detour_wall` and `box_detour_open`, run while looking for the cause, show a larger cost on the smooth wall cell. It was never used to select the rule.
+
+Pooled over seeds 1000-1299:
+
+| Cell | Plant | `oi_face_rot_wide_mppi` | `oi_face_rot_pstall_mppi` |
+|---|---|---:|---:|
+| `box_detour_wall` | smooth | 298/300 | **285/300** |
+| `box_detour_wall` | hard | 298/300 | 296/300 |
+| `box_detour_open` | both | 300/300 | 300/300 |
+| `box_detour_wall_left` / `_far` | both | 199-200/200 | 199-200/200 |
+
+Paired over all detour episodes:
+
+| Plant | Only pstall / only wide | p |
+|---|---|---:|
+| smooth | 0 / 14 | 1e-4 |
+| hard | 1 / 3 | 0.62 |
+
+So on the smooth plant's wall cell the boost costs about 4 % of the episodes. The 1 % from seeds 1000-1099 underestimated it.
+
+**Mechanism.** In the lost episodes the box is pressed against the underside of the wall.
+- Without the boost, the pusher waits about 150 steps; MPPI's own sampling then finds a way around and the episode succeeds.
+- With the boost, the seed keeps asking for the push into the wall. The 0.6 blend holds the pusher at the contact point and suppresses the exploration that would have escaped.
+
+**Tried: boost only when the seed asks the pusher to go elsewhere.** `oi_stall_seed_gap` boosts only if the seed's next target is at least the gap away from the pusher. A blocked push has its target at the pusher, while a walk-around has it at the next corner.
+
+| Seed gap | smooth wall (seeds 1100-1299) | hard wall | smooth open turn (seeds 0-29) |
+|---|---:|---:|---:|
+| none (`pstall`) | 188/200 | 197/200 | **28/30** |
+| 0.1 m | 188/200 | 196/200 | 25/30 |
+| 0.2 m | 189/200 | 197/200 | 23/30 |
+| 0.3 m | **195/200** | **200/200** | 23/30 |
+| no boost (`wide`) | 198/200 | 199/200 | 22/30 |
+
+The gap does not separate the two cases: removing the wall cost removes the open-turn gain with it. In the open-turn stall, the seed's next target is also close to the pusher. The parameter stays in the code (off by default) as a recorded negative result.
+
 All rows in every evaluation are collision-free.
 
 ## Reading
 
-- **The pusher-aware stall fixes the smooth open turn** (18 to 27/30 on unseen seeds, p = 0.004) and keeps the hard plant at 119-120/120 per group.
-- **It cuts the detour cost of the boost by about two thirds**: 16 lost detour episodes in 800 become 5 (against 1 gained).
-  - The remaining cost is on the smooth plant's wall cells: 4 of 400, about 1 %. It is not significant, but it is one-sided.
-- **`oi_face_rot_pstall_mppi` is the planner to use** for detour-and-turn tasks. Across the turn cells it solves 116/120 (smooth) and 119/120 (hard); the detour cells stay at 99-100 %.
-- **What is left:**
-  - the 1 % smooth detour cost;
-  - three open-turn failures in thirty.
-  - A finer stall signal (the pusher's angular progress around the box, rather than its displacement) is the next thing to try.
+- **The pusher-aware stall fixes the smooth open turn** (18 to 27/30 on unseen seeds, p = 0.004). The hard plant stays at 119-120/120 per group.
+- **It is not free on the smooth plant.** It loses about 4 % of `box_detour_wall` episodes (0 / 14, p = 1e-4 over seeds 1000-1299), where the box gets pinned under the wall. Elsewhere its detour cost is within noise.
+- **Which planner to use:**
+  - `oi_face_rot_pstall_mppi` when open-space reorientation matters more than wall-pinned detours, for example turn cells: smooth 116/120 against 106/120 on seeds 900-929.
+  - `oi_face_rot_wide_mppi` stays the safer default when the task has a wall the box can get pinned against.
+- **What is left.** A stall signal that tells "seed blocked by the environment" from "seed not being followed". The seed gap does not. Candidates:
+  - the pusher's angular progress around the box;
+  - a check of whether the seed's push would move the box in the model.
 
 ## Limitations
 
 - One box, `K=256`; the stall rule has three thresholds, chosen from three candidates on 30 seeds.
 - The offline table counts firings, not outcomes; an episode where the boost fires may still succeed.
+- The seed-1100 run doubled as the search set for the seed gap, so the gap table is a development result.
 
 ```bash
 CELLS=box_detour_turn,box_open_turn,box_detour_turn90,box_detour_turn_neg,box_detour_wall,box_detour_open,box_detour_wall_left,box_detour_wall_far
@@ -95,4 +134,9 @@ CELLS=box_detour_turn,box_open_turn,box_detour_turn90,box_detour_turn_neg,box_de
   --planners oi_face_rot_wide_mppi,oi_face_rot_stall_mppi,oi_face_rot_pstall_mppi \
   --k-values 256 --seed-count 100 --seed-offset 1000 [--true-plant hard] \
   --csv docs/results/box_detour_pusher_stall_detours_seed1000_{smooth,hard}_2026-10-04.csv
+./bin/benchmark_diff_mppi_pushing_box --scenarios box_detour_wall,box_detour_open \
+  --planners oi_face_rot_wide_mppi,oi_face_rot_pstall_mppi \
+  --k-values 256 --seed-count 200 --seed-offset 1100 [--true-plant hard] \
+  --csv docs/results/box_detour_pusher_stall_detours_seed1100_{smooth,hard}_2026-10-04.csv
+# seed-gap rule: add --override-oi-stall-seed-gap 0.1|0.2|0.3 to the pstall planner
 ```

@@ -501,8 +501,9 @@ seeds) without losing a detour episode; a stall-triggered seed boost fixes the
 open turn too but loses detour episodes, so it is recorded, not recommended.
 Requiring the pusher to stay put as well (`oi_face_rot_pstall_mppi`,
 [`results/box_detour_pusher_stall_2026-10-04.md`](results/box_detour_pusher_stall_2026-10-04.md))
-keeps the open-turn fix (18 to 27/30) at about a third of the detour cost
-(5 instead of 16 lost detour episodes in 800).
+keeps the open-turn fix (18 to 27/30) at a smaller detour cost, which is
+still about 4 % of the smooth-plant wall cell, where the boost holds the
+pusher against a box pinned under the wall.
 
 | Scenario | Planner | Success | Steps | Final Dist | Cost | Avg ms |
 |---|---|---:|---:|---:|---:|---:|

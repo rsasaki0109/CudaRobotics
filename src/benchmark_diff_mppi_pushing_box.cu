@@ -117,6 +117,8 @@ struct Variant {
     float oi_stall_blend = 0.6f;        // ...blend the seed this strongly (0 steps: off)
     float oi_stall_pusher_dist = 0.0f;  // ...and only if the pusher moved less than this over
     int oi_stall_pusher_window = 20;    //    the last window steps (0 m: ignore the pusher)
+    float oi_stall_seed_gap = 0.0f;     // ...and only if the seed's next target is this far from
+                                        //    the pusher (0: always)
     float oi_path_margin = 0.05f;       // wall clearance used by plan_object_path
 };
 
@@ -1554,8 +1556,11 @@ private:
                 pusher_stuck = hypotf(px - old.x, py - old.y) < v_.oi_stall_pusher_dist;
             }
         }
-        if (v_.oi_stall_steps > 0 && stall_count_ >= v_.oi_stall_steps && pusher_stuck)
-            blend = fmaxf(blend, clampf_local(v_.oi_stall_blend, 0.0f, 1.0f));
+        // With oi_stall_seed_gap set, boost only when the seed asks the pusher to go
+        // somewhere else. A pusher already at the seed's contact point, with the box
+        // not moving, means the seed itself is blocked (for example against the wall);
+        // boosting it would only suppress MPPI's own way out.
+        bool stall_boost = v_.oi_stall_steps > 0 && stall_count_ >= v_.oi_stall_steps && pusher_stuck;
         float sim_px = px, sim_py = py;
         float bx = ox, by = oy;               // box pose the pusher plans around
         int advance = 0;
@@ -1589,6 +1594,9 @@ private:
             } else if (advance == 0) {
                 ref_delay_++;
             }
+            if (t == 0 && stall_boost
+                && (v_.oi_stall_seed_gap <= 0.0f || hypotf(tx - px, ty - py) > v_.oi_stall_seed_gap))
+                blend = fmaxf(blend, clampf_local(v_.oi_stall_blend, 0.0f, 1.0f));
             float ux = clampf_local((tx - sim_px) / p.dt, -p.u_max, p.u_max);
             float uy = clampf_local((ty - sim_py) / p.dt, -p.u_max, p.u_max);
             int base = t * CTRL_DIM;
@@ -2017,6 +2025,7 @@ int main(int argc, char** argv) {
     float override_oi_stall_blend = -1.0f;
     float override_oi_stall_pusher_dist = -1.0f;
     int override_oi_stall_pusher_window = -1;
+    float override_oi_stall_seed_gap = -1.0f;
     for (int i=1;i<argc;i++){ string a=argv[i];
         if (a=="--quick") quick=true;
         else if (a=="--csv"&&i+1<argc) csv_path=argv[++i];
@@ -2040,6 +2049,7 @@ int main(int argc, char** argv) {
         else if (a=="--override-oi-stall-blend"&&i+1<argc) override_oi_stall_blend=(float)atof(argv[++i]);
         else if (a=="--override-oi-stall-pusher-dist"&&i+1<argc) override_oi_stall_pusher_dist=(float)atof(argv[++i]);
         else if (a=="--override-oi-stall-pusher-window"&&i+1<argc) override_oi_stall_pusher_window=atoi(argv[++i]);
+        else if (a=="--override-oi-stall-seed-gap"&&i+1<argc) override_oi_stall_seed_gap=(float)atof(argv[++i]);
         else if (a=="--dump-traj"&&i+1<argc) dump_traj_prefix=argv[++i];
         // per-episode trajectories from the main sweep: <dir>/<scenario>_<planner>_<seed>.csv
         else if (a=="--traj-dir"&&i+1<argc) traj_dir=argv[++i];
@@ -2331,6 +2341,7 @@ int main(int argc, char** argv) {
         if (override_oi_stall_blend >= 0.0f && v.oi_face_switch) v.oi_stall_blend = override_oi_stall_blend;
         if (override_oi_stall_pusher_dist >= 0.0f && v.oi_face_switch) v.oi_stall_pusher_dist = override_oi_stall_pusher_dist;
         if (override_oi_stall_pusher_window >= 1 && v.oi_face_switch) v.oi_stall_pusher_window = override_oi_stall_pusher_window;
+        if (override_oi_stall_seed_gap >= 0.0f && v.oi_face_switch) v.oi_stall_seed_gap = override_oi_stall_seed_gap;
     }
     if (k_values.empty()) k_values = quick ? vector<int>{256} : vector<int>{256, 1024};
     if (seed_count<=0) seed_count = quick ? 4 : 8;
