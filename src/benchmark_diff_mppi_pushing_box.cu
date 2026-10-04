@@ -69,6 +69,8 @@ struct BoxParams {
     float w_obs = 70.0f;            // squared-penetration barrier weight
     bool obs_full_overlap = false;  // box-vs-wall rectangle overlap instead of
                                     // the legacy box-corners-inside-wall test
+    bool obs2 = false;              // a second rectangle wall (needs obs_full_overlap)
+    float obs2_min_x = 0.0f, obs2_min_y = 0.0f, obs2_max_x = 0.0f, obs2_max_y = 0.0f;
 };
 
 struct BoxScenario {
@@ -124,6 +126,10 @@ struct Variant {
                                         //    more than 0.1 m for this many stalled steps (0: off)
     float oi_slide_hysteresis = 0.0f;   // face-switch seed: once engaged, stay engaged this far past
                                         // the face span (stops push / slide-clear flipping; 0: off)
+    bool oi_heading_path = false;       // plan through passages the box only fits turned
+                                        // (plan_heading_path) and turn the box where it says
+    float oi_turn_tol = 0.15f;          // ...a path turn counts as made within this (rad)
+    float oi_turn_blend = -1.0f;        // ...seed blend at a path turn point (<0: oi_near_seed_blend)
     float oi_push_actual_dist = -1.0f;  // face-switch seed: once the box is farther than this from
                                         // its reference pose, aim the first push from the actual
                                         // box instead (<0: never)
@@ -174,15 +180,16 @@ __host__ __device__ inline float point_aabb_penetration_f(
     return fminf(pen_x, pen_y);
 }
 
-// Separating-axis overlap of the box with the wall AABB: the minimum translation
+// Separating-axis overlap of the box with one wall rectangle: the minimum translation
 // depth (0 when separated) and the unit direction (nx, ny) that pushes the box out.
-__host__ __device__ inline float box_aabb_overlap_f(
-    float ox, float oy, float oth, const BoxParams& p, float& nx, float& ny)
+__host__ __device__ inline float box_rect_overlap_f(
+    float ox, float oy, float oth, const BoxParams& p,
+    float min_x, float min_y, float max_x, float max_y, float& nx, float& ny)
 {
     float c = cosf(oth), s = sinf(oth), ac = fabsf(c), as = fabsf(s);
-    float wx = 0.5f * (p.obs_max_x - p.obs_min_x), wy = 0.5f * (p.obs_max_y - p.obs_min_y);
-    float dx = ox - 0.5f * (p.obs_min_x + p.obs_max_x);
-    float dy = oy - 0.5f * (p.obs_min_y + p.obs_max_y);
+    float wx = 0.5f * (max_x - min_x), wy = 0.5f * (max_y - min_y);
+    float dx = ox - 0.5f * (min_x + max_x);
+    float dy = oy - 0.5f * (min_y + max_y);
     float du = dx*c + dy*s, dv = -dx*s + dy*c;
     const float overlap[4] = {
         wx + p.hx*ac + p.hy*as - fabsf(dx),   // world x
@@ -200,6 +207,20 @@ __host__ __device__ inline float box_aabb_overlap_f(
     float sign = side[best] >= 0.0f ? 1.0f : -1.0f;
     nx = sign * ax[best]; ny = sign * ay[best];
     return overlap[best];
+}
+
+// Overlap with the wall(s): the deeper of the two walls when obs2 is set.
+__host__ __device__ inline float box_aabb_overlap_f(
+    float ox, float oy, float oth, const BoxParams& p, float& nx, float& ny)
+{
+    float pen = box_rect_overlap_f(ox, oy, oth, p, p.obs_min_x, p.obs_min_y,
+                                   p.obs_max_x, p.obs_max_y, nx, ny);
+    if (!p.obs2) return pen;
+    float nx2, ny2;
+    float pen2 = box_rect_overlap_f(ox, oy, oth, p, p.obs2_min_x, p.obs2_min_y,
+                                    p.obs2_max_x, p.obs2_max_y, nx2, ny2);
+    if (pen2 > pen) { nx = nx2; ny = ny2; return pen2; }
+    return pen;
 }
 
 __host__ __device__ inline float box_obstacle_penetration_f(
@@ -299,6 +320,7 @@ __host__ __device__ inline void push_step_box_f(
     float& px, float& py, float& ox, float& oy, float& oth,
     float ux, float uy, const BoxParams& p)
 {
+    const float ox0 = ox, oy0 = oy, oth0 = oth;
     px += p.dt * ux; py += p.dt * uy;
     float c = cosf(oth), s = sinf(oth);
     float dx = px - ox, dy = py - oy;
@@ -325,6 +347,11 @@ __host__ __device__ inline void push_step_box_f(
     ox += p.dt * Fx; oy += p.dt * Fy;
     oth = wrapf(oth + p.dt * p.rot_gain * torque);
     resolve_box_obstacles_f(ox, oy, oth, p);
+    // Between two walls a pose that does not fit cannot be pushed out of both:
+    // the box is blocked and keeps its previous pose.
+    if (p.obs2 && box_obstacle_penetration_f(ox, oy, oth, p) > 1e-3f) {
+        ox = ox0; oy = oy0; oth = oth0;
+    }
 }
 
 // ===================== HARD-CONTACT plant (independent, higher-fidelity) =====================
@@ -465,6 +492,12 @@ static const int MAX_PATH = 16;
 struct ObjPath {
     int n = 0;
     float x[MAX_PATH], y[MAX_PATH], s[MAX_PATH];   // waypoints and cumulative arc length
+    // Heading-aware paths (plan_heading_path): th[i] is the box heading at waypoint i,
+    // and a turn is a zero-length segment between two waypoints at the same point.
+    int has_th = 0;
+    float th[MAX_PATH];
+    int turn_from = 1;   // turns before this waypoint have been made (set by the controller)
+    float turn_tol = 0.15f;   // a turn counts as made once the box is within this of it
 };
 
 // Arc length of the point on the path closest to (x, y).
@@ -482,8 +515,28 @@ __host__ __device__ inline float path_progress_f(const ObjPath& path, float x, f
     return s0;
 }
 
+// The first turn of a heading-aware path, from turn_from on, that the box has not
+// made yet: its arc length, point and the headings before / after. A box pushed past
+// the turn point without turning still has the turn pending.
+__host__ __device__ inline bool path_pending_turn_f(
+    const ObjPath& path, float ox, float oy, float oth,
+    float& turn_s, float& turn_x, float& turn_y, float& th_before, float& th_after)
+{
+    if (!path.has_th) return false;
+    for (int k = path.turn_from > 1 ? path.turn_from : 1; k < path.n; k++) {
+        if (fabsf(wrapf(path.th[k] - path.th[k-1])) < 1e-3f) continue;
+        if (fabsf(wrapf(oth - path.th[k])) <= path.turn_tol) continue;   // already made
+        turn_s = path.s[k]; turn_x = path.x[k]; turn_y = path.y[k];
+        th_before = path.th[k-1]; th_after = path.th[k];
+        return true;
+    }
+    return false;
+}
+
 // object_ref_box_f along a waypoint path: project the current box centre onto the
-// path, then advance obj_speed * dt * step along it.
+// path, then advance obj_speed * dt * step along it. On a heading-aware path the
+// reference heading follows the path, and the reference waits at a turn the box has
+// not made yet (it turns there once the box is within 0.15 m of the turn point).
 __host__ __device__ inline void object_ref_path_f(
     const ObjPath& path, float ox0, float oy0, float oth0, float gth,
     float dt, float obj_speed, float ang_speed, int step,
@@ -491,13 +544,24 @@ __host__ __device__ inline void object_ref_path_f(
 {
     float s0 = path_progress_f(path, ox0, oy0);
     float s = fminf(path.s[path.n-1], s0 + fmaxf(0.0f, obj_speed) * dt * static_cast<float>(step));
+    float target_th = gth;
+    bool turn_pending = false;
+    if (path.has_th) {
+        float ts, tx, ty, tb, ta;
+        if (path_pending_turn_f(path, ox0, oy0, oth0, ts, tx, ty, tb, ta)) {
+            turn_pending = true;
+            s = fminf(s, ts);
+            target_th = (ts - s0 < 0.15f) ? ta : tb;
+        }
+    }
     int i = 0;
     while (i + 2 < path.n && path.s[i+1] < s) i++;
     float len = path.s[i+1] - path.s[i];
     float u = len > 1e-6f ? (s - path.s[i]) / len : 1.0f;
     rx = path.x[i] + u * (path.x[i+1] - path.x[i]);
     ry = path.y[i] + u * (path.y[i+1] - path.y[i]);
-    float need = wrapf(gth - oth0);
+    if (path.has_th && !turn_pending) target_th = path.th[i+1];
+    float need = wrapf(target_th - oth0);
     float astep = fminf(fabsf(need), fmaxf(0.0f, ang_speed) * dt * static_cast<float>(step));
     rth = wrapf(oth0 + (need >= 0.0f ? astep : -astep));
 }
@@ -557,10 +621,14 @@ static bool face_switch_target(float px, float py, float ox, float oy, float oth
 // then shortcut to line-of-sight waypoints. A clear straight line is used as is.
 // With axis_aligned the search is 4-connected with a turn penalty and only
 // collinear points are merged, so every segment can be pushed by a single face.
+static ObjPath plan_heading_path(const BoxScenario& sc, const BoxParams& p, float res, float base_th);
+
 static ObjPath plan_object_path(const BoxScenario& sc, bool axis_aligned = false,
-                                float margin = 0.05f, float res = 0.05f, bool axis_when_blocked = false) {
+                                float margin = 0.05f, float res = 0.05f, bool axis_when_blocked = false,
+                                bool heading_aware = false, float heading_base = -100.0f) {
     BoxParams p = sc.params;
     p.obs_min_x -= margin; p.obs_min_y -= margin; p.obs_max_x += margin; p.obs_max_y += margin;
+    p.obs2_min_x -= margin; p.obs2_min_y -= margin; p.obs2_max_x += margin; p.obs2_max_y += margin;
     auto free_at = [&](float x, float y) {
         float nx, ny;
         return p.obstacle_count <= 0 || box_aabb_overlap_f(x, y, sc.oth0, p, nx, ny) <= 0.0f;
@@ -642,6 +710,11 @@ static ObjPath plan_object_path(const BoxScenario& sc, bool axis_aligned = false
         }
     }
 
+    // No path at the start heading (still the blocked straight line): with
+    // heading_aware, plan through the passage turned instead.
+    if (heading_aware && px.size() == 2 && !segment_free(px[0], py[0], px[1], py[1]))
+        return plan_heading_path(sc, p, res, heading_base > -50.0f ? heading_base : sc.oth0);
+
     ObjPath path;
     path.x[0] = px[0]; path.y[0] = py[0]; path.s[0] = 0.0f; path.n = 1;
     for (size_t i = 0; i + 1 < px.size() && path.n < MAX_PATH;) {
@@ -660,12 +733,137 @@ static ObjPath plan_object_path(const BoxScenario& sc, bool axis_aligned = false
     return path;
 }
 
+// Heading-aware object path, for a passage the box only fits through turned: A* over
+// (cell, heading layer), with the layers at the start heading and a quarter turn from
+// it. Turning between the layers is allowed in place where the box can sweep between
+// the two headings. A final turn to the goal heading is placed at the first point of
+// the last run from which the rest of the run is free at the goal heading. p is the
+// margin-inflated scenario params.
+// The layers are base_th and a quarter turn from it; the search starts in the layer
+// nearest the box's current heading sc.oth0 (base_th is the episode's start heading,
+// so a replan from a half-turned box keeps the same two headings).
+static ObjPath plan_heading_path(const BoxScenario& sc, const BoxParams& p, float res, float base_th) {
+    const float layer_th[2] = { base_th, wrapf(base_th + 1.5707963f) };
+    const int l0 = fabsf(wrapf(sc.oth0 - layer_th[1])) < fabsf(wrapf(sc.oth0 - layer_th[0])) ? 1 : 0;
+    auto free_at = [&](float x, float y, float th) {
+        float nx, ny;
+        return p.obstacle_count <= 0 || box_aabb_overlap_f(x, y, th, p, nx, ny) <= 0.0f;
+    };
+    auto sweep_free = [&](float x, float y, float th0, float th1) {
+        float d = wrapf(th1 - th0);
+        for (int k = 0; k <= 8; k++)
+            if (!free_at(x, y, th0 + d * k / 8.0f)) return false;
+        return true;
+    };
+    auto segment_free = [&](float x0, float y0, float x1, float y1, float th) {
+        int n = max(1, (int)ceilf(hypotf(x1 - x0, y1 - y0) / 0.01f));
+        for (int i = 0; i <= n; i++) {
+            float u = (float)i / n;
+            if (!free_at(x0 + u*(x1 - x0), y0 + u*(y1 - y0), th)) return false;
+        }
+        return true;
+    };
+    const float pad = 1.5f, turn_cost = 0.6f;
+    float x0 = fminf(sc.ox0, sc.gx) - pad, y0 = fminf(sc.oy0, sc.gy) - pad;
+    int W = (int)ceilf((fabsf(sc.gx - sc.ox0) + 2*pad) / res) + 1;
+    int H = (int)ceilf((fabsf(sc.gy - sc.oy0) + 2*pad) / res) + 1;
+    int start = (int)lroundf((sc.oy0 - y0) / res) * W + (int)lroundf((sc.ox0 - x0) / res);
+    int goal  = (int)lroundf((sc.gy  - y0) / res) * W + (int)lroundf((sc.gx  - x0) / res);
+    auto cx = [&](int c) { return x0 + (c % W) * res; };
+    auto cy = [&](int c) { return y0 + (c / W) * res; };
+
+    // A* over state = cell * 2 + layer
+    vector<float> g(W*H*2, FLT_MAX);
+    vector<int> parent(W*H*2, -1);
+    priority_queue<pair<float,int>, vector<pair<float,int>>, greater<pair<float,int>>> open;
+    auto h = [&](int c) { return res * hypotf((float)(c % W - goal % W), (float)(c / W - goal / W)); };
+    g[start*2 + l0] = 0.0f; open.push({ h(start), start*2 + l0 });
+    int found = -1;
+    while (!open.empty()) {
+        int st = open.top().second; open.pop();
+        int c = st / 2, l = st % 2;
+        if (c == goal) { found = st; break; }
+        int other = c*2 + (1 - l);
+        if (g[st] + turn_cost < g[other] && sweep_free(cx(c), cy(c), layer_th[l], layer_th[1-l])) {
+            g[other] = g[st] + turn_cost; parent[other] = st; open.push({ g[other] + h(c), other });
+        }
+        for (int dj = -1; dj <= 1; dj++) for (int di = -1; di <= 1; di++) {
+            int i = c % W + di, j = c / W + dj;
+            if ((!di && !dj) || i < 0 || j < 0 || i >= W || j >= H) continue;
+            int n = j * W + i, ns = n*2 + l;
+            float ng = g[st] + res * ((di && dj) ? 1.41421356f : 1.0f);
+            if (ng >= g[ns] || !free_at(cx(n), cy(n), layer_th[l])) continue;
+            g[ns] = ng; parent[ns] = st; open.push({ ng + h(n), ns });
+        }
+    }
+    ObjPath path;
+    if (found < 0) return path;   // n = 0: no path
+
+    // dense (x, y, th) list from the states
+    vector<int> states;
+    for (int st = found; st >= 0; st = parent[st]) states.push_back(st);
+    reverse(states.begin(), states.end());
+    vector<float> dx, dy, dth;
+    for (int st : states) { dx.push_back(cx(st/2)); dy.push_back(cy(st/2)); dth.push_back(layer_th[st%2]); }
+    dx.front() = sc.ox0; dy.front() = sc.oy0; dx.back() = sc.gx; dy.back() = sc.gy;
+
+    // final turn to the goal heading, as early on the last run as it fits
+    float last = dth.back();
+    if (fabsf(wrapf(sc.gth - last)) > 1e-3f) {
+        size_t run0 = dth.size() - 1;
+        while (run0 > 0 && fabsf(wrapf(dth[run0-1] - last)) < 1e-3f && (dx[run0-1] != dx[run0] || dy[run0-1] != dy[run0])) run0--;
+        for (size_t m = run0; m < dth.size(); m++) {
+            bool ok = sweep_free(dx[m], dy[m], last, sc.gth);
+            for (size_t q = m; ok && q < dth.size(); q++) ok = free_at(dx[q], dy[q], sc.gth);
+            if (!ok) continue;
+            dx.insert(dx.begin() + m + 1, dx[m]); dy.insert(dy.begin() + m + 1, dy[m]);
+            dth.insert(dth.begin() + m + 1, sc.gth);
+            for (size_t q = m + 2; q < dth.size(); q++) dth[q] = sc.gth;
+            break;
+        }
+    }
+
+    // compress: keep turns, merge straight runs by line of sight at their heading
+    path.has_th = 1;
+    path.x[0] = dx[0]; path.y[0] = dy[0]; path.th[0] = dth[0]; path.s[0] = 0.0f; path.n = 1;
+    size_t i = 0;
+    while (i + 1 < dx.size() && path.n < MAX_PATH) {
+        size_t j = i + 1;
+        if (fabsf(wrapf(dth[j] - dth[i])) < 1e-3f) {
+            while (j + 1 < dx.size() && fabsf(wrapf(dth[j+1] - dth[i])) < 1e-3f
+                   && segment_free(dx[i], dy[i], dx[j+1], dy[j+1], dth[i])) j++;
+        }
+        path.x[path.n] = dx[j]; path.y[path.n] = dy[j]; path.th[path.n] = dth[j];
+        path.s[path.n] = path.s[path.n-1] + hypotf(dx[j] - dx[i], dy[j] - dy[i]);
+        path.n++; i = j;
+    }
+    return path;
+}
+
 // ===================== Dualf helpers + dynamics (gradient) =====================
 __device__ inline Dualf d_abs(const Dualf& x) { return x.val >= 0.0f ? x : (Dualf::constant(0.0f) - x); }
 __device__ inline Dualf d_relu(const Dualf& x) { return x.val > 0.0f ? x : Dualf::constant(0.0f); }
 __device__ inline Dualf d_max(const Dualf& a, const Dualf& b) { return a.val >= b.val ? a : b; }
 __device__ inline Dualf d_min(const Dualf& a, const Dualf& b) { return a.val <= b.val ? a : b; }
 __device__ inline Dualf d_min0(const Dualf& x) { return x.val < 0.0f ? x : Dualf::constant(0.0f); }
+
+// Dual form of box_rect_overlap_f's depth (clamped at 0).
+__device__ inline Dualf box_rect_overlap_dual(
+    Dualf ox, Dualf oy, Dualf c, Dualf s, const BoxParams& p,
+    float min_x, float min_y, float max_x, float max_y)
+{
+    Dualf ac = d_abs(c), as = d_abs(s);
+    Dualf wx = Dualf::constant(0.5f * (max_x - min_x));
+    Dualf wy = Dualf::constant(0.5f * (max_y - min_y));
+    Dualf hx = Dualf::constant(p.hx), hy = Dualf::constant(p.hy);
+    Dualf dx = ox - Dualf::constant(0.5f * (min_x + max_x));
+    Dualf dy = oy - Dualf::constant(0.5f * (min_y + max_y));
+    Dualf pen = d_min(d_min(wx + hx*ac + hy*as - d_abs(dx),
+                            wy + hx*as + hy*ac - d_abs(dy)),
+                      d_min(hx + wx*ac + wy*as - d_abs(dx*c + dy*s),
+                            hy + wx*as + wy*ac - d_abs(dy*c - dx*s)));
+    return d_relu(pen);
+}
 
 __device__ inline Dualf obstacle_stage_cost_dual(
     Dualf ox, Dualf oy, Dualf oth, const BoxParams& p)
@@ -674,17 +872,11 @@ __device__ inline Dualf obstacle_stage_cost_dual(
     Dualf cost = Dualf::constant(0.0f);
     Dualf c = cudabot::cos(oth), s = cudabot::sin(oth);
     if (p.obs_full_overlap) {   // dual form of box_aabb_overlap_f
-        Dualf ac = d_abs(c), as = d_abs(s);
-        Dualf wx = Dualf::constant(0.5f * (p.obs_max_x - p.obs_min_x));
-        Dualf wy = Dualf::constant(0.5f * (p.obs_max_y - p.obs_min_y));
-        Dualf hx = Dualf::constant(p.hx), hy = Dualf::constant(p.hy);
-        Dualf dx = ox - Dualf::constant(0.5f * (p.obs_min_x + p.obs_max_x));
-        Dualf dy = oy - Dualf::constant(0.5f * (p.obs_min_y + p.obs_max_y));
-        Dualf pen = d_min(d_min(wx + hx*ac + hy*as - d_abs(dx),
-                                wy + hx*as + hy*ac - d_abs(dy)),
-                          d_min(hx + wx*ac + wy*as - d_abs(dx*c + dy*s),
-                                hy + wx*as + wy*ac - d_abs(dy*c - dx*s)));
-        pen = d_relu(pen);
+        Dualf pen = box_rect_overlap_dual(ox, oy, c, s, p, p.obs_min_x, p.obs_min_y,
+                                          p.obs_max_x, p.obs_max_y);
+        if (p.obs2)
+            pen = d_max(pen, box_rect_overlap_dual(ox, oy, c, s, p, p.obs2_min_x, p.obs2_min_y,
+                                                   p.obs2_max_x, p.obs2_max_y));
         return Dualf::constant(p.w_obs) * pen * pen * Dualf::constant(p.dt);
     }
     const float lx[4] = { p.hx, -p.hx, -p.hx, p.hx };
@@ -1289,7 +1481,7 @@ public:
 
     EpisodeRunner(const Variant& v, const BoxScenario& sc, int K, int T, int seed)
         : v_(v), sc_(sc), K_(K), T_(T), seed_(seed) {
-        if (v_.use_object_informed && v_.oi_use_path) path_ = plan_object_path(sc_, v_.oi_axis_path, v_.oi_path_margin, 0.05f, v_.oi_axis_when_blocked);
+        if (v_.use_object_informed && v_.oi_use_path) { path_ = plan_object_path(sc_, v_.oi_axis_path, v_.oi_path_margin, 0.05f, v_.oi_axis_when_blocked, v_.oi_heading_path); path_.turn_tol = v_.oi_turn_tol; }
         h_nominal_.assign(T_*CTRL_DIM, 0.0f);
         CUDA_CHECK(cudaMalloc(&d_start_, STATE_DIM*sizeof(float)));
         CUDA_CHECK(cudaMalloc(&d_nominal_, T_*CTRL_DIM*sizeof(float)));
@@ -1333,9 +1525,11 @@ public:
         if (external_plant_reset)
             external_plant_reset(px_, py_, ox_, oy_, oth_);
         fill(h_nominal_.begin(), h_nominal_.end(), 0.0f);
+        path_.turn_from = 1;
         warmup();
         fill(h_nominal_.begin(), h_nominal_.end(), 0.0f);
         reset_rng();
+        path_.turn_from = 1;
         stall_ox_ = ox_; stall_oy_ = oy_; stall_oth_ = oth_; stall_count_ = 0;
         pusher_head_ = 0;
         seed_steady_ = 0; stall_first_ = make_float2(1e9f, 1e9f);
@@ -1412,6 +1606,7 @@ public:
                     h_nominal_[0], h_nominal_[1],
                     px_, py_, ox_, oy_, oth_, vx_, vy_, w_);
             else if (true_plant_hard) {
+                const float prev_ox = ox_, prev_oy = oy_, prev_oth = oth_;
                 push_step_box_hard_f(px_, py_, ox_, oy_, oth_, vx_, vy_, w_, h_nominal_[0], h_nominal_[1], hard_p);
                 // Rectangle-overlap walls are rigid in the hard plant too: push the box
                 // out and drop the velocity component into the wall. Legacy corner-test
@@ -1423,6 +1618,12 @@ public:
                         ox_ += nx * pen; oy_ += ny * pen;
                         float vn = vx_ * nx + vy_ * ny;
                         if (vn < 0.0f) { vx_ -= vn * nx; vy_ -= vn * ny; }
+                    }
+                    // Between two walls a pose that does not fit is blocked (as in the
+                    // smooth plant): keep the previous pose and stop the box.
+                    if (plant_p.obs2 && box_obstacle_penetration_f(ox_, oy_, oth_, plant_p) > 1e-3f) {
+                        ox_ = prev_ox; oy_ = prev_oy; oth_ = prev_oth;
+                        vx_ = vy_ = w_ = 0.0f;
                     }
                 }
             } else
@@ -1481,7 +1682,51 @@ private:
         CUDA_CHECK(cudaMemcpy(
             d_start_, s, STATE_DIM*sizeof(float), cudaMemcpyHostToDevice));
     }
+    // On a heading-aware path, until the box has made the next turn the controller
+    // plans for the turn point instead of the goal (at the current heading on the way,
+    // at the turn's heading once there): the rollout
+    // cost's pull toward the goal otherwise pushes the box past the turn point into
+    // the passage it does not fit through yet. Success is still judged at the goal.
     void controller_update() {
+        if (!path_.has_th) { controller_update_goal(); return; }
+        // A box knocked more than 0.3 m off a heading-aware path (in the hard plant a
+        // turning push can slide it well away) gets a new path from where it is.
+        {
+            float s0 = path_progress_f(path_, ox_, oy_);
+            int i = 0;
+            while (i + 2 < path_.n && path_.s[i+1] < s0) i++;
+            float len = path_.s[i+1] - path_.s[i];
+            float u = len > 1e-6f ? (s0 - path_.s[i]) / len : 0.0f;
+            float qx = path_.x[i] + u * (path_.x[i+1] - path_.x[i]);
+            float qy = path_.y[i] + u * (path_.y[i+1] - path_.y[i]);
+            if (hypotf(ox_ - qx, oy_ - qy) > 0.3f) {
+                BoxScenario here = sc_;
+                here.ox0 = ox_; here.oy0 = oy_; here.oth0 = oth_;
+                ObjPath np = plan_object_path(here, v_.oi_axis_path, v_.oi_path_margin, 0.05f,
+                                              v_.oi_axis_when_blocked, true, sc_.oth0);
+                if (np.n >= 2) { path_ = np; path_.turn_from = 1; path_.turn_tol = v_.oi_turn_tol; }
+            }
+        }
+        for (;;) {   // skip the turns the box has made
+            int k = path_.turn_from;
+            while (k < path_.n && fabsf(wrapf(path_.th[k] - path_.th[k-1])) < 1e-3f) k++;
+            if (k >= path_.n || fabsf(wrapf(oth_ - path_.th[k])) > path_.turn_tol) break;
+            path_.turn_from = k + 1;
+        }
+        float ts, tpx, tpy, tb, ta;
+        if (!path_pending_turn_f(path_, ox_, oy_, oth_, ts, tpx, tpy, tb, ta)) {
+            controller_update_goal(); return;
+        }
+        // Keep the current heading on the way to the turn point; turn once there.
+        bool at_turn = ts - path_progress_f(path_, ox_, oy_) <= 0.15f;
+        float gx = sc_.gx, gy = sc_.gy, gth = sc_.gth;
+        sc_.gx = tpx; sc_.gy = tpy; sc_.gth = at_turn ? ta : tb;
+        subgoal_ = true; real_gx_ = gx; real_gy_ = gy;
+        controller_update_goal();
+        subgoal_ = false;
+        sc_.gx = gx; sc_.gy = gy; sc_.gth = gth;
+    }
+    void controller_update_goal() {
         float observed_px = px_, observed_py = py_;
         float observed_ox = ox_, observed_oy = oy_, observed_oth = oth_;
         if (external_plant_observe)
@@ -1547,8 +1792,17 @@ private:
     // ref_delay_ (steps before the box is expected to move) for the rollout cost.
     void seed_face_switch_nominal(float px, float py, float ox, float oy, float oth) {
         float blend = clampf_local(v_.oi_seed_blend, 0.0f, 1.0f);
-        if (v_.oi_near_seed_blend >= 0.0f && hypotf(sc_.gx - ox, sc_.gy - oy) <= v_.oi_rot_radius)
+        // near the goal itself (not a turn subgoal, which is handled just below)
+        float goal_x = subgoal_ ? real_gx_ : sc_.gx, goal_y = subgoal_ ? real_gy_ : sc_.gy;
+        if (v_.oi_near_seed_blend >= 0.0f && hypotf(goal_x - ox, goal_y - oy) <= v_.oi_rot_radius)
             blend = clampf_local(v_.oi_near_seed_blend, 0.0f, 1.0f);
+        {
+            float ts, tpx, tpy, tb, ta;
+            float turn_blend = v_.oi_turn_blend >= 0.0f ? v_.oi_turn_blend : v_.oi_near_seed_blend;
+            if (turn_blend >= 0.0f && path_pending_turn_f(path_, ox, oy, oth, ts, tpx, tpy, tb, ta)
+                && ts - path_progress_f(path_, ox, oy) <= 0.15f)
+                blend = clampf_local(turn_blend, 0.0f, 1.0f);
+        }
         // Stall: the box has not moved for oi_stall_steps control steps.
         if (hypotf(ox - stall_ox_, oy - stall_oy_) > 0.01f || fabsf(wrapf(oth - stall_oth_)) > 0.02f) {
             stall_ox_ = ox; stall_oy_ = oy; stall_oth_ = oth; stall_count_ = 0;
@@ -1695,7 +1949,14 @@ private:
         const BoxParams& p = sc_.params;
         float need = wrapf(sc_.gth - oth);
         float ex = sc_.gx - ox, ey = sc_.gy - oy, dist = sqrtf(ex*ex + ey*ey);
-        if (dist > v_.oi_rot_radius || fabsf(need) <= 0.5f * sc_.ang_tol) return false;
+        float ts, tpx, tpy, tb, ta;
+        if (path_pending_turn_f(path_, ox, oy, oth, ts, tpx, tpy, tb, ta)) {
+            // A turn of a heading-aware path: turn there, toward the path's next heading,
+            // keeping the box at the turn point.
+            if (ts - path_progress_f(path_, ox, oy) > 0.15f) return false;
+            need = wrapf(ta - oth);
+            ex = tpx - ox; ey = tpy - oy; dist = sqrtf(ex*ex + ey*ey);
+        } else if (dist > v_.oi_rot_radius || fabsf(need) <= 0.5f * sc_.ang_tol) return false;
         float c = cosf(oth), s = sinf(oth);
         float best = -1e30f;
         for (int axis = 0; axis < 2; axis++) for (int k = 0; k < 2; k++) {
@@ -1859,6 +2120,8 @@ private:
     float2 stall_first_ = make_float2(1e9f, 1e9f);   // seed's first target at the last stalled step
     int seed_steady_ = 0;                   // stalled steps the seed's first target held still
     bool seed_engaged_ = false;             // face-switch seed pushed at the last control step
+    bool subgoal_ = false;                  // planning for a heading-aware path's turn point
+    float real_gx_ = 0, real_gy_ = 0;       // the goal while subgoal_ is set
     static const int PUSHER_HIST = 64;
     float2 pusher_hist_[PUSHER_HIST];       // recent pusher positions (ring buffer)
     int pusher_head_ = 0;
@@ -2023,6 +2286,33 @@ static BoxScenario make_box_detour_turn_neg() {
     s.gth = -1.2f;
     return s;
 }
+// A gap the box only fits through sideways: a wall across the way with a 0.55 m
+// opening, against a 0.70 m x 0.36 m box that starts with its long side across
+// the gap. The box has to turn about 90 degrees before the gap, well before the
+// goal, which ends with the box at 90 degrees.
+static BoxScenario make_box_gap_turn() {
+    BoxScenario s; s.name = "box_gap_turn";
+    s.ox0 = 1.5f; s.oy0 = 1.0f; s.oth0 = 0.0f; s.px0 = 1.5f; s.py0 = 0.55f;
+    s.gx = 1.5f; s.gy = 3.4f; s.gth = 1.5708f;
+    s.pos_tol = 0.25f; s.ang_tol = 0.35f; s.max_steps = 500;
+    s.params.obstacle_count = 1;
+    s.params.obs_full_overlap = true;
+    s.params.obs_min_x = -0.5f; s.params.obs_max_x = 1.225f;
+    s.params.obs_min_y = 2.0f;  s.params.obs_max_y = 2.2f;
+    s.params.obs2 = true;
+    s.params.obs2_min_x = 1.775f; s.params.obs2_max_x = 3.5f;
+    s.params.obs2_min_y = 2.0f;   s.params.obs2_max_y = 2.2f;
+    s.params.w_obs = 85.0f;
+    return s;
+}
+// The same gap with the goal back at the start heading: turn, pass, turn back.
+static BoxScenario make_box_gap_return() {
+    BoxScenario s = make_box_gap_turn();
+    s.name = "box_gap_return";
+    s.gth = 0.0f;
+    s.seed_as = "box_gap_turn";
+    return s;
+}
 static BoxScenario make_box_detour_open() {
     BoxScenario s = make_box_detour_wall();
     s.name = "box_detour_open";
@@ -2113,6 +2403,8 @@ int main(int argc, char** argv) {
     int override_oi_stall_consistent_steps = -1;
     float override_oi_slide_hysteresis = -1.0f;
     float override_oi_push_actual_dist = -2.0f;
+    int override_oi_heading_path = -1;
+    float override_oi_turn_tol = -1.0f, override_oi_turn_blend = -2.0f;
     for (int i=1;i<argc;i++){ string a=argv[i];
         if (a=="--quick") quick=true;
         else if (a=="--csv"&&i+1<argc) csv_path=argv[++i];
@@ -2141,6 +2433,9 @@ int main(int argc, char** argv) {
         else if (a=="--override-oi-stall-consistent-steps"&&i+1<argc) override_oi_stall_consistent_steps=atoi(argv[++i]);
         else if (a=="--override-oi-slide-hysteresis"&&i+1<argc) override_oi_slide_hysteresis=(float)atof(argv[++i]);
         else if (a=="--override-oi-push-actual-dist"&&i+1<argc) override_oi_push_actual_dist=(float)atof(argv[++i]);
+        else if (a=="--override-oi-heading-path"&&i+1<argc) override_oi_heading_path=atoi(argv[++i]);
+        else if (a=="--override-oi-turn-tol"&&i+1<argc) override_oi_turn_tol=(float)atof(argv[++i]);
+        else if (a=="--override-oi-turn-blend"&&i+1<argc) override_oi_turn_blend=(float)atof(argv[++i]);
         else if (a=="--dump-traj"&&i+1<argc) dump_traj_prefix=argv[++i];
         // per-episode trajectories from the main sweep: <dir>/<scenario>_<planner>_<seed>.csv
         else if (a=="--traj-dir"&&i+1<argc) traj_dir=argv[++i];
@@ -2352,7 +2647,7 @@ int main(int argc, char** argv) {
     // box_swivel and box_align_strict are appended LAST so the existing scenarios keep
     // their indices si=0..2 (the per-run seed in the sweep loop is si-dependent);
     // published numbers stay byte-identical.
-    vector<BoxScenario> all_sc = { make_box_turn(), make_box_align(), make_box_pivot(), make_box_swivel(), make_box_align_strict(), make_box_align_detour(), make_box_align_contact_loss(), make_box_align_contact_arc(), make_box_align_detour_nowall(), make_box_align_detour_gate(), make_box_detour_wall(), make_box_detour_open(), make_box_detour_wall_left(), make_box_detour_wall_far(), make_box_detour_turn(), make_box_open_turn(), make_box_detour_turn90(), make_box_detour_turn_neg() };
+    vector<BoxScenario> all_sc = { make_box_turn(), make_box_align(), make_box_pivot(), make_box_swivel(), make_box_align_strict(), make_box_align_detour(), make_box_align_contact_loss(), make_box_align_contact_arc(), make_box_align_detour_nowall(), make_box_align_detour_gate(), make_box_detour_wall(), make_box_detour_open(), make_box_detour_wall_left(), make_box_detour_wall_far(), make_box_detour_turn(), make_box_open_turn(), make_box_detour_turn90(), make_box_detour_turn_neg(), make_box_gap_turn(), make_box_gap_return() };
     auto scenario_seed_index = [&](const string& name) {
         for (size_t i = 0; i < all_sc.size(); i++)
             if (all_sc[i].name == name) {
@@ -2400,6 +2695,8 @@ int main(int argc, char** argv) {
     // ...and aims the first push from the actual box when it is more than 0.3 m from its
     // reference pose (selected on seeds 0-29 and 1100-1299; see box_detour_push_anchor).
     { Variant v; v.name="oi_face_rot_anchor_mppi"; v.use_object_informed=true; v.oi_use_path=true; v.oi_axis_path=true; v.oi_axis_when_blocked=true; v.oi_face_safe_slide=true; v.oi_face_rotate=true; v.oi_face_switch=true; v.oi_face_route_actual=true; v.oi_face_aim_final=true; v.oi_ref_weight_pos=1.5f; v.oi_ref_weight_ang=3.0f; v.oi_obj_speed=0.6f; v.oi_ang_speed=1.2f; v.oi_seed_blend=0.12f; v.oi_near_seed_blend=0.6f; v.oi_rot_radius=1.0f; v.oi_stall_steps=40; v.oi_stall_pusher_dist=0.10f; v.oi_stall_pusher_window=20; v.oi_stall_blend=0.6f; v.oi_push_actual_dist=0.30f; variants.push_back(v); }
+    // ...and plans through passages the box only fits turned (box_gap_turn_path).
+    { Variant v; v.name="oi_face_rot_turnpath_mppi"; v.use_object_informed=true; v.oi_use_path=true; v.oi_axis_path=true; v.oi_axis_when_blocked=true; v.oi_face_safe_slide=true; v.oi_face_rotate=true; v.oi_face_switch=true; v.oi_face_route_actual=true; v.oi_face_aim_final=true; v.oi_ref_weight_pos=1.5f; v.oi_ref_weight_ang=3.0f; v.oi_obj_speed=0.6f; v.oi_ang_speed=1.2f; v.oi_seed_blend=0.12f; v.oi_near_seed_blend=0.6f; v.oi_rot_radius=1.0f; v.oi_stall_steps=40; v.oi_stall_pusher_dist=0.10f; v.oi_stall_pusher_window=20; v.oi_stall_blend=0.6f; v.oi_push_actual_dist=0.30f; v.oi_heading_path=true; variants.push_back(v); }
     // axis-aligned path when the straight line is blocked, straight path otherwise
     { Variant v; v.name="oi_face_auto_mppi"; v.use_object_informed=true; v.oi_use_path=true; v.oi_axis_path=true; v.oi_axis_when_blocked=true; v.oi_face_safe_slide=true; v.oi_face_switch=true; v.oi_face_route_actual=true; v.oi_face_aim_final=true; v.oi_ref_weight_pos=1.5f; v.oi_ref_weight_ang=3.0f; v.oi_obj_speed=0.6f; v.oi_ang_speed=1.2f; v.oi_seed_blend=0.12f; variants.push_back(v); }
     { Variant v; v.name="oi_path_slow_mppi"; v.use_object_informed=true; v.oi_use_path=true; v.oi_ref_weight_pos=1.5f; v.oi_ref_weight_ang=3.0f; v.oi_obj_speed=0.6f; v.oi_ang_speed=1.2f; v.oi_seed_blend=0.12f; variants.push_back(v); }
@@ -2440,6 +2737,9 @@ int main(int argc, char** argv) {
         if (override_oi_stall_consistent_steps >= 0 && v.oi_face_switch) v.oi_stall_consistent_steps = override_oi_stall_consistent_steps;
         if (override_oi_slide_hysteresis >= 0.0f && v.oi_face_switch) v.oi_slide_hysteresis = override_oi_slide_hysteresis;
         if (override_oi_push_actual_dist > -1.5f && v.oi_face_switch) v.oi_push_actual_dist = override_oi_push_actual_dist;
+        if (override_oi_heading_path >= 0 && v.oi_use_path) v.oi_heading_path = override_oi_heading_path != 0;
+        if (override_oi_turn_tol > 0.0f) v.oi_turn_tol = override_oi_turn_tol;
+        if (override_oi_turn_blend > -1.5f) v.oi_turn_blend = override_oi_turn_blend;
     }
     if (k_values.empty()) k_values = quick ? vector<int>{256} : vector<int>{256, 1024};
     if (seed_count<=0) seed_count = quick ? 4 : 8;
