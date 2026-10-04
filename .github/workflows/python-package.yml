@@ -51,14 +51,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Same packages as the cibuildwheel job below, not the full toolkit.
       - name: Install CUDA toolkit
         uses: Jimver/cuda-toolkit@v0.2.16
         with:
           cuda: "12.0.0"
           method: network
-          sub-packages: '["nvcc"]'
-          non-cuda-sub-packages: '["libcurand-dev"]'
 
       - name: Set up Python
         uses: actions/setup-python@v5
