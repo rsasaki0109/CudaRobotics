@@ -510,6 +510,12 @@ box once it is 0.3 m off its reference (`oi_face_rot_anchor_mppi`,
 [`results/box_detour_push_anchor_2026-10-04.md`](results/box_detour_push_anchor_2026-10-04.md))
 solves 240/240 (smooth) and 239/240 (hard) over the eight detour-and-turn cells
 on fresh seeds, and 400/400 detour episodes on both plants.
+A gap the box only fits through sideways needs a turn mid-path
+([`results/box_gap_turn_path_2026-10-05.md`](results/box_gap_turn_path_2026-10-05.md)):
+planning the turn into a heading-aware object path (`oi_face_rot_turnpath_mppi`)
+takes the two gap cells from 69 to 194 of 200 on the smooth plant, while on the
+hard plant the box pivots on the wall corner by itself and the earlier planner
+stays ahead (191 vs 179 of 200).
 
 | Scenario | Planner | Success | Steps | Final Dist | Cost | Avg ms |
 |---|---|---:|---:|---:|---:|---:|
