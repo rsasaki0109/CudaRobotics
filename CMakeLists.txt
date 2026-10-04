@@ -491,6 +491,8 @@ cudabot_demo(comparison_gaussian_splatting src/comparison_gaussian_splatting.cu 
 
 cudabot_demo(gpu_batched_ilqr src/gpu_batched_ilqr.cu OPENCV RELAXED_CONSTEXPR NO_FMAD)
 
+cudabot_demo(gpu_batched_ik src/gpu_batched_ik.cu OPENCV RELAXED_CONSTEXPR NO_FMAD)
+
 cudabot_demo(gpu_parallel_ilqr src/gpu_parallel_ilqr.cu OPENCV RELAXED_CONSTEXPR NO_FMAD)
 
 add_executable(gpu_filterreg src/gpu_filterreg.cu src/filterreg_gpu.cu)
@@ -697,6 +699,13 @@ add_test(NAME voxel_mapping_gpu_smoke
 set_tests_properties(voxel_mapping_gpu_smoke PROPERTIES
   TIMEOUT 60
   LABELS "gpu;mapping;api")
+
+add_test(NAME gpu_batched_ik_gate
+  COMMAND $<TARGET_FILE:gpu_batched_ik> --check --no-video
+  WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+set_tests_properties(gpu_batched_ik_gate PROPERTIES
+  TIMEOUT 300
+  LABELS "gpu;manipulation;ik")
 
 add_test(NAME esdf_2d_gpu_smoke
   COMMAND $<TARGET_FILE:esdf_2d_gpu_smoke>)
