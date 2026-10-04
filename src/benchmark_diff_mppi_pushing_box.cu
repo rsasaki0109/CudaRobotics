@@ -112,6 +112,7 @@ struct Variant {
     bool oi_axis_when_blocked = false;  // use the axis-aligned path only if the straight line is blocked
     bool oi_face_rotate = false;        // face-switch seed: off-centre pushes to turn the box near the goal
     float oi_rot_radius = 0.8f;         // ...within this distance of the goal (selected on seeds 0-7)
+    float oi_near_seed_blend = -1.0f;   // face-switch seed blend within oi_rot_radius (<0: oi_seed_blend)
     float oi_path_margin = 0.05f;       // wall clearance used by plan_object_path
 };
 
@@ -1524,6 +1525,8 @@ private:
     void seed_face_switch_nominal(float px, float py, float ox, float oy, float oth) {
         const BoxParams& p = sc_.params;
         float blend = clampf_local(v_.oi_seed_blend, 0.0f, 1.0f);
+        if (v_.oi_near_seed_blend >= 0.0f && hypotf(sc_.gx - ox, sc_.gy - oy) <= v_.oi_rot_radius)
+            blend = clampf_local(v_.oi_near_seed_blend, 0.0f, 1.0f);
         float sim_px = px, sim_py = py;
         float bx = ox, by = oy;               // box pose the pusher plans around
         int advance = 0;
@@ -1975,6 +1978,7 @@ int main(int argc, char** argv) {
     float override_soppi_bandwidth = -1.0f;
     float override_oi_seed_blend = -1.0f, override_oi_obj_speed = -1.0f, override_oi_path_margin = -1.0f;
     float override_oi_rot_radius = -1.0f;
+    float override_oi_near_seed_blend = -1.0f;
     for (int i=1;i<argc;i++){ string a=argv[i];
         if (a=="--quick") quick=true;
         else if (a=="--csv"&&i+1<argc) csv_path=argv[++i];
@@ -1993,6 +1997,7 @@ int main(int argc, char** argv) {
         else if (a=="--override-oi-obj-speed"&&i+1<argc) override_oi_obj_speed=(float)atof(argv[++i]);
         else if (a=="--override-oi-path-margin"&&i+1<argc) override_oi_path_margin=(float)atof(argv[++i]);
         else if (a=="--override-oi-rot-radius"&&i+1<argc) override_oi_rot_radius=(float)atof(argv[++i]);
+        else if (a=="--override-oi-near-seed-blend"&&i+1<argc) override_oi_near_seed_blend=(float)atof(argv[++i]);
         else if (a=="--dump-traj"&&i+1<argc) dump_traj_prefix=argv[++i];
         // per-episode trajectories from the main sweep: <dir>/<scenario>_<planner>_<seed>.csv
         else if (a=="--traj-dir"&&i+1<argc) traj_dir=argv[++i];
@@ -2238,6 +2243,9 @@ int main(int argc, char** argv) {
     { Variant v; v.name="oi_face_axis_safe_mppi"; v.use_object_informed=true; v.oi_use_path=true; v.oi_axis_path=true; v.oi_face_safe_slide=true; v.oi_face_switch=true; v.oi_face_route_actual=true; v.oi_face_aim_final=true; v.oi_ref_weight_pos=1.5f; v.oi_ref_weight_ang=3.0f; v.oi_obj_speed=0.6f; v.oi_ang_speed=1.2f; v.oi_seed_blend=0.12f; variants.push_back(v); }
     { Variant v; v.name="oi_face_track_safe_mppi"; v.use_object_informed=true; v.oi_use_path=true; v.oi_face_safe_slide=true; v.oi_face_switch=true; v.oi_face_route_actual=true; v.oi_face_aim_final=true; v.oi_ref_weight_pos=1.5f; v.oi_ref_weight_ang=3.0f; v.oi_obj_speed=0.6f; v.oi_ang_speed=1.2f; v.oi_seed_blend=0.12f; variants.push_back(v); }
     { Variant v; v.name="oi_face_rot_mppi"; v.use_object_informed=true; v.oi_use_path=true; v.oi_axis_path=true; v.oi_axis_when_blocked=true; v.oi_face_safe_slide=true; v.oi_face_rotate=true; v.oi_face_switch=true; v.oi_face_route_actual=true; v.oi_face_aim_final=true; v.oi_ref_weight_pos=1.5f; v.oi_ref_weight_ang=3.0f; v.oi_obj_speed=0.6f; v.oi_ang_speed=1.2f; v.oi_seed_blend=0.12f; variants.push_back(v); }
+    // Rotation phase plus a stronger seed near the goal: the 12 % blend lets MPPI
+    // park the box beside the goal after a turn (near blend selected on seeds 0-7).
+    { Variant v; v.name="oi_face_rot_near_mppi"; v.use_object_informed=true; v.oi_use_path=true; v.oi_axis_path=true; v.oi_axis_when_blocked=true; v.oi_face_safe_slide=true; v.oi_face_rotate=true; v.oi_face_switch=true; v.oi_face_route_actual=true; v.oi_face_aim_final=true; v.oi_ref_weight_pos=1.5f; v.oi_ref_weight_ang=3.0f; v.oi_obj_speed=0.6f; v.oi_ang_speed=1.2f; v.oi_seed_blend=0.12f; v.oi_near_seed_blend=0.6f; variants.push_back(v); }
     // axis-aligned path when the straight line is blocked, straight path otherwise
     { Variant v; v.name="oi_face_auto_mppi"; v.use_object_informed=true; v.oi_use_path=true; v.oi_axis_path=true; v.oi_axis_when_blocked=true; v.oi_face_safe_slide=true; v.oi_face_switch=true; v.oi_face_route_actual=true; v.oi_face_aim_final=true; v.oi_ref_weight_pos=1.5f; v.oi_ref_weight_ang=3.0f; v.oi_obj_speed=0.6f; v.oi_ang_speed=1.2f; v.oi_seed_blend=0.12f; variants.push_back(v); }
     { Variant v; v.name="oi_path_slow_mppi"; v.use_object_informed=true; v.oi_use_path=true; v.oi_ref_weight_pos=1.5f; v.oi_ref_weight_ang=3.0f; v.oi_obj_speed=0.6f; v.oi_ang_speed=1.2f; v.oi_seed_blend=0.12f; variants.push_back(v); }
@@ -2268,6 +2276,7 @@ int main(int argc, char** argv) {
         if (override_oi_obj_speed >= 0.0f && v.use_object_informed) v.oi_obj_speed = override_oi_obj_speed;
         if (override_oi_path_margin >= 0.0f && v.oi_use_path) v.oi_path_margin = override_oi_path_margin;
         if (override_oi_rot_radius >= 0.0f && v.oi_face_rotate) v.oi_rot_radius = override_oi_rot_radius;
+        if (override_oi_near_seed_blend >= 0.0f && v.oi_face_switch) v.oi_near_seed_blend = override_oi_near_seed_blend;
     }
     if (k_values.empty()) k_values = quick ? vector<int>{256} : vector<int>{256, 1024};
     if (seed_count<=0) seed_count = quick ? 4 : 8;
