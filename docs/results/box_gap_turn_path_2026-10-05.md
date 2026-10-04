@@ -93,6 +93,25 @@ All rows are collision-free.
 - **Which to use:** `oi_face_rot_turnpath_mppi` when the model matches the plant or the passage gives nothing to pivot on; `oi_face_rot_anchor_mppi` under strong contact mismatch.
 - **Open:** making the planned turn robust to the hard plant's sliding, for example by turning while the box rests against a wall, as the hard plant does on its own.
 
+## Follow-up: making the turn robust to the hard plant (negative)
+
+Three attempts on the development seeds; none is kept in the code. Successes out of 30:
+
+| Change to `oi_face_rot_turnpath_mppi` | smooth: turn | smooth: return | hard: turn | hard: return |
+|---|---:|---:|---:|---:|
+| none | 30 | 29 | 18 | 30 |
+| a replan from an off-layer heading starts by turning back to the layer | 30 | 29 | 17 | 28 |
+| latch a made turn only after the box has moved 0.3 m past it | **30** | **30** | 12 | 23 |
+
+**Falling back to the earlier planner when a turn takes too long** was ruled out before trying it. The hard-plant failures make their first turn as fast as the successes (33-53 steps against 32-53), so a timeout would not fire.
+
+**Where the hard plant fails.** All 12 hard-plant failures are on the turn cell.
+- After the turn the box keeps rotating (momentum) to 2-3 rad and slides along the wall.
+- Replans from those poses often find no path, because the box cannot sweep there.
+- Re-opening the turn when the heading drifts (the latch) makes the smooth plant perfect, but on the hard plant the extra turning pushes spin the box more.
+
+The robust version probably needs to damp the box's rotation before it reaches the target heading. That is a model the controller does not have: the smooth model has no momentum.
+
 ## Limitations
 
 - One box, two gap cells, `K=256`.
