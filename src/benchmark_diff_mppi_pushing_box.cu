@@ -119,6 +119,11 @@ struct Variant {
     int oi_stall_pusher_window = 20;    //    the last window steps (0 m: ignore the pusher)
     float oi_stall_seed_gap = 0.0f;     // ...and only if the seed's next target is this far from
                                         //    the pusher (0: always)
+    bool oi_stall_unblocked = false;    // ...and only if the seed does not push the box into the wall
+    int oi_stall_consistent_steps = 0;  // ...and only once the seed's first target has not jumped
+                                        //    more than 0.1 m for this many stalled steps (0: off)
+    float oi_slide_hysteresis = 0.0f;   // face-switch seed: once engaged, stay engaged this far past
+                                        // the face span (stops push / slide-clear flipping; 0: off)
     float oi_path_margin = 0.05f;       // wall clearance used by plan_object_path
 };
 
@@ -504,9 +509,12 @@ __host__ __device__ inline void object_ref_path_f(
 // centre with a full radius of clearance, instead of clipping the corner.
 // Pusher target for pushing a given box face (along_x picks the x faces, nsign the
 // side) at tangential offset wt_contact from the face centre; see face_switch_target.
+// span_slack widens the face span a safe-slide push stays engaged within (hysteresis
+// for a pusher that was engaged at the previous step).
 static bool face_route_target(float px, float py, float ox, float oy, float oth,
                               bool along_x, float nsign, float wt_contact, const BoxParams& p,
-                              float clear, float& tx, float& ty, bool safe_slide) {
+                              float clear, float& tx, float& ty, bool safe_slide,
+                              float span_slack = 0.0f) {
     float c = cosf(oth), s = sinf(oth);
     float lx = c*(px - ox) + s*(py - oy), ly = -s*(px - ox) + c*(py - oy);
     float nx = along_x ? nsign : 0.0f, ny = along_x ? 0.0f : nsign;   // outward normal of the pushing face
@@ -515,7 +523,7 @@ static bool face_route_target(float px, float py, float ox, float oy, float oth,
     float side = ut >= 0.0f ? 1.0f : -1.0f;
     float wn, wt;
     bool engaged = un >= hn + 0.5f * p.push_r;
-    if (safe_slide && engaged && fabsf(ut) > ht + 0.5f * p.push_r) {
+    if (safe_slide && engaged && fabsf(ut) > ht + 0.5f * p.push_r + span_slack) {
         engaged = false;
         if (un >= hn + p.push_r + 0.02f) { wn = fmaxf(un, hn + p.push_r + 0.04f); wt = wt_contact; }   // slide clear
         else                             { wn = hn + clear;                      wt = side * (ht + clear); }
@@ -531,12 +539,14 @@ static bool face_route_target(float px, float py, float ox, float oy, float oth,
 
 static bool face_switch_target(float px, float py, float ox, float oy, float oth,
                                float dirx, float diry, const BoxParams& p, float clear,
-                               float& tx, float& ty, bool safe_slide = false) {
+                               float& tx, float& ty, bool safe_slide = false,
+                               float span_slack = 0.0f) {
     float c = cosf(oth), s = sinf(oth);
     float dlx = c*dirx + s*diry, dly = -s*dirx + c*diry;
     bool along_x = fabsf(dlx) * p.hy >= fabsf(dly) * p.hx;   // which face pair pushes best
     float nsign = along_x ? (dlx >= 0.0f ? -1.0f : 1.0f) : (dly >= 0.0f ? -1.0f : 1.0f);
-    return face_route_target(px, py, ox, oy, oth, along_x, nsign, 0.0f, p, clear, tx, ty, safe_slide);
+    return face_route_target(px, py, ox, oy, oth, along_x, nsign, 0.0f, p, clear, tx, ty, safe_slide,
+                             span_slack);
 }
 
 // Object-level planner for the path-following object reference: A* over box-centre
@@ -1325,6 +1335,8 @@ public:
         reset_rng();
         stall_ox_ = ox_; stall_oy_ = oy_; stall_oth_ = oth_; stall_count_ = 0;
         pusher_head_ = 0;
+        seed_steady_ = 0; stall_first_ = make_float2(1e9f, 1e9f);
+        seed_engaged_ = false;
 
         // True plant params: contact mobility scaled by plant_gain_scale (the
         // controller's model, used in rollout/grad below, keeps sc_.params).
@@ -1531,7 +1543,6 @@ private:
     // along the path, holding the object reference until it gets there. Sets
     // ref_delay_ (steps before the box is expected to move) for the rollout cost.
     void seed_face_switch_nominal(float px, float py, float ox, float oy, float oth) {
-        const BoxParams& p = sc_.params;
         float blend = clampf_local(v_.oi_seed_blend, 0.0f, 1.0f);
         if (v_.oi_near_seed_blend >= 0.0f && hypotf(sc_.gx - ox, sc_.gy - oy) <= v_.oi_rot_radius)
             blend = clampf_local(v_.oi_near_seed_blend, 0.0f, 1.0f);
@@ -1556,11 +1567,59 @@ private:
                 pusher_stuck = hypotf(px - old.x, py - old.y) < v_.oi_stall_pusher_dist;
             }
         }
-        // With oi_stall_seed_gap set, boost only when the seed asks the pusher to go
-        // somewhere else. A pusher already at the seed's contact point, with the box
-        // not moving, means the seed itself is blocked (for example against the wall);
-        // boosting it would only suppress MPPI's own way out.
         bool stall_boost = v_.oi_stall_steps > 0 && stall_count_ >= v_.oi_stall_steps && pusher_stuck;
+        if (stall_boost) {
+            // Dry run of the pure seed (blend 1), then restore the nominal.
+            vector<float> saved = h_nominal_;
+            float2 push_dir;
+            float2 first = blend_face_switch_seed(px, py, ox, oy, oth, 1.0f, &push_dir, false);
+            h_nominal_.swap(saved);
+            // With oi_stall_seed_gap set, boost only when the seed asks the pusher to go
+            // somewhere else. A pusher already at the seed's contact point, with the box
+            // not moving, may mean the seed itself is blocked (for example against the
+            // wall); boosting it would only suppress MPPI's own way out.
+            if (v_.oi_stall_seed_gap > 0.0f && hypotf(first.x - px, first.y - py) <= v_.oi_stall_seed_gap)
+                stall_boost = false;
+            // With oi_stall_unblocked set, boost only if the seed's push would not drive
+            // the box into the wall. The push may lie beyond the horizon (the pusher first
+            // walks to the face), so this tests the push direction, not a rollout.
+            if (v_.oi_stall_unblocked && push_into_wall(ox, oy, oth, push_dir))
+                stall_boost = false;
+            // With oi_stall_consistent_steps set, boost only a seed that keeps asking for
+            // the same thing. At the edge of a face span the seed can flip between "push"
+            // and "slide clear" every step; boosting that only amplifies the flip.
+            if (hypotf(first.x - stall_first_.x, first.y - stall_first_.y) > 0.1f) seed_steady_ = 0;
+            else seed_steady_++;
+            stall_first_ = first;
+            if (v_.oi_stall_consistent_steps > 0 && seed_steady_ < v_.oi_stall_consistent_steps)
+                stall_boost = false;
+        } else {
+            seed_steady_ = 0;
+            stall_first_ = make_float2(1e9f, 1e9f);
+        }
+        if (stall_boost) blend = fmaxf(blend, clampf_local(v_.oi_stall_blend, 0.0f, 1.0f));
+        blend_face_switch_seed(px, py, ox, oy, oth, blend);
+    }
+
+    // True if moving the box a little along dir would deepen its overlap with the wall.
+    bool push_into_wall(float ox, float oy, float oth, float2 dir) const {
+        const BoxParams& p = sc_.params;
+        if (p.obstacle_count <= 0) return false;
+        const float step = 0.05f;
+        float nx, ny;
+        float now = box_aabb_overlap_f(ox, oy, oth, p, nx, ny);
+        float next = box_aabb_overlap_f(ox + step * dir.x, oy + step * dir.y, oth, p, nx, ny);
+        return next > now + 1e-4f;
+    }
+
+    // Runs the face-switching seed from the given state and blends it into h_nominal_.
+    // Sets ref_delay_; returns the first step's target point and, in push_dir, the
+    // direction the seed wants to push the box at the first step.
+    float2 blend_face_switch_seed(float px, float py, float ox, float oy, float oth, float blend,
+                                  float2* push_dir = nullptr, bool commit = true) {
+        const BoxParams& p = sc_.params;
+        float2 first = make_float2(px, py);
+        bool engaged_prev = seed_engaged_;
         float sim_px = px, sim_py = py;
         float bx = ox, by = oy;               // box pose the pusher plans around
         int advance = 0;
@@ -1586,17 +1645,23 @@ private:
                 // rotation phase: the object reference stays at the goal pose
             } else if (face_switch_target(sim_px, sim_py, bx, by, oth, dx / dl, dy / dl, p,
                                           p.push_r + v_.oi_contact_margin + 0.04f, tx, ty,
-                                          v_.oi_face_safe_slide)) {
+                                          v_.oi_face_safe_slide,
+                                          engaged_prev ? v_.oi_slide_hysteresis : 0.0f)) {
                 // push: aim at the contact point behind the box's next reference pose
                 face_switch_target(sim_px, sim_py, rx, ry, oth, dx / dl, dy / dl, p,
                                    p.push_r - 0.02f, tx, ty);
                 advance++;
-            } else if (advance == 0) {
-                ref_delay_++;
+                engaged_prev = true;
+                if (t == 0 && commit) seed_engaged_ = true;
+            } else {
+                if (advance == 0) ref_delay_++;
+                engaged_prev = false;
+                if (t == 0 && commit) seed_engaged_ = false;
             }
-            if (t == 0 && stall_boost
-                && (v_.oi_stall_seed_gap <= 0.0f || hypotf(tx - px, ty - py) > v_.oi_stall_seed_gap))
-                blend = fmaxf(blend, clampf_local(v_.oi_stall_blend, 0.0f, 1.0f));
+            if (t == 0) {
+                first = make_float2(tx, ty);
+                if (push_dir) *push_dir = make_float2(dx / dl, dy / dl);
+            }
             float ux = clampf_local((tx - sim_px) / p.dt, -p.u_max, p.u_max);
             float uy = clampf_local((ty - sim_py) / p.dt, -p.u_max, p.u_max);
             int base = t * CTRL_DIM;
@@ -1605,6 +1670,7 @@ private:
             sim_px += p.dt * h_nominal_[base + 0];
             sim_py += p.dt * h_nominal_[base + 1];
         }
+        return first;
     }
 
     // Rotation phase of the face-switching seed: near the goal with heading still off,
@@ -1776,6 +1842,9 @@ private:
     int ref_delay_ = 0;                     // face-switch seed: steps before the box moves
     float stall_ox_ = 0, stall_oy_ = 0, stall_oth_ = 0;   // box pose when it last moved
     int stall_count_ = 0;                   // control steps since then
+    float2 stall_first_ = make_float2(1e9f, 1e9f);   // seed's first target at the last stalled step
+    int seed_steady_ = 0;                   // stalled steps the seed's first target held still
+    bool seed_engaged_ = false;             // face-switch seed pushed at the last control step
     static const int PUSHER_HIST = 64;
     float2 pusher_hist_[PUSHER_HIST];       // recent pusher positions (ring buffer)
     int pusher_head_ = 0;
@@ -2026,6 +2095,9 @@ int main(int argc, char** argv) {
     float override_oi_stall_pusher_dist = -1.0f;
     int override_oi_stall_pusher_window = -1;
     float override_oi_stall_seed_gap = -1.0f;
+    int override_oi_stall_unblocked = -1;
+    int override_oi_stall_consistent_steps = -1;
+    float override_oi_slide_hysteresis = -1.0f;
     for (int i=1;i<argc;i++){ string a=argv[i];
         if (a=="--quick") quick=true;
         else if (a=="--csv"&&i+1<argc) csv_path=argv[++i];
@@ -2050,6 +2122,9 @@ int main(int argc, char** argv) {
         else if (a=="--override-oi-stall-pusher-dist"&&i+1<argc) override_oi_stall_pusher_dist=(float)atof(argv[++i]);
         else if (a=="--override-oi-stall-pusher-window"&&i+1<argc) override_oi_stall_pusher_window=atoi(argv[++i]);
         else if (a=="--override-oi-stall-seed-gap"&&i+1<argc) override_oi_stall_seed_gap=(float)atof(argv[++i]);
+        else if (a=="--override-oi-stall-unblocked"&&i+1<argc) override_oi_stall_unblocked=atoi(argv[++i]);
+        else if (a=="--override-oi-stall-consistent-steps"&&i+1<argc) override_oi_stall_consistent_steps=atoi(argv[++i]);
+        else if (a=="--override-oi-slide-hysteresis"&&i+1<argc) override_oi_slide_hysteresis=(float)atof(argv[++i]);
         else if (a=="--dump-traj"&&i+1<argc) dump_traj_prefix=argv[++i];
         // per-episode trajectories from the main sweep: <dir>/<scenario>_<planner>_<seed>.csv
         else if (a=="--traj-dir"&&i+1<argc) traj_dir=argv[++i];
@@ -2342,6 +2417,9 @@ int main(int argc, char** argv) {
         if (override_oi_stall_pusher_dist >= 0.0f && v.oi_face_switch) v.oi_stall_pusher_dist = override_oi_stall_pusher_dist;
         if (override_oi_stall_pusher_window >= 1 && v.oi_face_switch) v.oi_stall_pusher_window = override_oi_stall_pusher_window;
         if (override_oi_stall_seed_gap >= 0.0f && v.oi_face_switch) v.oi_stall_seed_gap = override_oi_stall_seed_gap;
+        if (override_oi_stall_unblocked >= 0 && v.oi_face_switch) v.oi_stall_unblocked = override_oi_stall_unblocked != 0;
+        if (override_oi_stall_consistent_steps >= 0 && v.oi_face_switch) v.oi_stall_consistent_steps = override_oi_stall_consistent_steps;
+        if (override_oi_slide_hysteresis >= 0.0f && v.oi_face_switch) v.oi_slide_hysteresis = override_oi_slide_hysteresis;
     }
     if (k_values.empty()) k_values = quick ? vector<int>{256} : vector<int>{256, 1024};
     if (seed_count<=0) seed_count = quick ? 4 : 8;

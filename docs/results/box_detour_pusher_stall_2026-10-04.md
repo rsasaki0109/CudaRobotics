@@ -104,6 +104,41 @@ So on the smooth plant's wall cell the boost costs about 4 % of the episodes. Th
 
 The gap does not separate the two cases: removing the wall cost removes the open-turn gain with it. In the open-turn stall, the seed's next target is also close to the pusher. The parameter stays in the code (off by default) as a recorded negative result.
 
+### Further attempts to remove the wall cost (all negative)
+
+Instrumenting a lost wall episode at the moments the boost fires changed the picture.
+- The seed is not pushing into the wall. The pusher sits at the edge of the push face's span, and the seed's first target flips every step between the face contact point ("push") and the corner waypoint ("go around").
+- The boost amplifies that flip. Without it, MPPI breaks out on its own.
+
+Four more gates were tried, each off by default:
+
+| Gate | What it tests |
+|---|---|
+| model rollout | the seed's controls, rolled out with and without the wall |
+| `oi_stall_unblocked` | whether a short move along the seed's push direction deepens the wall overlap |
+| `oi_stall_consistent_steps` | whether the seed's first target has held still for N stalled steps |
+| `oi_slide_hysteresis` | engagement hysteresis on the seed itself, removing the flip at the source (no boost) |
+
+Results on the development seeds:
+
+| Change | smooth wall (1100-1299) | hard wall | smooth open turn (0-29) |
+|---|---:|---:|---:|
+| `oi_face_rot_wide_mppi` (no boost) | 198/200 | 199/200 | 22/30 |
+| `oi_face_rot_pstall_mppi` | 188/200 | 197/200 | **28/30** |
+| pstall + model rollout | never fires | | |
+| pstall + `oi_stall_unblocked` | 188/200 | 197/200 | 28/30 |
+| pstall + `oi_stall_consistent_steps` 5 | 197/200 | 200/200 | 22/30 |
+| pstall + `oi_stall_consistent_steps` 10 | 198/200 | 199/200 | 22/30 |
+| wide + `oi_slide_hysteresis` 0.05 | 197/200 | 199/200 | 22/30 |
+| wide + `oi_slide_hysteresis` 0.10 | 196/200 | 198/200 | 22/30 |
+| wide + `oi_slide_hysteresis` 0.20 | 200/200 | 199/200 | 22/30 (turn 90: 29 to 22) |
+
+- **The two rollout/geometry gates never trigger.** The model rollout never fires: within the 16-step horizon the seed is still walking, not pushing. The push-direction check never fires either.
+- **The consistency gate removes the wall cost and the open-turn gain together.** The open-turn stall is a seed flip too, and there the boosted flip is what gets the box moving.
+- **Hysteresis on the seed** does not help the open turn, and at 0.2 m it costs the smooth quarter turn.
+
+The flip that the boost exploits in the open turn is the same flip that costs it the wall cell. None of these signals separates the two.
+
 All rows in every evaluation are collision-free.
 
 ## Reading
@@ -113,9 +148,7 @@ All rows in every evaluation are collision-free.
 - **Which planner to use:**
   - `oi_face_rot_pstall_mppi` when open-space reorientation matters more than wall-pinned detours, for example turn cells: smooth 116/120 against 106/120 on seeds 900-929.
   - `oi_face_rot_wide_mppi` stays the safer default when the task has a wall the box can get pinned against.
-- **What is left.** A stall signal that tells "seed blocked by the environment" from "seed not being followed". The seed gap does not. Candidates:
-  - the pusher's angular progress around the box;
-  - a check of whether the seed's push would move the box in the model.
+- **What is left.** Five gates were tried; none separates the wall stall from the open-turn stall, since both are the same seed flip. A fix would have to change what the seed asks for at the face edge, rather than when to trust it. The negative results are recorded above.
 
 ## Limitations
 
