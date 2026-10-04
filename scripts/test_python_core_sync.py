@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from python_source_provenance import serialized_payload
+from python_source_provenance import normalized_bytes, serialized_payload
 
 
 REPO = Path(__file__).resolve().parents[1]
@@ -83,7 +83,9 @@ def main() -> int:
         "Python source provenance is missing; run "
         "python scripts/python_source_provenance.py"
     )
-    assert provenance.read_bytes() == serialized_payload(), (
+    # Line endings normalized like every other file here: a Windows checkout with
+    # core.autocrlf has the committed LF manifest as CRLF.
+    assert normalized_bytes(provenance) == serialized_payload(), (
         "Python source provenance is stale; run "
         "python scripts/python_source_provenance.py"
     )
