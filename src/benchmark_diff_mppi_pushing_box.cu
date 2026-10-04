@@ -115,6 +115,8 @@ struct Variant {
     float oi_near_seed_blend = -1.0f;   // face-switch seed blend within oi_rot_radius (<0: oi_seed_blend)
     int oi_stall_steps = 0;             // face-switch seed: after this many steps without box motion...
     float oi_stall_blend = 0.6f;        // ...blend the seed this strongly (0 steps: off)
+    float oi_stall_pusher_dist = 0.0f;  // ...and only if the pusher moved less than this over
+    int oi_stall_pusher_window = 20;    //    the last window steps (0 m: ignore the pusher)
     float oi_path_margin = 0.05f;       // wall clearance used by plan_object_path
 };
 
@@ -1320,6 +1322,7 @@ public:
         fill(h_nominal_.begin(), h_nominal_.end(), 0.0f);
         reset_rng();
         stall_ox_ = ox_; stall_oy_ = oy_; stall_oth_ = oth_; stall_count_ = 0;
+        pusher_head_ = 0;
 
         // True plant params: contact mobility scaled by plant_gain_scale (the
         // controller's model, used in rollout/grad below, keeps sc_.params).
@@ -1536,7 +1539,22 @@ private:
         } else {
             stall_count_++;
         }
-        if (v_.oi_stall_steps > 0 && stall_count_ >= v_.oi_stall_steps)
+        // The box also stands still while the pusher walks to another face; that is
+        // progress. With oi_stall_pusher_dist set, a stall also needs the pusher to
+        // have stayed put (the box is still, so world displacement is box-frame).
+        pusher_hist_[pusher_head_ % PUSHER_HIST] = make_float2(px, py);
+        pusher_head_++;
+        bool pusher_stuck = true;
+        if (v_.oi_stall_pusher_dist > 0.0f) {
+            int w = min(v_.oi_stall_pusher_window, PUSHER_HIST - 1);
+            if (pusher_head_ <= w) {
+                pusher_stuck = false;
+            } else {
+                float2 old = pusher_hist_[(pusher_head_ - 1 - w) % PUSHER_HIST];
+                pusher_stuck = hypotf(px - old.x, py - old.y) < v_.oi_stall_pusher_dist;
+            }
+        }
+        if (v_.oi_stall_steps > 0 && stall_count_ >= v_.oi_stall_steps && pusher_stuck)
             blend = fmaxf(blend, clampf_local(v_.oi_stall_blend, 0.0f, 1.0f));
         float sim_px = px, sim_py = py;
         float bx = ox, by = oy;               // box pose the pusher plans around
@@ -1750,6 +1768,9 @@ private:
     int ref_delay_ = 0;                     // face-switch seed: steps before the box moves
     float stall_ox_ = 0, stall_oy_ = 0, stall_oth_ = 0;   // box pose when it last moved
     int stall_count_ = 0;                   // control steps since then
+    static const int PUSHER_HIST = 64;
+    float2 pusher_hist_[PUSHER_HIST];       // recent pusher positions (ring buffer)
+    int pusher_head_ = 0;
     HardParams hard_p_;                     // hard-contact params (true plant and/or fidelity-arm rollout)
     float px_=0,py_=0,ox_=0,oy_=0,oth_=0;
     float vx_=0,vy_=0,w_=0;                 // box velocity (hard true plant only)
@@ -1994,6 +2015,8 @@ int main(int argc, char** argv) {
     float override_oi_near_seed_blend = -1.0f;
     int override_oi_stall_steps = -1;
     float override_oi_stall_blend = -1.0f;
+    float override_oi_stall_pusher_dist = -1.0f;
+    int override_oi_stall_pusher_window = -1;
     for (int i=1;i<argc;i++){ string a=argv[i];
         if (a=="--quick") quick=true;
         else if (a=="--csv"&&i+1<argc) csv_path=argv[++i];
@@ -2015,6 +2038,8 @@ int main(int argc, char** argv) {
         else if (a=="--override-oi-near-seed-blend"&&i+1<argc) override_oi_near_seed_blend=(float)atof(argv[++i]);
         else if (a=="--override-oi-stall-steps"&&i+1<argc) override_oi_stall_steps=atoi(argv[++i]);
         else if (a=="--override-oi-stall-blend"&&i+1<argc) override_oi_stall_blend=(float)atof(argv[++i]);
+        else if (a=="--override-oi-stall-pusher-dist"&&i+1<argc) override_oi_stall_pusher_dist=(float)atof(argv[++i]);
+        else if (a=="--override-oi-stall-pusher-window"&&i+1<argc) override_oi_stall_pusher_window=atoi(argv[++i]);
         else if (a=="--dump-traj"&&i+1<argc) dump_traj_prefix=argv[++i];
         // per-episode trajectories from the main sweep: <dir>/<scenario>_<planner>_<seed>.csv
         else if (a=="--traj-dir"&&i+1<argc) traj_dir=argv[++i];
@@ -2268,6 +2293,9 @@ int main(int argc, char** argv) {
     // ...and also the same 0.6 blend whenever the box has not moved for 20 steps. Kept
     // as a recorded trade-off: it fixes the smooth open turn but loses detour episodes.
     { Variant v; v.name="oi_face_rot_stall_mppi"; v.use_object_informed=true; v.oi_use_path=true; v.oi_axis_path=true; v.oi_axis_when_blocked=true; v.oi_face_safe_slide=true; v.oi_face_rotate=true; v.oi_face_switch=true; v.oi_face_route_actual=true; v.oi_face_aim_final=true; v.oi_ref_weight_pos=1.5f; v.oi_ref_weight_ang=3.0f; v.oi_obj_speed=0.6f; v.oi_ang_speed=1.2f; v.oi_seed_blend=0.12f; v.oi_near_seed_blend=0.6f; v.oi_rot_radius=1.0f; v.oi_stall_steps=20; v.oi_stall_blend=0.6f; variants.push_back(v); }
+    // ...with a stall that also needs the pusher to stay within 0.10 m over 20 steps,
+    // after 40 still steps (selected on seeds 0-29; see box_detour_pusher_stall).
+    { Variant v; v.name="oi_face_rot_pstall_mppi"; v.use_object_informed=true; v.oi_use_path=true; v.oi_axis_path=true; v.oi_axis_when_blocked=true; v.oi_face_safe_slide=true; v.oi_face_rotate=true; v.oi_face_switch=true; v.oi_face_route_actual=true; v.oi_face_aim_final=true; v.oi_ref_weight_pos=1.5f; v.oi_ref_weight_ang=3.0f; v.oi_obj_speed=0.6f; v.oi_ang_speed=1.2f; v.oi_seed_blend=0.12f; v.oi_near_seed_blend=0.6f; v.oi_rot_radius=1.0f; v.oi_stall_steps=40; v.oi_stall_pusher_dist=0.10f; v.oi_stall_pusher_window=20; v.oi_stall_blend=0.6f; variants.push_back(v); }
     // axis-aligned path when the straight line is blocked, straight path otherwise
     { Variant v; v.name="oi_face_auto_mppi"; v.use_object_informed=true; v.oi_use_path=true; v.oi_axis_path=true; v.oi_axis_when_blocked=true; v.oi_face_safe_slide=true; v.oi_face_switch=true; v.oi_face_route_actual=true; v.oi_face_aim_final=true; v.oi_ref_weight_pos=1.5f; v.oi_ref_weight_ang=3.0f; v.oi_obj_speed=0.6f; v.oi_ang_speed=1.2f; v.oi_seed_blend=0.12f; variants.push_back(v); }
     { Variant v; v.name="oi_path_slow_mppi"; v.use_object_informed=true; v.oi_use_path=true; v.oi_ref_weight_pos=1.5f; v.oi_ref_weight_ang=3.0f; v.oi_obj_speed=0.6f; v.oi_ang_speed=1.2f; v.oi_seed_blend=0.12f; variants.push_back(v); }
@@ -2301,6 +2329,8 @@ int main(int argc, char** argv) {
         if (override_oi_near_seed_blend >= 0.0f && v.oi_face_switch) v.oi_near_seed_blend = override_oi_near_seed_blend;
         if (override_oi_stall_steps >= 0 && v.oi_face_switch) v.oi_stall_steps = override_oi_stall_steps;
         if (override_oi_stall_blend >= 0.0f && v.oi_face_switch) v.oi_stall_blend = override_oi_stall_blend;
+        if (override_oi_stall_pusher_dist >= 0.0f && v.oi_face_switch) v.oi_stall_pusher_dist = override_oi_stall_pusher_dist;
+        if (override_oi_stall_pusher_window >= 1 && v.oi_face_switch) v.oi_stall_pusher_window = override_oi_stall_pusher_window;
     }
     if (k_values.empty()) k_values = quick ? vector<int>{256} : vector<int>{256, 1024};
     if (seed_count<=0) seed_count = quick ? 4 : 8;
