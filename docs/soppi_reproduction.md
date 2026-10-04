@@ -504,6 +504,12 @@ Requiring the pusher to stay put as well (`oi_face_rot_pstall_mppi`,
 keeps the open-turn fix (18 to 27/30) at a smaller detour cost, which is
 still about 4 % of the smooth-plant wall cell, where the boost holds the
 pusher against a box pinned under the wall.
+That cost was a seed bug: the push target followed the box's reference pose
+while the engagement test used the actual box. Aiming the push from the actual
+box once it is 0.3 m off its reference (`oi_face_rot_anchor_mppi`,
+[`results/box_detour_push_anchor_2026-10-04.md`](results/box_detour_push_anchor_2026-10-04.md))
+solves 240/240 (smooth) and 239/240 (hard) over the eight detour-and-turn cells
+on fresh seeds, and 400/400 detour episodes on both plants.
 
 | Scenario | Planner | Success | Steps | Final Dist | Cost | Avg ms |
 |---|---|---:|---:|---:|---:|---:|

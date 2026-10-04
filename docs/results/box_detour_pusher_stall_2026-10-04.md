@@ -149,6 +149,7 @@ All rows in every evaluation are collision-free.
   - `oi_face_rot_pstall_mppi` when open-space reorientation matters more than wall-pinned detours, for example turn cells: smooth 116/120 against 106/120 on seeds 900-929.
   - `oi_face_rot_wide_mppi` stays the safer default when the task has a wall the box can get pinned against.
 - **What is left.** Five gates were tried; none separates the wall stall from the open-turn stall, since both are the same seed flip. A fix would have to change what the seed asks for at the face edge, rather than when to trust it. The negative results are recorded above.
+- **Resolved in [`box_detour_push_anchor_2026-10-04.md`](box_detour_push_anchor_2026-10-04.md).** The flip came from the push target being computed from the box's reference pose while the engagement test used the actual box. Aiming the push from the actual box when it is off the path removes the detour cost (400/400 on fresh detour seeds) and keeps the open-turn fix.
 
 ## Limitations
 
