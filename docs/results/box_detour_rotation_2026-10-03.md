@@ -88,6 +88,10 @@ rot / only auto):
 
 ## Follow-up: the smooth-plant quarter-turn regression
 
+_Resolved in [`box_detour_rotation_near_2026-10-04.md`](box_detour_rotation_near_2026-10-04.md):
+the seed blend was too weak; a 0.6 blend near the goal takes the quarter turn
+to 29/30 on unseen seeds._
+
 Investigated on seeds 0-7 and per-episode trajectories; nothing here changed
 the code.
 

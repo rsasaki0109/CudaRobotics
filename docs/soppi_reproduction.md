@@ -489,6 +489,11 @@ A rotation phase for detours that end with a reorientation (`oi_face_rot_mppi`,
 reaches 111/120 over four turn cells on the hard plant and 67/120 on the smooth
 plant (where the quarter turn regresses), against 0-2/120 for the sampling
 baselines.
+A stronger seed blend near the goal (`oi_face_rot_near_mppi`,
+[`results/box_detour_rotation_near_2026-10-04.md`](results/box_detour_rotation_near_2026-10-04.md))
+removes the regression: on fresh seeds the turn cells reach 108/120 on the
+smooth plant (quarter turn 29/30) and 116/120 on the hard plant, with the four
+detour cells at 120/120 on both.
 
 | Scenario | Planner | Success | Steps | Final Dist | Cost | Avg ms |
 |---|---|---:|---:|---:|---:|---:|
