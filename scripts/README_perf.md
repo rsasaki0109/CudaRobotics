@@ -62,6 +62,17 @@ python3 scripts/perf_check.py --tolerance 0.50
 python3 scripts/perf_check.py --update
 ```
 
+The script finds `bin/<name>` (single-config builds) or
+`bin/Release/<name>.exe` (MSVC). It runs each demo in a scratch directory with
+`CUDABOT_HEADLESS=1`, so the committed GIFs under `gif/` are left untouched.
+
+The baseline holds absolute times from one machine, so it only means something
+on comparable hardware; on a different GPU, refresh it with `--update` first
+and compare later changes against that. The `rrtstar_rewire_gpu_ms` entry
+(303 ms) predates the grid neighbour search of #265, which made the rewire
+about 8x faster on the machine it was measured on, so that entry is loose
+until it is refreshed on the reference machine.
+
 ## Benchmarks tracked
 | Label | Binary | What we time |
 |---|---|---|

@@ -21,6 +21,7 @@ import os
 import re
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -63,18 +64,30 @@ BENCHMARKS = [
 ]
 
 
+def find_binary(name: str) -> Path:
+    """bin/<name> for single-config builds, bin/Release/<name>.exe for MSVC."""
+    for candidate in (BIN / name, BIN / f"{name}.exe",
+                      BIN / "Release" / name, BIN / "Release" / f"{name}.exe"):
+        if candidate.is_file():
+            return candidate
+    raise FileNotFoundError(f"binary not found: {BIN / name}")
+
+
 def run_binary(name: str) -> str:
-    binary = BIN / name
-    if not binary.exists():
-        raise FileNotFoundError(f"binary not found: {binary}")
-    out = subprocess.run(
-        [str(binary)],
-        cwd=str(ROOT),
-        check=True,
-        capture_output=True,
-        text=True,
-        timeout=600,
-    )
+    binary = find_binary(name)
+    # The demos write gif/<name>.{avi,gif} relative to the working directory;
+    # run them in a scratch directory so committed GIFs are not overwritten.
+    with tempfile.TemporaryDirectory(prefix="cudabot_perf_") as tmp:
+        (Path(tmp) / "gif").mkdir()
+        out = subprocess.run(
+            [str(binary)],
+            cwd=tmp,
+            env={**os.environ, "CUDABOT_HEADLESS": "1"},
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=600,
+        )
     return out.stdout
 
 
