@@ -24,11 +24,15 @@ jobs:
       - name: Verify clean checkout
         run: test -z "$(git status --porcelain)"
 
+      # Only what the build uses: nvcc (pulls in cudart-dev and cccl/thrust) and
+      # the cuRAND headers. The full toolkit took over four minutes to install.
       - name: Install CUDA toolkit
         uses: Jimver/cuda-toolkit@v0.2.16
         with:
           cuda: "12.0.0"
           method: network
+          sub-packages: '["nvcc"]'
+          non-cuda-sub-packages: '["libcurand-dev"]'
 
       - name: Install dependencies
         run: |
