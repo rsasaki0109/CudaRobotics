@@ -98,6 +98,7 @@ All rows in every evaluation are collision-free.
   - The stall boost fixes it (27-30/30), but at the price of detour episodes on both plants.
   - A stall detector that cannot tell "stuck" from "walking to another face" is the wrong trigger. A better one would condition on the pusher, for example not making progress around the box, rather than on the box alone.
 - **`oi_face_rot_stall_mppi` is kept** so this trade-off can be reproduced. It is not recommended.
+- **Follow-up:** [`box_detour_pusher_stall_2026-10-04.md`](box_detour_pusher_stall_2026-10-04.md) adds the pusher to the stall test (`oi_face_rot_pstall_mppi`). The open turn goes 18 to 27/30 on unseen seeds; the detour cost shrinks but stays at about 4 % of the smooth-plant wall cell.
 
 ## Limitations
 
