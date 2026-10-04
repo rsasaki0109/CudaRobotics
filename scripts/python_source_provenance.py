@@ -87,7 +87,8 @@ def main() -> int:
             f"Python source provenance is missing: {destination}; "
             "run python scripts/python_source_provenance.py"
         )
-        assert destination.read_bytes() == contents, (
+        # Compare with normalized line endings, as for the sources themselves.
+        assert normalized_bytes(destination) == contents, (
             "Python source provenance is stale; run "
             "python scripts/python_source_provenance.py"
         )
