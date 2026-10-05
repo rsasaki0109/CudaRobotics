@@ -41,16 +41,25 @@
 // the clusters are scored against the ground-truth objects, for the model's
 // ground removal, the height threshold's, and none.
 //
+// Third stage: an oriented box is fitted to each cluster by L-shape fitting
+// (search over 90 headings in [0, 90 deg), closeness criterion; one GPU thread =
+// one (cluster, heading) pair) and scored against the ground-truth boxes, which
+// stand at various headings, next to the axis-aligned box of the same points.
+//
 // Output: gif/gpu_ground_segmentation.gif (bird's-eye view per scan)
 //
 // Options: --no-video, --check (exit non-zero unless the model's F1 >= 0.95,
 // it beats the height threshold, CPU and GPU labels agree on >= 99.9%, at least
-// 90% of the objects come out as one cluster, and the CPU and GPU clusterings
-// are the same partition).
+// 90% of the objects come out as one cluster, the CPU and GPU clusterings
+// are the same partition, the L-shape boxes beat the axis-aligned ones in
+// heading error and IoU, and the CPU and GPU fit the same boxes).
 
 #include <cuda_runtime.h>
 #include <opencv2/opencv.hpp>
 #include <thrust/device_ptr.h>
+#include <thrust/iterator/constant_iterator.h>
+#include <thrust/reduce.h>
+#include <thrust/scan.h>
 #include <thrust/sequence.h>
 #include <thrust/sort.h>
 
@@ -105,7 +114,7 @@ __host__ __device__ static inline float ground_h(float x, float y) {
     return h;
 }
 
-struct Box { float x0, y0, x1, y1, h; };          // axis-aligned, standing on the ground
+struct Box { float cx, cy, hl, hw, yaw, h; };   // centre, half length / width, heading; on the ground
 struct Cyl { float x, y, r, h; };
 
 static const int N_BOX = 7, N_CYL = 8;
@@ -118,16 +127,19 @@ __host__ __device__ static inline bool raycast(const float* o, const float* d,
                                                const Box* boxes, const Cyl* cyls,
                                                float& t_hit, int& label, int& obj) {
     t_hit = MAX_RANGE; label = -1; obj = -1;
-    // objects: slabs for boxes (bottom at the ground under the box centre)
+    // objects: slabs for boxes in the box frame (bottom at the ground under the box centre)
     for (int b = 0; b < N_BOX; ++b) {
         const Box& B = boxes[b];
-        float zb = ground_h(0.5f * (B.x0 + B.x1), 0.5f * (B.y0 + B.y1)) - 0.5f;
-        float lo[3] = { B.x0, B.y0, zb }, hi[3] = { B.x1, B.y1, zb + 0.5f + B.h };
+        float zb = ground_h(B.cx, B.cy) - 0.5f;
+        float cb = cosf(B.yaw), sb = sinf(B.yaw), ex = o[0] - B.cx, ey = o[1] - B.cy;
+        float ol[3] = { cb * ex + sb * ey, -sb * ex + cb * ey, o[2] };
+        float dl[3] = { cb * d[0] + sb * d[1], -sb * d[0] + cb * d[1], d[2] };
+        float lo[3] = { -B.hl, -B.hw, zb }, hi[3] = { B.hl, B.hw, zb + 0.5f + B.h };
         float t0 = 0.0f, t1 = t_hit;
         bool hit = true;
         for (int a = 0; a < 3 && hit; ++a) {
-            if (fabsf(d[a]) < 1e-8f) { if (o[a] < lo[a] || o[a] > hi[a]) hit = false; continue; }
-            float ta = (lo[a] - o[a]) / d[a], tb = (hi[a] - o[a]) / d[a];
+            if (fabsf(dl[a]) < 1e-8f) { if (ol[a] < lo[a] || ol[a] > hi[a]) hit = false; continue; }
+            float ta = (lo[a] - ol[a]) / dl[a], tb = (hi[a] - ol[a]) / dl[a];
             if (ta > tb) { float tmp = ta; ta = tb; tb = tmp; }
             t0 = fmaxf(t0, ta); t1 = fminf(t1, tb);
             if (t0 > t1) hit = false;
@@ -581,9 +593,184 @@ __global__ void voxel_label_kernel(const int* items, const int* vid, const int* 
     label[items[k]] = cmin[uf_find(parent, vid[k])];
 }
 
+// ---- L-shape box fitting (search-based, closeness criterion) ----
+// For heading th the cluster's points are projected on e1 = (cos th, sin th) and
+// e2 = (-sin th, cos th). Each point's distance to the nearer edge of the
+// bounding rectangle in that frame is clamped below at LS_D0, and the heading's
+// score is the sum of the inverse distances: points hugging two perpendicular
+// edges (the L a LiDAR sees of a car) score high. Headings repeat every 90 deg,
+// so N_TH headings cover [0, 90 deg). On the GPU one warp scores one heading:
+// lane l takes points l, l + 32, ... and the 32 partial sums are combined by an
+// xor butterfly. The CPU runs the same lanes and the same butterfly, with the
+// same heading table, so the two pick the same heading and the same box.
+static const int N_TH = 90;
+static constexpr float LS_D0 = 0.01f;
+
+struct Obb { float cx, cy, len, wid, yaw; int th; };   // sensor frame; len along the heading
+
+__host__ __device__ static inline void ls_project(const float* pts, int i, float c, float s, float& p1, float& p2) {
+    float x = pts[i * 3], y = pts[i * 3 + 1];
+    p1 = c * x + s * y; p2 = -s * x + c * y;
+}
+
+__host__ __device__ static inline float ls_term(float p1, float p2, const float* lohi) {
+    float d = fminf(fminf(p1 - lohi[0], lohi[1] - p1), fminf(p2 - lohi[2], lohi[3] - p2));
+    return 1.0f / fmaxf(d, LS_D0);
+}
+
+// CPU: the GPU warp's lanes and butterfly, run serially.
+static float lshape_score_cpu(const float* pts, const int* items, int a0, int a1, float c, float s) {
+    float lohi[4] = { 1e9f, -1e9f, 1e9f, -1e9f }, part[32];
+    for (int a = a0; a < a1; ++a) {
+        float p1, p2;
+        ls_project(pts, items[a], c, s, p1, p2);
+        lohi[0] = fminf(lohi[0], p1); lohi[1] = fmaxf(lohi[1], p1);
+        lohi[2] = fminf(lohi[2], p2); lohi[3] = fmaxf(lohi[3], p2);
+    }
+    for (int l = 0; l < 32; ++l) {
+        part[l] = 0.0f;
+        for (int a = a0 + l; a < a1; a += 32) {
+            float p1, p2;
+            ls_project(pts, items[a], c, s, p1, p2);
+            part[l] += ls_term(p1, p2, lohi);
+        }
+    }
+    for (int off = 16; off >= 1; off >>= 1) {
+        float nxt[32];
+        for (int l = 0; l < 32; ++l) nxt[l] = part[l] + part[l ^ off];
+        for (int l = 0; l < 32; ++l) part[l] = nxt[l];
+    }
+    return part[0];
+}
+
+// The bounding rectangle of the points in the frame of heading k.
+__host__ __device__ static inline Obb lshape_rect(const float* pts, const int* items, int a0, int a1,
+                                                  const float* cs, int k) {
+    float c = cs[k * 2], s = cs[k * 2 + 1];
+    float lo1 = 1e9f, hi1 = -1e9f, lo2 = 1e9f, hi2 = -1e9f;
+    for (int a = a0; a < a1; ++a) {
+        float x = pts[items[a] * 3], y = pts[items[a] * 3 + 1];
+        float p1 = c * x + s * y, p2 = -s * x + c * y;
+        lo1 = fminf(lo1, p1); hi1 = fmaxf(hi1, p1); lo2 = fminf(lo2, p2); hi2 = fmaxf(hi2, p2);
+    }
+    float m1 = 0.5f * (lo1 + hi1), m2 = 0.5f * (lo2 + hi2);
+    Obb B;
+    B.cx = c * m1 - s * m2; B.cy = s * m1 + c * m2;
+    B.len = hi1 - lo1; B.wid = hi2 - lo2;
+    B.yaw = k * (0.5f * PI_F / N_TH); B.th = k;
+    return B;
+}
+
+// The point indices of the clustered points come sorted by cluster label (runs).
+__global__ void lshape_key_kernel(const int* label, int* key, int* idx, int n) {
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i >= n) return;
+    key[i] = label[i] >= 0 ? label[i] : 0x7fffffff;
+    idx[i] = i;
+}
+
+// one warp = one (cluster, heading) pair
+__global__ void lshape_score_kernel(const float* pts, const int* items, const int* rkey, const int* start,
+                                    const int* cnt, const float* cs, float* score, int n_runs) {
+    int w = (blockIdx.x * blockDim.x + threadIdx.x) >> 5, lane = threadIdx.x & 31;
+    if (w >= n_runs * N_TH) return;   // whole warps
+    int r = w / N_TH, k = w - r * N_TH;
+    if (rkey[r] == 0x7fffffff || cnt[r] < CL_MIN) return;
+    int a0 = start[r], a1 = a0 + cnt[r];
+    float c = cs[k * 2], s = cs[k * 2 + 1];
+    float lohi[4] = { 1e9f, -1e9f, 1e9f, -1e9f };
+    for (int a = a0 + lane; a < a1; a += 32) {
+        float p1, p2;
+        ls_project(pts, items[a], c, s, p1, p2);
+        lohi[0] = fminf(lohi[0], p1); lohi[1] = fmaxf(lohi[1], p1);
+        lohi[2] = fminf(lohi[2], p2); lohi[3] = fmaxf(lohi[3], p2);
+    }
+    for (int off = 16; off >= 1; off >>= 1) {   // min / max: exact in any order
+        lohi[0] = fminf(lohi[0], __shfl_xor_sync(0xffffffffu, lohi[0], off));
+        lohi[1] = fmaxf(lohi[1], __shfl_xor_sync(0xffffffffu, lohi[1], off));
+        lohi[2] = fminf(lohi[2], __shfl_xor_sync(0xffffffffu, lohi[2], off));
+        lohi[3] = fmaxf(lohi[3], __shfl_xor_sync(0xffffffffu, lohi[3], off));
+    }
+    float part = 0.0f;
+    for (int a = a0 + lane; a < a1; a += 32) {
+        float p1, p2;
+        ls_project(pts, items[a], c, s, p1, p2);
+        part += ls_term(p1, p2, lohi);
+    }
+    for (int off = 16; off >= 1; off >>= 1) part += __shfl_xor_sync(0xffffffffu, part, off);
+    if (lane == 0) score[w] = part;
+}
+
+// one thread = one cluster: best heading (the first on ties), then its rectangle
+__global__ void lshape_select_kernel(const float* pts, const int* items, const int* rkey, const int* start,
+                                     const int* cnt, const float* cs, const float* score, Obb* obb, int n_runs) {
+    int r = blockIdx.x * blockDim.x + threadIdx.x;
+    if (r >= n_runs) return;
+    if (rkey[r] == 0x7fffffff || cnt[r] < CL_MIN) { obb[r].th = -1; return; }
+    int best = 0;
+    for (int k = 1; k < N_TH; ++k) if (score[r * N_TH + k] > score[r * N_TH + best]) best = k;
+    obb[r] = lshape_rect(pts, items, start[r], start[r] + cnt[r], cs, best);
+}
+
 }  // namespace cudabot
 
 using namespace cudabot;
+
+static void heading_table(std::vector<float>& cs) {
+    cs.resize(N_TH * 2);
+    for (int k = 0; k < N_TH; ++k) {
+        double th = k * (0.5 * 3.14159265358979 / N_TH);
+        cs[k * 2] = (float)std::cos(th); cs[k * 2 + 1] = (float)std::sin(th);
+    }
+}
+
+// GPU L-shape fitting of every cluster of >= CL_MIN points of a device label array.
+struct GpuLShape {
+    int *d_key, *d_idx, *d_rkey, *d_cnt, *d_start;
+    float *d_score, *d_cs;
+    Obb* d_obb;
+    GpuLShape() {
+        for (int** p : { &d_key, &d_idx, &d_rkey, &d_cnt, &d_start })
+            CUDA_CHECK(cudaMalloc(p, N_RAYS * sizeof(int)));
+        CUDA_CHECK(cudaMalloc(&d_score, (size_t)N_RAYS * N_TH * sizeof(float)));
+        CUDA_CHECK(cudaMalloc(&d_obb, N_RAYS * sizeof(Obb)));
+        std::vector<float> cs;
+        heading_table(cs);
+        CUDA_CHECK(cudaMalloc(&d_cs, cs.size() * sizeof(float)));
+        CUDA_CHECK(cudaMemcpy(d_cs, cs.data(), cs.size() * sizeof(float), cudaMemcpyHostToDevice));
+    }
+    ~GpuLShape() {
+        for (int* p : { d_key, d_idx, d_rkey, d_cnt, d_start }) cudaFree(p);
+        cudaFree(d_score); cudaFree(d_cs); cudaFree(d_obb);
+    }
+    // keys[r] = cluster label, obb[r] = its box (th = -1 for runs that are not clusters)
+    float run(const float* d_pts, const int* d_label, std::vector<int>& keys, std::vector<Obb>& obb) {
+        const int B = 256, G = (N_RAYS + B - 1) / B;
+        cudaEvent_t e0, e1;
+        CUDA_CHECK(cudaEventCreate(&e0)); CUDA_CHECK(cudaEventCreate(&e1));
+        CUDA_CHECK(cudaEventRecord(e0));
+        lshape_key_kernel<<<G, B>>>(d_label, d_key, d_idx, N_RAYS);
+        thrust::device_ptr<int> key(d_key), idx(d_idx), rkey(d_rkey), cnt(d_cnt);
+        thrust::stable_sort_by_key(key, key + N_RAYS, idx);
+        int n_runs = (int)(thrust::reduce_by_key(key, key + N_RAYS, thrust::constant_iterator<int>(1), rkey, cnt)
+                               .first - rkey);
+        thrust::exclusive_scan(cnt, cnt + n_runs, thrust::device_ptr<int>(d_start));
+        lshape_score_kernel<<<(n_runs * N_TH * 32 + B - 1) / B, B>>>(d_pts, d_idx, d_rkey, d_start, d_cnt, d_cs,
+                                                               d_score, n_runs);
+        lshape_select_kernel<<<(n_runs + B - 1) / B, B>>>(d_pts, d_idx, d_rkey, d_start, d_cnt, d_cs, d_score,
+                                                          d_obb, n_runs);
+        CUDA_CHECK(cudaEventRecord(e1));
+        CUDA_CHECK(cudaEventSynchronize(e1));
+        CUDA_CHECK(cudaGetLastError());
+        float ms = 0.0f;
+        CUDA_CHECK(cudaEventElapsedTime(&ms, e0, e1));
+        CUDA_CHECK(cudaEventDestroy(e0)); CUDA_CHECK(cudaEventDestroy(e1));
+        keys.resize(n_runs); obb.resize(n_runs);
+        CUDA_CHECK(cudaMemcpy(keys.data(), d_rkey, n_runs * sizeof(int), cudaMemcpyDeviceToHost));
+        CUDA_CHECK(cudaMemcpy(obb.data(), d_obb, n_runs * sizeof(Obb), cudaMemcpyDeviceToHost));
+        return ms;
+    }
+};
 
 // GPU voxel clustering: same partition and labels as the point-level clusterers.
 struct GpuVoxelClusterer {
@@ -730,6 +917,67 @@ static void cpu_cluster(const std::vector<float>& pts, const std::vector<int>& a
     }
 }
 
+// CPU L-shape fitting: clusters in label order, points in index order (as the GPU's stable sort).
+static void cpu_lshape(const std::vector<float>& pts, const std::vector<int>& label, const std::vector<float>& cs,
+                       std::vector<int>& keys, std::vector<Obb>& obb) {
+    std::vector<int> cnt(N_RAYS + 1, 0);
+    for (int i = 0; i < N_RAYS; ++i) if (label[i] >= 0) cnt[label[i] + 1]++;
+    std::vector<int> start(N_RAYS + 1, 0);
+    for (int c = 0; c < N_RAYS; ++c) start[c + 1] = start[c] + cnt[c + 1];
+    std::vector<int> items(start[N_RAYS]), fill(start.begin(), start.end() - 1);
+    for (int i = 0; i < N_RAYS; ++i) if (label[i] >= 0) items[fill[label[i]]++] = i;
+    keys.clear(); obb.clear();
+    for (int c = 0; c < N_RAYS; ++c) {
+        int a0 = start[c], a1 = start[c + 1];
+        if (a1 - a0 < CL_MIN) continue;
+        int best = 0;
+        float best_s = lshape_score_cpu(pts.data(), items.data(), a0, a1, cs[0], cs[1]);
+        for (int k = 1; k < N_TH; ++k) {
+            float sc = lshape_score_cpu(pts.data(), items.data(), a0, a1, cs[k * 2], cs[k * 2 + 1]);
+            if (sc > best_s) { best_s = sc; best = k; }
+        }
+        keys.push_back(c);
+        obb.push_back(lshape_rect(pts.data(), items.data(), a0, a1, cs.data(), best));
+    }
+}
+
+// The cluster that holds a ground-truth object (as score_clusters' "found"), or -1.
+static int matched_cluster(const std::vector<int>& label, const std::vector<int>& gt_obj, int o) {
+    std::vector<int> size(N_RAYS, 0), hit(N_RAYS, 0);
+    int total = 0;
+    for (int i = 0; i < N_RAYS; ++i) {
+        if (label[i] >= 0) size[label[i]]++;
+        if (gt_obj[i] == o) { ++total; if (label[i] >= 0) hit[label[i]]++; }
+    }
+    if (total < 20) return -1;
+    int best = -1;
+    for (int c = 0; c < N_RAYS; ++c) if (hit[c] > 0 && (best < 0 || hit[c] > hit[best])) best = c;
+    if (best < 0 || size[best] < CL_MIN || hit[best] < 0.5 * total || hit[best] < 0.5 * size[best]) return -1;
+    return best;
+}
+
+// Heading error of a rectangle, modulo 90 deg, in degrees.
+static double yaw_err_deg(double a, double b) {
+    double e = a - b, q = 0.5 * 3.14159265358979;
+    e -= q * std::floor(e / q + 0.5);
+    return std::fabs(e) * 180.0 / 3.14159265358979;
+}
+
+static double bev_iou(const cv::RotatedRect& a, const cv::RotatedRect& b) {
+    std::vector<cv::Point2f> poly;
+    double inter = 0.0;
+    if (cv::rotatedRectangleIntersection(a, b, poly) != cv::INTERSECT_NONE && poly.size() >= 3) {
+        std::vector<cv::Point2f> hull;
+        cv::convexHull(poly, hull);
+        inter = cv::contourArea(hull);
+    }
+    double ua = (double)a.size.width * a.size.height + (double)b.size.width * b.size.height - inter;
+    return ua > 0 ? inter / ua : 0.0;
+}
+
+// Box scores, summed over observations; 0 = L-shape, 1 = axis-aligned.
+struct BoxScore { int n; double yaw[2], iou[2], centre[2], len[2], wid[2]; int good[2]; };
+
 // Object-level scores of a clustering against the ground-truth objects.
 struct ClusterScore { int objects, found, merged, split, clusters, ground_clusters; };
 
@@ -828,15 +1076,17 @@ int main(int argc, char** argv) {
     }
     std::printf("=== GPU LiDAR ground segmentation (CPU vs CUDA) ===\n");
 
+    const float DEG = PI_F / 180.0f;
     const Box h_box[N_BOX] = {
-        { 6.0f, -3.5f, 10.5f, -1.7f, 1.5f },    // car
-        { 13.0f, 2.0f, 17.5f, 3.8f, 1.6f },     // car on the ramp
-        { -9.0f, -6.0f, -4.5f, -4.2f, 1.5f },   // car
-        { -14.0f, 8.0f, -2.0f, 8.4f, 2.5f },    // wall on the sidewalk
-        { 20.0f, -9.0f, 26.0f, -7.0f, 2.8f },   // van on the ramp
-        { -20.0f, -14.0f, -16.0f, -10.0f, 1.0f },   // low crate
-        { 2.0f, 9.0f, 4.0f, 11.0f, 0.6f },      // bench on the sidewalk
+        { 8.25f, -2.6f, 2.25f, 0.9f, 20.0f * DEG, 1.5f },    // car
+        { 15.25f, 2.9f, 2.25f, 0.9f, -15.0f * DEG, 1.6f },   // car on the ramp
+        { -6.75f, -5.1f, 2.25f, 0.9f, 35.0f * DEG, 1.5f },   // car
+        { -8.0f, 8.2f, 6.0f, 0.2f, 0.0f, 2.5f },             // wall on the sidewalk
+        { 23.0f, -8.0f, 3.0f, 1.0f, 10.0f * DEG, 2.8f },     // van on the ramp
+        { -18.0f, -12.0f, 2.0f, 1.5f, 30.0f * DEG, 1.0f },   // low crate
+        { 3.0f, 10.0f, 1.0f, 0.5f, 0.0f, 0.6f },             // bench on the sidewalk
     };
+    const char* box_name[N_BOX] = { "car", "car on the ramp", "car", "wall", "van on the ramp", "crate", "bench" };
     const Cyl h_cyl[N_CYL] = {
         { 4.0f, 6.8f, 0.15f, 4.0f }, { 12.0f, 6.8f, 0.15f, 4.0f }, { -6.0f, 6.8f, 0.15f, 4.0f },
         { 3.0f, -1.0f, 0.3f, 1.7f }, { -2.0f, 3.5f, 0.3f, 1.7f }, { 9.0f, 4.5f, 0.3f, 1.7f },
@@ -867,6 +1117,14 @@ int main(int argc, char** argv) {
     std::vector<int> all_gt, all_gpu, all_cpu, all_thr;
     GpuClusterer clusterer;
     GpuVoxelClusterer vclusterer;
+    GpuLShape lshaper;
+    std::vector<float> h_cs;
+    heading_table(h_cs);
+    double ls_gpu_ms = 0.0, ls_cpu_ms = 0.0;
+    long ls_fits = 0;
+    bool ls_same = true;
+    BoxScore bsum[3] = {};   // all observations, one face visible, two faces visible
+    std::vector<BoxScore> bobj(N_BOX, BoxScore{});
     double vcl_gpu_ms = 0.0;
     long vox_total = 0;
     bool vcl_same = true;
@@ -877,6 +1135,7 @@ int main(int argc, char** argv) {
     double cpu_ms_total = 0.0, gpu_ms_total = 0.0;
     long agree = 0, valid = 0;
     std::vector<cv::Mat> frames;
+    std::vector<Obb> fits;
     const int B = 256, G = (N_RAYS + B - 1) / B;
     for (int s = 0; s < N_SCAN; ++s) {
         scan_kernel<<<G, B>>>(poses[s][0], poses[s][1], (unsigned int)s, d_pts, d_gt, d_gt_obj);
@@ -962,6 +1221,61 @@ int main(int argc, char** argv) {
                 vcl_gpu_ms += vms;
                 vox_total += n_vox;
                 if (vlab != clab_obj) vcl_same = false;
+
+                // ---- L-shape boxes of the clusters ----
+                std::vector<int> gkeys, ckeys;
+                std::vector<Obb> gobb, cobb;
+                float lms = 1e30f;
+                for (int rep = 0; rep < 5; ++rep)
+                    lms = std::min(lms, lshaper.run(d_pts, vclusterer.d_label, gkeys, gobb));
+                ls_gpu_ms += lms;
+                auto l0 = std::chrono::high_resolution_clock::now();
+                cpu_lshape(pts, clab_obj, h_cs, ckeys, cobb);
+                auto l1 = std::chrono::high_resolution_clock::now();
+                ls_cpu_ms += std::chrono::duration<double, std::milli>(l1 - l0).count();
+                {
+                    std::vector<int> gk;
+                    std::vector<Obb> go;
+                    for (size_t r = 0; r < gkeys.size(); ++r)
+                        if (gobb[r].th >= 0) { gk.push_back(gkeys[r]); go.push_back(gobb[r]); }
+                    if (gk != ckeys) ls_same = false;
+                    for (size_t r = 0; r < go.size() && ls_same; ++r)
+                        if (std::memcmp(&go[r], &cobb[r], sizeof(Obb)) != 0) ls_same = false;
+                    ls_fits += (long)ckeys.size();
+                }
+                fits.clear();
+                for (const Obb& b : cobb) fits.push_back(b);
+                for (int b = 0; b < N_BOX; ++b) {
+                    int c = matched_cluster(clab_obj, gt_obj, b);
+                    if (c < 0) continue;
+                    size_t r = std::lower_bound(ckeys.begin(), ckeys.end(), c) - ckeys.begin();
+                    const Box& G = h_box[b];
+                    // the axis-aligned box of the same points is heading 0
+                    std::vector<int> items;
+                    for (int i = 0; i < N_RAYS; ++i) if (clab_obj[i] == c) items.push_back(i);
+                    Obb fit[2] = { cobb[r], lshape_rect(pts.data(), items.data(), 0, (int)items.size(), h_cs.data(), 0) };
+                    // faces of the box the sensor can see: one if it stands within the box's slab along one axis
+                    float cb = std::cos(G.yaw), sb = std::sin(G.yaw);
+                    float u = cb * (poses[s][0] - G.cx) + sb * (poses[s][1] - G.cy);
+                    float v = -sb * (poses[s][0] - G.cx) + cb * (poses[s][1] - G.cy);
+                    int faces = (std::fabs(u) > G.hl) + (std::fabs(v) > G.hw);
+                    cv::RotatedRect gr(cv::Point2f(G.cx, G.cy), cv::Size2f(2 * G.hl, 2 * G.hw), G.yaw / DEG);
+                    for (BoxScore* S : { &bsum[0], &bsum[faces >= 2 ? 2 : 1], &bobj[b] }) {
+                        S->n++;
+                        for (int m = 0; m < 2; ++m) {
+                            const Obb& F = fit[m];
+                            float wx = F.cx + poses[s][0], wy = F.cy + poses[s][1];
+                            cv::RotatedRect fr(cv::Point2f(wx, wy), cv::Size2f(F.len, F.wid), F.yaw / DEG);
+                            double iou = bev_iou(fr, gr);
+                            S->yaw[m] += yaw_err_deg(F.yaw, G.yaw);
+                            S->iou[m] += iou;
+                            S->centre[m] += std::hypot(wx - G.cx, wy - G.cy);
+                            S->len[m] += std::fabs(std::max(F.len, F.wid) - 2.0 * std::max(G.hl, G.hw));
+                            S->wid[m] += std::fabs(std::min(F.len, F.wid) - 2.0 * std::min(G.hl, G.hw));
+                            S->good[m] += iou >= 0.5;
+                        }
+                    }
+                }
             }
         }
         Score sm = score(gt, lab), st = score(gt, thr);
@@ -991,6 +1305,22 @@ int main(int argc, char** argv) {
                     cv::Point p = px(x, y, ox);
                     if (p.x >= ox && p.x < ox + W && p.y >= 0 && p.y < W) panel.at<cv::Vec3b>(p) = col;
                 }
+                if (view == 1) {
+                    auto draw = [&](float cx, float cy, float len, float wid, float yaw, cv::Scalar col) {
+                        float c = std::cos(yaw), sn = std::sin(yaw);
+                        cv::Point q[4];
+                        const float sg[4][2] = { { 1, 1 }, { -1, 1 }, { -1, -1 }, { 1, -1 } };
+                        for (int k = 0; k < 4; ++k) {
+                            float a = 0.5f * len * sg[k][0], b = 0.5f * wid * sg[k][1];
+                            q[k] = px(cx + c * a - sn * b, cy + sn * a + c * b, ox);
+                        }
+                        for (int k = 0; k < 4; ++k) cv::line(panel, q[k], q[(k + 1) % 4], col, 1, cv::LINE_AA);
+                    };
+                    for (int b = 0; b < N_BOX; ++b)
+                        draw(h_box[b].cx - poses[s][0], h_box[b].cy - poses[s][1], 2 * h_box[b].hl, 2 * h_box[b].hw,
+                             h_box[b].yaw, cv::Scalar(255, 170, 60));
+                    for (const Obb& F : fits) draw(F.cx, F.cy, F.len, F.wid, F.yaw, cv::Scalar(230, 60, 230));
+                }
                 Score sc = view == 0 ? st : sm;
                 char buf[160];
                 std::snprintf(buf, sizeof(buf), "%s   F1 %.3f",
@@ -999,8 +1329,8 @@ int main(int argc, char** argv) {
                             cv::Scalar(235, 235, 245), 1, cv::LINE_AA);
             }
             char buf[200];
-            std::snprintf(buf, sizeof(buf), "scan %d   red: object called ground   yellow: ground missed   GPU %.2f ms  CPU %.1f ms",
-                          s, gpu_ms, cpu_ms);
+            std::snprintf(buf, sizeof(buf), "scan %d   red: object called ground   yellow: ground missed   "
+                          "blue: true box   magenta: L-shape box", s);
             cv::putText(panel, buf, cv::Point(10, W - 12), cv::FONT_HERSHEY_SIMPLEX, 0.5,
                         cv::Scalar(200, 200, 210), 1, cv::LINE_AA);
             frames.push_back(panel);
@@ -1041,11 +1371,28 @@ int main(int argc, char** argv) {
                 "GPU voxel union-find %.3f ms (%ld voxels per scan); same partition as the CPU: %s / %s\n",
                 cl_cpu_ms / N_SCAN, cl_gpu_ms / N_SCAN, vcl_gpu_ms / N_SCAN, vox_total / N_SCAN,
                 cl_same ? "yes" : "no", vcl_same ? "yes" : "no");
+    std::printf("\n--- oriented boxes of the clusters (L-shape fitting, %d headings, closeness criterion) ---\n", N_TH);
+    std::printf("fits per scan %ld; CPU %.2f ms, GPU %.3f ms per scan; CPU and GPU boxes identical: %s\n",
+                ls_fits / N_SCAN, ls_cpu_ms / N_SCAN, ls_gpu_ms / N_SCAN, ls_same ? "yes" : "no");
+    auto box_line = [](const char* name, const BoxScore& S) {
+        if (!S.n) return;
+        for (int m = 0; m < 2; ++m)
+            std::printf("%-22s %-12s n %3d  heading err %5.2f deg  IoU %.3f  (>= 0.5: %3d)  centre err %.2f m  "
+                        "long side err %.2f m  short side err %.2f m\n", m == 0 ? name : "", m == 0 ? "L-shape" : "axis-aligned",
+                        S.n, S.yaw[m] / S.n, S.iou[m] / S.n, S.good[m], S.centre[m] / S.n, S.len[m] / S.n, S.wid[m] / S.n);
+    };
+    box_line("all box observations", bsum[0]);
+    box_line("one face visible", bsum[1]);
+    box_line("two faces visible", bsum[2]);
+    for (int b = 0; b < N_BOX; ++b) box_line(box_name[b], bobj[b]);
+    bool ls_better = bsum[0].n > 0 && bsum[0].yaw[0] < bsum[0].yaw[1] && bsum[0].iou[0] > bsum[0].iou[1];
     double found_rate = cl_sum[0].objects ? (double)cl_sum[0].found / cl_sum[0].objects : 0.0;
-    bool ok = sg.f1 >= 0.95 && sg.f1 > st.f1 && agree_pct >= 99.9 && found_rate >= 0.9 && cl_same && vcl_same;
+    bool ok = sg.f1 >= 0.95 && sg.f1 > st.f1 && agree_pct >= 99.9 && found_rate >= 0.9 && cl_same && vcl_same &&
+              ls_better && ls_same;
     if (check) {
         std::printf("check: %s (model F1 >= 0.95, above the height threshold, CPU/GPU agreement >= 99.9%%, "
-                    ">= 90%% of objects found as one cluster, identical CPU/GPU partition)\n", ok ? "PASS" : "FAIL");
+                    ">= 90%% of objects found as one cluster, identical CPU/GPU partition, L-shape boxes beat "
+                    "axis-aligned ones, identical CPU/GPU boxes)\n", ok ? "PASS" : "FAIL");
         return ok ? 0 : 1;
     }
     return 0;
