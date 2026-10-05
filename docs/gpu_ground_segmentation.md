@@ -66,10 +66,29 @@ The second stage clusters the remaining points into objects: Euclidean clusterin
 - **With the height threshold,** the ramp's ground survives as hundreds of spurious clusters, and objects standing on it merge with that ground.
 - **With the model,** 96% of the objects come out as their own cluster.
 
-**Time per scan:** clustering takes 70-110 ms on the CPU and 13-24 ms on the GPU.
-- The GPU time is the unite kernel. Near the sensor a point has thousands of neighbours within 0.5 m, and exact point-level clustering has to test them.
-- Sorting the points instead of scanning a dense 1.4 M-cell grid, and union-find instead of iterated label propagation, did not change it.
-- Voxel-downsampling before clustering would, at the cost of no longer matching the CPU partition exactly.
+**Voxel clustering, same partition.** Points in one voxel of side `0.5 m / sqrt(3)` are always within 0.5 m of each other, so a voxel can be a node. Two voxels are connected if any pair of their points is within 0.5 m.
+
+| Step | What it does |
+|---|---|
+| graph | about 1550 occupied voxels per scan instead of about 50k points |
+| unite | one thread per (voxel, neighbour offset): 62 offsets within 2 voxels per axis, each pair once |
+| skip | pairs already in one set, and pairs whose voxels' point bounds are more than 0.5 m apart |
+| test | point pairs otherwise, stopping at the first one within 0.5 m |
+| label | each component takes its smallest point index |
+
+The result is the same partition and the same labels as the CPU's BFS on every scan.
+
+**Time per scan** (GPU: minimum of 5 runs, on a GPU shared with other work):
+
+| Clusterer | time | same partition as the CPU |
+|---|---:|---|
+| CPU BFS over the points | 66-89 ms | — |
+| GPU point-level union-find | 8.3-8.5 ms | yes |
+| GPU voxel-level union-find | **3.8-4.2 ms** | yes |
+
+- **Point-level:** near the sensor a point has thousands of neighbours within 0.5 m, and every one is tested.
+- **Voxel-level:** collapses those neighbourhoods and stops at the first close pair, about twice as fast as point-level and about 20x faster than the CPU.
+- **What did not help:** sorting the points instead of scanning a dense grid, and union-find instead of iterated label propagation, left the point-level clusterer unchanged. One thread per voxel instead of per (voxel, offset) was slower than point-level (too few threads).
 
 ## Reproduce
 
