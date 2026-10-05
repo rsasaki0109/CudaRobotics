@@ -314,8 +314,34 @@ A second tracker, the motion tracker, runs next to the static one:
 - **On the parked vehicles it matches the static tracker** (12 vs 8 seeds, p = 0.5). The stand-still test keeps their drifting velocity (error 0.65 m/s) out of the boxes. Both trackers beat the single scan there.
 - **On the moving vehicles it does not beat the single scan.** IoU is 0.04 lower and centre error 0.19 m higher; the single scan is better in 18 of 20 seeds. Traffic in the sensor's lane shows only its rear or its front, so the scans add no new faces. Each scan already completes the box from the visible face, while the track lags and smears by its velocity error.
   - I expected the motion tracker to beat the single scan here and set the gate that way before the held-out drives ran. The gate now checks only what held.
-  - A tracker that outputs the single-scan box for tracks judged moving and its own box for the others would combine the two. That rule comes from these held-out drives, so it would need fresh drives to test.
+  - A tracker that outputs the single-scan box for tracks judged moving and its own box for the others would combine the two. That rule comes from these held-out drives, so the next section tests it on fresh drives.
 
+## Hybrid boxes, tested on fresh drives
+
+The **hybrid box** combines the two:
+- for a track the stand-still test calls moving, it is the single-scan box (with the size prior);
+- for every other track, it is the motion tracker's box.
+
+The rule was read off seeds 1-20, so `scripts/box_hybrid_eval.py` tests it on **fresh drives, seeds 21-40**, which no earlier step ran. The criteria were fixed in the script before those drives ran:
+1. moving vehicles: hybrid ≥ single scan − 0.01 IoU;
+2. parked vehicles: hybrid ≥ motion tracker − 0.01;
+3. all vehicles: hybrid above both.
+
+Full report: [results/box_hybrid_2026-10-06.md](results/box_hybrid_2026-10-06.md).
+
+| Fresh drives (seeds 21-40), BEV IoU | observations | single scan | motion tracker | hybrid |
+|---|---:|---:|---:|---:|
+| moving vehicles | 1453 | **0.751** | 0.729 | 0.743 |
+| parked vehicles | 2902 | 0.688 | 0.726 | **0.728** |
+| all vehicles | 4355 | 0.709 | 0.727 | **0.733** |
+| all vehicles, centre error | 4355 | 0.52 m | 0.46 m | **0.44 m** |
+
+- **All three criteria hold on the fresh drives.**
+  - Over all vehicles, the hybrid beats the single scan by 0.024 IoU (18 of 20 seeds).
+  - It beats the motion tracker by 0.006 IoU (14 of 20 seeds, p = 0.12, not significant per seed).
+- **On the moving vehicles it still trails the single scan a little:** −0.008 IoU, lower in 19 of 20 seeds. A young track is not yet called moving, so it gets the track's box for its first scans. On seeds 1-20, where the rule came from, the gap was −0.011, which misses criterion 1.
+
+## Reproduce
 ## Reproduce
 
 ```bash
@@ -330,6 +356,7 @@ python scripts/train_box_classifier.py --eval-seeds 1-20   # its confusion on th
 python scripts/box_tracking_eval.py                 # tracking, dev and held-out drives, K = 1, 3, 5
 ./bin/gpu_ground_segmentation --moving              # moving traffic; writes the motion GIF
 python scripts/box_motion_eval.py                   # moving traffic, dev and held-out drives
+python scripts/box_hybrid_eval.py                   # hybrid boxes, fresh drives (seeds 21-40)
 ```
 
 `--check` exits non-zero unless the model's F1 is at least 0.95, above the
@@ -352,7 +379,8 @@ With `--moving`, `--check` requires:
 - F1 ≥ 0.95 and the CPU/GPU agreements;
 - motion-tracker boxes (with the size prior) that beat the static tracker's on the moving vehicles in IoU and centre error, and match them on the parked ones (within 0.01 IoU);
 - no more identity switches than the static tracker;
-- a velocity error under 1.5 m/s on the moving vehicles.
+- a velocity error under 1.5 m/s on the moving vehicles;
+- hybrid boxes that beat the single-scan and the motion tracker's boxes over all vehicles.
 
 CTest runs it as `gpu_ground_segmentation_motion_gate`.
 
