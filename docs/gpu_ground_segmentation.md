@@ -275,6 +275,47 @@ world frame, because the objects are static and the sensor pose is known.
 
 K = 3 was set before the held-out drives ran. K = 5 does better on both the dev and the held-out drives and is a candidate for the default.
 
+## Moving traffic
+
+The tracker above assumes that nothing moves. `--moving` adds traffic to the drive: a lead car and a following car in the sensor's lane.
+- They start 12 m ahead and 12 m behind.
+- The lead car drives at 8-13 m/s and the following car at 7-12 m/s (11.5 and 9 m/s on the dev drive).
+- The other vehicles stay parked.
+
+A second tracker, the motion tracker, runs next to the static one:
+
+- **Kalman filter.** A constant-velocity filter on (x, y, vx, vy) per track, with acceleration noise 2 m/s² and measurement noise 0.3 m. The measurement is the centre of the cluster's box completed with the size prior of the track's majority class. That centre depends less on the viewpoint than the box of the visible points.
+- **Association.** A cluster may join a track whose predicted centre is within 2 m of the measurement, or whose predicted box is within 1 m of the cluster's box. Pairs go closest first by the box distance.
+- **Accumulation in the object's frame.** A track keeps every scan's points with their time. A refit tries two hypotheses:
+  - the object stands still;
+  - the object moves with the filter's velocity (tried only above 1 m/s).
+
+  Under each hypothesis, the points are moved to the current time and counted on the voxel grid. The hypothesis with more voxels seen in at least 3 scans wins. The filter alone cannot tell a parked car from a moving one: as the sensor passes a parked car, the visible part changes, and the measured centre drifts as if the car moved.
+
+**Development notes.**
+- Gating on the centre alone let the parked car beside the road split into new tracks: its measured centre jumps when the view turns from its rear to its side.
+- Gating on the box alone gave the lead car's cluster to a parked car's track, as it passed 5 cm beside that car.
+- Without the stand-still test, a parked car's drifting velocity smeared its accumulated points.
+
+**Results.** `scripts/box_motion_eval.py` runs the dev drive and held-out drives (seeds 1-20). All boxes are completed with the size prior. Full report: [results/box_motion_2026-10-05.md](results/box_motion_2026-10-05.md).
+
+| Held-out drives | observations | single scan | static tracker | motion tracker |
+|---|---:|---:|---:|---:|
+| moving vehicles, BEV IoU | 1426 | **0.729** | 0.382 | 0.686 |
+| moving vehicles, centre error | 1426 | **0.52 m** | 3.22 m | 0.71 m |
+| parked vehicles, BEV IoU | 2897 | 0.701 | 0.742 | **0.745** |
+| identity switches (all vehicles) | | — | 253 | **26** |
+| velocity error, moving vehicles | 1271 | — | 9.82 m/s | **0.69 m/s** |
+
+- **The motion tracker fixes what the static tracker breaks on moving traffic.**
+  - IoU rises by 0.30 and centre error drops by 2.5 m, in 19 of 20 seeds.
+  - Identity switches drop from 253 to 26.
+  - It estimates the traffic's velocity to 0.7 m/s.
+- **On the parked vehicles it matches the static tracker** (12 vs 8 seeds, p = 0.5). The stand-still test keeps their drifting velocity (error 0.65 m/s) out of the boxes. Both trackers beat the single scan there.
+- **On the moving vehicles it does not beat the single scan.** IoU is 0.04 lower and centre error 0.19 m higher; the single scan is better in 18 of 20 seeds. Traffic in the sensor's lane shows only its rear or its front, so the scans add no new faces. Each scan already completes the box from the visible face, while the track lags and smears by its velocity error.
+  - I expected the motion tracker to beat the single scan here and set the gate that way before the held-out drives ran. The gate now checks only what held.
+  - A tracker that outputs the single-scan box for tracks judged moving and its own box for the others would combine the two. That rule comes from these held-out drives, so it would need fresh drives to test.
+
 ## Reproduce
 
 ```bash
@@ -287,6 +328,8 @@ python scripts/train_box_classifier.py              # retrain the learned class 
 python scripts/train_box_classifier.py --eval-seeds 1-20   # its confusion on the held-out scenes
 ./bin/gpu_ground_segmentation --sequence            # tracking along a drive; writes the tracking GIF
 python scripts/box_tracking_eval.py                 # tracking, dev and held-out drives, K = 1, 3, 5
+./bin/gpu_ground_segmentation --moving              # moving traffic; writes the motion GIF
+python scripts/box_motion_eval.py                   # moving traffic, dev and held-out drives
 ```
 
 `--check` exits non-zero unless the model's F1 is at least 0.95, above the
@@ -305,7 +348,15 @@ With `--sequence`, `--check` instead requires:
 
 CTest runs it as `gpu_ground_segmentation_track_gate`.
 
-Generated files: `tmp/gpu_ground_segmentation.avi` and `gif/gpu_ground_segmentation.gif`; with `--sequence`, `tmp/gpu_ground_segmentation_track.avi` and `gif/gpu_ground_segmentation_track.gif`.
+With `--moving`, `--check` requires:
+- F1 ≥ 0.95 and the CPU/GPU agreements;
+- motion-tracker boxes (with the size prior) that beat the static tracker's on the moving vehicles in IoU and centre error, and match them on the parked ones (within 0.01 IoU);
+- no more identity switches than the static tracker;
+- a velocity error under 1.5 m/s on the moving vehicles.
+
+CTest runs it as `gpu_ground_segmentation_motion_gate`.
+
+Generated files: `tmp/gpu_ground_segmentation.avi` and `gif/gpu_ground_segmentation.gif`; with `--sequence`, `tmp/gpu_ground_segmentation_track.avi` and `gif/gpu_ground_segmentation_track.gif`; with `--moving`, `tmp/gpu_ground_segmentation_motion.avi` and `gif/gpu_ground_segmentation_motion.gif`.
 
 ## Output
 
@@ -318,4 +369,4 @@ The GIF shows a bird's-eye view (40 m × 40 m) of each scan: the height threshol
 | red | object labelled ground |
 | yellow | ground missed |
 
-The tracking GIF (`--sequence`) shows the model's view along the drive with the true boxes (blue), the L-shape boxes (magenta), the single-scan boxes with the size prior (orange) and the tracked boxes with the size prior (green).
+The tracking GIF (`--sequence`) shows the model's view along the drive with the true boxes (blue), the L-shape boxes (magenta), the single-scan boxes with the size prior (orange) and the tracked boxes with the size prior (green). The motion GIF (`--moving`) shows the motion tracker's boxes in green.

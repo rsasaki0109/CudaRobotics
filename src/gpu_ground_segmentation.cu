@@ -62,6 +62,12 @@
 // poses stay in it (--trk-hits K: a voxel counts once seen in K scans, default
 // 3). Output: gif/gpu_ground_segmentation_track.gif.
 //
+// --moving (with --sequence) adds traffic: a lead car and a following car drive
+// in the sensor's lane. A second tracker then runs next to the static one: a
+// constant-velocity Kalman filter per track, with the points accumulated in the
+// object's frame (moved to the current time by the estimated velocity).
+// Output: gif/gpu_ground_segmentation_motion.gif.
+//
 // Options: --no-video, --check (exit non-zero unless the model's F1 >= 0.95,
 // it beats the height threshold, CPU and GPU labels agree on >= 99.9%, at least
 // 90% of the objects come out as one cluster, the CPU and GPU clusterings
@@ -91,6 +97,7 @@
 #include <string>
 #include <tuple>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 #include "cuda_check.cuh"
@@ -139,7 +146,7 @@ __host__ __device__ static inline float ground_h(float x, float y) {
 struct Box { float cx, cy, hl, hw, yaw, h; };   // centre, half length / width, heading; on the ground
 struct Cyl { float x, y, r, h; };
 
-static const int N_BOX = 7, N_CYL = 8;
+static const int N_BOX = 9, N_CYL = 8;   // boxes 7, 8: traffic (--moving), out of range otherwise
 __constant__ Box c_box[N_BOX];
 __constant__ Cyl c_cyl[N_CYL];
 
@@ -1087,12 +1094,12 @@ static Obb complete_box(const Obb& B, int cls, float scale, bool end_rule = true
 }
 
 // Box scores, summed over observations, per box method.
-static const int N_BM = 9;
+static const int N_BM = 11;
 static const char* BM_NAME[N_BM] = { "L-shape", "axis-aligned", "L + prior", "L + prior x0.9", "L + prior x1.1",
                                      "L + prior, no end rule", "L + prior, learned class", "tracked L-shape",
-                                     "tracked L + prior" };
+                                     "tracked L + prior", "motion-tracked L-shape", "motion-tracked L + prior" };
 static const char* BM_KEY[N_BM] = { "lshape", "aabb", "prior", "prior_x0.9", "prior_x1.1", "prior_noend", "prior_mlp",
-                                    "trk_lshape", "trk_prior" };
+                                    "trk_lshape", "trk_prior", "mtrk_lshape", "mtrk_prior" };
 
 // Held-out scene: boxes move within 1 m and take a new heading (the wall stays),
 // cars and the van take new sizes, and the sensor takes new poses on the road.
@@ -1106,7 +1113,7 @@ static void randomize_scene(unsigned int seed, Box* box, const Cyl* cyl, std::ve
     auto U = [&](float a, float b) { return std::uniform_real_distribution<float>(a, b)(rng); };
     auto rad = [](const Box& B) { return std::sqrt(B.hl * B.hl + B.hw * B.hw); };
     for (int b = 0; b < N_BOX; ++b) {
-        if (b == 3) continue;
+        if (b == 3 || b >= 7) continue;   // the wall stays; traffic is set by --moving
         for (int tries = 0; tries < 1000; ++tries) {
             Box B = box[b];
             B.cx += U(-1.0f, 1.0f); B.cy += U(-1.0f, 1.0f); B.yaw = U(0.0f, PI_F);
@@ -1224,6 +1231,210 @@ static void track_add(Track& T, const std::vector<float>& pts, const std::vector
     T.box = lshape_fit_cpu(T.pts.data(), idx.data(), (int)idx.size(), cs);
 }
 
+// ---- motion tracking (--moving) ----
+// Each track also runs a constant-velocity Kalman filter on (x, y, vx, vy). Its
+// measurement is the centre of the cluster's box completed with the size prior
+// of the track's majority class (so that a scan classed differently does not
+// shift it), which depends less on the viewpoint than the box of the visible
+// points. A cluster may join a track whose predicted centre lies within
+// MV_GATE of the measurement, or whose predicted box lies within TRK_GATE of the
+// cluster's box (the measured centre jumps when the view of a nearby car turns
+// from its rear to its side); the pairs go closest first by the box distance,
+// then by the centre distance.
+//
+// The track keeps every scan's points with their time. A refit tries two
+// hypotheses: the object stands still, or it moves with the filter's velocity
+// (only tried above MV_STATIC). Under each, the points are moved to the current
+// time and counted on the voxel grid as the static tracker does; the hypothesis
+// with more voxels seen in at least K scans wins (a tie: standing still). The
+// filter alone cannot tell: as the sensor passes a parked car, the visible part
+// and with it the measured centre drift, which reads as a velocity.
+static constexpr float MV_STATIC = 1.0f, MV_SIGMA_A = 2.0f, MV_SIGMA_Z = 0.3f, MV_GATE = 2.0f, SCAN_DT = 0.1f;
+
+struct MotionState {
+    double x[4] = { 0, 0, 0, 0 }, P[4][4] = {};
+    std::vector<float> pts, t;   // world x, y, z per point (one per voxel per scan), and its time
+    float t_box = 0.0f;
+    bool moving = false;         // the hypothesis the last refit chose
+};
+
+static void kf_predict(MotionState& M, double dt) {
+    double F[4][4] = { { 1, 0, dt, 0 }, { 0, 1, 0, dt }, { 0, 0, 1, 0 }, { 0, 0, 0, 1 } }, FP[4][4] = {}, Pn[4][4] = {};
+    for (int i = 0; i < 4; ++i) for (int j = 0; j < 4; ++j) for (int k = 0; k < 4; ++k) FP[i][j] += F[i][k] * M.P[k][j];
+    for (int i = 0; i < 4; ++i) for (int j = 0; j < 4; ++j) for (int k = 0; k < 4; ++k) Pn[i][j] += FP[i][k] * F[j][k];
+    double q = (double)MV_SIGMA_A * MV_SIGMA_A, d2 = dt * dt, d3 = d2 * dt, d4 = d3 * dt;
+    Pn[0][0] += q * d4 / 4; Pn[1][1] += q * d4 / 4; Pn[2][2] += q * d2; Pn[3][3] += q * d2;
+    Pn[0][2] += q * d3 / 2; Pn[2][0] += q * d3 / 2; Pn[1][3] += q * d3 / 2; Pn[3][1] += q * d3 / 2;
+    M.x[0] += dt * M.x[2]; M.x[1] += dt * M.x[3];
+    for (int i = 0; i < 4; ++i) for (int j = 0; j < 4; ++j) M.P[i][j] = Pn[i][j];
+}
+
+static void kf_update(MotionState& M, double zx, double zy) {
+    double r = (double)MV_SIGMA_Z * MV_SIGMA_Z;
+    double S[2][2] = { { M.P[0][0] + r, M.P[0][1] }, { M.P[1][0], M.P[1][1] + r } };
+    double det = S[0][0] * S[1][1] - S[0][1] * S[1][0];
+    double Si[2][2] = { { S[1][1] / det, -S[0][1] / det }, { -S[1][0] / det, S[0][0] / det } };
+    double K[4][2];
+    for (int i = 0; i < 4; ++i)
+        for (int j = 0; j < 2; ++j) K[i][j] = M.P[i][0] * Si[0][j] + M.P[i][1] * Si[1][j];
+    double y0 = zx - M.x[0], y1 = zy - M.x[1];
+    for (int i = 0; i < 4; ++i) M.x[i] += K[i][0] * y0 + K[i][1] * y1;
+    double Pn[4][4];
+    for (int i = 0; i < 4; ++i)
+        for (int j = 0; j < 4; ++j) Pn[i][j] = M.P[i][j] - K[i][0] * M.P[0][j] - K[i][1] * M.P[1][j];
+    for (int i = 0; i < 4; ++i) for (int j = 0; j < 4; ++j) M.P[i][j] = Pn[i][j];
+}
+
+// The points of a motion track moved to t_now by (vx, vy), on the voxel grid:
+// returns the voxels seen in at least `need` scans (their first points in P).
+static int motion_voxels(const MotionState& M, float t_now, float vx, float vy, int need, std::vector<float>& P,
+                         std::vector<int>& idx) {
+    std::unordered_map<long long, int> vox;
+    P.clear(); idx.clear();
+    std::vector<int> hits, last;
+    for (size_t i = 0; i < M.t.size(); ++i) {
+        float dt = t_now - M.t[i];
+        float x = M.pts[i * 3] + vx * dt, y = M.pts[i * 3 + 1] + vy * dt, z = M.pts[i * 3 + 2];
+        long long kx = (long long)std::floor(x / TRK_VOX) + 100000, ky = (long long)std::floor(y / TRK_VOX) + 100000;
+        long long kz = (long long)std::floor(z / TRK_VOX) + 1000;
+        auto it = vox.emplace((kx * 200000 + ky) * 2000 + kz, (int)hits.size());
+        int v = it.first->second;
+        if (it.second) { P.push_back(x); P.push_back(y); P.push_back(z); hits.push_back(0); last.push_back(-1); }
+        int scan = (int)std::lround(M.t[i] / SCAN_DT);
+        if (last[v] != scan) { last[v] = scan; hits[v]++; }
+    }
+    for (size_t v = 0; v < hits.size(); ++v) if (hits[v] >= need) idx.push_back((int)v);
+    int consistent = (int)idx.size();
+    if (consistent < CL_MIN) { idx.resize(hits.size()); std::iota(idx.begin(), idx.end(), 0); }
+    return consistent;
+}
+
+// Refit a motion track's box at time t_now: standing still or moving, whichever is more consistent.
+static void motion_refit(Track& T, MotionState& M, float t_now, const std::vector<float>& cs) {
+    int need = std::min(g_trk_hits, T.scans);
+    std::vector<float> P0, P1;
+    std::vector<int> i0, i1;
+    int n0 = motion_voxels(M, t_now, 0.0f, 0.0f, need, P0, i0);
+    M.moving = false;
+    if (std::hypot(M.x[2], M.x[3]) > MV_STATIC) {
+        int n1 = motion_voxels(M, t_now, (float)M.x[2], (float)M.x[3], need, P1, i1);
+        M.moving = n1 > n0;
+    }
+    T.box = M.moving ? lshape_fit_cpu(P1.data(), i1.data(), (int)i1.size(), cs)
+                     : lshape_fit_cpu(P0.data(), i0.data(), (int)i0.size(), cs);
+    M.t_box = t_now;
+}
+
+// One tracker: static (world-frame accumulation) or motion (Kalman filter, object-frame accumulation).
+struct Tracker {
+    bool motion = false;
+    std::vector<Track> tracks;
+    std::vector<MotionState> ms;
+    std::vector<int> track_of = std::vector<int>(N_RAYS, -1), last_track = std::vector<int>(N_BOX, -1);
+    int id_switches = 0;
+    float t_prev = 0.0f;
+
+    // The track's box at time t (motion tracks: moved by the estimated velocity).
+    Obb box_at(int k, float t) const {
+        Obb B = tracks[k].box;
+        if (motion && ms[k].moving) {
+            B.cx += (float)ms[k].x[2] * (t - ms[k].t_box); B.cy += (float)ms[k].x[3] * (t - ms[k].t_box);
+        }
+        return B;
+    }
+
+    // cand: clusters (indices into ckeys / cobb) the learned class calls cars or vans, with their classes and points.
+    void update(float t, float px, float py, float pz, int scan, const std::vector<int>& cand,
+                const std::vector<int>& ccls, const std::vector<std::vector<int>>& citems, const std::vector<int>& ckeys,
+                const std::vector<Obb>& cobb, const std::vector<float>& pts, const std::vector<float>& cs) {
+        std::fill(track_of.begin(), track_of.end(), -1);
+        if (motion) for (MotionState& M : ms) kf_predict(M, t - t_prev);
+        t_prev = t;
+        std::vector<std::tuple<float, int, int>> pairs;   // distance, candidate, track
+        for (size_t k = 0; k < cand.size(); ++k) {
+            Obb W = cobb[cand[k]];
+            W.cx += px; W.cy += py;
+            for (size_t j = 0; j < tracks.size(); ++j) {
+                if (motion) {   // predicted centre vs measured centre
+                    Obb Z = complete_box(cobb[cand[k]], track_class((int)j, ccls[cand[k]]), 1.0f);
+                    float d = (float)std::hypot(Z.cx + px - ms[j].x[0], Z.cy + py - ms[j].x[1]);
+                    float dr = rect_rect_dist(box_at((int)j, t), W);
+                    if (d < MV_GATE || dr < TRK_GATE) pairs.emplace_back(dr + 0.01f * d, (int)k, (int)j);
+                } else {
+                    float d = rect_rect_dist(tracks[j].box, W);
+                    if (d < TRK_GATE) pairs.emplace_back(d, (int)k, (int)j);
+                }
+            }
+        }
+        std::sort(pairs.begin(), pairs.end());
+        std::vector<int> cand_track(cand.size(), -1), used(tracks.size(), 0);
+        for (const auto& pr : pairs) {
+            int k = std::get<1>(pr), j = std::get<2>(pr);
+            if (cand_track[k] >= 0 || used[j]) continue;
+            cand_track[k] = j; used[j] = 1;
+        }
+        for (size_t k = 0; k < cand.size(); ++k) {
+            int jt = cand_track[k];
+            Obb Z = complete_box(cobb[cand[k]], jt >= 0 ? track_class(jt, ccls[cand[k]]) : ccls[cand[k]], 1.0f);
+            double zx = Z.cx + px, zy = Z.cy + py;   // the measurement (motion tracks)
+            if (cand_track[k] < 0) {
+                cand_track[k] = (int)tracks.size();
+                tracks.emplace_back();
+                for (int c = 0; c < N_CLS; ++c) tracks.back().votes[c] = 0;
+                ms.emplace_back();
+                MotionState& M = ms.back();
+                M.x[0] = zx; M.x[1] = zy;
+                M.P[0][0] = M.P[1][1] = (double)MV_SIGMA_Z * MV_SIGMA_Z;
+                M.P[2][2] = M.P[3][3] = 100.0;
+            } else if (motion) {
+                kf_update(ms[cand_track[k]], zx, zy);
+            }
+            Track& T = tracks[cand_track[k]];
+            if (motion) {
+                MotionState& M = ms[cand_track[k]];
+                std::unordered_set<long long> seen;   // one point per voxel per scan
+                for (int i : citems[k]) {
+                    float x = pts[i * 3] + px, y = pts[i * 3 + 1] + py, z = pts[i * 3 + 2] + pz;
+                    long long kx = (long long)std::floor(x / TRK_VOX) + 100000;
+                    long long ky = (long long)std::floor(y / TRK_VOX) + 100000;
+                    long long kz = (long long)std::floor(z / TRK_VOX) + 1000;
+                    if (!seen.insert((kx * 200000 + ky) * 2000 + kz).second) continue;
+                    M.pts.push_back(x); M.pts.push_back(y); M.pts.push_back(z); M.t.push_back(t);
+                }
+                T.scans++;
+                motion_refit(T, M, t, cs);
+            } else {
+                track_add(T, pts, citems[k], px, py, pz, scan, cs);
+            }
+            T.votes[ccls[cand[k]]]++;
+            track_of[ckeys[cand[k]]] = cand_track[k];
+        }
+    }
+
+    // The majority class of track k counting one more vote for class c.
+    int track_class(int k, int c) const {
+        int v[N_CLS], tc = 0;
+        for (int i = 0; i < N_CLS; ++i) v[i] = tracks[k].votes[i] + (i == c);
+        for (int i = 1; i < N_CLS; ++i) if (v[i] > v[tc]) tc = i;
+        return tc;
+    }
+
+    // Raw and size-prior boxes of track k in the sensor frame at time t.
+    void boxes(int k, float t, float px, float py, Obb& raw, Obb& done_box) const {
+        const Track& T = tracks[k];
+        raw = motion ? box_at(k, t) : T.box;
+        raw.cx -= px; raw.cy -= py;
+        int tc = 0;
+        for (int c = 1; c < N_CLS; ++c) if (T.votes[c] > T.votes[tc]) tc = c;
+        done_box = complete_box(raw, tc, 1.0f);
+    }
+
+    void observe(int b, int k) {
+        if (last_track[b] >= 0 && last_track[b] != k) ++id_switches;
+        last_track[b] = k;
+    }
+};
+
 struct BoxScore { int n; double yaw[N_BM], iou[N_BM], centre[N_BM], len[N_BM], wid[N_BM]; int good[N_BM], cls[N_CLS + 1], cls_mlp[N_CLS + 1]; };
 
 // Object-level scores of a clustering against the ground-truth objects.
@@ -1321,7 +1532,7 @@ int main(int argc, char** argv) {
     unsigned int seed = 0;
     const char* obs_csv = nullptr;
     const char* cls_csv = nullptr;
-    bool sequence = false;
+    bool sequence = false, moving = false;
     for (int i = 1; i < argc; ++i) {
         if (!std::strcmp(argv[i], "--no-video")) no_video = true;
         else if (!std::strcmp(argv[i], "--check")) check = true;
@@ -1329,6 +1540,7 @@ int main(int argc, char** argv) {
         else if (!std::strcmp(argv[i], "--obs-csv") && i + 1 < argc) obs_csv = argv[++i];
         else if (!std::strcmp(argv[i], "--cls-csv") && i + 1 < argc) cls_csv = argv[++i];
         else if (!std::strcmp(argv[i], "--sequence")) sequence = true;
+        else if (!std::strcmp(argv[i], "--moving")) moving = sequence = true;
         else if (!std::strcmp(argv[i], "--trk-hits") && i + 1 < argc) g_trk_hits = std::max(1, std::atoi(argv[++i]));
     }
     std::printf("=== GPU LiDAR ground segmentation (CPU vs CUDA) ===\n");
@@ -1342,8 +1554,12 @@ int main(int argc, char** argv) {
         { 23.0f, -8.0f, 3.0f, 1.0f, 10.0f * DEG, 2.8f },     // van on the ramp
         { -18.0f, -12.0f, 2.0f, 1.5f, 30.0f * DEG, 1.0f },   // low crate
         { 3.0f, 10.0f, 1.0f, 0.5f, 0.0f, 0.6f },             // bench on the sidewalk
+        { 1000.0f, 0.0f, 2.25f, 0.9f, 0.0f, 1.5f },          // lead car (--moving)
+        { 1000.0f, 10.0f, 2.25f, 0.9f, 0.0f, 1.5f },         // following car (--moving)
     };
-    const char* box_name[N_BOX] = { "car", "car on the ramp", "car", "wall", "van on the ramp", "crate", "bench" };
+    const char* box_name[N_BOX] = { "car", "car on the ramp", "car", "wall", "van on the ramp", "crate", "bench",
+                                    "lead car", "following car" };
+    float box_speed[N_BOX] = {};   // along +x (traffic only)
     Cyl h_cyl[N_CYL] = {
         { 4.0f, 6.8f, 0.15f, 4.0f }, { 12.0f, 6.8f, 0.15f, 4.0f }, { -6.0f, 6.8f, 0.15f, 4.0f },
         { 3.0f, -1.0f, 0.3f, 1.7f }, { -2.0f, 3.5f, 0.3f, 1.7f }, { 9.0f, 4.5f, 0.3f, 1.7f },
@@ -1360,11 +1576,24 @@ int main(int argc, char** argv) {
         randomize_scene(seed, h_box, h_cyl, poses, sequence);
         std::printf("held-out scene, seed %u\n", seed);
     }
+    if (moving) {   // traffic in the sensor's lane, 12 m ahead and 12 m behind at the start
+        h_box[7].cx = PATH_X0 + 12.0f; h_box[7].cy = PATH_Y; box_speed[7] = 11.5f;
+        h_box[8].cx = PATH_X0 - 12.0f; h_box[8].cy = PATH_Y; box_speed[8] = 9.0f;
+        if (seed > 0) {
+            std::mt19937 rng(seed * 7919u + 17u);
+            auto U = [&](float a, float b) { return std::uniform_real_distribution<float>(a, b)(rng); };
+            for (int b = 7; b <= 8; ++b) {
+                h_box[b].hl = 0.5f * U(4.0f, 5.0f); h_box[b].hw = 0.5f * U(1.7f, 1.9f); h_box[b].h = U(1.4f, 1.7f);
+            }
+            box_speed[7] = U(8.0f, 13.0f); box_speed[8] = U(7.0f, 12.0f);
+        }
+    }
     CUDA_CHECK(cudaMemcpyToSymbol(c_box, h_box, sizeof(h_box)));
+    Box h_box_t[N_BOX];   // the boxes at the current scan's time
     CUDA_CHECK(cudaMemcpyToSymbol(c_cyl, h_cyl, sizeof(h_cyl)));
     FILE* obs = obs_csv ? std::fopen(obs_csv, "w") : nullptr;
     if (obs) {
-        std::fprintf(obs, "seed,scan,box,faces,cls,cls_mlp,track");
+        std::fprintf(obs, "seed,scan,box,faces,cls,cls_mlp,track,mtrack,speed,verr_static,verr_motion");
         for (int m = 0; m < N_BM; ++m)
             std::fprintf(obs, ",iou_%s,centre_%s,yaw_%s", BM_KEY[m], BM_KEY[m], BM_KEY[m]);
         std::fprintf(obs, "\n");
@@ -1413,11 +1642,16 @@ int main(int argc, char** argv) {
     long agree = 0, valid = 0;
     std::vector<cv::Mat> frames;
     std::vector<Obb> fits, done, trk_draw;
-    std::vector<Track> tracks;
-    std::vector<int> track_of(N_RAYS, -1), last_track(N_BOX, -1);
-    int id_switches = 0;
+    Tracker trk[2];   // static, motion
+    trk[1].motion = true;
+    BoxScore bmov = {}, bpark = {};   // vehicle observations: moving traffic, parked cars and the van
+    double verr_sum[2][2] = {};       // [tracker][moving]
+    int verr_n[2] = {};
     const int B = 256, G = (N_RAYS + B - 1) / B;
     for (int s = 0; s < N_SCAN; ++s) {
+        const float t_scan = s * SCAN_DT;
+        for (int b = 0; b < N_BOX; ++b) { h_box_t[b] = h_box[b]; h_box_t[b].cx += box_speed[b] * t_scan; }
+        if (moving) CUDA_CHECK(cudaMemcpyToSymbol(c_box, h_box_t, sizeof(h_box_t)));
         scan_kernel<<<G, B>>>(poses[s][0], poses[s][1], (unsigned int)s, d_pts, d_gt, d_gt_obj);
         CUDA_CHECK(cudaGetLastError());
         std::vector<float> pts(N_RAYS * 3);
@@ -1513,7 +1747,7 @@ int main(int argc, char** argv) {
                 cpu_lshape(pts, clab_obj, h_cs, ckeys, cobb);
                 if (clsf) {   // class of each cluster: car / van if it is a car's / the van's cluster, else none
                     std::vector<int> cl_of(ckeys.size(), 2);
-                    for (int b : { 0, 1, 2, 4 }) {
+                    for (int b : { 0, 1, 2, 4, 7, 8 }) {
                         int c = matched_cluster(clab_obj, gt_obj, b);
                         size_t r = std::lower_bound(ckeys.begin(), ckeys.end(), c) - ckeys.begin();
                         if (c >= 0 && r < ckeys.size() && ckeys[r] == c) cl_of[r] = b == 4 ? 1 : 0;
@@ -1545,7 +1779,7 @@ int main(int argc, char** argv) {
                     int k = classify_box_mlp(b);
                     if (k >= 0) done.push_back(complete_box(b, k, 1.0f));
                 }
-                std::fill(track_of.begin(), track_of.end(), -1);
+                for (Tracker& T : trk) std::fill(T.track_of.begin(), T.track_of.end(), -1);
                 if (sequence) {
                     const float px = poses[s][0], py = poses[s][1], pz = ground_h(px, py) + SENSOR_H;
                     std::vector<int> cand, ccls(ckeys.size(), -1), slot(N_RAYS, -1);
@@ -1556,54 +1790,20 @@ int main(int argc, char** argv) {
                     std::vector<std::vector<int>> citems(cand.size());
                     for (int i = 0; i < N_RAYS; ++i)
                         if (clab_obj[i] >= 0 && slot[clab_obj[i]] >= 0) citems[slot[clab_obj[i]]].push_back(i);
-                    std::vector<std::tuple<float, int, int>> pairs;   // distance, candidate, track
-                    for (size_t k = 0; k < cand.size(); ++k) {
-                        const Obb& O = cobb[cand[k]];
-                        for (size_t t = 0; t < tracks.size(); ++t) {
-                            Obb W = O;
-                            W.cx += px; W.cy += py;
-                            float d = rect_rect_dist(tracks[t].box, W);
-                            if (d < TRK_GATE) pairs.emplace_back(d, (int)k, (int)t);
-                        }
+                    for (Tracker& T : trk) T.update(t_scan, px, py, pz, s, cand, ccls, citems, ckeys, cobb, pts, h_cs);
+                    const Tracker& D = trk[moving ? 1 : 0];   // drawn
+                    for (size_t k = 0; k < D.tracks.size(); ++k) {
+                        if (std::find(D.track_of.begin(), D.track_of.end(), (int)k) == D.track_of.end()) continue;
+                        Obb raw, dn;
+                        D.boxes((int)k, t_scan, px, py, raw, dn);
+                        trk_draw.push_back(dn);
                     }
-                    std::sort(pairs.begin(), pairs.end());
-                    std::vector<int> cand_track(cand.size(), -1), track_used(tracks.size(), 0);
-                    for (const auto& pr : pairs) {
-                        int k = std::get<1>(pr), t = std::get<2>(pr);
-                        if (cand_track[k] >= 0 || track_used[t]) continue;
-                        cand_track[k] = t; track_used[t] = 1;
-                    }
-                    for (size_t k = 0; k < cand.size(); ++k) {
-                        if (cand_track[k] < 0) {
-                            cand_track[k] = (int)tracks.size();
-                            tracks.emplace_back();
-                            for (int c = 0; c < N_CLS; ++c) tracks.back().votes[c] = 0;
-                        }
-                        Track& T = tracks[cand_track[k]];
-                        track_add(T, pts, citems[k], px, py, pz, s, h_cs);
-                        T.votes[ccls[cand[k]]]++;
-                        track_of[ckeys[cand[k]]] = cand_track[k];
-                    }
-                }
-                auto track_box = [&](int t, Obb& raw, Obb& done_box) {
-                    const Track& T = tracks[t];
-                    raw = T.box;
-                    raw.cx -= poses[s][0]; raw.cy -= poses[s][1];
-                    int tc = 0;
-                    for (int c = 1; c < N_CLS; ++c) if (T.votes[c] > T.votes[tc]) tc = c;
-                    done_box = complete_box(raw, tc, 1.0f);
-                };
-                for (size_t t = 0; t < tracks.size(); ++t) {
-                    if (std::find(track_of.begin(), track_of.end(), (int)t) == track_of.end()) continue;
-                    Obb raw, dn;
-                    track_box((int)t, raw, dn);
-                    trk_draw.push_back(dn);
                 }
                 for (int b = 0; b < N_BOX; ++b) {
                     int c = matched_cluster(clab_obj, gt_obj, b);
                     if (c < 0) continue;
                     size_t r = std::lower_bound(ckeys.begin(), ckeys.end(), c) - ckeys.begin();
-                    const Box& G = h_box[b];
+                    const Box& G = h_box_t[b];
                     // the axis-aligned box of the same points is heading 0
                     std::vector<int> items;
                     for (int i = 0; i < N_RAYS; ++i) if (clab_obj[i] == c) items.push_back(i);
@@ -1611,13 +1811,22 @@ int main(int argc, char** argv) {
                     Obb fit[N_BM] = { cobb[r], lshape_rect(pts.data(), items.data(), 0, (int)items.size(), h_cs.data(), 0),
                                       complete_box(cobb[r], cls, 1.0f), complete_box(cobb[r], cls, 0.9f),
                                       complete_box(cobb[r], cls, 1.1f), complete_box(cobb[r], cls, 1.0f, false),
-                                      complete_box(cobb[r], cls_mlp, 1.0f), cobb[r], complete_box(cobb[r], cls_mlp, 1.0f) };
-                    int tid = track_of[c];
+                                      complete_box(cobb[r], cls_mlp, 1.0f), cobb[r], complete_box(cobb[r], cls_mlp, 1.0f),
+                                      cobb[r], complete_box(cobb[r], cls_mlp, 1.0f) };
+                    int tid = trk[0].track_of[c], mtid = trk[1].track_of[c];
                     if (tid >= 0) {
-                        track_box(tid, fit[7], fit[8]);
-                        if (last_track[b] >= 0 && last_track[b] != tid) ++id_switches;
-                        last_track[b] = tid;
+                        trk[0].boxes(tid, t_scan, poses[s][0], poses[s][1], fit[7], fit[8]);
+                        trk[0].observe(b, tid);
                     }
+                    if (mtid >= 0) {
+                        trk[1].boxes(mtid, t_scan, poses[s][0], poses[s][1], fit[9], fit[10]);
+                        trk[1].observe(b, mtid);
+                    }
+                    // velocity errors (the static tracker's velocity is 0)
+                    double verr[2] = { -1.0, -1.0 };
+                    if (tid >= 0) verr[0] = box_speed[b];
+                    if (mtid >= 0) verr[1] = std::hypot(trk[1].ms[mtid].x[2] - box_speed[b], trk[1].ms[mtid].x[3]);
+                    bool vehicle = b <= 2 || b == 4 || b >= 7;
                     // faces of the box the sensor can see: one if it stands within the box's slab along one axis
                     float cb = std::cos(G.yaw), sb = std::sin(G.yaw);
                     float u = cb * (poses[s][0] - G.cx) + sb * (poses[s][1] - G.cy);
@@ -1635,7 +1844,13 @@ int main(int argc, char** argv) {
                         e_len[m] = std::fabs(std::max(F.len, F.wid) - 2.0 * std::max(G.hl, G.hw));
                         e_wid[m] = std::fabs(std::min(F.len, F.wid) - 2.0 * std::min(G.hl, G.hw));
                     }
-                    for (BoxScore* S : { &bsum[0], &bsum[faces >= 2 ? 2 : 1], &bobj[b] }) {
+                    std::vector<BoxScore*> into = { &bsum[0], &bsum[faces >= 2 ? 2 : 1], &bobj[b] };
+                    if (vehicle) into.push_back(box_speed[b] > 0.0f ? &bmov : &bpark);
+                    if (vehicle && tid >= 0 && mtid >= 0) {
+                        for (int k = 0; k < 2; ++k) verr_sum[k][box_speed[b] > 0.0f] += verr[k];
+                        verr_n[box_speed[b] > 0.0f]++;
+                    }
+                    for (BoxScore* S : into) {
                         S->n++;
                         S->cls[cls < 0 ? N_CLS : cls]++;
                         S->cls_mlp[cls_mlp < 0 ? N_CLS : cls_mlp]++;
@@ -1645,7 +1860,8 @@ int main(int argc, char** argv) {
                         }
                     }
                     if (obs) {
-                        std::fprintf(obs, "%u,%d,%d,%d,%d,%d,%d", seed, s, b, faces, cls, cls_mlp, tid);
+                        std::fprintf(obs, "%u,%d,%d,%d,%d,%d,%d,%d,%.3f,%.4f,%.4f", seed, s, b, faces, cls, cls_mlp, tid,
+                                     mtid, box_speed[b], verr[0], verr[1]);
                         for (int m = 0; m < N_BM; ++m) std::fprintf(obs, ",%.5f,%.5f,%.4f", e_iou[m], e_ctr[m], e_yaw[m]);
                         std::fprintf(obs, "\n");
                     }
@@ -1691,8 +1907,8 @@ int main(int argc, char** argv) {
                         for (int k = 0; k < 4; ++k) cv::line(panel, q[k], q[(k + 1) % 4], col, 1, cv::LINE_AA);
                     };
                     for (int b = 0; b < N_BOX; ++b)
-                        draw(h_box[b].cx - poses[s][0], h_box[b].cy - poses[s][1], 2 * h_box[b].hl, 2 * h_box[b].hw,
-                             h_box[b].yaw, cv::Scalar(255, 170, 60));
+                        draw(h_box_t[b].cx - poses[s][0], h_box_t[b].cy - poses[s][1], 2 * h_box_t[b].hl,
+                             2 * h_box_t[b].hw, h_box_t[b].yaw, cv::Scalar(255, 170, 60));
                     for (const Obb& F : fits) draw(F.cx, F.cy, F.len, F.wid, F.yaw, cv::Scalar(230, 60, 230));
                     for (const Obb& F : done) draw(F.cx, F.cy, F.len, F.wid, F.yaw, cv::Scalar(40, 160, 255));
                     for (const Obb& F : trk_draw) draw(F.cx, F.cy, F.len, F.wid, F.yaw, cv::Scalar(80, 230, 80));
@@ -1715,7 +1931,8 @@ int main(int argc, char** argv) {
                 std::snprintf(buf, sizeof(buf), "frame %d   blue: true   magenta: L-shape", s);
                 cv::putText(panel, buf, cv::Point(10, W - 32), cv::FONT_HERSHEY_SIMPLEX, 0.5,
                             cv::Scalar(200, 200, 210), 1, cv::LINE_AA);
-                cv::putText(panel, "orange: + size prior (this scan)   green: tracked + size prior",
+                cv::putText(panel, moving ? "orange: + size prior (this scan)   green: motion-tracked + prior"
+                                          : "orange: + size prior (this scan)   green: tracked + size prior",
                             cv::Point(10, W - 12), cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(200, 200, 210), 1,
                             cv::LINE_AA);
             }
@@ -1735,7 +1952,8 @@ int main(int argc, char** argv) {
 
     if (!no_video && !frames.empty()) {
         if (ensure_dirs({ "tmp" }) != 0) std::fprintf(stderr, "warning: mkdir tmp failed\n");
-        const std::string name = sequence ? "gpu_ground_segmentation_track" : "gpu_ground_segmentation";
+        const std::string name = moving ? "gpu_ground_segmentation_motion"
+                                 : sequence ? "gpu_ground_segmentation_track" : "gpu_ground_segmentation";
         cv::VideoWriter video("tmp/" + name + ".avi", cv::VideoWriter::fourcc('M', 'J', 'P', 'G'), sequence ? 5 : 2,
                               frames[0].size());
         for (const cv::Mat& f : frames) video.write(f);
@@ -1765,7 +1983,7 @@ int main(int argc, char** argv) {
         if (!S.n) return;
         std::printf("%s: n %d, classed car %d / van %d / none %d (learned: %d / %d / %d)\n", name, S.n, S.cls[0],
                     S.cls[1], S.cls[N_CLS], S.cls_mlp[0], S.cls_mlp[1], S.cls_mlp[N_CLS]);
-        for (int m = 0; m < (sequence ? N_BM : N_BM - 2); ++m)
+        for (int m = 0; m < (moving ? N_BM : sequence ? N_BM - 2 : N_BM - 4); ++m)
             std::printf("  %-15s heading err %5.2f deg  IoU %.3f  (>= 0.5: %3d)  centre err %.2f m  "
                         "long side err %.2f m  short side err %.2f m\n", BM_NAME[m],
                         S.yaw[m] / S.n, S.iou[m] / S.n, S.good[m], S.centre[m] / S.n, S.len[m] / S.n, S.wid[m] / S.n);
@@ -1777,10 +1995,21 @@ int main(int argc, char** argv) {
     if (obs) std::fclose(obs);
     if (clsf) std::fclose(clsf);
     if (sequence) {
-        int tracked = 0;
-        for (int b = 0; b < N_BOX; ++b) tracked += last_track[b] >= 0;
-        std::printf("tracking: %zu tracks, %d true boxes tracked, %d identity switches\n", tracks.size(), tracked,
-                    id_switches);
+        for (int k = 0; k < (moving ? 2 : 1); ++k) {
+            int tracked = 0;
+            for (int b = 0; b < N_BOX; ++b) tracked += trk[k].last_track[b] >= 0;
+            std::printf("%s tracker: %zu tracks, %d true boxes tracked, %d identity switches\n",
+                        k ? "motion" : "static", trk[k].tracks.size(), tracked, trk[k].id_switches);
+        }
+    }
+    if (moving) {
+        box_line("moving vehicles", bmov);
+        box_line("parked vehicles", bpark);
+        for (int mv = 0; mv < 2; ++mv)
+            if (verr_n[mv])
+                std::printf("velocity error, %s vehicles: static tracker %.2f m/s, motion tracker %.2f m/s (%d obs)\n",
+                            mv ? "moving" : "parked", verr_sum[0][mv] / verr_n[mv], verr_sum[1][mv] / verr_n[mv],
+                            verr_n[mv]);
     }
     bool ls_better = bsum[0].n > 0 && bsum[0].yaw[0] < bsum[0].yaw[1] && bsum[0].iou[0] > bsum[0].iou[1];
     bool prior_better = bsum[0].iou[2] > bsum[0].iou[0] && bsum[0].centre[2] < bsum[0].centre[0] &&
@@ -1788,6 +2017,22 @@ int main(int argc, char** argv) {
     double found_rate = cl_sum[0].objects ? (double)cl_sum[0].found / cl_sum[0].objects : 0.0;
     bool ok = sg.f1 >= 0.95 && sg.f1 > st.f1 && agree_pct >= 99.9 && found_rate >= 0.9 && cl_same && vcl_same &&
               ls_better && ls_same && prior_better;
+    if (moving) {
+        // (the motion tracker does not beat the single-scan box on the moving vehicles, which the sensor
+        // sees from behind or ahead only: see docs/gpu_ground_segmentation.md)
+        bool mot_better = bmov.n > 0 && bmov.iou[10] > bmov.iou[8] && bmov.centre[10] < bmov.centre[8] &&
+                          bpark.iou[10] >= bpark.iou[8] - 0.01 && trk[1].id_switches <= trk[0].id_switches &&
+                          verr_n[1] > 0 && verr_sum[1][1] / verr_n[1] < 1.5;
+        ok = sg.f1 >= 0.95 && agree_pct >= 99.9 && cl_same && vcl_same && ls_same && mot_better;
+        if (check) {
+            std::printf("check: %s (model F1 >= 0.95, CPU/GPU agreement >= 99.9%%, identical CPU/GPU partition and "
+                        "boxes; the motion tracker's boxes with the size prior beat the static tracker's on the moving "
+                        "vehicles in IoU and centre error and match them on the parked ones, with no more identity "
+                        "switches and a velocity error under 1.5 m/s on the moving vehicles)\n", ok ? "PASS" : "FAIL");
+            return ok ? 0 : 1;
+        }
+        return 0;
+    }
     if (sequence) {
         bool trk_better = bsum[0].iou[7] > bsum[0].iou[0] && bsum[0].iou[8] > bsum[0].iou[6] &&
                           bsum[0].centre[8] < bsum[0].centre[6];

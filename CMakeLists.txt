@@ -723,6 +723,13 @@ set_tests_properties(gpu_ground_segmentation_track_gate PROPERTIES
   TIMEOUT 600
   LABELS "gpu;pointcloud;ground;tracking")
 
+add_test(NAME gpu_ground_segmentation_motion_gate
+  COMMAND $<TARGET_FILE:gpu_ground_segmentation> --sequence --moving --check --no-video
+  WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+set_tests_properties(gpu_ground_segmentation_motion_gate PROPERTIES
+  TIMEOUT 600
+  LABELS "gpu;pointcloud;ground;tracking")
+
 add_test(NAME esdf_2d_gpu_smoke
   COMMAND $<TARGET_FILE:esdf_2d_gpu_smoke>)
 set_tests_properties(esdf_2d_gpu_smoke PROPERTIES
