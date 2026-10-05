@@ -173,6 +173,39 @@ the rest (host side, one step per cluster):
   - The van is never classed as a van. Its roof is above the scan's +2° upper beam, so only 1.1-2.1 m of it is seen. It gets the car prior 4 times out of 7, which still helps it, but it stays short of its true length.
   - The wall, crate and bench get no class and keep their L-shape boxes.
 
+## Held-out check of the box fitting
+
+The L-shape fitting and the size prior were designed on the scene above.
+`--seed N` (N > 0) draws a held-out scene:
+- every box except the wall moves within 1 m and takes a new heading in [0°, 180°);
+- the cars take sizes of 4.0-5.0 × 1.7-1.9 m and the van 5.5-6.5 × 1.9-2.1 m, while the prior stays 4.5 × 1.8 and 6.0 × 2.0 m;
+- the sensor takes 8 new poses on the road.
+
+`scripts/box_fitting_heldout.py` runs seeds 1-20 and compares the methods per observation with exact sign tests. Observations of one seed share objects, so it also compares the per-seed means across the 20 seeds. Full report: [results/box_fitting_heldout_2026-10-05.md](results/box_fitting_heldout_2026-10-05.md).
+
+| Held-out, 996 observations | heading error | BEV IoU | IoU ≥ 0.5 | centre error |
+|---|---:|---:|---:|---:|
+| axis-aligned | 18.6° | 0.376 | 237 | 1.09 m |
+| L-shape | 3.4° (median 0.6°) | 0.448 | 450 | 0.99 m |
+| L-shape + size prior | 3.4° | **0.565** | **612** | **0.77 m** |
+| prior 10% too small / too large | 3.4° | 0.552 / 0.552 | 596 / 617 | 0.80 / 0.78 m |
+| prior without the end-view rule | 3.4° | 0.522 | 540 | 0.90 m |
+
+| Comparison (held-out) | seeds better / worse |
+|---|---:|
+| L-shape vs axis-aligned, heading error | 20 / 0 |
+| L-shape vs axis-aligned, IoU | 19 / 1 |
+| size prior vs L-shape, IoU and centre error | 20 / 0 each |
+| size prior 10% off vs L-shape, IoU | 20 / 0 (both directions) |
+| end-view rule vs none, IoU | 19 / 1 |
+
+- **Every gain replicates.** The sizes of the gains are close to the dev scene's: +0.12 IoU from the prior (dev +0.13), +0.04 from the end-view rule (dev +0.08).
+- **The heading error has a tail.** The median is 0.6°, but 10% of the observations are off by more than 10°. These are mostly the 2 × 1 m bench and the car nearest the sensor poses.
+- **The L-shape's IoU gain over the axis-aligned box is modest per observation** (498 better, 422 worse). The heading gain is not (755 vs 165).
+- **The height-based class is still the weak link.**
+  - 346 of 472 car observations are classed as cars.
+  - Of 148 van observations, 8 are classed as vans and 65 as cars.
+
 ## Reproduce
 
 ```bash
@@ -180,6 +213,7 @@ cmake -S . -B build
 cmake --build build --target gpu_ground_segmentation -j$(nproc)
 ./bin/gpu_ground_segmentation                       # also writes the GIF
 ./bin/gpu_ground_segmentation --check --no-video    # the CTest gate
+python scripts/box_fitting_heldout.py               # held-out scenes, seeds 1-20
 ```
 
 `--check` exits non-zero unless the model's F1 is at least 0.95, above the
