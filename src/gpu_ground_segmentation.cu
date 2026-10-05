@@ -36,7 +36,8 @@
 // for the model and for a plain height threshold, and the CPU and GPU times.
 //
 // Second stage: the non-ground points are clustered into objects (Euclidean
-// clustering, 0.5 m, union-find on the GPU, BFS on the CPU, same partition) and
+// clustering, 0.5 m; on the GPU a point-level and a voxel-level union-find, on
+// the CPU a BFS, all three the same partition) and
 // the clusters are scored against the ground-truth objects, for the model's
 // ground removal, the height threshold's, and none.
 //
@@ -476,9 +477,180 @@ __global__ void cluster_flatten_kernel(const int* cell, int* parent, int n) {
     parent[i] = uf_find(parent, i);
 }
 
+// ---- voxel clustering: the same partition with far fewer point tests ----
+// Two points in one voxel of side CL_EPS / sqrt(3) are always within CL_EPS, so
+// all points of a voxel belong to one cluster and the voxel can be the node.
+// Two voxels are connected iff some pair of their points is within CL_EPS; a
+// voxel pair is tested point by point and the test stops at the first such
+// pair. Voxels of points within CL_EPS are at most 2 apart per axis.
+static constexpr float VX_S = CL_EPS * 0.57735027f * 0.999f;
+static const int VNX = 420, VNY = 420, VNZ = 44;   // x, y in [-60.6, 60.6], z in [-6.3, 6.3]
+
+__host__ __device__ static inline int voxel_key(const float* p) {
+    int ix = (int)floorf((p[0] + 60.6f) / VX_S), iy = (int)floorf((p[1] + 60.6f) / VX_S);
+    int iz = (int)floorf((p[2] + 6.3f) / VX_S);
+    if (ix < 0 || iy < 0 || iz < 0 || ix >= VNX || iy >= VNY || iz >= VNZ) return -1;
+    return (iz * VNY + iy) * VNX + ix;
+}
+
+__global__ void voxel_key_kernel(const float* pts, const int* active, int* key, int* idx, int n) {
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i >= n) return;
+    int k = active[i] ? voxel_key(&pts[i * 3]) : -1;
+    key[i] = k >= 0 ? k : 0x7fffffff;
+    idx[i] = i;
+}
+
+// flag[k] = 1 where a new voxel starts in the sorted keys
+__global__ void voxel_flag_kernel(const int* key, int* flag, int n_valid) {
+    int k = blockIdx.x * blockDim.x + threadIdx.x;
+    if (k < n_valid) flag[k] = k == 0 || key[k] != key[k - 1];
+}
+
+__global__ void voxel_build_kernel(const int* key, const int* flag, const int* vid_excl, int* vid,
+                                   int* vstart, int* vkey, int* parent, int* cmin, int n_valid) {
+    int k = blockIdx.x * blockDim.x + threadIdx.x;
+    if (k >= n_valid) return;
+    int v = vid_excl[k] + flag[k] - 1;   // inclusive id
+    vid[k] = v;
+    if (flag[k]) { vstart[v] = k; vkey[v] = key[k]; parent[v] = v; cmin[v] = 0x7fffffff; }
+}
+
+// The 62 neighbour offsets within 2 voxels per axis that lead to a larger key
+// (dz > 0, or dz == 0 and dy > 0, or dz == dy == 0 and dx > 0): each voxel pair once.
+static const int N_VOFF = 62;
+__constant__ int c_voff[N_VOFF * 3];
+
+// Tight bounds of each voxel's points: a voxel pair whose bounds are more than
+// CL_EPS apart cannot hold a close pair, and is skipped without point tests.
+__global__ void voxel_bounds_kernel(const float* pts, const int* items, const int* vstart, float* vbox, int n_vox) {
+    int v = blockIdx.x * blockDim.x + threadIdx.x;
+    if (v >= n_vox) return;
+    float lo[3] = { 1e9f, 1e9f, 1e9f }, hi[3] = { -1e9f, -1e9f, -1e9f };
+    for (int a = vstart[v]; a < vstart[v + 1]; ++a)
+        for (int c = 0; c < 3; ++c) {
+            float x = pts[items[a] * 3 + c];
+            lo[c] = fminf(lo[c], x); hi[c] = fmaxf(hi[c], x);
+        }
+    for (int c = 0; c < 3; ++c) { vbox[v * 6 + c] = lo[c]; vbox[v * 6 + 3 + c] = hi[c]; }
+}
+
+// one thread = one (voxel, neighbour offset) pair
+__global__ void voxel_unite_kernel(const float* pts, const int* items, const int* vstart, const int* vkey,
+                                   const float* vbox, int* parent, int n_vox) {
+    int t = blockIdx.x * blockDim.x + threadIdx.x;
+    if (t >= n_vox * N_VOFF) return;
+    int v = t / N_VOFF, o = t - v * N_VOFF;
+    int key = vkey[v];
+    int x = key % VNX + c_voff[o * 3 + 0], y = (key / VNX) % VNY + c_voff[o * 3 + 1];
+    int z = key / (VNX * VNY) + c_voff[o * 3 + 2];
+    if (x < 0 || y < 0 || z < 0 || x >= VNX || y >= VNY || z >= VNZ) return;
+    int nk = (z * VNY + y) * VNX + x;
+    int u = lower_bound_key(vkey, n_vox, nk);
+    if (u >= n_vox || vkey[u] != nk) return;
+    float gap2 = 0.0f;
+    for (int c = 0; c < 3; ++c) {
+        float g = fmaxf(0.0f, fmaxf(vbox[v * 6 + c] - vbox[u * 6 + 3 + c], vbox[u * 6 + c] - vbox[v * 6 + 3 + c]));
+        gap2 += g * g;
+    }
+    if (gap2 > CL_EPS * CL_EPS) return;   // bounds too far apart
+    if (uf_find(parent, v) == uf_find(parent, u)) return;   // already connected
+    for (int a = vstart[v]; a < vstart[v + 1]; ++a) {
+        const float* p = &pts[items[a] * 3];
+        for (int b = vstart[u]; b < vstart[u + 1]; ++b) {
+            const float* q = &pts[items[b] * 3];
+            float ex = p[0] - q[0], ey = p[1] - q[1], ez = p[2] - q[2];
+            if (ex * ex + ey * ey + ez * ez <= CL_EPS * CL_EPS) { uf_unite(parent, v, u); return; }
+        }
+    }
+}
+
+// Each component's label is its smallest point index: the first point of each
+// voxel is its smallest (stable sort), and the root collects the minimum.
+__global__ void voxel_root_min_kernel(const int* items, const int* vstart, int* parent, int* cmin, int n_vox) {
+    int v = blockIdx.x * blockDim.x + threadIdx.x;
+    if (v >= n_vox) return;
+    int r = uf_find(parent, v);
+    atomicMin(&cmin[r], items[vstart[v]]);
+}
+
+__global__ void voxel_label_kernel(const int* items, const int* vid, const int* parent, const int* cmin,
+                                   int* label, int n_valid) {
+    int k = blockIdx.x * blockDim.x + threadIdx.x;
+    if (k >= n_valid) return;
+    label[items[k]] = cmin[uf_find(parent, vid[k])];
+}
+
 }  // namespace cudabot
 
 using namespace cudabot;
+
+// GPU voxel clustering: same partition and labels as the point-level clusterers.
+struct GpuVoxelClusterer {
+    int *d_active, *d_key, *d_items, *d_flag, *d_vexcl, *d_vid, *d_vstart, *d_vkey, *d_parent, *d_cmin, *d_label;
+    float* d_vbox;
+    GpuVoxelClusterer() {
+        CUDA_CHECK(cudaMalloc(&d_vbox, (size_t)N_RAYS * 6 * sizeof(float)));
+        for (int** p : { &d_active, &d_key, &d_items, &d_flag, &d_vexcl, &d_vid, &d_vstart, &d_vkey,
+                          &d_parent, &d_cmin, &d_label })
+            CUDA_CHECK(cudaMalloc(p, (N_RAYS + 1) * sizeof(int)));
+        int off[N_VOFF * 3], n = 0;
+        for (int dz = -2; dz <= 2; ++dz) for (int dy = -2; dy <= 2; ++dy) for (int dx = -2; dx <= 2; ++dx)
+            if (dz > 0 || (dz == 0 && (dy > 0 || (dy == 0 && dx > 0)))) {
+                off[n * 3 + 0] = dx; off[n * 3 + 1] = dy; off[n * 3 + 2] = dz; ++n;
+            }
+        CUDA_CHECK(cudaMemcpyToSymbol(c_voff, off, sizeof(off)));
+    }
+    ~GpuVoxelClusterer() {
+        for (int* p : { d_active, d_key, d_items, d_flag, d_vexcl, d_vid, d_vstart, d_vkey, d_parent, d_cmin, d_label })
+            cudaFree(p);
+        cudaFree(d_vbox);
+    }
+    float run(const float* d_pts, const std::vector<int>& active, std::vector<int>& label, int& n_vox_out) {
+        const int B = 256, G = (N_RAYS + B - 1) / B;
+        int n_valid = 0;
+        for (int a : active) n_valid += a;
+        CUDA_CHECK(cudaMemcpy(d_active, active.data(), N_RAYS * sizeof(int), cudaMemcpyHostToDevice));
+        cudaEvent_t e0, e1;
+        CUDA_CHECK(cudaEventCreate(&e0)); CUDA_CHECK(cudaEventCreate(&e1));
+        CUDA_CHECK(cudaEventRecord(e0));
+        voxel_key_kernel<<<G, B>>>(d_pts, d_active, d_key, d_items, N_RAYS);
+        thrust::stable_sort_by_key(thrust::device_ptr<int>(d_key), thrust::device_ptr<int>(d_key) + N_RAYS,
+                                   thrust::device_ptr<int>(d_items));
+        int Gv = (n_valid + B - 1) / B;
+        voxel_flag_kernel<<<Gv > 0 ? Gv : 1, B>>>(d_key, d_flag, n_valid);
+        thrust::exclusive_scan(thrust::device_ptr<int>(d_flag), thrust::device_ptr<int>(d_flag) + n_valid,
+                               thrust::device_ptr<int>(d_vexcl));
+        voxel_build_kernel<<<Gv > 0 ? Gv : 1, B>>>(d_key, d_flag, d_vexcl, d_vid, d_vstart, d_vkey, d_parent,
+                                                  d_cmin, n_valid);
+        int n_vox = 0;
+        if (n_valid > 0) {
+            int last_excl = 0, last_flag = 0;
+            CUDA_CHECK(cudaMemcpy(&last_excl, d_vexcl + n_valid - 1, sizeof(int), cudaMemcpyDeviceToHost));
+            CUDA_CHECK(cudaMemcpy(&last_flag, d_flag + n_valid - 1, sizeof(int), cudaMemcpyDeviceToHost));
+            n_vox = last_excl + last_flag;
+        }
+        CUDA_CHECK(cudaMemcpy(d_vstart + n_vox, &n_valid, sizeof(int), cudaMemcpyHostToDevice));
+        int Gx = (n_vox + B - 1) / B, Gp = (n_vox * N_VOFF + B - 1) / B;
+        CUDA_CHECK(cudaMemset(d_label, 0xff, N_RAYS * sizeof(int)));   // -1
+        if (n_vox > 0) {
+            voxel_bounds_kernel<<<Gx, B>>>(d_pts, d_items, d_vstart, d_vbox, n_vox);
+            voxel_unite_kernel<<<Gp, B>>>(d_pts, d_items, d_vstart, d_vkey, d_vbox, d_parent, n_vox);
+            voxel_root_min_kernel<<<Gx, B>>>(d_items, d_vstart, d_parent, d_cmin, n_vox);
+            voxel_label_kernel<<<Gv, B>>>(d_items, d_vid, d_parent, d_cmin, d_label, n_valid);
+        }
+        CUDA_CHECK(cudaEventRecord(e1));
+        CUDA_CHECK(cudaEventSynchronize(e1));
+        CUDA_CHECK(cudaGetLastError());
+        float ms = 0.0f;
+        CUDA_CHECK(cudaEventElapsedTime(&ms, e0, e1));
+        CUDA_CHECK(cudaEventDestroy(e0)); CUDA_CHECK(cudaEventDestroy(e1));
+        label.resize(N_RAYS);
+        CUDA_CHECK(cudaMemcpy(label.data(), d_label, N_RAYS * sizeof(int), cudaMemcpyDeviceToHost));
+        n_vox_out = n_vox;
+        return ms;
+    }
+};
 
 // GPU clustering of the points with active[i]; returns the labels (component's
 // smallest point index, -1 for inactive) and the kernel time.
@@ -694,6 +866,10 @@ int main(int argc, char** argv) {
 
     std::vector<int> all_gt, all_gpu, all_cpu, all_thr;
     GpuClusterer clusterer;
+    GpuVoxelClusterer vclusterer;
+    double vcl_gpu_ms = 0.0;
+    long vox_total = 0;
+    bool vcl_same = true;
     ClusterScore cl_sum[3] = { {0, 0, 0, 0, 0, 0}, {0, 0, 0, 0, 0, 0}, {0, 0, 0, 0, 0, 0} };
     double cl_cpu_ms = 0.0, cl_gpu_ms = 0.0;
     int cl_iters = 0;
@@ -762,7 +938,10 @@ int main(int argc, char** argv) {
                 active[i] = gt[i] >= 0 && (mode == 2 || (mode == 0 ? lab[i] : thr[i]) == 0);
             std::vector<int> glab;
             int iters = 0;
-            float cl_ms = clusterer.run(d_pts, active, glab, iters);
+            // GPU timings are the minimum of 5 runs: the GPU is shared with other work
+            float cl_ms = 1e30f;
+            for (int rep = 0; rep < (mode == 0 ? 5 : 1); ++rep)
+                cl_ms = std::min(cl_ms, clusterer.run(d_pts, active, glab, iters));
             ClusterScore cs = score_clusters(glab, gt, gt_obj);
             cl_sum[mode].objects += cs.objects; cl_sum[mode].found += cs.found;
             cl_sum[mode].merged += cs.merged; cl_sum[mode].split += cs.split;
@@ -776,6 +955,13 @@ int main(int argc, char** argv) {
                 cl_gpu_ms += cl_ms;
                 cl_iters += iters;
                 if (glab != clab_obj) cl_same = false;
+                std::vector<int> vlab;
+                int n_vox = 0;
+                float vms = 1e30f;
+                for (int rep = 0; rep < 5; ++rep) vms = std::min(vms, vclusterer.run(d_pts, active, vlab, n_vox));
+                vcl_gpu_ms += vms;
+                vox_total += n_vox;
+                if (vlab != clab_obj) vcl_same = false;
             }
         }
         Score sm = score(gt, lab), st = score(gt, thr);
@@ -851,10 +1037,12 @@ int main(int argc, char** argv) {
         std::printf("%-22s: objects found %3d / %3d   merged clusters %3d   split objects %3d   "
                     "ground clusters %4d   clusters %5d\n", mode_name[m], cl_sum[m].found, cl_sum[m].objects,
                     cl_sum[m].merged, cl_sum[m].split, cl_sum[m].ground_clusters, cl_sum[m].clusters);
-    std::printf("clustering CPU / GPU per scan: %.2f ms / %.3f ms, same partition: %s\n",
-                cl_cpu_ms / N_SCAN, cl_gpu_ms / N_SCAN, cl_same ? "yes" : "no");
+    std::printf("clustering per scan: CPU BFS %.2f ms, GPU point union-find %.3f ms, "
+                "GPU voxel union-find %.3f ms (%ld voxels per scan); same partition as the CPU: %s / %s\n",
+                cl_cpu_ms / N_SCAN, cl_gpu_ms / N_SCAN, vcl_gpu_ms / N_SCAN, vox_total / N_SCAN,
+                cl_same ? "yes" : "no", vcl_same ? "yes" : "no");
     double found_rate = cl_sum[0].objects ? (double)cl_sum[0].found / cl_sum[0].objects : 0.0;
-    bool ok = sg.f1 >= 0.95 && sg.f1 > st.f1 && agree_pct >= 99.9 && found_rate >= 0.9 && cl_same;
+    bool ok = sg.f1 >= 0.95 && sg.f1 > st.f1 && agree_pct >= 99.9 && found_rate >= 0.9 && cl_same && vcl_same;
     if (check) {
         std::printf("check: %s (model F1 >= 0.95, above the height threshold, CPU/GPU agreement >= 99.9%%, "
                     ">= 90%% of objects found as one cluster, identical CPU/GPU partition)\n", ok ? "PASS" : "FAIL");
