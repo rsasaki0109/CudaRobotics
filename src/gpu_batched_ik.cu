@@ -25,8 +25,16 @@
 //
 // Output: gif/gpu_batched_ik.gif
 //
+// Second part, collision-aware IK: sphere obstacles in the workspace, the arm
+// approximated by spheres along its links, and targets taken from collision-free
+// configurations. The 7-DOF arm has one redundant degree of freedom; the
+// collision-aware solver pushes the arm away from the obstacles in the null space
+// of the pose task, so the clearance does not cost pose accuracy. Success there
+// also needs a collision-free final configuration.
+//
 // Options: --no-video (skip the GIF), --check (exit non-zero unless the
-// best-of-S success rate is >= 99% and CPU and GPU agree).
+// best-of-S success rates are >= 99% for the pose-only and >= 95% for the
+// collision-aware problem, and CPU and GPU agree).
 
 #include <cuda_runtime.h>
 #include <opencv2/opencv.hpp>
@@ -253,6 +261,144 @@ __host__ __device__ static inline void ik_solve(const Tf& target, float* q,
     pose_error(cur, target, e, pos_err, ori_err);
 }
 
+// ============================ collision-aware IK ============================
+static const int MAX_OBS = 6;
+static const int N_SEG_PTS = 3;          // collision spheres per link segment
+static constexpr float LINK_R = 0.06f;       // link collision radius
+static constexpr float CLEAR_MARGIN = 0.02f; // clearance the avoidance aims for
+
+__constant__ float c_obs[MAX_OBS * 4];   // sphere obstacles: cx, cy, cz, radius
+
+// Collision cost sum max(0, margin - clearance)^2 over the link spheres and the
+// obstacles, its gradient in q (grad, may be null) and the minimum clearance.
+// Segment k runs from the previous frame origin (the base for k = 0) to frame
+// origin k; its points move with joints 0..k-1 (joint i turns about z_i through
+// origin i).
+__host__ __device__ static inline float collision_cost(const float* org, const float* zax,
+                                                       const float* obs, int n_obs,
+                                                       float* grad, float* min_clear) {
+    float cost = 0.0f, mc = 1.0e9f;
+    if (grad) for (int i = 0; i < NJ; ++i) grad[i] = 0.0f;
+    for (int k = 0; k < 8; ++k) {
+        float ax = k ? org[(k - 1) * 3 + 0] : 0.0f, ay = k ? org[(k - 1) * 3 + 1] : 0.0f;
+        float az = k ? org[(k - 1) * 3 + 2] : 0.0f;
+        float bx = org[k * 3 + 0], by = org[k * 3 + 1], bz = org[k * 3 + 2];
+        for (int m = 0; m < N_SEG_PTS; ++m) {
+            float u = (m + 0.5f) / N_SEG_PTS;
+            float px = ax + u * (bx - ax), py = ay + u * (by - ay), pz = az + u * (bz - az);
+            for (int o = 0; o < n_obs; ++o) {
+                float dx = px - obs[o * 4 + 0], dy = py - obs[o * 4 + 1], dz = pz - obs[o * 4 + 2];
+                float dist = sqrtf(dx * dx + dy * dy + dz * dz) + 1.0e-9f;
+                float cl = dist - LINK_R - obs[o * 4 + 3];
+                mc = fminf(mc, cl);
+                float pen = CLEAR_MARGIN - cl;
+                if (pen <= 0.0f) continue;
+                cost += pen * pen;
+                if (!grad) continue;
+                // d(cost)/dq_i = -2 pen * n . (z_i x (p - o_i)),  n = (p - c) / |p - c|
+                float nx = dx / dist, ny = dy / dist, nz = dz / dist;
+                for (int i = 0; i < k && i < NJ; ++i) {
+                    const float* z = &zax[i * 3];
+                    float rx = px - org[i * 3 + 0], ry = py - org[i * 3 + 1], rz = pz - org[i * 3 + 2];
+                    float vx = z[1] * rz - z[2] * ry, vy = z[2] * rx - z[0] * rz, vz = z[0] * ry - z[1] * rx;
+                    grad[i] += -2.0f * pen * (nx * vx + ny * vy + nz * vz);
+                }
+            }
+        }
+    }
+    if (min_clear) *min_clear = mc;
+    return cost;
+}
+
+// Damped least squares as ik_solve, plus (with avoid) a step down the collision
+// cost's gradient projected into the null space of the pose task. Returns the
+// final pose errors and the final minimum clearance.
+__host__ __device__ static inline void ik_solve_avoid(const Tf& target, float* q,
+                                                      const float* obs, int n_obs, bool avoid,
+                                                      float* pos_err, float* ori_err,
+                                                      float* clearance, float* trace = nullptr) {
+    const float lambda2 = 0.01f, w_ori = 0.5f, max_step = 0.3f;
+    const float k_null = 20.0f;       // null-space step gain on the collision gradient
+    float e[6], pe = 0.0f, oe = 0.0f, cl = 0.0f;
+    for (int it = 0; it < N_ITER; ++it) {
+        float org[24], zax[21];
+        Tf cur = fk(q, org, zax);
+        pose_error(cur, target, e, &pe, &oe);
+        float g[NJ];
+        float cost = collision_cost(org, zax, obs, n_obs, avoid ? g : nullptr, &cl);
+        if (trace) for (int j = 0; j < NJ; ++j) trace[it * NJ + j] = q[j];
+        if (pe < POS_TOL && oe < ORI_TOL && (!avoid || cl > 0.0f)) {
+            if (trace) for (int k = it + 1; k < N_ITER; ++k) for (int j = 0; j < NJ; ++j) trace[k * NJ + j] = q[j];
+            break;
+        }
+        float J[6 * NJ];
+        const float* pe_w = &org[7 * 3];
+        for (int i = 0; i < NJ; ++i) {
+            const float* z = &zax[i * 3];
+            const float* p = &org[i * 3];
+            float rx = pe_w[0] - p[0], ry = pe_w[1] - p[1], rz = pe_w[2] - p[2];
+            J[0 * NJ + i] = z[1] * rz - z[2] * ry;
+            J[1 * NJ + i] = z[2] * rx - z[0] * rz;
+            J[2 * NJ + i] = z[0] * ry - z[1] * rx;
+            J[3 * NJ + i] = w_ori * z[0];
+            J[4 * NJ + i] = w_ori * z[1];
+            J[5 * NJ + i] = w_ori * z[2];
+        }
+        float A[36], L[36];
+        for (int a = 0; a < 6; ++a)
+            for (int b = 0; b < 6; ++b) {
+                float sum = 0.0f;
+                for (int i = 0; i < NJ; ++i) sum += J[a * NJ + i] * J[b * NJ + i];
+                A[a * 6 + b] = sum + (a == b ? lambda2 : 0.0f);
+            }
+        float r[6] = { e[0], e[1], e[2], w_ori * e[3], w_ori * e[4], w_ori * e[5] };
+        for (int k = 0; k < 36; ++k) L[k] = A[k];
+        chol_solve6(L, r);
+        float dq[NJ];
+        for (int i = 0; i < NJ; ++i) {
+            float sum = 0.0f;
+            for (int a = 0; a < 6; ++a) sum += J[a * NJ + i] * r[a];
+            dq[i] = sum;
+        }
+        if (avoid && cost > 0.0f) {
+            // null-space projection: g - J^T (J J^T + lambda^2 I)^-1 J g
+            float v[6];
+            for (int a = 0; a < 6; ++a) {
+                float sum = 0.0f;
+                for (int i = 0; i < NJ; ++i) sum += J[a * NJ + i] * g[i];
+                v[a] = sum;
+            }
+            for (int k = 0; k < 36; ++k) L[k] = A[k];
+            chol_solve6(L, v);
+            for (int i = 0; i < NJ; ++i) {
+                float jw = 0.0f;
+                for (int a = 0; a < 6; ++a) jw += J[a * NJ + i] * v[a];
+                dq[i] -= k_null * (g[i] - jw);
+            }
+        }
+        float n2 = 0.0f;
+        for (int i = 0; i < NJ; ++i) n2 += dq[i] * dq[i];
+        float scale = n2 > max_step * max_step ? max_step / sqrtf(n2) : 1.0f;
+        for (int i = 0; i < NJ; ++i)
+            q[i] = fminf(q_hi(i), fmaxf(q_lo(i), q[i] + scale * dq[i]));
+    }
+    float org[24], zax[21];
+    Tf cur = fk(q, org, zax);
+    pose_error(cur, target, e, pos_err, ori_err);
+    collision_cost(org, zax, obs, n_obs, nullptr, clearance);
+}
+
+__global__ void ik_avoid_kernel(const Tf* __restrict__ targets, int n_obs, bool avoid,
+                                float* __restrict__ pos_err, float* __restrict__ ori_err,
+                                float* __restrict__ clearance, int n_target, int n_seed) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx >= n_target * n_seed) return;
+    int t = idx / n_seed, s = idx - t * n_seed;
+    float q[NJ];
+    random_config(4u, (unsigned int)(t * n_seed + s), q);
+    ik_solve_avoid(targets[t], q, c_obs, n_obs, avoid, &pos_err[idx], &ori_err[idx], &clearance[idx]);
+}
+
 // one thread = one (target, restart) solve
 __global__ void ik_batch_kernel(const Tf* __restrict__ targets, float* __restrict__ q_out,
                                 float* __restrict__ pos_err, float* __restrict__ ori_err,
@@ -281,6 +427,18 @@ static double success_rate(const std::vector<float>& pe, const std::vector<float
     for (int t = 0; t < N_TARGET; ++t)
         for (int s = 0; s < k; ++s)
             if (solved(pe[t * N_SEED + s], oe[t * N_SEED + s])) { ++ok; break; }
+    return (double)ok / N_TARGET;
+}
+
+// Fraction of targets solved collision-free by the best of the first k restarts.
+static double success_rate_cf(const std::vector<float>& pe, const std::vector<float>& oe,
+                              const std::vector<float>& cl, int k) {
+    int ok = 0;
+    for (int t = 0; t < N_TARGET; ++t)
+        for (int s = 0; s < k; ++s) {
+            int i = t * N_SEED + s;
+            if (solved(pe[i], oe[i]) && cl[i] > 0.0f) { ++ok; break; }
+        }
     return (double)ok / N_TARGET;
 }
 
@@ -387,6 +545,98 @@ int main(int argc, char** argv) {
 
     bool ok = gpu_rate_k[4] >= 0.99 && agree_pct >= 99.0;
 
+    // ================= collision-aware IK =================
+    const float h_obs[MAX_OBS * 4] = {
+        0.45f,  0.00f, 0.45f, 0.15f,
+        0.30f,  0.30f, 0.30f, 0.13f,
+        0.30f, -0.30f, 0.55f, 0.13f,
+        0.05f,  0.45f, 0.60f, 0.12f,
+        0.55f,  0.25f, 0.75f, 0.12f,
+        0.55f, -0.25f, 0.20f, 0.12f,
+    };
+    const int n_obs = MAX_OBS;
+    CUDA_CHECK(cudaMemcpyToSymbol(c_obs, h_obs, sizeof(h_obs)));
+    // Reachable, collision-free targets close to the obstacles: the flange within
+    // 0.12 m of an obstacle surface, from a configuration with at least the
+    // avoidance margin of clearance (so a collision-free solution exists).
+    std::vector<Tf> cf_targets(N_TARGET);
+    int drawn = 0;
+    for (int t = 0; t < N_TARGET; ++t) {
+        float q[NJ], org[24], zax[21], cl, near;
+        do {
+            random_config(3u, (unsigned int)drawn++, q);
+            fk(q, org, zax);
+            collision_cost(org, zax, h_obs, n_obs, nullptr, &cl);
+            near = 1.0e9f;
+            for (int o = 0; o < n_obs; ++o) {
+                float dx = org[21] - h_obs[o * 4 + 0], dy = org[22] - h_obs[o * 4 + 1];
+                float dz = org[23] - h_obs[o * 4 + 2];
+                near = fminf(near, sqrtf(dx * dx + dy * dy + dz * dz) - h_obs[o * 4 + 3]);
+            }
+        } while (cl < CLEAR_MARGIN || near > 0.12f);
+        cf_targets[t] = fk(q);
+    }
+    std::printf("\n--- collision-aware IK: %d sphere obstacles, %d collision-free targets near "
+                "them (%d configurations drawn) ---\n", n_obs, N_TARGET, drawn);
+    CUDA_CHECK(cudaMemcpy(d_targets, cf_targets.data(), N_TARGET * sizeof(Tf), cudaMemcpyHostToDevice));
+    float* d_cl;
+    CUDA_CHECK(cudaMalloc(&d_cl, total * sizeof(float)));
+    std::vector<float> pl_pe(total), pl_oe(total), pl_cl(total);
+    std::vector<float> av_pe(total), av_oe(total), av_cl(total);
+    float av_ms = 0.0f;
+    for (int pass = 0; pass < 2; ++pass) {
+        bool avoid = pass == 1;
+        ik_avoid_kernel<<<grid, block>>>(d_targets, n_obs, avoid, d_pe, d_oe, d_cl, N_TARGET, N_SEED);
+        CUDA_CHECK(cudaGetLastError());
+        CUDA_CHECK(cudaEventRecord(e0));
+        ik_avoid_kernel<<<grid, block>>>(d_targets, n_obs, avoid, d_pe, d_oe, d_cl, N_TARGET, N_SEED);
+        CUDA_CHECK(cudaEventRecord(e1));
+        CUDA_CHECK(cudaEventSynchronize(e1));
+        if (avoid) CUDA_CHECK(cudaEventElapsedTime(&av_ms, e0, e1));
+        std::vector<float>& pe = avoid ? av_pe : pl_pe;
+        std::vector<float>& oe = avoid ? av_oe : pl_oe;
+        std::vector<float>& cl = avoid ? av_cl : pl_cl;
+        CUDA_CHECK(cudaMemcpy(pe.data(), d_pe, total * sizeof(float), cudaMemcpyDeviceToHost));
+        CUDA_CHECK(cudaMemcpy(oe.data(), d_oe, total * sizeof(float), cudaMemcpyDeviceToHost));
+        CUDA_CHECK(cudaMemcpy(cl.data(), d_cl, total * sizeof(float), cudaMemcpyDeviceToHost));
+    }
+    // CPU reference for the collision-aware solver (same seeds)
+    std::vector<float> cav_pe(total), cav_oe(total), cav_cl(total);
+    auto c0 = std::chrono::high_resolution_clock::now();
+    for (int t = 0; t < N_TARGET; ++t)
+        for (int s = 0; s < N_SEED; ++s) {
+            int idx = t * N_SEED + s;
+            float q[NJ];
+            random_config(4u, (unsigned int)idx, q);
+            ik_solve_avoid(cf_targets[t], q, h_obs, n_obs, true, &cav_pe[idx], &cav_oe[idx], &cav_cl[idx]);
+        }
+    auto c1 = std::chrono::high_resolution_clock::now();
+    double cav_ms = std::chrono::duration<double, std::milli>(c1 - c0).count();
+    double pl_rate[5], av_rate[5];
+    std::printf("solved collision-free : pose-only DLS   null-space avoidance\n");
+    for (int i = 0; i < 5; ++i) {
+        pl_rate[i] = success_rate_cf(pl_pe, pl_oe, pl_cl, ks[i]);
+        av_rate[i] = success_rate_cf(av_pe, av_oe, av_cl, ks[i]);
+        std::printf("best of %2d restarts   : %6.2f%%          %6.2f%%\n", ks[i],
+                    100.0 * pl_rate[i], 100.0 * av_rate[i]);
+    }
+    int pl_pose_ok = 0, pl_colliding = 0;
+    for (int i = 0; i < total; ++i)
+        if (solved(pl_pe[i], pl_oe[i])) { ++pl_pose_ok; if (pl_cl[i] <= 0.0f) ++pl_colliding; }
+    std::printf("pose-only solves that collide: %d of %d pose solutions (%.1f%%)\n",
+                pl_colliding, pl_pose_ok, 100.0 * pl_colliding / std::max(1, pl_pose_ok));
+    int av_agree = 0;
+    for (int i = 0; i < total; ++i) {
+        bool g = solved(av_pe[i], av_oe[i]) && av_cl[i] > 0.0f;
+        bool c = solved(cav_pe[i], cav_oe[i]) && cav_cl[i] > 0.0f;
+        if (g == c) ++av_agree;
+    }
+    double av_agree_pct = 100.0 * av_agree / total;
+    std::printf("collision-aware CPU / GPU : %.2f ms / %.2f ms  (%.0fx), same outcome %.2f%%\n",
+                cav_ms, av_ms, cav_ms / av_ms, av_agree_pct);
+    CUDA_CHECK(cudaFree(d_cl));
+    ok = ok && av_rate[4] >= 0.95 && av_agree_pct >= 99.0;
+
     if (!no_video) {
         // one target, its restarts converging over the iterations (host trace)
         const int VT = 7;
@@ -470,8 +720,8 @@ int main(int argc, char** argv) {
     CUDA_CHECK(cudaFree(d_pe));
     CUDA_CHECK(cudaFree(d_oe));
     if (check) {
-        std::printf("check: %s (best-of-%d success >= 99%% and CPU/GPU agreement >= 99%%)\n",
-                    ok ? "PASS" : "FAIL", N_SEED);
+        std::printf("check: %s (best-of-%d success >= 99%% pose-only and >= 95%% collision-aware, "
+                    "CPU/GPU agreement >= 99%%)\n", ok ? "PASS" : "FAIL", N_SEED);
         return ok ? 0 : 1;
     }
     return 0;
