@@ -594,6 +594,8 @@ cudabot_demo(gpu_tsdf_fusion src/gpu_tsdf_fusion.cu OPENCV RELAXED_CONSTEXPR NO_
 
 cudabot_demo(gpu_dbscan src/gpu_dbscan.cu OPENCV RELAXED_CONSTEXPR NO_FMAD)
 
+cudabot_demo(gpu_ground_segmentation src/gpu_ground_segmentation.cu OPENCV RELAXED_CONSTEXPR NO_FMAD)
+
 cudabot_demo(gpu_sgm_stereo src/gpu_sgm_stereo.cu OPENCV RELAXED_CONSTEXPR NO_FMAD)
 
 cudabot_demo(gpu_wavefront_planner src/gpu_wavefront_planner.cu OPENCV RELAXED_CONSTEXPR NO_FMAD)
@@ -706,6 +708,13 @@ add_test(NAME gpu_batched_ik_gate
 set_tests_properties(gpu_batched_ik_gate PROPERTIES
   TIMEOUT 300
   LABELS "gpu;manipulation;ik")
+
+add_test(NAME gpu_ground_segmentation_gate
+  COMMAND $<TARGET_FILE:gpu_ground_segmentation> --check --no-video
+  WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+set_tests_properties(gpu_ground_segmentation_gate PROPERTIES
+  TIMEOUT 300
+  LABELS "gpu;pointcloud;ground")
 
 add_test(NAME esdf_2d_gpu_smoke
   COMMAND $<TARGET_FILE:esdf_2d_gpu_smoke>)
