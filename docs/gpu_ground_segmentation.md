@@ -122,7 +122,7 @@ box of the same points:
 | bench, 0° | 8 | 1.4° vs 0.0° | 0.70 vs 0.70 |
 
 - **The heading is what L-shape fitting buys.** The heading error drops from 15° to about 1°, and on the rotated cars the IoU rises by 0.15-0.2.
-- **The extent is limited by what the scan sees.** The box covers only the visible surface: the far sides of a car, the far end of the 12 m wall, and most of the distant low crate are hidden, so the centre and side errors stay near 1 m for both boxes. Completing the box with a size prior would be the next step.
+- **The extent is limited by what the scan sees.** The box covers only the visible surface: the far sides of a car, the far end of the 12 m wall, and most of the distant low crate are hidden, so the centre and side errors stay near 1 m for both boxes. The size prior below fills in the hidden part.
 - **Faces visible.** With one face visible (11 observations) the heading error is 0.9°, and with two (39) it is 1.4°: the closeness criterion also aligns a single wall-like face.
 - **Where axis-aligned wins.** On the 0° wall the axis-aligned box is exact by construction, while the L-shape fits are off by 1-2° on it and on the bench.
 
@@ -137,6 +137,42 @@ box of the same points:
 One thread per heading left a few threads looping over the thousands of points
 of the largest clusters. A warp per heading spreads them over 32 lanes.
 
+## Completing the boxes with a size prior
+
+The L-shape box covers only what the scan sees. A class size prior fills in
+the rest (host side, one step per cluster):
+
+- **Class.** The cluster's height and footprint stand in for a classifier:
+  - a *car* (4.5 × 1.8 m) is 1.0-2.0 m tall;
+  - a *van* (6.0 × 2.0 m) is 2.0-3.2 m tall and at least 0.8 m wide, which keeps thin walls out;
+  - in both cases the footprint must be at least 1.2 m long and within 1.2× the prior.
+- **Axes.** The longer observed side is the length, unless neither side exceeds the class width (× 1.2). Then the sensor sees one end, and the length runs along the axis closer to the line of sight.
+- **Growth.** A side shorter than the prior grows away from the sensor, keeping the edge the sensor sees. A side the sensor stands across grows about its centre.
+
+| Box | heading error | BEV IoU | IoU ≥ 0.5 | centre error | long / short side error |
+|---|---:|---:|---:|---:|---:|
+| L-shape | 1.3° | 0.47 | 26 / 50 | 1.11 m | 1.42 / 0.70 m |
+| L-shape + size prior | 1.3° | **0.60** | **34 / 50** | **0.82 m** | 0.85 / 0.49 m |
+| prior 10% too small | 1.3° | 0.58 | 33 / 50 | 0.87 m | 0.98 / 0.52 m |
+| prior 10% too large | 1.3° | 0.57 | 34 / 50 | 0.83 m | 0.97 / 0.54 m |
+
+| Box | L-shape IoU | + size prior |
+|---|---:|---:|
+| car, 20° | 0.55 | 0.70 |
+| car on the ramp, -15° | 0.61 | 0.82 |
+| car, 35° | 0.52 | **0.92** |
+| van on the ramp, 10° | 0.44 | 0.51 |
+| one face visible (11 observations) | 0.41 | 0.68 (centre error 0.85 → 0.29 m) |
+| two faces visible (39 observations) | 0.49 | 0.58 |
+
+- **Best case.** The scene's cars match the car prior exactly. With a prior 10% off in both sides, the mean IoU still rises from 0.47 to 0.57-0.58.
+- **The end-view rule matters.** Taking the longer observed side as the length every time gives a mean IoU of 0.53. A car seen end-on then grows sideways.
+- **The height-based class is the weak link.**
+  - 17 of the 23 car observations are classed as cars.
+  - Five misses have an observed footprint wider than 1.2× the prior, and one car is mostly hidden (0.5 m of it visible).
+  - The van is never classed as a van. Its roof is above the scan's +2° upper beam, so only 1.1-2.1 m of it is seen. It gets the car prior 4 times out of 7, which still helps it, but it stays short of its true length.
+  - The wall, crate and bench get no class and keep their L-shape boxes.
+
 ## Reproduce
 
 ```bash
@@ -150,14 +186,15 @@ cmake --build build --target gpu_ground_segmentation -j$(nproc)
 height threshold's, CPU and GPU agree on at least 99.9% of the labels, at least
 90% of the objects come out as one cluster, the CPU and GPU clusterings are
 the same partition, the L-shape boxes beat the axis-aligned ones in mean heading
-error and mean IoU, and the CPU and GPU boxes are identical. CTest
+error and mean IoU, the CPU and GPU boxes are identical, and the size prior
+raises the mean IoU and lowers the mean centre error of the L-shape boxes. CTest
 runs it as `gpu_ground_segmentation_gate` (labels `gpu;pointcloud;ground`).
 
 Generated files: `tmp/gpu_ground_segmentation.avi` and `gif/gpu_ground_segmentation.gif`.
 
 ## Output
 
-The GIF shows a bird's-eye view (40 m × 40 m) of each scan: the height threshold on the left, the model on the right. The right panel also shows the true boxes (blue) and the L-shape boxes of the clusters (magenta).
+The GIF shows a bird's-eye view (40 m × 40 m) of each scan: the height threshold on the left, the model on the right. The right panel also shows the true boxes (blue), the L-shape boxes of the clusters (magenta) and, for clusters classed as cars or vans, the boxes completed with the size prior (orange).
 
 | Colour | Meaning |
 |---|---|
