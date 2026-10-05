@@ -71,24 +71,27 @@ The second stage clusters the remaining points into objects: Euclidean clusterin
 | Step | What it does |
 |---|---|
 | graph | about 1550 occupied voxels per scan instead of about 50k points |
-| unite | one thread per (voxel, neighbour offset): 62 offsets within 2 voxels per axis, each pair once |
+| unite | one warp per (voxel, neighbour offset): 62 offsets within 2 voxels per axis, each pair once |
 | skip | pairs already in one set, and pairs whose voxels' point bounds are more than 0.5 m apart |
-| test | point pairs otherwise, stopping at the first one within 0.5 m |
+| test | point pairs otherwise, shared by the warp's 32 lanes, stopping as soon as one lane finds a pair within 0.5 m |
 | label | each component takes its smallest point index |
 
 The result is the same partition and the same labels as the CPU's BFS on every scan.
 
-**Time per scan** (GPU: minimum of 5 runs, on a GPU shared with other work):
+**Time per scan** (GPU: minimum of 5 runs; three runs of the 8 scans):
 
 | Clusterer | time | same partition as the CPU |
 |---|---:|---|
-| CPU BFS over the points | 66-89 ms | — |
-| GPU point-level union-find | 8.3-8.5 ms | yes |
-| GPU voxel-level union-find | **3.8-4.2 ms** | yes |
+| CPU BFS over the points | 44-48 ms | — |
+| GPU point-level union-find | 7.7-8.5 ms | yes |
+| GPU voxel-level union-find | **0.91-1.00 ms** | yes |
 
 - **Point-level:** near the sensor a point has thousands of neighbours within 0.5 m, and every one is tested.
-- **Voxel-level:** collapses those neighbourhoods and stops at the first close pair, about twice as fast as point-level and about 20x faster than the CPU.
-- **What did not help:** sorting the points instead of scanning a dense grid, and union-find instead of iterated label propagation, left the point-level clusterer unchanged. One thread per voxel instead of per (voxel, offset) was slower than point-level (too few threads).
+- **Voxel-level:** collapses those neighbourhoods and stops at the first close pair, about 8x faster than point-level and about 45x faster than the CPU.
+- **One warp per voxel pair.** With one thread per (voxel, offset), a voxel pair near the sensor holds hundreds of points on each side. When the pair turns out not to be connected, every point pair is tested by that one thread. This took 3.8-4.2 ms per scan here, and up to 37 ms on the drive below when the sensor passed 2 m from a parked car. Sharing the tests over a warp gives 0.9-1.0 ms here and at most 1.9 ms on the drive.
+- **What did not help:**
+  - Sorting the points instead of scanning a dense grid, and union-find instead of iterated label propagation, left the point-level clusterer unchanged.
+  - One thread per voxel instead of per (voxel, offset) was slower than point-level (too few threads).
 
 ## Oriented boxes: L-shape fitting
 
@@ -341,7 +344,26 @@ Full report: [results/box_hybrid_2026-10-06.md](results/box_hybrid_2026-10-06.md
   - It beats the motion tracker by 0.006 IoU (14 of 20 seeds, p = 0.12, not significant per seed).
 - **On the moving vehicles it still trails the single scan a little:** −0.008 IoU, lower in 19 of 20 seeds. A young track is not yet called moving, so it gets the track's box for its first scans. On seeds 1-20, where the rule came from, the gap was −0.011, which misses criterion 1.
 
-## Reproduce
+## Pipeline time per scan
+
+`--sequence` and `--moving` print the time of each stage per scan. The pipeline is ground segmentation, voxel clustering, L-shape boxes, the learned class, and the motion tracker with its box refits. On the `--moving` drive (37 scans; GPU stages are the minimum of 5 runs, the host stages one run):
+
+| Stage | before | after | change |
+|---|---:|---:|---|
+| segmentation (GPU) | 0.85 / 1.1 ms | 0.79 / 1.0 ms | |
+| voxel clustering (GPU) | 7.7 / 36.7 ms | 1.03 / 1.9 ms | one warp per voxel pair |
+| L-shape boxes (GPU) | 2.4 / 4.1 ms | 2.2 / 3.9 ms | |
+| classification (host) | 0.23 / 0.38 ms | 0.17 / 0.23 ms | |
+| motion tracker (host) | 24.9 / 48.4 ms | 1.9 / 5.3 ms | box refits moved to the GPU; stand-still grid kept up to date |
+| motion tracker's box refits (GPU) | (in the line above) | 0.58 / 0.89 ms | |
+| **pipeline** | **36.1 / 78.4 ms** | **6.6-6.7 / 10.9-11.3 ms** | |
+
+Each cell is the mean / max over the scans, and "after" is from two runs.
+
+- **Tracker refits on the GPU.** Each tracker now collects the point sets of its refits and fits them in one batch, with the same kernels as the clusters (one warp per set and heading). Before, 85% of the tracker's time went to these L-shape fits on the CPU. With `--check`, the CPU fits them too: the boxes are bit-identical, and the gates require it.
+- **Stand-still grid.** The motion tracker's stand-still hypothesis keeps its voxel grid up to date as points arrive instead of recounting all of them each scan. A zero velocity leaves the points where they are, so the grid and the boxes are the same, and the output files are byte-identical.
+- **Budget.** The worst scan now takes 11 ms of a 10 Hz LiDAR's 100 ms. The remaining host work is the moving hypothesis's recount and the trackers' voxel grids.
+
 ## Reproduce
 
 ```bash
