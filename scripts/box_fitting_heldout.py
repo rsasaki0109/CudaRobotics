@@ -14,6 +14,7 @@ import argparse
 import csv
 import io
 import math
+from fractions import Fraction
 import os
 import subprocess
 import sys
@@ -68,7 +69,7 @@ def sign_test(wins, losses):
     if n == 0:
         return 1.0
     k = min(wins, losses)
-    p = sum(math.comb(n, i) for i in range(k + 1)) / 2.0 ** n
+    p = float(Fraction(sum(math.comb(n, i) for i in range(k + 1)), 2 ** n))   # exact for large n
     return min(1.0, 2.0 * p)
 
 

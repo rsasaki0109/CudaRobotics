@@ -56,6 +56,12 @@
 // --cls-csv PATH one row of classifier features per cluster
 // (scripts/train_box_classifier.py trains the learned class on them).
 //
+// --sequence drives the sensor along the road (1 m apart, 10 m/s at 10 Hz) and
+// tracks the car / van clusters across the scans: each track accumulates the
+// world points of its clusters and refits its box, so faces seen from earlier
+// poses stay in it (--trk-hits K: a voxel counts once seen in K scans, default
+// 3). Output: gif/gpu_ground_segmentation_track.gif.
+//
 // Options: --no-video, --check (exit non-zero unless the model's F1 >= 0.95,
 // it beats the height threshold, CPU and GPU labels agree on >= 99.9%, at least
 // 90% of the objects come out as one cluster, the CPU and GPU clusterings
@@ -74,6 +80,7 @@
 #include <thrust/sort.h>
 
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <cmath>
 #include <cstdio>
@@ -82,6 +89,8 @@
 #include <numeric>
 #include <random>
 #include <string>
+#include <tuple>
+#include <unordered_map>
 #include <vector>
 
 #include "cuda_check.cuh"
@@ -1078,15 +1087,21 @@ static Obb complete_box(const Obb& B, int cls, float scale, bool end_rule = true
 }
 
 // Box scores, summed over observations, per box method.
-static const int N_BM = 7;
+static const int N_BM = 9;
 static const char* BM_NAME[N_BM] = { "L-shape", "axis-aligned", "L + prior", "L + prior x0.9", "L + prior x1.1",
-                                     "L + prior, no end rule", "L + prior, learned class" };
-static const char* BM_KEY[N_BM] = { "lshape", "aabb", "prior", "prior_x0.9", "prior_x1.1", "prior_noend", "prior_mlp" };
+                                     "L + prior, no end rule", "L + prior, learned class", "tracked L-shape",
+                                     "tracked L + prior" };
+static const char* BM_KEY[N_BM] = { "lshape", "aabb", "prior", "prior_x0.9", "prior_x1.1", "prior_noend", "prior_mlp",
+                                    "trk_lshape", "trk_prior" };
 
 // Held-out scene: boxes move within 1 m and take a new heading (the wall stays),
 // cars and the van take new sizes, and the sensor takes new poses on the road.
 // Footprints are kept apart by their circumscribed circles.
-static void randomize_scene(unsigned int seed, Box* box, const Cyl* cyl, float (*poses)[2], int n_pose) {
+// With a sensor path (--sequence), boxes also stay 1 m clear of the line y = PATH_Y.
+static constexpr float PATH_Y = 0.5f, PATH_X0 = -12.0f, PATH_X1 = 24.0f;
+
+static void randomize_scene(unsigned int seed, Box* box, const Cyl* cyl, std::vector<std::array<float, 2>>& poses,
+                            bool path) {
     std::mt19937 rng(seed);
     auto U = [&](float a, float b) { return std::uniform_real_distribution<float>(a, b)(rng); };
     auto rad = [](const Box& B) { return std::sqrt(B.hl * B.hl + B.hw * B.hw); };
@@ -1102,10 +1117,21 @@ static void randomize_scene(unsigned int seed, Box* box, const Cyl* cyl, float (
                 if (o != b) ok = std::hypot(B.cx - box[o].cx, B.cy - box[o].cy) > rad(B) + rad(box[o]) + 0.3f;
             for (int c = 0; c < N_CYL && ok; ++c)
                 ok = std::hypot(B.cx - cyl[c].x, B.cy - cyl[c].y) > rad(B) + cyl[c].r + 0.3f;
+            if (ok && path) {
+                float c = std::cos(B.yaw), sn = std::sin(B.yaw);
+                bool above = true, below = true;
+                for (int k = 0; k < 4; ++k) {
+                    float a = (k & 1 ? 1.0f : -1.0f) * B.hl, w = (k & 2 ? 1.0f : -1.0f) * B.hw;
+                    float y = B.cy + sn * a + c * w;
+                    above = above && y > PATH_Y + 1.0f; below = below && y < PATH_Y - 1.0f;
+                }
+                ok = above || below;
+            }
             if (ok) { box[b] = B; break; }
         }
     }
-    for (int k = 0; k < n_pose; ++k) {
+    if (path) return;   // the path's poses are fixed
+    for (size_t k = 0; k < poses.size(); ++k) {
         for (int tries = 0; tries < 1000; ++tries) {
             float x = U(-8.0f, 22.0f), y = U(-3.0f, 5.5f);
             bool ok = true;
@@ -1115,6 +1141,89 @@ static void randomize_scene(unsigned int seed, Box* box, const Cyl* cyl, float (
         }
     }
 }
+// ---- multi-frame tracking (--sequence) ----
+// The objects are static and the sensor pose is known, so clusters are
+// associated in the world frame: a cluster the learned class calls a car or a
+// van joins the track whose box lies within TRK_GATE of the cluster's box
+// (closest pairs first, one cluster per track), or starts a new track. A track keeps the
+// world points of its clusters on a TRK_VOX voxel grid, counting the scans each
+// voxel was seen in, and refits its L-shape box to the voxels seen in at least
+// g_trk_hits scans (3 by default; fewer while the track is young), so faces seen from earlier
+// poses stay in the box while points that a single scan wrongly kept (ground
+// left beside an object) do not pile up. Its class is the majority of its
+// clusters' learned classes.
+static constexpr float TRK_GATE = 1.0f, TRK_VOX = 0.1f;
+static int g_trk_hits = 3;   // TRK_HITS, set by --trk-hits
+
+struct Track {
+    std::vector<float> pts;   // world x, y, z of the first point in each voxel
+    std::vector<int> hits, last;
+    std::unordered_map<long long, int> vox;
+    int votes[N_CLS], scans = 0;
+    Obb box;                  // world frame
+};
+
+static float rect_dist(const Obb& B, float x, float y) {
+    float c = std::cos(B.yaw), sn = std::sin(B.yaw), dx = x - B.cx, dy = y - B.cy;
+    float u = std::fabs(c * dx + sn * dy) - 0.5f * B.len, v = std::fabs(-sn * dx + c * dy) - 0.5f * B.wid;
+    return std::hypot(std::max(u, 0.0f), std::max(v, 0.0f));
+}
+
+static void rect_corners(const Obb& B, float* x, float* y) {
+    float c = std::cos(B.yaw), sn = std::sin(B.yaw);
+    for (int k = 0; k < 4; ++k) {
+        float a = (k == 0 || k == 3 ? 0.5f : -0.5f) * B.len, w = (k < 2 ? 0.5f : -0.5f) * B.wid;
+        x[k] = B.cx + c * a - sn * w; y[k] = B.cy + sn * a + c * w;
+    }
+}
+
+// Distance between two rectangles: 0 if they overlap, else the closest vertex-to-rectangle distance.
+static float rect_rect_dist(const Obb& A, const Obb& B) {
+    float ax[4], ay[4], bx[4], by[4], d = 1e30f;
+    rect_corners(A, ax, ay); rect_corners(B, bx, by);
+    for (int k = 0; k < 4; ++k) d = std::min(d, std::min(rect_dist(B, ax[k], ay[k]), rect_dist(A, bx[k], by[k])));
+    if (d > 0.0f) {   // edges may cross with every vertex outside
+        cv::RotatedRect ra(cv::Point2f(A.cx, A.cy), cv::Size2f(A.len, A.wid), A.yaw * 180.0f / PI_F);
+        cv::RotatedRect rb(cv::Point2f(B.cx, B.cy), cv::Size2f(B.len, B.wid), B.yaw * 180.0f / PI_F);
+        std::vector<cv::Point2f> poly;
+        if (cv::rotatedRectangleIntersection(ra, rb, poly) != cv::INTERSECT_NONE) d = 0.0f;
+    }
+    return d;
+}
+
+static Obb lshape_fit_cpu(const float* pts, const int* items, int n, const std::vector<float>& cs) {
+    int best = 0;
+    float best_s = lshape_score_cpu(pts, items, 0, n, cs[0], cs[1]);
+    for (int k = 1; k < N_TH; ++k) {
+        float sc = lshape_score_cpu(pts, items, 0, n, cs[k * 2], cs[k * 2 + 1]);
+        if (sc > best_s) { best_s = sc; best = k; }
+    }
+    return lshape_rect(pts, items, 0, n, cs.data(), best);
+}
+
+// Add a cluster's points (sensor frame, sensor at (px, py, pz)) and refit.
+static void track_add(Track& T, const std::vector<float>& pts, const std::vector<int>& items, float px, float py,
+                      float pz, int scan, const std::vector<float>& cs) {
+    for (int i : items) {
+        float x = pts[i * 3] + px, y = pts[i * 3 + 1] + py, z = pts[i * 3 + 2] + pz;
+        long long kx = (long long)std::floor(x / TRK_VOX) + 100000, ky = (long long)std::floor(y / TRK_VOX) + 100000;
+        long long kz = (long long)std::floor(z / TRK_VOX) + 1000;
+        auto it = T.vox.emplace((kx * 200000 + ky) * 2000 + kz, (int)T.hits.size());
+        int v = it.first->second;
+        if (it.second) {
+            T.pts.push_back(x); T.pts.push_back(y); T.pts.push_back(z);
+            T.hits.push_back(0); T.last.push_back(-1);
+        }
+        if (T.last[v] != scan) { T.last[v] = scan; T.hits[v]++; }
+    }
+    T.scans++;
+    int need = std::min(g_trk_hits, T.scans);
+    std::vector<int> idx;
+    for (size_t v = 0; v < T.hits.size(); ++v) if (T.hits[v] >= need) idx.push_back((int)v);
+    if ((int)idx.size() < CL_MIN) { idx.resize(T.hits.size()); std::iota(idx.begin(), idx.end(), 0); }
+    T.box = lshape_fit_cpu(T.pts.data(), idx.data(), (int)idx.size(), cs);
+}
+
 struct BoxScore { int n; double yaw[N_BM], iou[N_BM], centre[N_BM], len[N_BM], wid[N_BM]; int good[N_BM], cls[N_CLS + 1], cls_mlp[N_CLS + 1]; };
 
 // Object-level scores of a clustering against the ground-truth objects.
@@ -1212,12 +1321,15 @@ int main(int argc, char** argv) {
     unsigned int seed = 0;
     const char* obs_csv = nullptr;
     const char* cls_csv = nullptr;
+    bool sequence = false;
     for (int i = 1; i < argc; ++i) {
         if (!std::strcmp(argv[i], "--no-video")) no_video = true;
         else if (!std::strcmp(argv[i], "--check")) check = true;
         else if (!std::strcmp(argv[i], "--seed") && i + 1 < argc) seed = (unsigned int)std::atoi(argv[++i]);
         else if (!std::strcmp(argv[i], "--obs-csv") && i + 1 < argc) obs_csv = argv[++i];
         else if (!std::strcmp(argv[i], "--cls-csv") && i + 1 < argc) cls_csv = argv[++i];
+        else if (!std::strcmp(argv[i], "--sequence")) sequence = true;
+        else if (!std::strcmp(argv[i], "--trk-hits") && i + 1 < argc) g_trk_hits = std::max(1, std::atoi(argv[++i]));
     }
     std::printf("=== GPU LiDAR ground segmentation (CPU vs CUDA) ===\n");
 
@@ -1237,18 +1349,22 @@ int main(int argc, char** argv) {
         { 3.0f, -1.0f, 0.3f, 1.7f }, { -2.0f, 3.5f, 0.3f, 1.7f }, { 9.0f, 4.5f, 0.3f, 1.7f },
         { 16.0f, -4.0f, 0.3f, 1.8f }, { -12.0f, -2.0f, 0.3f, 1.7f },
     };
-    const int N_SCAN = 8;
-    float poses[N_SCAN][2] = { { 0, 0 }, { 4, 2 }, { 8, 0 }, { 12, -2 }, { 16, 0 }, { 2, 5 },
-                                     { -5, 2 }, { 20, 3 } };
+    std::vector<std::array<float, 2>> poses = { { { 0, 0 } }, { { 4, 2 } }, { { 8, 0 } }, { { 12, -2 } },
+                                                { { 16, 0 } }, { { 2, 5 } }, { { -5, 2 } }, { { 20, 3 } } };
+    if (sequence) {   // along the road, 1 m apart
+        poses.clear();
+        for (float x = PATH_X0; x <= PATH_X1 + 1e-3f; x += 1.0f) poses.push_back({ { x, PATH_Y } });
+    }
+    const int N_SCAN = (int)poses.size();
     if (seed > 0) {
-        randomize_scene(seed, h_box, h_cyl, poses, N_SCAN);
+        randomize_scene(seed, h_box, h_cyl, poses, sequence);
         std::printf("held-out scene, seed %u\n", seed);
     }
     CUDA_CHECK(cudaMemcpyToSymbol(c_box, h_box, sizeof(h_box)));
     CUDA_CHECK(cudaMemcpyToSymbol(c_cyl, h_cyl, sizeof(h_cyl)));
     FILE* obs = obs_csv ? std::fopen(obs_csv, "w") : nullptr;
     if (obs) {
-        std::fprintf(obs, "seed,scan,box,faces,cls,cls_mlp");
+        std::fprintf(obs, "seed,scan,box,faces,cls,cls_mlp,track");
         for (int m = 0; m < N_BM; ++m)
             std::fprintf(obs, ",iou_%s,centre_%s,yaw_%s", BM_KEY[m], BM_KEY[m], BM_KEY[m]);
         std::fprintf(obs, "\n");
@@ -1296,7 +1412,10 @@ int main(int argc, char** argv) {
     double cpu_ms_total = 0.0, gpu_ms_total = 0.0;
     long agree = 0, valid = 0;
     std::vector<cv::Mat> frames;
-    std::vector<Obb> fits, done;
+    std::vector<Obb> fits, done, trk_draw;
+    std::vector<Track> tracks;
+    std::vector<int> track_of(N_RAYS, -1), last_track(N_BOX, -1);
+    int id_switches = 0;
     const int B = 256, G = (N_RAYS + B - 1) / B;
     for (int s = 0; s < N_SCAN; ++s) {
         scan_kernel<<<G, B>>>(poses[s][0], poses[s][1], (unsigned int)s, d_pts, d_gt, d_gt_obj);
@@ -1420,11 +1539,65 @@ int main(int argc, char** argv) {
                         if (std::memcmp(&go[r], &cobb[r], sizeof(Obb)) != 0) ls_same = false;
                     ls_fits += (long)ckeys.size();
                 }
-                fits.clear(); done.clear();
+                fits.clear(); done.clear(); trk_draw.clear();
                 for (const Obb& b : cobb) {
                     fits.push_back(b);
                     int k = classify_box_mlp(b);
                     if (k >= 0) done.push_back(complete_box(b, k, 1.0f));
+                }
+                std::fill(track_of.begin(), track_of.end(), -1);
+                if (sequence) {
+                    const float px = poses[s][0], py = poses[s][1], pz = ground_h(px, py) + SENSOR_H;
+                    std::vector<int> cand, ccls(ckeys.size(), -1), slot(N_RAYS, -1);
+                    for (size_t r = 0; r < ckeys.size(); ++r) {
+                        ccls[r] = classify_box_mlp(cobb[r]);
+                        if (ccls[r] >= 0) { slot[ckeys[r]] = (int)cand.size(); cand.push_back((int)r); }
+                    }
+                    std::vector<std::vector<int>> citems(cand.size());
+                    for (int i = 0; i < N_RAYS; ++i)
+                        if (clab_obj[i] >= 0 && slot[clab_obj[i]] >= 0) citems[slot[clab_obj[i]]].push_back(i);
+                    std::vector<std::tuple<float, int, int>> pairs;   // distance, candidate, track
+                    for (size_t k = 0; k < cand.size(); ++k) {
+                        const Obb& O = cobb[cand[k]];
+                        for (size_t t = 0; t < tracks.size(); ++t) {
+                            Obb W = O;
+                            W.cx += px; W.cy += py;
+                            float d = rect_rect_dist(tracks[t].box, W);
+                            if (d < TRK_GATE) pairs.emplace_back(d, (int)k, (int)t);
+                        }
+                    }
+                    std::sort(pairs.begin(), pairs.end());
+                    std::vector<int> cand_track(cand.size(), -1), track_used(tracks.size(), 0);
+                    for (const auto& pr : pairs) {
+                        int k = std::get<1>(pr), t = std::get<2>(pr);
+                        if (cand_track[k] >= 0 || track_used[t]) continue;
+                        cand_track[k] = t; track_used[t] = 1;
+                    }
+                    for (size_t k = 0; k < cand.size(); ++k) {
+                        if (cand_track[k] < 0) {
+                            cand_track[k] = (int)tracks.size();
+                            tracks.emplace_back();
+                            for (int c = 0; c < N_CLS; ++c) tracks.back().votes[c] = 0;
+                        }
+                        Track& T = tracks[cand_track[k]];
+                        track_add(T, pts, citems[k], px, py, pz, s, h_cs);
+                        T.votes[ccls[cand[k]]]++;
+                        track_of[ckeys[cand[k]]] = cand_track[k];
+                    }
+                }
+                auto track_box = [&](int t, Obb& raw, Obb& done_box) {
+                    const Track& T = tracks[t];
+                    raw = T.box;
+                    raw.cx -= poses[s][0]; raw.cy -= poses[s][1];
+                    int tc = 0;
+                    for (int c = 1; c < N_CLS; ++c) if (T.votes[c] > T.votes[tc]) tc = c;
+                    done_box = complete_box(raw, tc, 1.0f);
+                };
+                for (size_t t = 0; t < tracks.size(); ++t) {
+                    if (std::find(track_of.begin(), track_of.end(), (int)t) == track_of.end()) continue;
+                    Obb raw, dn;
+                    track_box((int)t, raw, dn);
+                    trk_draw.push_back(dn);
                 }
                 for (int b = 0; b < N_BOX; ++b) {
                     int c = matched_cluster(clab_obj, gt_obj, b);
@@ -1438,7 +1611,13 @@ int main(int argc, char** argv) {
                     Obb fit[N_BM] = { cobb[r], lshape_rect(pts.data(), items.data(), 0, (int)items.size(), h_cs.data(), 0),
                                       complete_box(cobb[r], cls, 1.0f), complete_box(cobb[r], cls, 0.9f),
                                       complete_box(cobb[r], cls, 1.1f), complete_box(cobb[r], cls, 1.0f, false),
-                                      complete_box(cobb[r], cls_mlp, 1.0f) };
+                                      complete_box(cobb[r], cls_mlp, 1.0f), cobb[r], complete_box(cobb[r], cls_mlp, 1.0f) };
+                    int tid = track_of[c];
+                    if (tid >= 0) {
+                        track_box(tid, fit[7], fit[8]);
+                        if (last_track[b] >= 0 && last_track[b] != tid) ++id_switches;
+                        last_track[b] = tid;
+                    }
                     // faces of the box the sensor can see: one if it stands within the box's slab along one axis
                     float cb = std::cos(G.yaw), sb = std::sin(G.yaw);
                     float u = cb * (poses[s][0] - G.cx) + sb * (poses[s][1] - G.cy);
@@ -1466,7 +1645,7 @@ int main(int argc, char** argv) {
                         }
                     }
                     if (obs) {
-                        std::fprintf(obs, "%u,%d,%d,%d,%d,%d", seed, s, b, faces, cls, cls_mlp);
+                        std::fprintf(obs, "%u,%d,%d,%d,%d,%d,%d", seed, s, b, faces, cls, cls_mlp, tid);
                         for (int m = 0; m < N_BM; ++m) std::fprintf(obs, ",%.5f,%.5f,%.4f", e_iou[m], e_ctr[m], e_yaw[m]);
                         std::fprintf(obs, "\n");
                     }
@@ -1516,6 +1695,7 @@ int main(int argc, char** argv) {
                              h_box[b].yaw, cv::Scalar(255, 170, 60));
                     for (const Obb& F : fits) draw(F.cx, F.cy, F.len, F.wid, F.yaw, cv::Scalar(230, 60, 230));
                     for (const Obb& F : done) draw(F.cx, F.cy, F.len, F.wid, F.yaw, cv::Scalar(40, 160, 255));
+                    for (const Obb& F : trk_draw) draw(F.cx, F.cy, F.len, F.wid, F.yaw, cv::Scalar(80, 230, 80));
                 }
                 Score sc = view == 0 ? st : sm;
                 char buf[160];
@@ -1529,6 +1709,16 @@ int main(int argc, char** argv) {
                           "blue: true box   magenta: L-shape   orange: + size prior", s);
             cv::putText(panel, buf, cv::Point(10, W - 12), cv::FONT_HERSHEY_SIMPLEX, 0.5,
                         cv::Scalar(200, 200, 210), 1, cv::LINE_AA);
+            if (sequence) {   // the model's view only, with the tracked boxes
+                panel = panel(cv::Rect(W + 20, 0, W, W)).clone();
+                cv::rectangle(panel, cv::Rect(0, W - 52, W, 52), cv::Scalar(28, 28, 32), cv::FILLED);
+                std::snprintf(buf, sizeof(buf), "frame %d   blue: true   magenta: L-shape", s);
+                cv::putText(panel, buf, cv::Point(10, W - 32), cv::FONT_HERSHEY_SIMPLEX, 0.5,
+                            cv::Scalar(200, 200, 210), 1, cv::LINE_AA);
+                cv::putText(panel, "orange: + size prior (this scan)   green: tracked + size prior",
+                            cv::Point(10, W - 12), cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(200, 200, 210), 1,
+                            cv::LINE_AA);
+            }
             frames.push_back(panel);
         }
     }
@@ -1545,12 +1735,13 @@ int main(int argc, char** argv) {
 
     if (!no_video && !frames.empty()) {
         if (ensure_dirs({ "tmp" }) != 0) std::fprintf(stderr, "warning: mkdir tmp failed\n");
-        cv::VideoWriter video("tmp/gpu_ground_segmentation.avi", cv::VideoWriter::fourcc('M', 'J', 'P', 'G'), 2,
+        const std::string name = sequence ? "gpu_ground_segmentation_track" : "gpu_ground_segmentation";
+        cv::VideoWriter video("tmp/" + name + ".avi", cv::VideoWriter::fourcc('M', 'J', 'P', 'G'), sequence ? 5 : 2,
                               frames[0].size());
         for (const cv::Mat& f : frames) video.write(f);
         video.release();
-        avi_to_gif("tmp/gpu_ground_segmentation.avi", "gif/gpu_ground_segmentation.gif", 2, 800);
-        std::printf("wrote gif/gpu_ground_segmentation.gif\n");
+        avi_to_gif("tmp/" + name + ".avi", "gif/" + name + ".gif", sequence ? 5 : 2, sequence ? 340 : 800);
+        std::printf("wrote gif/%s.gif\n", name.c_str());
     }
 
     CUDA_CHECK(cudaFree(d_pts)); CUDA_CHECK(cudaFree(d_gt)); CUDA_CHECK(cudaFree(d_gt_obj)); CUDA_CHECK(cudaFree(d_bin));
@@ -1570,11 +1761,11 @@ int main(int argc, char** argv) {
     std::printf("\n--- oriented boxes of the clusters (L-shape fitting, %d headings, closeness criterion) ---\n", N_TH);
     std::printf("fits per scan %ld; CPU %.2f ms, GPU %.3f ms per scan; CPU and GPU boxes identical: %s\n",
                 ls_fits / N_SCAN, ls_cpu_ms / N_SCAN, ls_gpu_ms / N_SCAN, ls_same ? "yes" : "no");
-    auto box_line = [](const char* name, const BoxScore& S) {
+    auto box_line = [&](const char* name, const BoxScore& S) {
         if (!S.n) return;
         std::printf("%s: n %d, classed car %d / van %d / none %d (learned: %d / %d / %d)\n", name, S.n, S.cls[0],
                     S.cls[1], S.cls[N_CLS], S.cls_mlp[0], S.cls_mlp[1], S.cls_mlp[N_CLS]);
-        for (int m = 0; m < N_BM; ++m)
+        for (int m = 0; m < (sequence ? N_BM : N_BM - 2); ++m)
             std::printf("  %-15s heading err %5.2f deg  IoU %.3f  (>= 0.5: %3d)  centre err %.2f m  "
                         "long side err %.2f m  short side err %.2f m\n", BM_NAME[m],
                         S.yaw[m] / S.n, S.iou[m] / S.n, S.good[m], S.centre[m] / S.n, S.len[m] / S.n, S.wid[m] / S.n);
@@ -1585,12 +1776,30 @@ int main(int argc, char** argv) {
     for (int b = 0; b < N_BOX; ++b) box_line(box_name[b], bobj[b]);
     if (obs) std::fclose(obs);
     if (clsf) std::fclose(clsf);
+    if (sequence) {
+        int tracked = 0;
+        for (int b = 0; b < N_BOX; ++b) tracked += last_track[b] >= 0;
+        std::printf("tracking: %zu tracks, %d true boxes tracked, %d identity switches\n", tracks.size(), tracked,
+                    id_switches);
+    }
     bool ls_better = bsum[0].n > 0 && bsum[0].yaw[0] < bsum[0].yaw[1] && bsum[0].iou[0] > bsum[0].iou[1];
     bool prior_better = bsum[0].iou[2] > bsum[0].iou[0] && bsum[0].centre[2] < bsum[0].centre[0] &&
                         bsum[0].iou[6] > bsum[0].iou[0] && bsum[0].centre[6] < bsum[0].centre[0];
     double found_rate = cl_sum[0].objects ? (double)cl_sum[0].found / cl_sum[0].objects : 0.0;
     bool ok = sg.f1 >= 0.95 && sg.f1 > st.f1 && agree_pct >= 99.9 && found_rate >= 0.9 && cl_same && vcl_same &&
               ls_better && ls_same && prior_better;
+    if (sequence) {
+        bool trk_better = bsum[0].iou[7] > bsum[0].iou[0] && bsum[0].iou[8] > bsum[0].iou[6] &&
+                          bsum[0].centre[8] < bsum[0].centre[6];
+        ok = sg.f1 >= 0.95 && agree_pct >= 99.9 && cl_same && vcl_same && ls_same && trk_better;
+        if (check) {
+            std::printf("check: %s (model F1 >= 0.95, CPU/GPU agreement >= 99.9%%, identical CPU/GPU partition and "
+                        "boxes, tracked boxes beat single-scan ones in IoU, and with the size prior in IoU and "
+                        "centre error)\n", ok ? "PASS" : "FAIL");
+            return ok ? 0 : 1;
+        }
+        return 0;
+    }
     if (check) {
         std::printf("check: %s (model F1 >= 0.95, above the height threshold, CPU/GPU agreement >= 99.9%%, "
                     ">= 90%% of objects found as one cluster, identical CPU/GPU partition, L-shape boxes beat "
