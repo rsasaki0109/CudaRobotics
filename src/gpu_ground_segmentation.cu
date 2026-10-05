@@ -35,10 +35,17 @@
 // Several sensor poses are scanned. Reported: ground precision / recall / F1
 // for the model and for a plain height threshold, and the CPU and GPU times.
 //
+// Second stage: the non-ground points are clustered into objects (Euclidean
+// clustering, 0.5 m, union-find on the GPU, BFS on the CPU, same partition) and
+// the clusters are scored against the ground-truth objects, for the model's
+// ground removal, the height threshold's, and none.
+//
 // Output: gif/gpu_ground_segmentation.gif (bird's-eye view per scan)
 //
 // Options: --no-video, --check (exit non-zero unless the model's F1 >= 0.95,
-// it beats the height threshold, and CPU and GPU labels agree on >= 99.9%).
+// it beats the height threshold, CPU and GPU labels agree on >= 99.9%, at least
+// 90% of the objects come out as one cluster, and the CPU and GPU clusterings
+// are the same partition).
 
 #include <cuda_runtime.h>
 #include <opencv2/opencv.hpp>
@@ -104,11 +111,12 @@ static const int N_BOX = 7, N_CYL = 8;
 __constant__ Box c_box[N_BOX];
 __constant__ Cyl c_cyl[N_CYL];
 
-// Ray from o along unit d: nearest hit within MAX_RANGE. label 1 = ground, 0 = object.
+// Ray from o along unit d: nearest hit within MAX_RANGE. label 1 = ground, 0 = object;
+// obj is the object's index (boxes, then cylinders), -1 for the ground.
 __host__ __device__ static inline bool raycast(const float* o, const float* d,
                                                const Box* boxes, const Cyl* cyls,
-                                               float& t_hit, int& label) {
-    t_hit = MAX_RANGE; label = -1;
+                                               float& t_hit, int& label, int& obj) {
+    t_hit = MAX_RANGE; label = -1; obj = -1;
     // objects: slabs for boxes (bottom at the ground under the box centre)
     for (int b = 0; b < N_BOX; ++b) {
         const Box& B = boxes[b];
@@ -123,7 +131,7 @@ __host__ __device__ static inline bool raycast(const float* o, const float* d,
             t0 = fmaxf(t0, ta); t1 = fminf(t1, tb);
             if (t0 > t1) hit = false;
         }
-        if (hit && t0 > 0.0f && t0 < t_hit) { t_hit = t0; label = 0; }
+        if (hit && t0 > 0.0f && t0 < t_hit) { t_hit = t0; label = 0; obj = b; }
     }
     for (int c = 0; c < N_CYL; ++c) {
         const Cyl& C = cyls[c];
@@ -137,7 +145,7 @@ __host__ __device__ static inline bool raycast(const float* o, const float* d,
         if (t <= 0.0f || t >= t_hit) continue;
         float z = o[2] + t * d[2], zg = ground_h(C.x, C.y);
         if (z < zg - 0.2f || z > zg + C.h) continue;
-        t_hit = t; label = 0;
+        t_hit = t; label = 0; obj = N_BOX + c;
     }
     // ground: march, then bisect
     float prev_t = 0.3f;
@@ -149,7 +157,7 @@ __host__ __device__ static inline bool raycast(const float* o, const float* d,
                 float m = 0.5f * (lo + hi);
                 if (o[2] + m * d[2] <= ground_h(o[0] + m * d[0], o[1] + m * d[1])) hi = m; else lo = m;
             }
-            t_hit = hi; label = 1;
+            t_hit = hi; label = 1; obj = -1;
             break;
         }
         prev_t = t;
@@ -165,7 +173,7 @@ __host__ __device__ static inline float hash_gauss(unsigned int a, unsigned int 
 }
 
 // One ray per thread: sensor-frame point (x, y, z relative to the sensor) and label.
-__global__ void scan_kernel(float sx, float sy, unsigned int scan_id, float* pts, int* gt) {
+__global__ void scan_kernel(float sx, float sy, unsigned int scan_id, float* pts, int* gt, int* gt_obj) {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i >= N_RAYS) return;
     int ch = i / N_AZ, az = i - ch * N_AZ;
@@ -173,13 +181,15 @@ __global__ void scan_kernel(float sx, float sy, unsigned int scan_id, float* pts
     float yaw = 2.0f * PI_F * az / N_AZ;
     float o[3] = { sx, sy, ground_h(sx, sy) + SENSOR_H };
     float d[3] = { cosf(el) * cosf(yaw), cosf(el) * sinf(yaw), sinf(el) };
-    float t; int label;
-    if (!raycast(o, d, c_box, c_cyl, t, label)) { gt[i] = -1; return; }
+    float t; int label, obj;
+    gt_obj[i] = -1;
+    if (!raycast(o, d, c_box, c_cyl, t, label, obj)) { gt[i] = -1; return; }
     t += 0.02f * hash_gauss(scan_id, (unsigned int)i);   // 2 cm range noise
     pts[i * 3 + 0] = t * d[0];
     pts[i * 3 + 1] = t * d[1];
     pts[i * 3 + 2] = t * d[2];
     gt[i] = label;
+    gt_obj[i] = obj;
 }
 
 // ---- ground model ----
@@ -373,9 +383,226 @@ __global__ void label_kernel(const float* pts, const int* bin, const BinPlane* p
     lab[i] = P.ok && fabsf(P.nx * p[0] + P.ny * p[1] + P.nz * p[2] + P.d) < DIST_TH;
 }
 
+// ============================ object clustering ============================
+// Euclidean clustering of the non-ground points: two points are connected if
+// they are within CL_EPS, and clusters are the connected components (PCL's
+// EuclideanClusterExtraction). Neighbours come from a 3-D grid of CL_EPS cells.
+// On the GPU every point unites itself with each lower-indexed neighbour in a
+// lock-free union-find that always hooks the larger root under the smaller one
+// (atomicCAS), so each root ends as the smallest point index of its component;
+// a final pass flattens every point to its root. That is also the label the
+// CPU's BFS assigns, so the two partitions can be compared exactly.
+static constexpr float CL_EPS = 0.5f;
+static const int CL_MIN = 10;              // smaller clusters are dropped
+static const int GX = 240, GY = 240, GZ = 24;   // cells over x, y in [-60, 60], z in [-6, 6]
+static const int N_CELL = GX * GY * GZ;
+
+__host__ __device__ static inline int cell_coords(const float* p, int& ix, int& iy, int& iz) {
+    ix = (int)floorf((p[0] + 60.0f) / CL_EPS);
+    iy = (int)floorf((p[1] + 60.0f) / CL_EPS);
+    iz = (int)floorf((p[2] + 6.0f) / CL_EPS);
+    if (ix < 0 || iy < 0 || iz < 0 || ix >= GX || iy >= GY || iz >= GZ) return -1;
+    return (iz * GY + iy) * GX + ix;
+}
+
+// The GPU sorts the active points by cell and looks cells up by binary search, so
+// its work scales with the points, not with the 1.4 M cells of the grid.
+__global__ void cell_key_kernel(const float* pts, const int* active, int* cell, int* key, int* idx, int n) {
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i >= n) return;
+    int ix, iy, iz;
+    int c = active[i] ? cell_coords(&pts[i * 3], ix, iy, iz) : -1;
+    cell[i] = c;
+    key[i] = c >= 0 ? c : 0x7fffffff;
+    idx[i] = i;
+}
+
+__device__ static inline int lower_bound_key(const int* key, int n, int c) {
+    int lo = 0, hi = n;
+    while (lo < hi) {
+        int mid = (lo + hi) >> 1;
+        if (key[mid] < c) lo = mid + 1; else hi = mid;
+    }
+    return lo;
+}
+
+__global__ void cluster_init_kernel(const int* cell, int* label, int n) {
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i < n) label[i] = cell[i] >= 0 ? i : -1;
+}
+
+__device__ static inline int uf_find(const int* parent, int x) {
+    for (int p = parent[x]; p != x; p = parent[x]) x = p;
+    return x;
+}
+
+// Hook the larger root under the smaller one; retry if another thread got there first.
+__device__ static inline void uf_unite(int* parent, int a, int b) {
+    for (;;) {
+        a = uf_find(parent, a);
+        b = uf_find(parent, b);
+        if (a == b) return;
+        if (a > b) { int t = a; a = b; b = t; }
+        int old = atomicCAS(&parent[b], b, a);
+        if (old == b) return;
+        b = old;
+    }
+}
+
+__global__ void cluster_unite_kernel(const float* pts, const int* cell, const int* skey,
+                                     const int* items, int* parent, int n) {
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i >= n || cell[i] < 0) return;
+    const float* p = &pts[i * 3];
+    int ix, iy, iz;
+    cell_coords(p, ix, iy, iz);
+    for (int dz = -1; dz <= 1; ++dz) for (int dy = -1; dy <= 1; ++dy) for (int dx = -1; dx <= 1; ++dx) {
+        int x = ix + dx, y = iy + dy, z = iz + dz;
+        if (x < 0 || y < 0 || z < 0 || x >= GX || y >= GY || z >= GZ) continue;
+        int c = (z * GY + y) * GX + x;
+        for (int k = lower_bound_key(skey, n, c); k < n && skey[k] == c; ++k) {
+            int j = items[k];
+            if (j >= i) continue;   // each pair once
+            const float* q = &pts[j * 3];
+            float ex = p[0] - q[0], ey = p[1] - q[1], ez = p[2] - q[2];
+            if (ex * ex + ey * ey + ez * ez <= CL_EPS * CL_EPS) uf_unite(parent, i, j);
+        }
+    }
+}
+
+__global__ void cluster_flatten_kernel(const int* cell, int* parent, int n) {
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i >= n || cell[i] < 0) return;
+    parent[i] = uf_find(parent, i);
+}
+
 }  // namespace cudabot
 
 using namespace cudabot;
+
+// GPU clustering of the points with active[i]; returns the labels (component's
+// smallest point index, -1 for inactive) and the kernel time.
+struct GpuClusterer {
+    int *d_active, *d_cell, *d_key, *d_items, *d_label;
+    GpuClusterer() {
+        CUDA_CHECK(cudaMalloc(&d_active, N_RAYS * sizeof(int)));
+        CUDA_CHECK(cudaMalloc(&d_cell, N_RAYS * sizeof(int)));
+        CUDA_CHECK(cudaMalloc(&d_key, N_RAYS * sizeof(int)));
+        CUDA_CHECK(cudaMalloc(&d_items, N_RAYS * sizeof(int)));
+        CUDA_CHECK(cudaMalloc(&d_label, N_RAYS * sizeof(int)));
+    }
+    ~GpuClusterer() {
+        cudaFree(d_active); cudaFree(d_cell); cudaFree(d_key); cudaFree(d_items); cudaFree(d_label);
+    }
+    float run(const float* d_pts, const std::vector<int>& active, std::vector<int>& label, int& iters) {
+        const int B = 256, G = (N_RAYS + B - 1) / B;
+        CUDA_CHECK(cudaMemcpy(d_active, active.data(), N_RAYS * sizeof(int), cudaMemcpyHostToDevice));
+        cudaEvent_t e0, e1;
+        CUDA_CHECK(cudaEventCreate(&e0)); CUDA_CHECK(cudaEventCreate(&e1));
+        CUDA_CHECK(cudaEventRecord(e0));
+        cell_key_kernel<<<G, B>>>(d_pts, d_active, d_cell, d_key, d_items, N_RAYS);
+        thrust::sort_by_key(thrust::device_ptr<int>(d_key), thrust::device_ptr<int>(d_key) + N_RAYS,
+                            thrust::device_ptr<int>(d_items));
+        cluster_init_kernel<<<G, B>>>(d_cell, d_label, N_RAYS);
+        cluster_unite_kernel<<<G, B>>>(d_pts, d_cell, d_key, d_items, d_label, N_RAYS);
+        cluster_flatten_kernel<<<G, B>>>(d_cell, d_label, N_RAYS);
+        iters = 1;
+        CUDA_CHECK(cudaEventRecord(e1));
+        CUDA_CHECK(cudaEventSynchronize(e1));
+        CUDA_CHECK(cudaGetLastError());
+        float ms = 0.0f;
+        CUDA_CHECK(cudaEventElapsedTime(&ms, e0, e1));
+        CUDA_CHECK(cudaEventDestroy(e0)); CUDA_CHECK(cudaEventDestroy(e1));
+        label.resize(N_RAYS);
+        CUDA_CHECK(cudaMemcpy(label.data(), d_label, N_RAYS * sizeof(int), cudaMemcpyDeviceToHost));
+        return ms;
+    }
+};
+
+// CPU clustering: the same grid, BFS per component; label = smallest index.
+static void cpu_cluster(const std::vector<float>& pts, const std::vector<int>& active, std::vector<int>& label) {
+    int n = (int)active.size();
+    std::vector<int> cell(n, -1), start(N_CELL + 1, 0), items;
+    for (int i = 0; i < n; ++i) {
+        int ix, iy, iz;
+        if (active[i]) cell[i] = cell_coords(&pts[i * 3], ix, iy, iz);
+        if (cell[i] >= 0) start[cell[i] + 1]++;
+    }
+    for (int c = 0; c < N_CELL; ++c) start[c + 1] += start[c];
+    items.assign(start[N_CELL], 0);
+    std::vector<int> fill(start.begin(), start.end() - 1);
+    for (int i = 0; i < n; ++i) if (cell[i] >= 0) items[fill[cell[i]]++] = i;
+    label.assign(n, -1);
+    std::vector<int> queue;
+    for (int i = 0; i < n; ++i) {
+        if (cell[i] < 0 || label[i] >= 0) continue;
+        label[i] = i; queue.assign(1, i);
+        for (size_t h = 0; h < queue.size(); ++h) {
+            int u = queue[h];
+            const float* p = &pts[u * 3];
+            int ix, iy, iz;
+            cell_coords(p, ix, iy, iz);
+            for (int dz = -1; dz <= 1; ++dz) for (int dy = -1; dy <= 1; ++dy) for (int dx = -1; dx <= 1; ++dx) {
+                int x = ix + dx, y = iy + dy, z = iz + dz;
+                if (x < 0 || y < 0 || z < 0 || x >= GX || y >= GY || z >= GZ) continue;
+                int c = (z * GY + y) * GX + x;
+                for (int k = start[c]; k < start[c + 1]; ++k) {
+                    int j = items[k];
+                    if (label[j] >= 0) continue;
+                    const float* q = &pts[j * 3];
+                    float ex = p[0] - q[0], ey = p[1] - q[1], ez = p[2] - q[2];
+                    if (ex * ex + ey * ey + ez * ez <= CL_EPS * CL_EPS) { label[j] = i; queue.push_back(j); }
+                }
+            }
+        }
+    }
+}
+
+// Object-level scores of a clustering against the ground-truth objects.
+struct ClusterScore { int objects, found, merged, split, clusters, ground_clusters; };
+
+static ClusterScore score_clusters(const std::vector<int>& label, const std::vector<int>& gt,
+                                   const std::vector<int>& gt_obj) {
+    const int N_OBJ = N_BOX + N_CYL;
+    std::vector<int> size(N_RAYS, 0);
+    for (int i = 0; i < N_RAYS; ++i) if (label[i] >= 0) size[label[i]]++;
+    // per cluster (kept if >= CL_MIN): point count per object, ground count
+    std::vector<int> ids;
+    for (int c = 0; c < N_RAYS; ++c) if (size[c] >= CL_MIN) ids.push_back(c);
+    std::vector<int> slot(N_RAYS, -1);
+    for (size_t k = 0; k < ids.size(); ++k) slot[ids[k]] = (int)k;
+    std::vector<std::vector<int>> hist(ids.size(), std::vector<int>(N_OBJ + 1, 0));
+    std::vector<int> obj_total(N_OBJ, 0);
+    for (int i = 0; i < N_RAYS; ++i) {
+        if (gt_obj[i] >= 0) obj_total[gt_obj[i]]++;
+        if (label[i] < 0 || slot[label[i]] < 0) continue;
+        int o = gt_obj[i] >= 0 ? gt_obj[i] : N_OBJ;   // N_OBJ = ground
+        hist[slot[label[i]]][o]++;
+    }
+    ClusterScore S{0, 0, 0, 0, (int)ids.size(), 0};
+    for (size_t k = 0; k < ids.size(); ++k) {
+        int tot = 0, objs = 0;
+        for (int o = 0; o <= N_OBJ; ++o) tot += hist[k][o];
+        for (int o = 0; o < N_OBJ; ++o) if (hist[k][o] >= 0.1 * tot && hist[k][o] >= 5) ++objs;
+        if (hist[k][N_OBJ] > 0.5 * tot) ++S.ground_clusters;
+        if (objs >= 2) ++S.merged;
+    }
+    for (int o = 0; o < N_OBJ; ++o) {
+        if (obj_total[o] < 20) continue;   // objects the scan barely sees
+        ++S.objects;
+        int best = -1, best_n = 0, parts = 0;
+        for (size_t k = 0; k < ids.size(); ++k) {
+            if (hist[k][o] >= 0.1 * obj_total[o]) ++parts;
+            if (hist[k][o] > best_n) { best_n = hist[k][o]; best = (int)k; }
+        }
+        if (parts >= 2) ++S.split;
+        if (best < 0) continue;
+        int tot = 0;
+        for (int q = 0; q <= N_OBJ; ++q) tot += hist[best][q];
+        if (best_n >= 0.5 * obj_total[o] && best_n >= 0.5 * tot) ++S.found;
+    }
+    return S;
+}
 
 struct Score { double precision, recall, f1; };
 
@@ -449,10 +676,11 @@ int main(int argc, char** argv) {
     const int N_SCAN = 8;
     const float poses[N_SCAN][2] = { { 0, 0 }, { 4, 2 }, { 8, 0 }, { 12, -2 }, { 16, 0 }, { 2, 5 },
                                      { -5, 2 }, { 20, 3 } };
-    float *d_pts; int *d_gt, *d_bin, *d_idx, *d_start, *d_lab;
+    float *d_pts; int *d_gt, *d_gt_obj, *d_bin, *d_idx, *d_start, *d_lab;
     BinPlane* d_planes;
     CUDA_CHECK(cudaMalloc(&d_pts, N_RAYS * 3 * sizeof(float)));
     CUDA_CHECK(cudaMalloc(&d_gt, N_RAYS * sizeof(int)));
+    CUDA_CHECK(cudaMalloc(&d_gt_obj, N_RAYS * sizeof(int)));
     CUDA_CHECK(cudaMalloc(&d_bin, N_RAYS * sizeof(int)));
     CUDA_CHECK(cudaMalloc(&d_idx, N_RAYS * sizeof(int)));
     CUDA_CHECK(cudaMalloc(&d_start, (N_BIN + 1) * sizeof(int)));
@@ -465,17 +693,24 @@ int main(int argc, char** argv) {
     CUDA_CHECK(cudaEventCreate(&e1));
 
     std::vector<int> all_gt, all_gpu, all_cpu, all_thr;
+    GpuClusterer clusterer;
+    ClusterScore cl_sum[3] = { {0, 0, 0, 0, 0, 0}, {0, 0, 0, 0, 0, 0}, {0, 0, 0, 0, 0, 0} };
+    double cl_cpu_ms = 0.0, cl_gpu_ms = 0.0;
+    int cl_iters = 0;
+    bool cl_same = true;
     double cpu_ms_total = 0.0, gpu_ms_total = 0.0;
     long agree = 0, valid = 0;
     std::vector<cv::Mat> frames;
     const int B = 256, G = (N_RAYS + B - 1) / B;
     for (int s = 0; s < N_SCAN; ++s) {
-        scan_kernel<<<G, B>>>(poses[s][0], poses[s][1], (unsigned int)s, d_pts, d_gt);
+        scan_kernel<<<G, B>>>(poses[s][0], poses[s][1], (unsigned int)s, d_pts, d_gt, d_gt_obj);
         CUDA_CHECK(cudaGetLastError());
         std::vector<float> pts(N_RAYS * 3);
         std::vector<int> gt(N_RAYS);
         CUDA_CHECK(cudaMemcpy(pts.data(), d_pts, pts.size() * sizeof(float), cudaMemcpyDeviceToHost));
         CUDA_CHECK(cudaMemcpy(gt.data(), d_gt, gt.size() * sizeof(int), cudaMemcpyDeviceToHost));
+        std::vector<int> gt_obj(N_RAYS);
+        CUDA_CHECK(cudaMemcpy(gt_obj.data(), d_gt_obj, gt_obj.size() * sizeof(int), cudaMemcpyDeviceToHost));
 
         // ---- GPU segmentation (timed: bin, sort, fit, check, label) ----
         for (int rep = 0; rep < 2; ++rep) {   // first pass warms up
@@ -519,6 +754,30 @@ int main(int argc, char** argv) {
         all_gpu.insert(all_gpu.end(), lab.begin(), lab.end());
         all_cpu.insert(all_cpu.end(), clab.begin(), clab.end());
         all_thr.insert(all_thr.end(), thr.begin(), thr.end());
+
+        // ---- object clustering of the non-ground points, for three ground removals ----
+        for (int mode = 0; mode < 3; ++mode) {   // 0 model, 1 height threshold, 2 none
+            std::vector<int> active(N_RAYS, 0);
+            for (int i = 0; i < N_RAYS; ++i)
+                active[i] = gt[i] >= 0 && (mode == 2 || (mode == 0 ? lab[i] : thr[i]) == 0);
+            std::vector<int> glab;
+            int iters = 0;
+            float cl_ms = clusterer.run(d_pts, active, glab, iters);
+            ClusterScore cs = score_clusters(glab, gt, gt_obj);
+            cl_sum[mode].objects += cs.objects; cl_sum[mode].found += cs.found;
+            cl_sum[mode].merged += cs.merged; cl_sum[mode].split += cs.split;
+            cl_sum[mode].clusters += cs.clusters; cl_sum[mode].ground_clusters += cs.ground_clusters;
+            if (mode == 0) {
+                std::vector<int> clab_obj;
+                auto c0 = std::chrono::high_resolution_clock::now();
+                cpu_cluster(pts, active, clab_obj);
+                auto c1 = std::chrono::high_resolution_clock::now();
+                cl_cpu_ms += std::chrono::duration<double, std::milli>(c1 - c0).count();
+                cl_gpu_ms += cl_ms;
+                cl_iters += iters;
+                if (glab != clab_obj) cl_same = false;
+            }
+        }
         Score sm = score(gt, lab), st = score(gt, thr);
         std::printf("scan %d at (%5.1f, %5.1f): model F1 %.4f  height threshold F1 %.4f  CPU %7.2f ms  GPU %6.2f ms\n",
                     s, poses[s][0], poses[s][1], sm.f1, st.f1, cpu_ms, gpu_ms);
@@ -582,13 +841,23 @@ int main(int argc, char** argv) {
         std::printf("wrote gif/gpu_ground_segmentation.gif\n");
     }
 
-    CUDA_CHECK(cudaFree(d_pts)); CUDA_CHECK(cudaFree(d_gt)); CUDA_CHECK(cudaFree(d_bin));
+    CUDA_CHECK(cudaFree(d_pts)); CUDA_CHECK(cudaFree(d_gt)); CUDA_CHECK(cudaFree(d_gt_obj)); CUDA_CHECK(cudaFree(d_bin));
     CUDA_CHECK(cudaFree(d_idx)); CUDA_CHECK(cudaFree(d_start)); CUDA_CHECK(cudaFree(d_lab));
     CUDA_CHECK(cudaFree(d_planes)); CUDA_CHECK(cudaFree(d_sorted_bin));
-    bool ok = sg.f1 >= 0.95 && sg.f1 > st.f1 && agree_pct >= 99.9;
+    std::printf("\n--- object clustering of the non-ground points (Euclidean, %.1f m, >= %d points) ---\n",
+                CL_EPS, CL_MIN);
+    const char* mode_name[3] = { "concentric-zone model", "height threshold", "no ground removal" };
+    for (int m = 0; m < 3; ++m)
+        std::printf("%-22s: objects found %3d / %3d   merged clusters %3d   split objects %3d   "
+                    "ground clusters %4d   clusters %5d\n", mode_name[m], cl_sum[m].found, cl_sum[m].objects,
+                    cl_sum[m].merged, cl_sum[m].split, cl_sum[m].ground_clusters, cl_sum[m].clusters);
+    std::printf("clustering CPU / GPU per scan: %.2f ms / %.3f ms, same partition: %s\n",
+                cl_cpu_ms / N_SCAN, cl_gpu_ms / N_SCAN, cl_same ? "yes" : "no");
+    double found_rate = cl_sum[0].objects ? (double)cl_sum[0].found / cl_sum[0].objects : 0.0;
+    bool ok = sg.f1 >= 0.95 && sg.f1 > st.f1 && agree_pct >= 99.9 && found_rate >= 0.9 && cl_same;
     if (check) {
-        std::printf("check: %s (model F1 >= 0.95, above the height threshold, CPU/GPU agreement >= 99.9%%)\n",
-                    ok ? "PASS" : "FAIL");
+        std::printf("check: %s (model F1 >= 0.95, above the height threshold, CPU/GPU agreement >= 99.9%%, "
+                    ">= 90%% of objects found as one cluster, identical CPU/GPU partition)\n", ok ? "PASS" : "FAIL");
         return ok ? 0 : 1;
     }
     return 0;

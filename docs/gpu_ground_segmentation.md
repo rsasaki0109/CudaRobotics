@@ -44,6 +44,33 @@ A synthetic 64 × 1024 LiDAR (-24.8° to +2° elevation, 1.8 m mounting height, 
 - **CPU and GPU agree** on 100% of the labels.
 - **Time per scan:** CPU 7-13 ms, GPU 0.8-1.2 ms (about 9-16x). The GPU time is dominated by the sort and the kernel launches, which is ample for a 10 Hz LiDAR. The ranges come from a GPU shared with other work.
 
+## Object clustering after ground removal
+
+The second stage clusters the remaining points into objects: Euclidean clustering with 0.5 m connectivity, dropping clusters under 10 points (the same idea as PCL's `EuclideanClusterExtraction`).
+
+**GPU implementation.**
+- The points are sorted by 0.5 m grid cell, and neighbouring cells are found by binary search.
+- Each point unites itself with every lower-indexed neighbour in a lock-free union-find. The union-find always hooks the larger root under the smaller one (`atomicCAS`), so each component's root is its smallest point index.
+- The CPU reference runs a BFS over the same grid and assigns the same labels.
+- The two partitions are compared exactly, and they are identical on every scan.
+
+**Scoring.** Clusters are scored against the ground-truth object of every return (an object counts if the scan sees it with at least 20 points). An object is *found* if one cluster holds at least half of the object's points and at least half of that cluster's points belong to the object.
+
+| Ground removal before clustering | objects found | split objects | clusters mostly of ground | clusters |
+|---|---:|---:|---:|---:|
+| concentric-zone model | **110 / 115** | 15 | 108 | 262 |
+| height threshold | 86 / 115 | 12 | 369 | 481 |
+| none | 31 / 115 | 13 | 876 | 938 |
+
+- **Ground removal decides the clustering.** Without it, the ground connects or swamps most objects.
+- **With the height threshold,** the ramp's ground survives as hundreds of spurious clusters, and objects standing on it merge with that ground.
+- **With the model,** 96% of the objects come out as their own cluster.
+
+**Time per scan:** clustering takes 70-110 ms on the CPU and 13-24 ms on the GPU.
+- The GPU time is the unite kernel. Near the sensor a point has thousands of neighbours within 0.5 m, and exact point-level clustering has to test them.
+- Sorting the points instead of scanning a dense 1.4 M-cell grid, and union-find instead of iterated label propagation, did not change it.
+- Voxel-downsampling before clustering would, at the cost of no longer matching the CPU partition exactly.
+
 ## Reproduce
 
 ```bash
@@ -54,7 +81,9 @@ cmake --build build --target gpu_ground_segmentation -j$(nproc)
 ```
 
 `--check` exits non-zero unless the model's F1 is at least 0.95, above the
-height threshold's, and CPU and GPU agree on at least 99.9% of the labels. CTest
+height threshold's, CPU and GPU agree on at least 99.9% of the labels, at least
+90% of the objects come out as one cluster, and the CPU and GPU clusterings are
+the same partition. CTest
 runs it as `gpu_ground_segmentation_gate` (labels `gpu;pointcloud;ground`).
 
 Generated files: `tmp/gpu_ground_segmentation.avi` and `gif/gpu_ground_segmentation.gif`.
