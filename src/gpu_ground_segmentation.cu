@@ -52,14 +52,17 @@
 //
 // --seed N (N > 0) draws a held-out scene: new box positions (within 1 m),
 // headings and car / van sizes, and new sensor poses. --obs-csv PATH writes one
-// row per box observation (scripts/box_fitting_heldout.py aggregates them).
+// row per box observation (scripts/box_fitting_heldout.py aggregates them), and
+// --cls-csv PATH one row of classifier features per cluster
+// (scripts/train_box_classifier.py trains the learned class on them).
 //
 // Options: --no-video, --check (exit non-zero unless the model's F1 >= 0.95,
 // it beats the height threshold, CPU and GPU labels agree on >= 99.9%, at least
 // 90% of the objects come out as one cluster, the CPU and GPU clusterings
 // are the same partition, the L-shape boxes beat the axis-aligned ones in
 // heading error and IoU, the CPU and GPU fit the same boxes, and the size prior
-// improves the mean IoU and centre error of the L-shape boxes).
+// improves the mean IoU and centre error of the L-shape boxes, with the height
+// rule's class and with the learned class).
 
 #include <cuda_runtime.h>
 #include <opencv2/opencv.hpp>
@@ -83,6 +86,7 @@
 
 #include "cuda_check.cuh"
 #include "cuda_video.h"
+#include "lidar_box_classifier.h"
 
 namespace cudabot {
 
@@ -615,7 +619,8 @@ __global__ void voxel_label_kernel(const int* items, const int* vid, const int* 
 static const int N_TH = 90;
 static constexpr float LS_D0 = 0.01f;
 
-struct Obb { float cx, cy, len, wid, yaw; int th; float zlo, zhi; };   // sensor frame; len along the heading
+// sensor frame; len along the heading; tmax = tan of the highest point's elevation; n points
+struct Obb { float cx, cy, len, wid, yaw; int th; float zlo, zhi, tmax; int n; };
 
 __host__ __device__ static inline void ls_project(const float* pts, int i, float c, float s, float& p1, float& p2) {
     float x = pts[i * 3], y = pts[i * 3 + 1];
@@ -656,16 +661,18 @@ static float lshape_score_cpu(const float* pts, const int* items, int a0, int a1
 __host__ __device__ static inline Obb lshape_rect(const float* pts, const int* items, int a0, int a1,
                                                   const float* cs, int k) {
     float c = cs[k * 2], s = cs[k * 2 + 1];
-    float lo1 = 1e9f, hi1 = -1e9f, lo2 = 1e9f, hi2 = -1e9f, zlo = 1e9f, zhi = -1e9f;
+    float lo1 = 1e9f, hi1 = -1e9f, lo2 = 1e9f, hi2 = -1e9f, zlo = 1e9f, zhi = -1e9f, tmax = -1e9f;
     for (int a = a0; a < a1; ++a) {
         float x = pts[items[a] * 3], y = pts[items[a] * 3 + 1], z = pts[items[a] * 3 + 2];
         float p1 = c * x + s * y, p2 = -s * x + c * y;
         lo1 = fminf(lo1, p1); hi1 = fmaxf(hi1, p1); lo2 = fminf(lo2, p2); hi2 = fmaxf(hi2, p2);
         zlo = fminf(zlo, z); zhi = fmaxf(zhi, z);
+        float r = sqrtf(x * x + y * y);
+        if (r > 1e-3f) tmax = fmaxf(tmax, z / r);
     }
     float m1 = 0.5f * (lo1 + hi1), m2 = 0.5f * (lo2 + hi2);
     Obb B;
-    B.zlo = zlo; B.zhi = zhi;
+    B.zlo = zlo; B.zhi = zhi; B.tmax = tmax; B.n = a1 - a0;
     B.cx = c * m1 - s * m2; B.cy = s * m1 + c * m2;
     B.len = hi1 - lo1; B.wid = hi2 - lo2;
     B.yaw = k * (0.5f * PI_F / N_TH); B.th = k;
@@ -1012,6 +1019,41 @@ static int classify_box(const Obb& B) {
     return -1;
 }
 
+// Learned class: a small MLP (scripts/train_box_classifier.py, trained on
+// scenes of seeds 101-200, none of which is evaluated) on six features of the
+// L-shape box. The last one says whether the top of the object may be cut off
+// by the scan's upper beam: a van taller than the beam reaches looks short.
+static const int N_FEAT = 6;
+static const char* FEAT_NAME[N_FEAT] = { "long", "short", "height", "log_n", "range", "top_margin_deg" };
+
+static void box_features(const Obb& B, float* f) {
+    f[0] = std::max(B.len, B.wid);
+    f[1] = std::min(B.len, B.wid);
+    f[2] = B.zhi - B.zlo;
+    f[3] = std::log((float)B.n);
+    f[4] = std::hypot(B.cx, B.cy);
+    f[5] = VERT_MAX * (180.0f / PI_F) - std::atan(B.tmax) * (180.0f / PI_F);   // 0 when the top reaches the upper beam
+}
+
+static int classify_box_mlp(const Obb& B) {
+    namespace M = lidar_box_classifier;
+    float f[N_FEAT], h[M::N_HID], best = -1e30f;
+    box_features(B, f);
+    for (int i = 0; i < N_FEAT; ++i) f[i] = (f[i] - M::MEAN[i]) / M::STD[i];
+    for (int j = 0; j < M::N_HID; ++j) {
+        float a = M::B1[j];
+        for (int i = 0; i < N_FEAT; ++i) a += M::W1[j][i] * f[i];
+        h[j] = std::tanh(a);
+    }
+    int arg = 0;
+    for (int k = 0; k < M::N_OUT; ++k) {
+        float a = M::B2[k];
+        for (int j = 0; j < M::N_HID; ++j) a += M::W2[k][j] * h[j];
+        if (a > best) { best = a; arg = k; }
+    }
+    return arg < N_CLS ? arg : -1;   // classes: car, van, none
+}
+
 static Obb complete_box(const Obb& B, int cls, float scale, bool end_rule = true) {
     if (cls < 0) return B;
     float c = std::cos(B.yaw), s = std::sin(B.yaw);
@@ -1036,10 +1078,10 @@ static Obb complete_box(const Obb& B, int cls, float scale, bool end_rule = true
 }
 
 // Box scores, summed over observations, per box method.
-static const int N_BM = 6;
+static const int N_BM = 7;
 static const char* BM_NAME[N_BM] = { "L-shape", "axis-aligned", "L + prior", "L + prior x0.9", "L + prior x1.1",
-                                     "L + prior, no end rule" };
-static const char* BM_KEY[N_BM] = { "lshape", "aabb", "prior", "prior_x0.9", "prior_x1.1", "prior_noend" };
+                                     "L + prior, no end rule", "L + prior, learned class" };
+static const char* BM_KEY[N_BM] = { "lshape", "aabb", "prior", "prior_x0.9", "prior_x1.1", "prior_noend", "prior_mlp" };
 
 // Held-out scene: boxes move within 1 m and take a new heading (the wall stays),
 // cars and the van take new sizes, and the sensor takes new poses on the road.
@@ -1073,7 +1115,7 @@ static void randomize_scene(unsigned int seed, Box* box, const Cyl* cyl, float (
         }
     }
 }
-struct BoxScore { int n; double yaw[N_BM], iou[N_BM], centre[N_BM], len[N_BM], wid[N_BM]; int good[N_BM], cls[N_CLS + 1]; };
+struct BoxScore { int n; double yaw[N_BM], iou[N_BM], centre[N_BM], len[N_BM], wid[N_BM]; int good[N_BM], cls[N_CLS + 1], cls_mlp[N_CLS + 1]; };
 
 // Object-level scores of a clustering against the ground-truth objects.
 struct ClusterScore { int objects, found, merged, split, clusters, ground_clusters; };
@@ -1169,11 +1211,13 @@ int main(int argc, char** argv) {
     bool no_video = false, check = false;
     unsigned int seed = 0;
     const char* obs_csv = nullptr;
+    const char* cls_csv = nullptr;
     for (int i = 1; i < argc; ++i) {
         if (!std::strcmp(argv[i], "--no-video")) no_video = true;
         else if (!std::strcmp(argv[i], "--check")) check = true;
         else if (!std::strcmp(argv[i], "--seed") && i + 1 < argc) seed = (unsigned int)std::atoi(argv[++i]);
         else if (!std::strcmp(argv[i], "--obs-csv") && i + 1 < argc) obs_csv = argv[++i];
+        else if (!std::strcmp(argv[i], "--cls-csv") && i + 1 < argc) cls_csv = argv[++i];
     }
     std::printf("=== GPU LiDAR ground segmentation (CPU vs CUDA) ===\n");
 
@@ -1204,10 +1248,16 @@ int main(int argc, char** argv) {
     CUDA_CHECK(cudaMemcpyToSymbol(c_cyl, h_cyl, sizeof(h_cyl)));
     FILE* obs = obs_csv ? std::fopen(obs_csv, "w") : nullptr;
     if (obs) {
-        std::fprintf(obs, "seed,scan,box,faces,cls");
+        std::fprintf(obs, "seed,scan,box,faces,cls,cls_mlp");
         for (int m = 0; m < N_BM; ++m)
             std::fprintf(obs, ",iou_%s,centre_%s,yaw_%s", BM_KEY[m], BM_KEY[m], BM_KEY[m]);
         std::fprintf(obs, "\n");
+    }
+    FILE* clsf = cls_csv ? std::fopen(cls_csv, "w") : nullptr;
+    if (clsf) {
+        std::fprintf(clsf, "seed,scan,label,rule,mlp");
+        for (int i = 0; i < N_FEAT; ++i) std::fprintf(clsf, ",%s", FEAT_NAME[i]);
+        std::fprintf(clsf, "\n");
     }
     float *d_pts; int *d_gt, *d_gt_obj, *d_bin, *d_idx, *d_start, *d_lab;
     BinPlane* d_planes;
@@ -1342,6 +1392,22 @@ int main(int argc, char** argv) {
                 ls_gpu_ms += lms;
                 auto l0 = std::chrono::high_resolution_clock::now();
                 cpu_lshape(pts, clab_obj, h_cs, ckeys, cobb);
+                if (clsf) {   // class of each cluster: car / van if it is a car's / the van's cluster, else none
+                    std::vector<int> cl_of(ckeys.size(), 2);
+                    for (int b : { 0, 1, 2, 4 }) {
+                        int c = matched_cluster(clab_obj, gt_obj, b);
+                        size_t r = std::lower_bound(ckeys.begin(), ckeys.end(), c) - ckeys.begin();
+                        if (c >= 0 && r < ckeys.size() && ckeys[r] == c) cl_of[r] = b == 4 ? 1 : 0;
+                    }
+                    for (size_t r = 0; r < ckeys.size(); ++r) {
+                        float f[N_FEAT];
+                        box_features(cobb[r], f);
+                        int rule = classify_box(cobb[r]), mlp = classify_box_mlp(cobb[r]);
+                        std::fprintf(clsf, "%u,%d,%d,%d,%d", seed, s, cl_of[r], rule < 0 ? 2 : rule, mlp < 0 ? 2 : mlp);
+                        for (int i = 0; i < N_FEAT; ++i) std::fprintf(clsf, ",%.5f", f[i]);
+                        std::fprintf(clsf, "\n");
+                    }
+                }
                 auto l1 = std::chrono::high_resolution_clock::now();
                 ls_cpu_ms += std::chrono::duration<double, std::milli>(l1 - l0).count();
                 {
@@ -1357,7 +1423,7 @@ int main(int argc, char** argv) {
                 fits.clear(); done.clear();
                 for (const Obb& b : cobb) {
                     fits.push_back(b);
-                    int k = classify_box(b);
+                    int k = classify_box_mlp(b);
                     if (k >= 0) done.push_back(complete_box(b, k, 1.0f));
                 }
                 for (int b = 0; b < N_BOX; ++b) {
@@ -1368,10 +1434,11 @@ int main(int argc, char** argv) {
                     // the axis-aligned box of the same points is heading 0
                     std::vector<int> items;
                     for (int i = 0; i < N_RAYS; ++i) if (clab_obj[i] == c) items.push_back(i);
-                    int cls = classify_box(cobb[r]);
+                    int cls = classify_box(cobb[r]), cls_mlp = classify_box_mlp(cobb[r]);
                     Obb fit[N_BM] = { cobb[r], lshape_rect(pts.data(), items.data(), 0, (int)items.size(), h_cs.data(), 0),
                                       complete_box(cobb[r], cls, 1.0f), complete_box(cobb[r], cls, 0.9f),
-                                      complete_box(cobb[r], cls, 1.1f), complete_box(cobb[r], cls, 1.0f, false) };
+                                      complete_box(cobb[r], cls, 1.1f), complete_box(cobb[r], cls, 1.0f, false),
+                                      complete_box(cobb[r], cls_mlp, 1.0f) };
                     // faces of the box the sensor can see: one if it stands within the box's slab along one axis
                     float cb = std::cos(G.yaw), sb = std::sin(G.yaw);
                     float u = cb * (poses[s][0] - G.cx) + sb * (poses[s][1] - G.cy);
@@ -1392,13 +1459,14 @@ int main(int argc, char** argv) {
                     for (BoxScore* S : { &bsum[0], &bsum[faces >= 2 ? 2 : 1], &bobj[b] }) {
                         S->n++;
                         S->cls[cls < 0 ? N_CLS : cls]++;
+                        S->cls_mlp[cls_mlp < 0 ? N_CLS : cls_mlp]++;
                         for (int m = 0; m < N_BM; ++m) {
                             S->yaw[m] += e_yaw[m]; S->iou[m] += e_iou[m]; S->centre[m] += e_ctr[m];
                             S->len[m] += e_len[m]; S->wid[m] += e_wid[m]; S->good[m] += e_iou[m] >= 0.5;
                         }
                     }
                     if (obs) {
-                        std::fprintf(obs, "%u,%d,%d,%d,%d", seed, s, b, faces, cls);
+                        std::fprintf(obs, "%u,%d,%d,%d,%d,%d", seed, s, b, faces, cls, cls_mlp);
                         for (int m = 0; m < N_BM; ++m) std::fprintf(obs, ",%.5f,%.5f,%.4f", e_iou[m], e_ctr[m], e_yaw[m]);
                         std::fprintf(obs, "\n");
                     }
@@ -1504,7 +1572,8 @@ int main(int argc, char** argv) {
                 ls_fits / N_SCAN, ls_cpu_ms / N_SCAN, ls_gpu_ms / N_SCAN, ls_same ? "yes" : "no");
     auto box_line = [](const char* name, const BoxScore& S) {
         if (!S.n) return;
-        std::printf("%s: n %d, classed car %d / van %d / none %d\n", name, S.n, S.cls[0], S.cls[1], S.cls[N_CLS]);
+        std::printf("%s: n %d, classed car %d / van %d / none %d (learned: %d / %d / %d)\n", name, S.n, S.cls[0],
+                    S.cls[1], S.cls[N_CLS], S.cls_mlp[0], S.cls_mlp[1], S.cls_mlp[N_CLS]);
         for (int m = 0; m < N_BM; ++m)
             std::printf("  %-15s heading err %5.2f deg  IoU %.3f  (>= 0.5: %3d)  centre err %.2f m  "
                         "long side err %.2f m  short side err %.2f m\n", BM_NAME[m],
@@ -1515,15 +1584,17 @@ int main(int argc, char** argv) {
     box_line("two faces visible", bsum[2]);
     for (int b = 0; b < N_BOX; ++b) box_line(box_name[b], bobj[b]);
     if (obs) std::fclose(obs);
+    if (clsf) std::fclose(clsf);
     bool ls_better = bsum[0].n > 0 && bsum[0].yaw[0] < bsum[0].yaw[1] && bsum[0].iou[0] > bsum[0].iou[1];
-    bool prior_better = bsum[0].iou[2] > bsum[0].iou[0] && bsum[0].centre[2] < bsum[0].centre[0];
+    bool prior_better = bsum[0].iou[2] > bsum[0].iou[0] && bsum[0].centre[2] < bsum[0].centre[0] &&
+                        bsum[0].iou[6] > bsum[0].iou[0] && bsum[0].centre[6] < bsum[0].centre[0];
     double found_rate = cl_sum[0].objects ? (double)cl_sum[0].found / cl_sum[0].objects : 0.0;
     bool ok = sg.f1 >= 0.95 && sg.f1 > st.f1 && agree_pct >= 99.9 && found_rate >= 0.9 && cl_same && vcl_same &&
               ls_better && ls_same && prior_better;
     if (check) {
         std::printf("check: %s (model F1 >= 0.95, above the height threshold, CPU/GPU agreement >= 99.9%%, "
                     ">= 90%% of objects found as one cluster, identical CPU/GPU partition, L-shape boxes beat "
-                    "axis-aligned ones, identical CPU/GPU boxes, size prior improves IoU and centre error)\n", ok ? "PASS" : "FAIL");
+                    "axis-aligned ones, identical CPU/GPU boxes, size prior improves IoU and centre error with either class)\n", ok ? "PASS" : "FAIL");
         return ok ? 0 : 1;
     }
     return 0;

@@ -27,6 +27,7 @@ METHODS = [
     ("prior_x0.9", "prior 10% too small"),
     ("prior_x1.1", "prior 10% too large"),
     ("prior_noend", "prior without the end-view rule"),
+    ("prior_mlp", "L-shape + size prior, learned class"),
 ]
 
 # (a, b, metric, lower is better): is a better than b?
@@ -38,6 +39,9 @@ COMPARISONS = [
     ("prior_x0.9", "lshape", "iou", False),
     ("prior_x1.1", "lshape", "iou", False),
     ("prior", "prior_noend", "iou", False),
+    ("prior_mlp", "prior", "iou", False),
+    ("prior_mlp", "prior", "centre", True),
+    ("prior_mlp", "lshape", "iou", False),
 ]
 
 LABEL = dict(METHODS)
@@ -116,11 +120,11 @@ def compare(rows):
     return out
 
 
-def classes(rows):
+def classes(rows, col):
     cars = [r for r in rows if int(r["box"]) <= 2]
     vans = [r for r in rows if int(r["box"]) == 4]
-    return (sum(r["cls"] == "0" for r in cars), len(cars),
-            sum(r["cls"] == "1" for r in vans), sum(r["cls"] == "0" for r in vans), len(vans))
+    return (sum(r[col] == "0" for r in cars), len(cars),
+            sum(r[col] == "1" for r in vans), sum(r[col] == "0" for r in vans), len(vans))
 
 
 def report(sets):
@@ -136,9 +140,11 @@ def report(sets):
         w.write("| Box | heading error | BEV IoU | IoU >= 0.5 | centre error |\n|---|---:|---:|---:|---:|\n")
         for s in summarize(rows):
             w.write("| %s | %.2f deg | %.3f | %d | %.2f m |\n" % (s["method"], s["yaw"], s["iou"], s["good"], s["centre"]))
-        car_ok, cars, van_ok, van_car, vans = classes(rows)
-        w.write("\nClassed: %d / %d car observations as cars; of %d van observations, %d as vans and %d as cars.\n"
-                % (car_ok, cars, vans, van_ok, van_car))
+        w.write("\n")
+        for col, name in (("cls", "Height rule"), ("cls_mlp", "Learned class")):
+            car_ok, cars, van_ok, van_car, vans = classes(rows, col)
+            w.write("%s: %d / %d car observations classed as cars; of %d van observations, %d as vans and %d as "
+                    "cars.\n\n" % (name, car_ok, cars, vans, van_ok, van_car))
         multi = len({r["seed"] for r in rows}) > 1
         w.write("\n| Comparison | metric | mean difference | observations better / worse / tie | sign test p |")
         w.write(" seeds better / worse | seed sign test p |\n" if multi else "\n")
