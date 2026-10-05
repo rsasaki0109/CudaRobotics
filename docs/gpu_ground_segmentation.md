@@ -240,7 +240,41 @@ The learned class is better in 16 of 20 held-out seeds (sign test p = 0.012). Pe
   - The 15 car and van observations that the rule classed but the learned class leaves unclassified lose 0.4-0.7 on average.
 - **Display.** The GIF's completed boxes now use the learned class.
 
-## Reproduce
+## Tracking along a drive
+
+A single scan sees only the near faces of an object. A sensor that drives past
+sees the others in turn. `--sequence` drives the sensor along the road: y = 0.5 m,
+x = -12 to 24 m, 37 scans 1 m apart (10 m/s at 10 Hz). The tracker works in the
+world frame, because the objects are static and the sensor pose is known.
+
+- **Association.** A cluster that the learned class calls a car or a van joins the track whose box lies within 1 m of the cluster's box (rectangle-to-rectangle distance). Closest pairs go first, with one cluster per track. Otherwise the cluster starts a new track.
+- **Accumulation.** A track keeps its clusters' world points on a 0.1 m voxel grid and counts the scans each voxel was seen in. It refits its L-shape box to the voxels seen in at least K = 3 scans (fewer while the track is young). The track's class is the majority of its clusters' learned classes, and the size prior completes its box as before.
+
+**What did not work.**
+- **Plain union of the points** (K = 1). Every scan leaves a few ground points beside an object, and their union keeps growing. The tracked box swelled to 16 m for a car, and the mean IoU fell below the single-scan box.
+- **Gating on the box of all voxels.** That box includes the stray points, and a track grew large enough to absorb a second car. The rectangle-to-rectangle gate on the filtered box gives no identity switches on the dev drive.
+
+**Results.** `scripts/box_tracking_eval.py` runs the dev drive (seed 0) and held-out drives (seeds 1-20; the boxes keep 1 m clear of the road). Only the observations of the cars and the van count. Full report: [results/box_tracking_2026-10-05.md](results/box_tracking_2026-10-05.md).
+
+| Held-out, 2906 vehicle observations | BEV IoU | IoU ≥ 0.5 | centre error | heading error |
+|---|---:|---:|---:|---:|
+| single-scan L-shape | 0.471 | 1475 | 0.95 m | 3.7° |
+| single-scan L-shape + size prior | 0.716 | 2418 | 0.47 m | 3.7° |
+| tracked L-shape | 0.562 | 1977 | 0.66 m | 3.2° |
+| tracked L-shape + size prior | **0.757** | **2689** | **0.29 m** | 3.2° |
+
+- **Tracking replicates.** With the size prior, the tracked box beats the single-scan box in IoU in 18 of 20 held-out seeds and in centre error in all 20. Without the prior, the tracked box beats the single-scan L-shape in 19 of 20.
+- **The prior is still needed.** On a drive past, some faces stay hidden, and the tracked L-shape alone (0.56) stays below the single-scan box with the prior (0.72).
+- **Few identity switches.** There are 4 over the 20 held-out drives and none on the dev drive.
+
+| K | dev IoU (tracked + prior) | held-out IoU | held-out centre error | held-out identity switches |
+|---:|---:|---:|---:|---:|
+| 1 (plain union) | 0.433 | 0.450 | 1.04 m | 6 |
+| 3 (default) | 0.839 | 0.757 | 0.29 m | 4 |
+| 5 | 0.851 | 0.807 | 0.29 m | 4 |
+
+K = 3 was set before the held-out drives ran. K = 5 does better on both the dev and the held-out drives and is a candidate for the default.
+
 ## Reproduce
 
 ```bash
@@ -251,6 +285,8 @@ cmake --build build --target gpu_ground_segmentation -j$(nproc)
 python scripts/box_fitting_heldout.py               # held-out scenes, seeds 1-20
 python scripts/train_box_classifier.py              # retrain the learned class (seeds 101-200), then rebuild
 python scripts/train_box_classifier.py --eval-seeds 1-20   # its confusion on the held-out scenes
+./bin/gpu_ground_segmentation --sequence            # tracking along a drive; writes the tracking GIF
+python scripts/box_tracking_eval.py                 # tracking, dev and held-out drives, K = 1, 3, 5
 ```
 
 `--check` exits non-zero unless the model's F1 is at least 0.95, above the
@@ -259,10 +295,17 @@ height threshold's, CPU and GPU agree on at least 99.9% of the labels, at least
 the same partition, the L-shape boxes beat the axis-aligned ones in mean heading
 error and mean IoU, the CPU and GPU boxes are identical, and the size prior
 raises the mean IoU and lowers the mean centre error of the L-shape boxes, with
-either the height rule's class or the learned class. CTest
-runs it as `gpu_ground_segmentation_gate` (labels `gpu;pointcloud;ground`).
+either the height rule's class or the learned class. CTest runs it as
+`gpu_ground_segmentation_gate` (labels `gpu;pointcloud;ground`).
 
-Generated files: `tmp/gpu_ground_segmentation.avi` and `gif/gpu_ground_segmentation.gif`.
+With `--sequence`, `--check` instead requires:
+- F1 ≥ 0.95 and the CPU/GPU agreements;
+- tracked L-shape boxes that beat the single-scan ones in IoU;
+- tracked boxes with the size prior that beat the single-scan ones with the prior in IoU and centre error.
+
+CTest runs it as `gpu_ground_segmentation_track_gate`.
+
+Generated files: `tmp/gpu_ground_segmentation.avi` and `gif/gpu_ground_segmentation.gif`; with `--sequence`, `tmp/gpu_ground_segmentation_track.avi` and `gif/gpu_ground_segmentation_track.gif`.
 
 ## Output
 
@@ -274,3 +317,5 @@ The GIF shows a bird's-eye view (40 m × 40 m) of each scan: the height threshol
 | white | object, labelled object |
 | red | object labelled ground |
 | yellow | ground missed |
+
+The tracking GIF (`--sequence`) shows the model's view along the drive with the true boxes (blue), the L-shape boxes (magenta), the single-scan boxes with the size prior (orange) and the tracked boxes with the size prior (green).
