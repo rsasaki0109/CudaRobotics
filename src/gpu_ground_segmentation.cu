@@ -66,6 +66,8 @@
 // in the sensor's lane. A second tracker then runs next to the static one: a
 // constant-velocity Kalman filter per track, with the points accumulated in the
 // object's frame (moved to the current time by the estimated velocity).
+// The hybrid box takes the single-scan box for the tracks the stand-still test
+// calls moving and the motion tracker's box for the others.
 // Output: gif/gpu_ground_segmentation_motion.gif.
 //
 // Options: --no-video, --check (exit non-zero unless the model's F1 >= 0.95,
@@ -1094,12 +1096,13 @@ static Obb complete_box(const Obb& B, int cls, float scale, bool end_rule = true
 }
 
 // Box scores, summed over observations, per box method.
-static const int N_BM = 11;
+static const int N_BM = 12;
 static const char* BM_NAME[N_BM] = { "L-shape", "axis-aligned", "L + prior", "L + prior x0.9", "L + prior x1.1",
                                      "L + prior, no end rule", "L + prior, learned class", "tracked L-shape",
-                                     "tracked L + prior", "motion-tracked L-shape", "motion-tracked L + prior" };
+                                     "tracked L + prior", "motion-tracked L-shape", "motion-tracked L + prior",
+                                     "hybrid L + prior" };
 static const char* BM_KEY[N_BM] = { "lshape", "aabb", "prior", "prior_x0.9", "prior_x1.1", "prior_noend", "prior_mlp",
-                                    "trk_lshape", "trk_prior", "mtrk_lshape", "mtrk_prior" };
+                                    "trk_lshape", "trk_prior", "mtrk_lshape", "mtrk_prior", "hybrid" };
 
 // Held-out scene: boxes move within 1 m and take a new heading (the wall stays),
 // cars and the van take new sizes, and the sensor takes new poses on the road.
@@ -1812,7 +1815,7 @@ int main(int argc, char** argv) {
                                       complete_box(cobb[r], cls, 1.0f), complete_box(cobb[r], cls, 0.9f),
                                       complete_box(cobb[r], cls, 1.1f), complete_box(cobb[r], cls, 1.0f, false),
                                       complete_box(cobb[r], cls_mlp, 1.0f), cobb[r], complete_box(cobb[r], cls_mlp, 1.0f),
-                                      cobb[r], complete_box(cobb[r], cls_mlp, 1.0f) };
+                                      cobb[r], complete_box(cobb[r], cls_mlp, 1.0f), complete_box(cobb[r], cls_mlp, 1.0f) };
                     int tid = trk[0].track_of[c], mtid = trk[1].track_of[c];
                     if (tid >= 0) {
                         trk[0].boxes(tid, t_scan, poses[s][0], poses[s][1], fit[7], fit[8]);
@@ -1821,6 +1824,9 @@ int main(int argc, char** argv) {
                     if (mtid >= 0) {
                         trk[1].boxes(mtid, t_scan, poses[s][0], poses[s][1], fit[9], fit[10]);
                         trk[1].observe(b, mtid);
+                        // hybrid: a track the stand-still test calls moving gets the single-scan box (lane
+                        // traffic shows no new faces, and the track lags by its velocity error); others the track's
+                        if (!trk[1].ms[mtid].moving) fit[11] = fit[10];
                     }
                     // velocity errors (the static tracker's velocity is 0)
                     double verr[2] = { -1.0, -1.0 };
@@ -1983,7 +1989,7 @@ int main(int argc, char** argv) {
         if (!S.n) return;
         std::printf("%s: n %d, classed car %d / van %d / none %d (learned: %d / %d / %d)\n", name, S.n, S.cls[0],
                     S.cls[1], S.cls[N_CLS], S.cls_mlp[0], S.cls_mlp[1], S.cls_mlp[N_CLS]);
-        for (int m = 0; m < (moving ? N_BM : sequence ? N_BM - 2 : N_BM - 4); ++m)
+        for (int m = 0; m < (moving ? N_BM : sequence ? N_BM - 3 : N_BM - 5); ++m)
             std::printf("  %-15s heading err %5.2f deg  IoU %.3f  (>= 0.5: %3d)  centre err %.2f m  "
                         "long side err %.2f m  short side err %.2f m\n", BM_NAME[m],
                         S.yaw[m] / S.n, S.iou[m] / S.n, S.good[m], S.centre[m] / S.n, S.len[m] / S.n, S.wid[m] / S.n);
@@ -2023,12 +2029,18 @@ int main(int argc, char** argv) {
         bool mot_better = bmov.n > 0 && bmov.iou[10] > bmov.iou[8] && bmov.centre[10] < bmov.centre[8] &&
                           bpark.iou[10] >= bpark.iou[8] - 0.01 && trk[1].id_switches <= trk[0].id_switches &&
                           verr_n[1] > 0 && verr_sum[1][1] / verr_n[1] < 1.5;
+        // the hybrid box beats both the single-scan and the motion tracker's boxes over all vehicles
+        double all_n = bmov.n + bpark.n;
+        double hyb = (bmov.iou[11] + bpark.iou[11]) / all_n, one = (bmov.iou[6] + bpark.iou[6]) / all_n;
+        double mot = (bmov.iou[10] + bpark.iou[10]) / all_n;
+        mot_better = mot_better && hyb > one && hyb > mot;
         ok = sg.f1 >= 0.95 && agree_pct >= 99.9 && cl_same && vcl_same && ls_same && mot_better;
         if (check) {
             std::printf("check: %s (model F1 >= 0.95, CPU/GPU agreement >= 99.9%%, identical CPU/GPU partition and "
                         "boxes; the motion tracker's boxes with the size prior beat the static tracker's on the moving "
                         "vehicles in IoU and centre error and match them on the parked ones, with no more identity "
-                        "switches and a velocity error under 1.5 m/s on the moving vehicles)\n", ok ? "PASS" : "FAIL");
+                        "switches and a velocity error under 1.5 m/s on the moving vehicles; the hybrid boxes beat the "
+                        "single-scan and the motion tracker's boxes over all vehicles)\n", ok ? "PASS" : "FAIL");
             return ok ? 0 : 1;
         }
         return 0;
