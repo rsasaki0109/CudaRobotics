@@ -50,6 +50,10 @@
 //
 // Output: gif/gpu_ground_segmentation.gif (bird's-eye view per scan)
 //
+// --seed N (N > 0) draws a held-out scene: new box positions (within 1 m),
+// headings and car / van sizes, and new sensor poses. --obs-csv PATH writes one
+// row per box observation (scripts/box_fitting_heldout.py aggregates them).
+//
 // Options: --no-video, --check (exit non-zero unless the model's F1 >= 0.95,
 // it beats the height threshold, CPU and GPU labels agree on >= 99.9%, at least
 // 90% of the objects come out as one cluster, the CPU and GPU clusterings
@@ -70,8 +74,10 @@
 #include <chrono>
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <numeric>
+#include <random>
 #include <string>
 #include <vector>
 
@@ -1006,12 +1012,12 @@ static int classify_box(const Obb& B) {
     return -1;
 }
 
-static Obb complete_box(const Obb& B, int cls, float scale) {
+static Obb complete_box(const Obb& B, int cls, float scale, bool end_rule = true) {
     if (cls < 0) return B;
     float c = std::cos(B.yaw), s = std::sin(B.yaw);
     float m[2] = { c * B.cx + s * B.cy, -s * B.cx + c * B.cy }, ext[2] = { B.len, B.wid };
     bool len_first = B.len >= B.wid;
-    if (std::max(B.len, B.wid) <= 1.2f * PRIOR[cls].wid)   // end view: the length runs along the line of sight
+    if (end_rule && std::max(B.len, B.wid) <= 1.2f * PRIOR[cls].wid)   // end view: the length runs along the line of sight
         len_first = std::fabs(c * B.cx + s * B.cy) >= std::fabs(-s * B.cx + c * B.cy);
     float want[2] = { scale * (len_first ? PRIOR[cls].len : PRIOR[cls].wid),
                       scale * (len_first ? PRIOR[cls].wid : PRIOR[cls].len) };
@@ -1030,8 +1036,43 @@ static Obb complete_box(const Obb& B, int cls, float scale) {
 }
 
 // Box scores, summed over observations, per box method.
-static const int N_BM = 5;
-static const char* BM_NAME[N_BM] = { "L-shape", "axis-aligned", "L + prior", "L + prior x0.9", "L + prior x1.1" };
+static const int N_BM = 6;
+static const char* BM_NAME[N_BM] = { "L-shape", "axis-aligned", "L + prior", "L + prior x0.9", "L + prior x1.1",
+                                     "L + prior, no end rule" };
+static const char* BM_KEY[N_BM] = { "lshape", "aabb", "prior", "prior_x0.9", "prior_x1.1", "prior_noend" };
+
+// Held-out scene: boxes move within 1 m and take a new heading (the wall stays),
+// cars and the van take new sizes, and the sensor takes new poses on the road.
+// Footprints are kept apart by their circumscribed circles.
+static void randomize_scene(unsigned int seed, Box* box, const Cyl* cyl, float (*poses)[2], int n_pose) {
+    std::mt19937 rng(seed);
+    auto U = [&](float a, float b) { return std::uniform_real_distribution<float>(a, b)(rng); };
+    auto rad = [](const Box& B) { return std::sqrt(B.hl * B.hl + B.hw * B.hw); };
+    for (int b = 0; b < N_BOX; ++b) {
+        if (b == 3) continue;
+        for (int tries = 0; tries < 1000; ++tries) {
+            Box B = box[b];
+            B.cx += U(-1.0f, 1.0f); B.cy += U(-1.0f, 1.0f); B.yaw = U(0.0f, PI_F);
+            if (b <= 2) { B.hl = 0.5f * U(4.0f, 5.0f); B.hw = 0.5f * U(1.7f, 1.9f); B.h = U(1.4f, 1.7f); }
+            if (b == 4) { B.hl = 0.5f * U(5.5f, 6.5f); B.hw = 0.5f * U(1.9f, 2.1f); B.h = U(2.4f, 3.0f); }
+            bool ok = true;
+            for (int o = 0; o < N_BOX && ok; ++o)
+                if (o != b) ok = std::hypot(B.cx - box[o].cx, B.cy - box[o].cy) > rad(B) + rad(box[o]) + 0.3f;
+            for (int c = 0; c < N_CYL && ok; ++c)
+                ok = std::hypot(B.cx - cyl[c].x, B.cy - cyl[c].y) > rad(B) + cyl[c].r + 0.3f;
+            if (ok) { box[b] = B; break; }
+        }
+    }
+    for (int k = 0; k < n_pose; ++k) {
+        for (int tries = 0; tries < 1000; ++tries) {
+            float x = U(-8.0f, 22.0f), y = U(-3.0f, 5.5f);
+            bool ok = true;
+            for (int o = 0; o < N_BOX && ok; ++o) ok = std::hypot(x - box[o].cx, y - box[o].cy) > rad(box[o]) + 1.0f;
+            for (int c = 0; c < N_CYL && ok; ++c) ok = std::hypot(x - cyl[c].x, y - cyl[c].y) > cyl[c].r + 1.0f;
+            if (ok) { poses[k][0] = x; poses[k][1] = y; break; }
+        }
+    }
+}
 struct BoxScore { int n; double yaw[N_BM], iou[N_BM], centre[N_BM], len[N_BM], wid[N_BM]; int good[N_BM], cls[N_CLS + 1]; };
 
 // Object-level scores of a clustering against the ground-truth objects.
@@ -1126,14 +1167,18 @@ static void cpu_segment(const std::vector<float>& pts, const std::vector<int>& g
 
 int main(int argc, char** argv) {
     bool no_video = false, check = false;
+    unsigned int seed = 0;
+    const char* obs_csv = nullptr;
     for (int i = 1; i < argc; ++i) {
         if (!std::strcmp(argv[i], "--no-video")) no_video = true;
         else if (!std::strcmp(argv[i], "--check")) check = true;
+        else if (!std::strcmp(argv[i], "--seed") && i + 1 < argc) seed = (unsigned int)std::atoi(argv[++i]);
+        else if (!std::strcmp(argv[i], "--obs-csv") && i + 1 < argc) obs_csv = argv[++i];
     }
     std::printf("=== GPU LiDAR ground segmentation (CPU vs CUDA) ===\n");
 
     const float DEG = PI_F / 180.0f;
-    const Box h_box[N_BOX] = {
+    Box h_box[N_BOX] = {
         { 8.25f, -2.6f, 2.25f, 0.9f, 20.0f * DEG, 1.5f },    // car
         { 15.25f, 2.9f, 2.25f, 0.9f, -15.0f * DEG, 1.6f },   // car on the ramp
         { -6.75f, -5.1f, 2.25f, 0.9f, 35.0f * DEG, 1.5f },   // car
@@ -1143,17 +1188,27 @@ int main(int argc, char** argv) {
         { 3.0f, 10.0f, 1.0f, 0.5f, 0.0f, 0.6f },             // bench on the sidewalk
     };
     const char* box_name[N_BOX] = { "car", "car on the ramp", "car", "wall", "van on the ramp", "crate", "bench" };
-    const Cyl h_cyl[N_CYL] = {
+    Cyl h_cyl[N_CYL] = {
         { 4.0f, 6.8f, 0.15f, 4.0f }, { 12.0f, 6.8f, 0.15f, 4.0f }, { -6.0f, 6.8f, 0.15f, 4.0f },
         { 3.0f, -1.0f, 0.3f, 1.7f }, { -2.0f, 3.5f, 0.3f, 1.7f }, { 9.0f, 4.5f, 0.3f, 1.7f },
         { 16.0f, -4.0f, 0.3f, 1.8f }, { -12.0f, -2.0f, 0.3f, 1.7f },
     };
+    const int N_SCAN = 8;
+    float poses[N_SCAN][2] = { { 0, 0 }, { 4, 2 }, { 8, 0 }, { 12, -2 }, { 16, 0 }, { 2, 5 },
+                                     { -5, 2 }, { 20, 3 } };
+    if (seed > 0) {
+        randomize_scene(seed, h_box, h_cyl, poses, N_SCAN);
+        std::printf("held-out scene, seed %u\n", seed);
+    }
     CUDA_CHECK(cudaMemcpyToSymbol(c_box, h_box, sizeof(h_box)));
     CUDA_CHECK(cudaMemcpyToSymbol(c_cyl, h_cyl, sizeof(h_cyl)));
-
-    const int N_SCAN = 8;
-    const float poses[N_SCAN][2] = { { 0, 0 }, { 4, 2 }, { 8, 0 }, { 12, -2 }, { 16, 0 }, { 2, 5 },
-                                     { -5, 2 }, { 20, 3 } };
+    FILE* obs = obs_csv ? std::fopen(obs_csv, "w") : nullptr;
+    if (obs) {
+        std::fprintf(obs, "seed,scan,box,faces,cls");
+        for (int m = 0; m < N_BM; ++m)
+            std::fprintf(obs, ",iou_%s,centre_%s,yaw_%s", BM_KEY[m], BM_KEY[m], BM_KEY[m]);
+        std::fprintf(obs, "\n");
+    }
     float *d_pts; int *d_gt, *d_gt_obj, *d_bin, *d_idx, *d_start, *d_lab;
     BinPlane* d_planes;
     CUDA_CHECK(cudaMalloc(&d_pts, N_RAYS * 3 * sizeof(float)));
@@ -1316,28 +1371,36 @@ int main(int argc, char** argv) {
                     int cls = classify_box(cobb[r]);
                     Obb fit[N_BM] = { cobb[r], lshape_rect(pts.data(), items.data(), 0, (int)items.size(), h_cs.data(), 0),
                                       complete_box(cobb[r], cls, 1.0f), complete_box(cobb[r], cls, 0.9f),
-                                      complete_box(cobb[r], cls, 1.1f) };
+                                      complete_box(cobb[r], cls, 1.1f), complete_box(cobb[r], cls, 1.0f, false) };
                     // faces of the box the sensor can see: one if it stands within the box's slab along one axis
                     float cb = std::cos(G.yaw), sb = std::sin(G.yaw);
                     float u = cb * (poses[s][0] - G.cx) + sb * (poses[s][1] - G.cy);
                     float v = -sb * (poses[s][0] - G.cx) + cb * (poses[s][1] - G.cy);
                     int faces = (std::fabs(u) > G.hl) + (std::fabs(v) > G.hw);
                     cv::RotatedRect gr(cv::Point2f(G.cx, G.cy), cv::Size2f(2 * G.hl, 2 * G.hw), G.yaw / DEG);
+                    double e_iou[N_BM], e_yaw[N_BM], e_ctr[N_BM], e_len[N_BM], e_wid[N_BM];
+                    for (int m = 0; m < N_BM; ++m) {
+                        const Obb& F = fit[m];
+                        float wx = F.cx + poses[s][0], wy = F.cy + poses[s][1];
+                        cv::RotatedRect fr(cv::Point2f(wx, wy), cv::Size2f(F.len, F.wid), F.yaw / DEG);
+                        e_iou[m] = bev_iou(fr, gr);
+                        e_yaw[m] = yaw_err_deg(F.yaw, G.yaw);
+                        e_ctr[m] = std::hypot(wx - G.cx, wy - G.cy);
+                        e_len[m] = std::fabs(std::max(F.len, F.wid) - 2.0 * std::max(G.hl, G.hw));
+                        e_wid[m] = std::fabs(std::min(F.len, F.wid) - 2.0 * std::min(G.hl, G.hw));
+                    }
                     for (BoxScore* S : { &bsum[0], &bsum[faces >= 2 ? 2 : 1], &bobj[b] }) {
                         S->n++;
                         S->cls[cls < 0 ? N_CLS : cls]++;
                         for (int m = 0; m < N_BM; ++m) {
-                            const Obb& F = fit[m];
-                            float wx = F.cx + poses[s][0], wy = F.cy + poses[s][1];
-                            cv::RotatedRect fr(cv::Point2f(wx, wy), cv::Size2f(F.len, F.wid), F.yaw / DEG);
-                            double iou = bev_iou(fr, gr);
-                            S->yaw[m] += yaw_err_deg(F.yaw, G.yaw);
-                            S->iou[m] += iou;
-                            S->centre[m] += std::hypot(wx - G.cx, wy - G.cy);
-                            S->len[m] += std::fabs(std::max(F.len, F.wid) - 2.0 * std::max(G.hl, G.hw));
-                            S->wid[m] += std::fabs(std::min(F.len, F.wid) - 2.0 * std::min(G.hl, G.hw));
-                            S->good[m] += iou >= 0.5;
+                            S->yaw[m] += e_yaw[m]; S->iou[m] += e_iou[m]; S->centre[m] += e_ctr[m];
+                            S->len[m] += e_len[m]; S->wid[m] += e_wid[m]; S->good[m] += e_iou[m] >= 0.5;
                         }
+                    }
+                    if (obs) {
+                        std::fprintf(obs, "%u,%d,%d,%d,%d", seed, s, b, faces, cls);
+                        for (int m = 0; m < N_BM; ++m) std::fprintf(obs, ",%.5f,%.5f,%.4f", e_iou[m], e_ctr[m], e_yaw[m]);
+                        std::fprintf(obs, "\n");
                     }
                 }
             }
@@ -1451,6 +1514,7 @@ int main(int argc, char** argv) {
     box_line("one face visible", bsum[1]);
     box_line("two faces visible", bsum[2]);
     for (int b = 0; b < N_BOX; ++b) box_line(box_name[b], bobj[b]);
+    if (obs) std::fclose(obs);
     bool ls_better = bsum[0].n > 0 && bsum[0].yaw[0] < bsum[0].yaw[1] && bsum[0].iou[0] > bsum[0].iou[1];
     bool prior_better = bsum[0].iou[2] > bsum[0].iou[0] && bsum[0].centre[2] < bsum[0].centre[0];
     double found_rate = cl_sum[0].objects ? (double)cl_sum[0].found / cl_sum[0].objects : 0.0;
