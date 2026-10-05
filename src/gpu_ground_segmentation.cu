@@ -42,9 +42,11 @@
 // ground removal, the height threshold's, and none.
 //
 // Third stage: an oriented box is fitted to each cluster by L-shape fitting
-// (search over 90 headings in [0, 90 deg), closeness criterion; one GPU thread =
+// (search over 90 headings in [0, 90 deg), closeness criterion; one GPU warp =
 // one (cluster, heading) pair) and scored against the ground-truth boxes, which
 // stand at various headings, next to the axis-aligned box of the same points.
+// Boxes of car- and van-like clusters are then completed with a class size prior,
+// growing away from the sensor so that the edges it sees stay in place.
 //
 // Output: gif/gpu_ground_segmentation.gif (bird's-eye view per scan)
 //
@@ -52,7 +54,8 @@
 // it beats the height threshold, CPU and GPU labels agree on >= 99.9%, at least
 // 90% of the objects come out as one cluster, the CPU and GPU clusterings
 // are the same partition, the L-shape boxes beat the axis-aligned ones in
-// heading error and IoU, and the CPU and GPU fit the same boxes).
+// heading error and IoU, the CPU and GPU fit the same boxes, and the size prior
+// improves the mean IoU and centre error of the L-shape boxes).
 
 #include <cuda_runtime.h>
 #include <opencv2/opencv.hpp>
@@ -606,7 +609,7 @@ __global__ void voxel_label_kernel(const int* items, const int* vid, const int* 
 static const int N_TH = 90;
 static constexpr float LS_D0 = 0.01f;
 
-struct Obb { float cx, cy, len, wid, yaw; int th; };   // sensor frame; len along the heading
+struct Obb { float cx, cy, len, wid, yaw; int th; float zlo, zhi; };   // sensor frame; len along the heading
 
 __host__ __device__ static inline void ls_project(const float* pts, int i, float c, float s, float& p1, float& p2) {
     float x = pts[i * 3], y = pts[i * 3 + 1];
@@ -647,14 +650,16 @@ static float lshape_score_cpu(const float* pts, const int* items, int a0, int a1
 __host__ __device__ static inline Obb lshape_rect(const float* pts, const int* items, int a0, int a1,
                                                   const float* cs, int k) {
     float c = cs[k * 2], s = cs[k * 2 + 1];
-    float lo1 = 1e9f, hi1 = -1e9f, lo2 = 1e9f, hi2 = -1e9f;
+    float lo1 = 1e9f, hi1 = -1e9f, lo2 = 1e9f, hi2 = -1e9f, zlo = 1e9f, zhi = -1e9f;
     for (int a = a0; a < a1; ++a) {
-        float x = pts[items[a] * 3], y = pts[items[a] * 3 + 1];
+        float x = pts[items[a] * 3], y = pts[items[a] * 3 + 1], z = pts[items[a] * 3 + 2];
         float p1 = c * x + s * y, p2 = -s * x + c * y;
         lo1 = fminf(lo1, p1); hi1 = fmaxf(hi1, p1); lo2 = fminf(lo2, p2); hi2 = fmaxf(hi2, p2);
+        zlo = fminf(zlo, z); zhi = fmaxf(zhi, z);
     }
     float m1 = 0.5f * (lo1 + hi1), m2 = 0.5f * (lo2 + hi2);
     Obb B;
+    B.zlo = zlo; B.zhi = zhi;
     B.cx = c * m1 - s * m2; B.cy = s * m1 + c * m2;
     B.len = hi1 - lo1; B.wid = hi2 - lo2;
     B.yaw = k * (0.5f * PI_F / N_TH); B.th = k;
@@ -975,8 +980,59 @@ static double bev_iou(const cv::RotatedRect& a, const cv::RotatedRect& b) {
     return ua > 0 ? inter / ua : 0.0;
 }
 
-// Box scores, summed over observations; 0 = L-shape, 1 = axis-aligned.
-struct BoxScore { int n; double yaw[2], iou[2], centre[2], len[2], wid[2]; int good[2]; };
+// ---- size-prior completion (host; one step per cluster) ----
+// A LiDAR sees only the near faces of an object, so the L-shape box covers the
+// visible part. A class size prior fills in the rest: the class comes from the
+// cluster's height and footprint (standing in for a classifier). The longer
+// observed side is the length, unless neither side exceeds the class width: then
+// the sensor sees an end of the object and its length runs away from the sensor,
+// along the axis closer to the line of sight. A side shorter than the prior grows
+// away from the sensor (the origin of the sensor frame), keeping the edge the
+// sensor sees. A side the sensor stands across grows about its centre.
+struct SizePrior { const char* name; float hmin, hmax, len, wid, min_wid; };
+static const int N_CLS = 2;
+static const SizePrior PRIOR[N_CLS] = {
+    { "car", 1.0f, 2.0f, 4.5f, 1.8f, 0.0f },
+    { "van", 2.0f, 3.2f, 6.0f, 2.0f, 0.8f },   // min_wid keeps thin walls out
+};
+
+static int classify_box(const Obb& B) {
+    float h = B.zhi - B.zlo, lo = std::max(B.len, B.wid), sh = std::min(B.len, B.wid);
+    for (int k = 0; k < N_CLS; ++k) {
+        const SizePrior& P = PRIOR[k];
+        if (h >= P.hmin && h < P.hmax && lo >= 1.2f && lo <= 1.2f * P.len && sh <= 1.2f * P.wid && sh >= P.min_wid)
+            return k;
+    }
+    return -1;
+}
+
+static Obb complete_box(const Obb& B, int cls, float scale) {
+    if (cls < 0) return B;
+    float c = std::cos(B.yaw), s = std::sin(B.yaw);
+    float m[2] = { c * B.cx + s * B.cy, -s * B.cx + c * B.cy }, ext[2] = { B.len, B.wid };
+    bool len_first = B.len >= B.wid;
+    if (std::max(B.len, B.wid) <= 1.2f * PRIOR[cls].wid)   // end view: the length runs along the line of sight
+        len_first = std::fabs(c * B.cx + s * B.cy) >= std::fabs(-s * B.cx + c * B.cy);
+    float want[2] = { scale * (len_first ? PRIOR[cls].len : PRIOR[cls].wid),
+                      scale * (len_first ? PRIOR[cls].wid : PRIOR[cls].len) };
+    for (int a = 0; a < 2; ++a) {
+        if (ext[a] >= want[a]) continue;
+        float lo = m[a] - 0.5f * ext[a], hi = m[a] + 0.5f * ext[a];
+        if (lo > 0.0f) hi = lo + want[a];          // sensor on the low side: the low edge is seen
+        else if (hi < 0.0f) lo = hi - want[a];     // sensor on the high side
+        else { lo = m[a] - 0.5f * want[a]; hi = m[a] + 0.5f * want[a]; }
+        m[a] = 0.5f * (lo + hi); ext[a] = want[a];
+    }
+    Obb R = B;
+    R.cx = c * m[0] - s * m[1]; R.cy = s * m[0] + c * m[1];
+    R.len = ext[0]; R.wid = ext[1];
+    return R;
+}
+
+// Box scores, summed over observations, per box method.
+static const int N_BM = 5;
+static const char* BM_NAME[N_BM] = { "L-shape", "axis-aligned", "L + prior", "L + prior x0.9", "L + prior x1.1" };
+struct BoxScore { int n; double yaw[N_BM], iou[N_BM], centre[N_BM], len[N_BM], wid[N_BM]; int good[N_BM], cls[N_CLS + 1]; };
 
 // Object-level scores of a clustering against the ground-truth objects.
 struct ClusterScore { int objects, found, merged, split, clusters, ground_clusters; };
@@ -1135,7 +1191,7 @@ int main(int argc, char** argv) {
     double cpu_ms_total = 0.0, gpu_ms_total = 0.0;
     long agree = 0, valid = 0;
     std::vector<cv::Mat> frames;
-    std::vector<Obb> fits;
+    std::vector<Obb> fits, done;
     const int B = 256, G = (N_RAYS + B - 1) / B;
     for (int s = 0; s < N_SCAN; ++s) {
         scan_kernel<<<G, B>>>(poses[s][0], poses[s][1], (unsigned int)s, d_pts, d_gt, d_gt_obj);
@@ -1243,8 +1299,12 @@ int main(int argc, char** argv) {
                         if (std::memcmp(&go[r], &cobb[r], sizeof(Obb)) != 0) ls_same = false;
                     ls_fits += (long)ckeys.size();
                 }
-                fits.clear();
-                for (const Obb& b : cobb) fits.push_back(b);
+                fits.clear(); done.clear();
+                for (const Obb& b : cobb) {
+                    fits.push_back(b);
+                    int k = classify_box(b);
+                    if (k >= 0) done.push_back(complete_box(b, k, 1.0f));
+                }
                 for (int b = 0; b < N_BOX; ++b) {
                     int c = matched_cluster(clab_obj, gt_obj, b);
                     if (c < 0) continue;
@@ -1253,7 +1313,10 @@ int main(int argc, char** argv) {
                     // the axis-aligned box of the same points is heading 0
                     std::vector<int> items;
                     for (int i = 0; i < N_RAYS; ++i) if (clab_obj[i] == c) items.push_back(i);
-                    Obb fit[2] = { cobb[r], lshape_rect(pts.data(), items.data(), 0, (int)items.size(), h_cs.data(), 0) };
+                    int cls = classify_box(cobb[r]);
+                    Obb fit[N_BM] = { cobb[r], lshape_rect(pts.data(), items.data(), 0, (int)items.size(), h_cs.data(), 0),
+                                      complete_box(cobb[r], cls, 1.0f), complete_box(cobb[r], cls, 0.9f),
+                                      complete_box(cobb[r], cls, 1.1f) };
                     // faces of the box the sensor can see: one if it stands within the box's slab along one axis
                     float cb = std::cos(G.yaw), sb = std::sin(G.yaw);
                     float u = cb * (poses[s][0] - G.cx) + sb * (poses[s][1] - G.cy);
@@ -1262,7 +1325,8 @@ int main(int argc, char** argv) {
                     cv::RotatedRect gr(cv::Point2f(G.cx, G.cy), cv::Size2f(2 * G.hl, 2 * G.hw), G.yaw / DEG);
                     for (BoxScore* S : { &bsum[0], &bsum[faces >= 2 ? 2 : 1], &bobj[b] }) {
                         S->n++;
-                        for (int m = 0; m < 2; ++m) {
+                        S->cls[cls < 0 ? N_CLS : cls]++;
+                        for (int m = 0; m < N_BM; ++m) {
                             const Obb& F = fit[m];
                             float wx = F.cx + poses[s][0], wy = F.cy + poses[s][1];
                             cv::RotatedRect fr(cv::Point2f(wx, wy), cv::Size2f(F.len, F.wid), F.yaw / DEG);
@@ -1320,6 +1384,7 @@ int main(int argc, char** argv) {
                         draw(h_box[b].cx - poses[s][0], h_box[b].cy - poses[s][1], 2 * h_box[b].hl, 2 * h_box[b].hw,
                              h_box[b].yaw, cv::Scalar(255, 170, 60));
                     for (const Obb& F : fits) draw(F.cx, F.cy, F.len, F.wid, F.yaw, cv::Scalar(230, 60, 230));
+                    for (const Obb& F : done) draw(F.cx, F.cy, F.len, F.wid, F.yaw, cv::Scalar(40, 160, 255));
                 }
                 Score sc = view == 0 ? st : sm;
                 char buf[160];
@@ -1330,7 +1395,7 @@ int main(int argc, char** argv) {
             }
             char buf[200];
             std::snprintf(buf, sizeof(buf), "scan %d   red: object called ground   yellow: ground missed   "
-                          "blue: true box   magenta: L-shape box", s);
+                          "blue: true box   magenta: L-shape   orange: + size prior", s);
             cv::putText(panel, buf, cv::Point(10, W - 12), cv::FONT_HERSHEY_SIMPLEX, 0.5,
                         cv::Scalar(200, 200, 210), 1, cv::LINE_AA);
             frames.push_back(panel);
@@ -1376,23 +1441,25 @@ int main(int argc, char** argv) {
                 ls_fits / N_SCAN, ls_cpu_ms / N_SCAN, ls_gpu_ms / N_SCAN, ls_same ? "yes" : "no");
     auto box_line = [](const char* name, const BoxScore& S) {
         if (!S.n) return;
-        for (int m = 0; m < 2; ++m)
-            std::printf("%-22s %-12s n %3d  heading err %5.2f deg  IoU %.3f  (>= 0.5: %3d)  centre err %.2f m  "
-                        "long side err %.2f m  short side err %.2f m\n", m == 0 ? name : "", m == 0 ? "L-shape" : "axis-aligned",
-                        S.n, S.yaw[m] / S.n, S.iou[m] / S.n, S.good[m], S.centre[m] / S.n, S.len[m] / S.n, S.wid[m] / S.n);
+        std::printf("%s: n %d, classed car %d / van %d / none %d\n", name, S.n, S.cls[0], S.cls[1], S.cls[N_CLS]);
+        for (int m = 0; m < N_BM; ++m)
+            std::printf("  %-15s heading err %5.2f deg  IoU %.3f  (>= 0.5: %3d)  centre err %.2f m  "
+                        "long side err %.2f m  short side err %.2f m\n", BM_NAME[m],
+                        S.yaw[m] / S.n, S.iou[m] / S.n, S.good[m], S.centre[m] / S.n, S.len[m] / S.n, S.wid[m] / S.n);
     };
     box_line("all box observations", bsum[0]);
     box_line("one face visible", bsum[1]);
     box_line("two faces visible", bsum[2]);
     for (int b = 0; b < N_BOX; ++b) box_line(box_name[b], bobj[b]);
     bool ls_better = bsum[0].n > 0 && bsum[0].yaw[0] < bsum[0].yaw[1] && bsum[0].iou[0] > bsum[0].iou[1];
+    bool prior_better = bsum[0].iou[2] > bsum[0].iou[0] && bsum[0].centre[2] < bsum[0].centre[0];
     double found_rate = cl_sum[0].objects ? (double)cl_sum[0].found / cl_sum[0].objects : 0.0;
     bool ok = sg.f1 >= 0.95 && sg.f1 > st.f1 && agree_pct >= 99.9 && found_rate >= 0.9 && cl_same && vcl_same &&
-              ls_better && ls_same;
+              ls_better && ls_same && prior_better;
     if (check) {
         std::printf("check: %s (model F1 >= 0.95, above the height threshold, CPU/GPU agreement >= 99.9%%, "
                     ">= 90%% of objects found as one cluster, identical CPU/GPU partition, L-shape boxes beat "
-                    "axis-aligned ones, identical CPU/GPU boxes)\n", ok ? "PASS" : "FAIL");
+                    "axis-aligned ones, identical CPU/GPU boxes, size prior improves IoU and centre error)\n", ok ? "PASS" : "FAIL");
         return ok ? 0 : 1;
     }
     return 0;
