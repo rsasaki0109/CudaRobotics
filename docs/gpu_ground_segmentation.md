@@ -205,7 +205,42 @@ The L-shape fitting and the size prior were designed on the scene above.
 - **The height-based class is still the weak link.**
   - 346 of 472 car observations are classed as cars.
   - Of 148 van observations, 8 are classed as vans and 65 as cars.
+  - The learned class below replaces this rule.
 
+## Learned class
+
+A small classifier replaces the height rule. It takes six features of a cluster's L-shape box:
+- the long side, the short side and the visible height;
+- log(point count) and the range;
+- the **top margin**: how far the highest point's elevation lies below the scan's +2° upper beam. A margin near 0 means the top may be cut off, as for the van.
+
+**Training.** `scripts/train_box_classifier.py` runs training scenes, seeds 101-200, which are disjoint from the evaluated seed 0 and seeds 1-20. That gives 25017 clusters: 2358 cars, 753 vans and 21906 others. A cluster is labelled car or van if it is the found cluster of a car or the van, and none otherwise. The script trains a 6-16-3 tanh MLP (numpy, full-batch Adam, fixed seed) and writes the weights to `include/lidar_box_classifier.h`. The host classifies each cluster.
+
+**Classification, held-out seeds 1-20** (5089 clusters):
+
+| | accuracy | cars classed car (of 472) | vans classed van (of 148) | others classed car or van (of 4469) |
+|---|---:|---:|---:|---:|
+| height rule | 0.925 | 346 | 8 | 114 |
+| learned | **0.987** | **446** | **134** | **25** |
+
+**Boxes** (L-shape + size prior):
+
+| Class | dev IoU | held-out IoU | held-out IoU ≥ 0.5 | held-out centre error |
+|---|---:|---:|---:|---:|
+| height rule | 0.600 | 0.565 | 612 | 0.77 m |
+| learned | **0.622** | **0.585** | **631** | **0.75 m** |
+
+The learned class is better in 16 of 20 held-out seeds (sign test p = 0.012). Per observation it is better in 130 and worse in 72.
+
+- **The box gain is smaller than the classification gain.** Most of it comes from the van.
+  - Van observations the rule left unclassified gain 0.42 IoU on average (50 observations).
+  - Those it called cars gain 0.16 (45 observations).
+- **Losses.**
+  - The rule had called the 4 × 3 m crate a car, and the car prior happened to fit it. Classing it correctly as none loses 0.32 IoU on 8 observations.
+  - The 15 car and van observations that the rule classed but the learned class leaves unclassified lose 0.4-0.7 on average.
+- **Display.** The GIF's completed boxes now use the learned class.
+
+## Reproduce
 ## Reproduce
 
 ```bash
@@ -214,6 +249,8 @@ cmake --build build --target gpu_ground_segmentation -j$(nproc)
 ./bin/gpu_ground_segmentation                       # also writes the GIF
 ./bin/gpu_ground_segmentation --check --no-video    # the CTest gate
 python scripts/box_fitting_heldout.py               # held-out scenes, seeds 1-20
+python scripts/train_box_classifier.py              # retrain the learned class (seeds 101-200), then rebuild
+python scripts/train_box_classifier.py --eval-seeds 1-20   # its confusion on the held-out scenes
 ```
 
 `--check` exits non-zero unless the model's F1 is at least 0.95, above the
@@ -221,14 +258,15 @@ height threshold's, CPU and GPU agree on at least 99.9% of the labels, at least
 90% of the objects come out as one cluster, the CPU and GPU clusterings are
 the same partition, the L-shape boxes beat the axis-aligned ones in mean heading
 error and mean IoU, the CPU and GPU boxes are identical, and the size prior
-raises the mean IoU and lowers the mean centre error of the L-shape boxes. CTest
+raises the mean IoU and lowers the mean centre error of the L-shape boxes, with
+either the height rule's class or the learned class. CTest
 runs it as `gpu_ground_segmentation_gate` (labels `gpu;pointcloud;ground`).
 
 Generated files: `tmp/gpu_ground_segmentation.avi` and `gif/gpu_ground_segmentation.gif`.
 
 ## Output
 
-The GIF shows a bird's-eye view (40 m × 40 m) of each scan: the height threshold on the left, the model on the right. The right panel also shows the true boxes (blue), the L-shape boxes of the clusters (magenta) and, for clusters classed as cars or vans, the boxes completed with the size prior (orange).
+The GIF shows a bird's-eye view (40 m × 40 m) of each scan: the height threshold on the left, the model on the right. The right panel also shows the true boxes (blue), the L-shape boxes of the clusters (magenta) and, for clusters the learned class calls cars or vans, the boxes completed with the size prior (orange).
 
 | Colour | Meaning |
 |---|---|

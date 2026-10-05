@@ -13,8 +13,12 @@ Seed 0 is the hand-built scene the L-shape fitting and the size prior were desig
 | prior 10% too small | 1.26 deg | 0.575 | 33 | 0.87 m |
 | prior 10% too large | 1.26 deg | 0.572 | 34 | 0.83 m |
 | prior without the end-view rule | 1.26 deg | 0.525 | 28 | 1.01 m |
+| L-shape + size prior, learned class | 1.26 deg | 0.622 | 35 | 0.78 m |
 
-Classed: 17 / 23 car observations as cars; of 7 van observations, 0 as vans and 4 as cars.
+Height rule: 17 / 23 car observations classed as cars; of 7 van observations, 0 as vans and 4 as cars.
+
+Learned class: 21 / 23 car observations classed as cars; of 7 van observations, 7 as vans and 0 as cars.
+
 
 | Comparison | metric | mean difference | observations better / worse / tie | sign test p |
 |---|---|---:|---:|---:|
@@ -25,6 +29,9 @@ Classed: 17 / 23 car observations as cars; of 7 van observations, 0 as vans and 
 | prior 10% too small vs L-shape | BEV IoU | +0.102 | 13 / 1 / 36 | 0.0018 |
 | prior 10% too large vs L-shape | BEV IoU | +0.099 | 14 / 6 / 30 | 0.12 |
 | L-shape + size prior vs prior without the end-view rule | BEV IoU | +0.075 | 6 / 0 / 44 | 0.031 |
+| L-shape + size prior, learned class vs L-shape + size prior | BEV IoU | +0.022 | 9 / 3 / 38 | 0.15 |
+| L-shape + size prior, learned class vs L-shape + size prior | centre error | -0.037 | 9 / 3 / 38 | 0.15 |
+| L-shape + size prior, learned class vs L-shape | BEV IoU | +0.148 | 23 / 0 / 27 | 2.4e-07 |
 
 ## Held-out scenes (seeds 1-20) (996 observations)
 
@@ -36,8 +43,12 @@ Classed: 17 / 23 car observations as cars; of 7 van observations, 0 as vans and 
 | prior 10% too small | 3.43 deg | 0.552 | 596 | 0.80 m |
 | prior 10% too large | 3.43 deg | 0.552 | 617 | 0.78 m |
 | prior without the end-view rule | 3.43 deg | 0.522 | 540 | 0.90 m |
+| L-shape + size prior, learned class | 3.43 deg | 0.585 | 631 | 0.75 m |
 
-Classed: 346 / 472 car observations as cars; of 148 van observations, 8 as vans and 65 as cars.
+Height rule: 346 / 472 car observations classed as cars; of 148 van observations, 8 as vans and 65 as cars.
+
+Learned class: 446 / 472 car observations classed as cars; of 148 van observations, 134 as vans and 2 as cars.
+
 
 | Comparison | metric | mean difference | observations better / worse / tie | sign test p | seeds better / worse | seed sign test p |
 |---|---|---:|---:|---:|---:|---:|
@@ -48,3 +59,6 @@ Classed: 346 / 472 car observations as cars; of 148 van observations, 8 as vans 
 | prior 10% too small vs L-shape | BEV IoU | +0.104 | 243 / 18 / 735 | 1.6e-51 | 20 / 0 | 1.9e-06 |
 | prior 10% too large vs L-shape | BEV IoU | +0.104 | 267 / 166 / 563 | 1.4e-06 | 20 / 0 | 1.9e-06 |
 | L-shape + size prior vs prior without the end-view rule | BEV IoU | +0.044 | 79 / 5 / 912 | 3.4e-18 | 19 / 1 | 4e-05 |
+| L-shape + size prior, learned class vs L-shape + size prior | BEV IoU | +0.019 | 130 / 72 / 794 | 5.4e-05 | 16 / 4 | 0.012 |
+| L-shape + size prior, learned class vs L-shape + size prior | centre error | -0.024 | 135 / 63 / 798 | 3.4e-07 | 16 / 4 | 0.012 |
+| L-shape + size prior, learned class vs L-shape | BEV IoU | +0.137 | 347 / 91 / 558 | 2.8e-36 | 20 / 0 | 1.9e-06 |
