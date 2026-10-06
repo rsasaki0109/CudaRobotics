@@ -426,13 +426,15 @@ static double bev_iou(const cv::RotatedRect& a, const cv::RotatedRect& b) {
 }
 
 // Box scores, summed over observations, per box method.
-static const int N_BM = 13;
+static const int N_BM = 17;
 static const char* BM_NAME[N_BM] = { "L-shape", "axis-aligned", "L + prior", "L + prior x0.9", "L + prior x1.1",
                                      "L + prior, no end rule", "L + prior, learned class", "tracked L-shape",
                                      "tracked L + prior", "motion-tracked L-shape", "motion-tracked L + prior",
-                                     "hybrid L + prior", "L + prior + free space" };
+                                     "hybrid L + prior", "L + prior + free space", "hybrid, fs scan box",
+                                     "hybrid, fs scan+track", "hybrid, fs + fs measure", "hybrid, fs track" };
 static const char* BM_KEY[N_BM] = { "lshape", "aabb", "prior", "prior_x0.9", "prior_x1.1", "prior_noend", "prior_mlp",
-                                    "trk_lshape", "trk_prior", "mtrk_lshape", "mtrk_prior", "hybrid", "fs" };
+                                    "trk_lshape", "trk_prior", "mtrk_lshape", "mtrk_prior", "hybrid", "fs", "hyb_fs1",
+                                    "hyb_fs2", "hyb_fs3", "hyb_fs4" };
 
 // Held-out scene: boxes move within 1 m and take a new heading (the wall stays),
 // cars and the van take new sizes, and the sensor takes new poses on the road.
@@ -646,7 +648,7 @@ int main(int argc, char** argv) {
     CUDA_CHECK(cudaMemcpyToSymbol(c_cyl, h_cyl, sizeof(h_cyl)));
     FILE* obs = obs_csv ? std::fopen(obs_csv, "w") : nullptr;
     if (obs) {
-        std::fprintf(obs, "seed,scan,box,faces,cls,cls_mlp,track,mtrack,speed,verr_static,verr_motion");
+        std::fprintf(obs, "seed,scan,box,faces,cls,cls_mlp,track,mtrack,speed,verr_static,verr_motion,mtrack2,verr_motion_fs");
         for (int m = 0; m < N_BM; ++m)
             std::fprintf(obs, ",iou_%s,centre_%s,yaw_%s", BM_KEY[m], BM_KEY[m], BM_KEY[m]);
         std::fprintf(obs, "\n");
@@ -692,7 +694,7 @@ int main(int argc, char** argv) {
     long agree = 0, valid = 0;
     std::vector<cv::Mat> frames;
     std::vector<Obb> fits, done, trk_draw;
-    Tracker trk[2];   // static, motion
+    Tracker trk[3];   // static, motion, motion measured on the free-space refined boxes
     GpuBoxFitter box_fitter;
     bool trk_fit_same = true;
     GpuFreeSpaceRefiner fs_refiner(N_RAYS);
@@ -707,6 +709,7 @@ int main(int argc, char** argv) {
     cudarobotics::LidarObjectPipeline lib(lib_cfg);   // the library: must give exactly the results below
     bool lib_same = true;
     trk[1].motion = true;
+    trk[2].motion = true;
     for (Tracker& T : trk) T.trk_hits = trk_hits;
     BoxScore bmov = {}, bpark = {};   // vehicle observations: moving traffic, parked cars and the van
     double verr_sum[2][2] = {};       // [tracker][moving]
@@ -836,36 +839,6 @@ int main(int argc, char** argv) {
                     int k = classify_box_mlp(b, VERT_MAX, sensor_h);
                     if (k >= 0) done.push_back(complete_box(b, k, 1.0f));
                 }
-                for (Tracker& T : trk) T.track_of.assign(N_RAYS, -1);
-                if (sequence) {
-                    auto h0 = std::chrono::high_resolution_clock::now();
-                    const float px = poses[s][0], py = poses[s][1], pz = ground_h(px, py) + sensor_h;
-                    std::vector<int> cand, ccls(ckeys.size(), -1), slot(N_RAYS, -1);
-                    for (size_t r = 0; r < ckeys.size(); ++r) {
-                        ccls[r] = classify_box_mlp(cobb[r], VERT_MAX, sensor_h);
-                        if (ccls[r] >= 0) { slot[ckeys[r]] = (int)cand.size(); cand.push_back((int)r); }
-                    }
-                    std::vector<std::vector<int>> citems(cand.size());
-                    for (int i = 0; i < N_RAYS; ++i)
-                        if (clab_obj[i] >= 0 && slot[clab_obj[i]] >= 0) citems[slot[clab_obj[i]]].push_back(i);
-                    auto h1 = std::chrono::high_resolution_clock::now();
-                    double tk_ms[2], fit_ms[2];
-                    for (int k = 0; k < 2; ++k) {
-                        auto u0 = std::chrono::high_resolution_clock::now();
-                        trk[k].update(t_scan, px, py, pz, s, cand, ccls, citems, ckeys, cobb, pts, h_cs);
-                        tk_ms[k] = std::chrono::duration<double, std::milli>(std::chrono::high_resolution_clock::now() - u0).count();
-                        fit_ms[k] = trk[k].fit(trk_cpu_fit ? nullptr : &box_fitter, h_cs, check, trk_fit_same);
-                    }
-                    stage_ms.push_back({ { gpu_ms, vms_scan, lms, std::chrono::duration<double, std::milli>(h1 - h0).count(),
-                                           tk_ms[0], tk_ms[1], fit_ms[0], fit_ms[1] } });
-                    const Tracker& D = trk[moving ? 1 : 0];   // drawn
-                    for (size_t k = 0; k < D.tracks.size(); ++k) {
-                        if (std::find(D.track_of.begin(), D.track_of.end(), (int)k) == D.track_of.end()) continue;
-                        Obb raw, dn;
-                        D.boxes((int)k, t_scan, px, py, raw, dn);
-                        trk_draw.push_back(dn);
-                    }
-                }
                 // ---- free-space refinement of the classed clusters' completed boxes ----
                 std::vector<Obb> fs_of(ckeys.size());
                 {
@@ -894,6 +867,57 @@ int main(int argc, char** argv) {
                                               cudaMemcpyDeviceToHost));
                         Obb c0 = fs_refine_cpu(grid_cpu, pts, items.data(), start[0], start[1], b0[0], fs_params);
                         if (grid_cpu != grid_gpu || std::memcmp(&c0, &refined[0], sizeof(Obb)) != 0) fs_same = false;
+                    }
+                }
+                for (Tracker& T : trk) T.track_of.assign(N_RAYS, -1);
+                // the parked tracks' boxes refined with this scan's free space (trackers 1, 2), per cluster
+                std::vector<Obb> trk_fs[3];
+                std::vector<char> trk_fs_ok[3];
+                for (int k = 0; k < 3; ++k) { trk_fs[k].assign(ckeys.size(), Obb()); trk_fs_ok[k].assign(ckeys.size(), 0); }
+                if (sequence) {
+                    auto h0 = std::chrono::high_resolution_clock::now();
+                    const float px = poses[s][0], py = poses[s][1], pz = ground_h(px, py) + sensor_h;
+                    std::vector<int> cand, ccls(ckeys.size(), -1), slot(N_RAYS, -1);
+                    for (size_t r = 0; r < ckeys.size(); ++r) {
+                        ccls[r] = classify_box_mlp(cobb[r], VERT_MAX, sensor_h);
+                        if (ccls[r] >= 0) { slot[ckeys[r]] = (int)cand.size(); cand.push_back((int)r); }
+                    }
+                    std::vector<std::vector<int>> citems(cand.size());
+                    for (int i = 0; i < N_RAYS; ++i)
+                        if (clab_obj[i] >= 0 && slot[clab_obj[i]] >= 0) citems[slot[clab_obj[i]]].push_back(i);
+                    auto h1 = std::chrono::high_resolution_clock::now();
+                    double tk_ms[3], fit_ms[3];
+                    for (int k = 0; k < 3; ++k) {
+                        auto u0 = std::chrono::high_resolution_clock::now();
+                        trk[k].update(t_scan, px, py, pz, s, cand, ccls, citems, ckeys, cobb, pts, h_cs,
+                                      k == 2 ? &fs_of : nullptr);
+                        tk_ms[k] = std::chrono::duration<double, std::milli>(std::chrono::high_resolution_clock::now() - u0).count();
+                        fit_ms[k] = trk[k].fit(trk_cpu_fit ? nullptr : &box_fitter, h_cs, check, trk_fit_same);
+                    }
+                    stage_ms.push_back({ { gpu_ms, vms_scan, lms, std::chrono::duration<double, std::milli>(h1 - h0).count(),
+                                           tk_ms[0], tk_ms[1], fit_ms[0], fit_ms[1] } });
+                    for (int k = 1; k <= 2; ++k) {   // refine the parked tracks' boxes with this scan's free space
+                        std::vector<Obb> b0, ref;
+                        std::vector<int> rs, items, start(1, 0);
+                        for (size_t q = 0; q < cand.size(); ++q) {
+                            int r = cand[q], j = trk[k].track_of[ckeys[r]];
+                            if (j < 0 || trk[k].ms[j].moving) continue;
+                            Obb raw, dn;
+                            trk[k].boxes(j, t_scan, px, py, raw, dn);
+                            dn.zhi = cobb[r].zhi;   // the cluster's top, in the sensor frame
+                            b0.push_back(dn); rs.push_back(r);
+                            items.insert(items.end(), citems[q].begin(), citems[q].end());
+                            start.push_back((int)items.size());
+                        }
+                        if (!b0.empty()) fs_refiner.run(d_pts, d_gt, N_RAYS, b0, items, start, fs_params, ref);
+                        for (size_t q = 0; q < rs.size(); ++q) { trk_fs[k][rs[q]] = ref[q]; trk_fs_ok[k][rs[q]] = 1; }
+                    }
+                    const Tracker& D = trk[moving ? 1 : 0];   // drawn
+                    for (size_t k = 0; k < D.tracks.size(); ++k) {
+                        if (std::find(D.track_of.begin(), D.track_of.end(), (int)k) == D.track_of.end()) continue;
+                        Obb raw, dn;
+                        D.boxes((int)k, t_scan, px, py, raw, dn);
+                        trk_draw.push_back(dn);
                     }
                 }
                 // ---- the library on this scan's returns: the same ground, clusters, boxes and tracks ----
@@ -933,7 +957,8 @@ int main(int argc, char** argv) {
                             const MotionState& M = trk[1].ms[j];
                             Obb raw, tracked;
                             trk[1].boxes(j, t_scan, px, py, raw, tracked);
-                            Obb H = M.moving ? complete_box(cobb[r], classify_box_mlp(cobb[r], VERT_MAX, sensor_h), 1.0f) : tracked;
+                            Obb H = M.moving ? complete_box(cobb[r], classify_box_mlp(cobb[r], VERT_MAX, sensor_h), 1.0f)
+                                             : (trk_fs_ok[1][r] ? trk_fs[1][r] : tracked);   // the hybrid with the free space
                             same = T.id == j && T.moving == M.moving && T.vx == (float)M.x[2] && T.vy == (float)M.x[3] &&
                                    T.box.cx == H.cx && T.box.cy == H.cy && T.box.length == H.len &&
                                    T.box.width == H.wid && T.box.yaw == H.yaw;
@@ -956,7 +981,7 @@ int main(int argc, char** argv) {
                                       complete_box(cobb[r], cls, 1.1f), complete_box(cobb[r], cls, 1.0f, false),
                                       complete_box(cobb[r], cls_mlp, 1.0f), cobb[r], complete_box(cobb[r], cls_mlp, 1.0f),
                                       cobb[r], complete_box(cobb[r], cls_mlp, 1.0f), complete_box(cobb[r], cls_mlp, 1.0f),
-                                      fs_of[r] };
+                                      fs_of[r], fs_of[r], fs_of[r], fs_of[r], complete_box(cobb[r], cls_mlp, 1.0f) };
                     int tid = trk[0].track_of[c], mtid = trk[1].track_of[c];
                     if (tid >= 0) {
                         trk[0].boxes(tid, t_scan, poses[s][0], poses[s][1], fit[7], fit[8]);
@@ -968,11 +993,26 @@ int main(int argc, char** argv) {
                         // hybrid: a track the stand-still test calls moving gets the single-scan box (lane
                         // traffic shows no new faces, and the track lags by its velocity error); others the track's
                         if (!trk[1].ms[mtid].moving) fit[11] = fit[10];
+                        // with the free space: moving tracks get the refined scan box; parked ones their box, or
+                        // (variant 2) their box refined with this scan's free space
+                        bool mv = trk[1].ms[mtid].moving;
+                        fit[13] = mv ? fs_of[r] : fit[10];
+                        fit[14] = mv ? fs_of[r] : (trk_fs_ok[1][r] ? trk_fs[1][r] : fit[10]);
+                        // variant 4: moving tracks keep the hybrid's scan box, parked ones get the refined track box
+                        fit[16] = mv ? fit[11] : (trk_fs_ok[1][r] ? trk_fs[1][r] : fit[10]);
+                    }
+                    int mtid2 = trk[2].track_of[c];   // variant 3: the tracker measured on the refined boxes
+                    if (mtid2 >= 0) {
+                        Obb raw2, done2;
+                        trk[2].boxes(mtid2, t_scan, poses[s][0], poses[s][1], raw2, done2);
+                        trk[2].observe(b, mtid2);
+                        fit[15] = trk[2].ms[mtid2].moving ? fs_of[r] : (trk_fs_ok[2][r] ? trk_fs[2][r] : done2);
                     }
                     // velocity errors (the static tracker's velocity is 0)
-                    double verr[2] = { -1.0, -1.0 };
+                    double verr[3] = { -1.0, -1.0, -1.0 };
                     if (tid >= 0) verr[0] = box_speed[b];
                     if (mtid >= 0) verr[1] = std::hypot(trk[1].ms[mtid].x[2] - box_speed[b], trk[1].ms[mtid].x[3]);
+                    if (mtid2 >= 0) verr[2] = std::hypot(trk[2].ms[mtid2].x[2] - box_speed[b], trk[2].ms[mtid2].x[3]);
                     bool vehicle = b <= 2 || b == 4 || b >= 7;
                     // faces of the box the sensor can see: one if it stands within the box's slab along one axis
                     float cb = std::cos(G.yaw), sb = std::sin(G.yaw);
@@ -1009,6 +1049,7 @@ int main(int argc, char** argv) {
                     if (obs) {
                         std::fprintf(obs, "%u,%d,%d,%d,%d,%d,%d,%d,%.3f,%.4f,%.4f", seed, s, b, faces, cls, cls_mlp, tid,
                                      mtid, box_speed[b], verr[0], verr[1]);
+                        std::fprintf(obs, ",%d,%.4f", mtid2, verr[2]);
                         for (int m = 0; m < N_BM; ++m) std::fprintf(obs, ",%.5f,%.5f,%.4f", e_iou[m], e_ctr[m], e_yaw[m]);
                         std::fprintf(obs, "\n");
                     }
@@ -1150,7 +1191,7 @@ int main(int argc, char** argv) {
         std::printf("%s: n %d, classed car %d / van %d / none %d (learned: %d / %d / %d)\n", name, S.n, S.cls[0],
                     S.cls[1], S.cls[N_CLS], S.cls_mlp[0], S.cls_mlp[1], S.cls_mlp[N_CLS]);
         for (int m = 0; m < N_BM; ++m) {
-            if (m != 12 && m >= (moving ? 12 : sequence ? 9 : 7)) continue;   // the trackers' only where they run
+            if (m != 12 && m >= (moving ? 17 : sequence ? 9 : 7)) continue;   // the trackers' only where they run
             std::printf("  %-15s heading err %5.2f deg  IoU %.3f  (>= 0.5: %3d)  centre err %.2f m  "
                         "long side err %.2f m  short side err %.2f m\n", BM_NAME[m],
                         S.yaw[m] / S.n, S.iou[m] / S.n, S.good[m], S.centre[m] / S.n, S.len[m] / S.n, S.wid[m] / S.n);
@@ -1200,14 +1241,17 @@ int main(int argc, char** argv) {
         double all_n = bmov.n + bpark.n;
         double hyb = (bmov.iou[11] + bpark.iou[11]) / all_n, one = (bmov.iou[6] + bpark.iou[6]) / all_n;
         double mot = (bmov.iou[10] + bpark.iou[10]) / all_n;
-        mot_better = mot_better && hyb > one && hyb > mot;
+        // and the parked tracks' boxes refined with the free space (hyb_fs4) beat the hybrid
+        double hyb_fs = (bmov.iou[16] + bpark.iou[16]) / all_n;
+        mot_better = mot_better && hyb > one && hyb > mot && hyb_fs > hyb;
         ok = sg.f1 >= 0.95 && agree_pct >= 99.9 && cl_same && vcl_same && ls_same && trk_fit_same && lib_same && mot_better;
         if (check) {
             std::printf("check: %s (model F1 >= 0.95, CPU/GPU agreement >= 99.9%%, identical CPU/GPU partition and "
                         "boxes; the motion tracker's boxes with the size prior beat the static tracker's on the moving "
                         "vehicles in IoU and centre error and match them on the parked ones, with no more identity "
                         "switches and a velocity error under 1.5 m/s on the moving vehicles; the hybrid boxes beat the "
-                        "single-scan and the motion tracker's boxes over all vehicles)\n", ok ? "PASS" : "FAIL");
+                        "single-scan and the motion tracker's boxes over all vehicles, and refining the parked "
+                        "tracks' boxes with the free space improves them)\n", ok ? "PASS" : "FAIL");
             return ok ? 0 : 1;
         }
         return 0;

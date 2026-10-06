@@ -61,7 +61,8 @@ struct LidarTrack {
     bool moving = false;                  // the stand-still test's verdict
     float vx = 0.0f, vy = 0.0f;           // Kalman-filter velocity, m/s, in the world frame
     // The hybrid box with the size prior: this scan's box for a moving track
-    // (traffic shows no new faces), the track's accumulated box otherwise.
+    // (traffic shows no new faces); for a parked one the track's accumulated
+    // box, refined with this scan's free space (with free_space_refinement).
     LidarObjectBox box;
 };
 
