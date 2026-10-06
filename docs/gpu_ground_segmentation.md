@@ -18,10 +18,10 @@ Measured with the current build and class on held-out scenes and drives (seeds 1
 | clustering | objects found as one cluster | **97%** (2242 / 2309) |
 | boxes, single scan | BEV IoU: axis-aligned / L-shape / + size prior / + free space | 0.402 / 0.500 / 0.728 / **0.777** |
 | boxes, tracked along a drive | BEV IoU | **0.763** |
-| boxes, moving traffic | BEV IoU: single scan / motion tracker / hybrid / + free space (parked tracks) | 0.754 / 0.761 / 0.781 / **0.799** |
-| motion tracker | velocity error, moving / parked vehicles | 0.63 / 0.63 m/s |
-| motion tracker | identity switches over 20 drives | 30 |
-| time per scan (`--moving`) | mean / max over a drive's scans, without the free-space refinement | 8.7 / 15.7 ms (this run, shared GPU); the refinement adds about 6 ms for the boxes and more for the parked tracks |
+| boxes, moving traffic | BEV IoU: single scan / motion tracker / hybrid / + free space (parked tracks) | 0.754 / 0.763 / 0.784 / **0.801** |
+| motion tracker | velocity error, moving / parked vehicles | 0.61 / 0.62 m/s |
+| motion tracker | identity switches over 20 drives (with merging of split tracks) | 29 |
+| time per scan (`--moving`) | mean / max over a drive's scans, without the free-space refinement | 7.8 / 14.4 ms (this run, shared GPU); the refinement adds about 6 ms for the boxes and more for the parked tracks |
 
 | Sensor height | cars classed car | vans classed van | others classed car or van | box IoU with the prior |
 |---:|---:|---:|---:|---:|
@@ -577,6 +577,36 @@ The hybrid box takes this scan's completed box for a moving track and the track'
 - **The criterion holds.** Variant 4 is better in 20 of 20 drives (per observation, 1767 better and 812 worse).
 - **Library.** The library's hybrid box is now variant 4. With `free_space_refinement`, a parked track's `LidarTrack::box` is refined with each scan's free space. The demo checks the library equals its own, and the `--moving` gate requires variant 4 to beat the hybrid.
 
+## Identity switches: merging split tracks
+
+The motion tracker still switched identities about 30 times over 20 drives. `scripts/box_id_switch_eval.py analyze` sorts every switch, on the dev drive and training seeds 101-110 only:
+
+| Kind | switches |
+|---|---:|
+| the vehicle's cluster joined another existing track | 15 |
+| a new track although the vehicle was tracked the scan before | 1 |
+| a new track after scans without it | 1 |
+
+**Cause.** Almost all are on the car parked beside the road. As the sensor passes it, the view turns from its rear to its side, and for a scan or two its cluster breaks in two:
+- the second piece starts a second, parked track;
+- from then on, the car's cluster goes to whichever of the two tracks is a few centimetres closer, an identity switch each time it changes.
+
+**Merging.** After each refit, two parked motion tracks whose boxes fit together in one box of the older track's class size (× 1.2) are taken for one vehicle. The younger track's points and class votes join the older one, and it retires. Two parked cars do not fit in one car's box.
+- **A first version that also hurt.** It merged only overlapping boxes. It missed the pieces a few centimetres apart, and it merged a young lead-car track before its motion was known: 17 → 19 switches on the tuning drives.
+- **The size test.** It brings the tuning drives from 17 to 15 switches.
+- **What remains.** Mostly a pair of switches around the split: the cluster goes to the young track for one scan, then the tracks merge and it returns.
+
+**Test on fresh drives 201-220.** No earlier step ran these. The criterion was fixed in the script: fewer switches in total, no significant increase per drive, IoU and velocity error not worse. Report: [results/box_id_switches_2026-10-06.md](results/box_id_switches_2026-10-06.md).
+
+| Fresh drives 201-220 | identity switches | hybrid + free space IoU | velocity error, moving |
+|---|---:|---:|---:|
+| before | 26 | 0.807 | 0.55 m/s |
+| merging | **20** | 0.809 | 0.55 m/s |
+
+- **The criterion holds, but the gain is modest.** There are 23% fewer switches. Per drive, merging has fewer in 4 and more in 1, which is not significant on its own (p = 0.38). On the held-out drives 1-20 of the summary, the switches go from 30 to 29.
+- **Library and demo.** Both merge by default; `--no-track-merge` turns it off in the demo.
+- **Next step.** Assigning the split pieces to the older track in the scan they appear would remove the remaining pairs.
+
 ## Reproduce
 
 ```bash
@@ -589,6 +619,8 @@ python scripts/box_freespace_eval.py tune           # free-space weights on the 
 python scripts/box_freespace_eval.py test --weights 1,10,3   # the test on fresh seeds 61-80
 python scripts/box_fs_tracking_eval.py select       # free space in the trackers: the variants on the tuning drives
 python scripts/box_fs_tracking_eval.py test --variant hyb_fs4   # the test on fresh drives 81-100
+python scripts/box_id_switch_eval.py analyze        # identity switches by kind, tuning drives
+python scripts/box_id_switch_eval.py test --store-baseline --flags=--no-track-merge && python scripts/box_id_switch_eval.py test
 python scripts/box_fitting_heldout.py               # held-out scenes, seeds 1-20
 python scripts/train_box_classifier.py              # retrain the class (random scenes and drives, 0.8-2.5 m), then rebuild
 python scripts/box_class_heights_eval.py run --tag A --seeds 41-60   # a class at 0.8 / 1.2 / 1.8 / 2.5 m
