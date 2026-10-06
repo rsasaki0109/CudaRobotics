@@ -49,12 +49,13 @@ struct LidarObjectPipeline::Impl {
     cudabot::GpuVoxelClusterer vcl;
     cudabot::GpuLShape lsh;
     cudabot::GpuBoxFitter fitter;
+    cudabot::GpuFreeSpaceRefiner refiner;
     std::vector<float> cs;
     cudabot::Tracker trk;
     int scan = 0;
 
     explicit Impl(const LidarObjectsConfig& c)
-        : cfg(c), cap((int)c.max_points), seg(cap), vcl(cap), lsh(cap) {
+        : cfg(c), cap((int)c.max_points), seg(cap), vcl(cap), lsh(cap), refiner(cap) {
         CUDA_CHECK(cudaMalloc(&d_pts, (size_t)cap * 3 * sizeof(float)));
         CUDA_CHECK(cudaMalloc(&d_valid, (size_t)cap * sizeof(int)));
         CUDA_CHECK(cudaMemset(d_valid, 0, (size_t)cap * sizeof(int)));   // every input point is a return
@@ -134,7 +135,22 @@ LidarObjectsResult LidarObjectPipeline::process(const float* xyz_in, std::size_t
         done[r] = complete_box(obb[r], ccls[r], 1.0f);
         LidarCluster C;
         C.label = keys[r]; C.box = to_box(obb[r]); C.cls = to_class(ccls[r]); C.completed = to_box(done[r]);
+        C.refined = C.completed;
         R.clusters.push_back(C);
+    }
+
+    // ---- free-space refinement of the classed clusters' completed boxes ----
+    if (I.cfg.free_space_refinement && n > 0) {
+        std::vector<Obb> b0, refined;
+        std::vector<int> rs, slot(n, -1), items, start(1, 0);
+        for (size_t r = 0; r < keys.size(); ++r)
+            if (ccls[r] >= 0) { slot[keys[r]] = (int)b0.size(); rs.push_back((int)r); b0.push_back(done[r]); }
+        std::vector<std::vector<int>> lists(b0.size());
+        for (int i = 0; i < n; ++i)
+            if (R.cluster[i] >= 0 && slot[R.cluster[i]] >= 0) lists[slot[R.cluster[i]]].push_back(i);
+        for (const auto& L : lists) { items.insert(items.end(), L.begin(), L.end()); start.push_back((int)items.size()); }
+        R.refinement_ms = I.refiner.run(I.d_pts, I.d_valid, n, b0, items, start, FS_DEFAULT, refined);
+        for (size_t q = 0; q < rs.size(); ++q) R.clusters[rs[q]].refined = to_box(refined[q]);
     }
 
     // ---- tracking: the clusters classed as cars or vans ----
@@ -171,6 +187,7 @@ LidarObjectsResult LidarObjectPipeline::process(const float* xyz_in, std::size_t
         for (LidarCluster& C : R.clusters) {
             C.box = to_sensor_frame(C.box, cy, sy, yaw);
             C.completed = to_sensor_frame(C.completed, cy, sy, yaw);
+            C.refined = to_sensor_frame(C.refined, cy, sy, yaw);
         }
         for (LidarTrack& T : R.tracks) T.box = to_sensor_frame(T.box, cy, sy, yaw);
     }

@@ -16,12 +16,12 @@ Measured with the current build and class on held-out scenes and drives (seeds 1
 |---|---|---:|
 | ground segmentation | F1 (a plain height threshold: 0.835) | **0.983** |
 | clustering | objects found as one cluster | **97%** (2242 / 2309) |
-| boxes, single scan | BEV IoU: axis-aligned / L-shape / + size prior | 0.402 / 0.500 / **0.728** |
+| boxes, single scan | BEV IoU: axis-aligned / L-shape / + size prior / + free space | 0.402 / 0.500 / 0.728 / **0.777** |
 | boxes, tracked along a drive | BEV IoU | **0.763** |
 | boxes, moving traffic | BEV IoU: single scan / motion tracker / hybrid | 0.754 / 0.761 / **0.781** |
 | motion tracker | velocity error, moving / parked vehicles | 0.63 / 0.63 m/s |
 | motion tracker | identity switches over 20 drives | 30 |
-| time per scan (`--moving`) | mean / max over a drive's scans | 9.5 / 18.8 ms (this run, shared GPU) |
+| time per scan (`--moving`) | mean / max over a drive's scans, without / with the free-space refinement | 10.1 / 19.7 ms; about +10 ms (this run, shared GPU) |
 
 | Sensor height | cars classed car | vans classed van | others classed car or van | box IoU with the prior |
 |---:|---:|---:|---:|---:|
@@ -409,12 +409,13 @@ The production path is also a library: `CudaRobotics::lidar_objects_gpu`, with t
 cudarobotics::LidarObjectPipeline pipe;   // up to 131072 points per scan
 cudarobotics::LidarObjectsResult r = pipe.process(xyz, n, sensor_x, sensor_y, sensor_z, t);
 // r.ground[i], r.cluster[i]   per point: ground flag, cluster label (-1 for ground)
-// r.clusters                   per cluster of >= 10 points: L-shape box, learned class, size-prior box
+// r.clusters                   per cluster of >= 10 points: L-shape box, learned class, size-prior box,
+//                              and that box refined with the free space
 // r.tracks                     per track this scan updated: hybrid box, class, velocity, moving flag
 ```
 
 - **Steps.**
-  - GPU: ground segmentation → voxel clustering → L-shape boxes.
+  - GPU: ground segmentation → voxel clustering → L-shape boxes → (after the class) free-space refinement.
   - Host: learned class and size prior → motion tracker, whose box refits are batched on the GPU → hybrid box.
 - **Input.** Points in the sensor's frame, z up. Each scan comes with the sensor's world position, its heading (`sensor_yaw`) and the scan time.
   - The pipeline rotates the points by the heading into a world-aligned frame and rotates the boxes back.
@@ -422,6 +423,7 @@ cudarobotics::LidarObjectsResult r = pipe.process(xyz, n, sensor_x, sensor_y, se
 - **Sensor settings** (`LidarObjectsConfig`):
   - `sensor_height` (1.8 m): the ground model starts from flat ground this far below the sensor.
   - `upper_beam_deg` (+2°): the class's top-margin feature.
+  - `free_space_refinement` (on): refine the completed boxes (see "Free-space refinement").
 
   With the defaults, the demo's outputs are byte-identical to before.
 - **Tested setups.** `tests/lidar_objects_gpu_smoke.cu` drives a sensor past a car at 1.8 m / 0°, 2.2 m / 30°, 1.5 m / −60° and 0.8 m / 45°. In every case the ground, the car's cluster, its heading in the sensor's frame and its track come out right. How well the class does at each height is measured on held-out scenes, in the next section.
@@ -491,6 +493,43 @@ The diagnosis points at the training data, so the class in use is trained on dri
 - **One class for every height.** It replaces both earlier classes, and the `height_aware_class` option is gone.
 - **Reports:** [results/box_class_drives_2026-10-06.md](results/box_class_drives_2026-10-06.md), [results/box_class_heights_drivedata_2026-10-06.md](results/box_class_heights_drivedata_2026-10-06.md).
 
+## Free-space refinement
+
+The size prior fills in a box's hidden extent, but it does not look at the scan. Yet a ray that passed somewhere proves that place empty. A box completed into space that rays crossed is too big there, or in the wrong place.
+
+**Free-space grid.**
+- The scan's rays are marched over a 0.1 m bird's-eye grid around the sensor, one GPU thread per ray.
+- Each cell keeps the lowest height at which a ray crossed it, up to 0.3 m before the ray's end, the surface it hit (`atomicMin`).
+- A box reaches the ground and rises to the top of its cluster. It contradicts every cell under it that a ray crossed below that top.
+
+**Search.** Around each completed box of a car or van, about 31,000 candidates vary:
+- the position by ±1 m along it and ±0.5 m across it, in 0.1 m steps;
+- the heading by ±4°;
+- the length by ±10% and the width by ±10%.
+
+One GPU thread scores each (box, candidate). The cost is:
+- w_free × the free area inside the box (m²);
+- \+ w_out × the mean distance of the cluster's points outside it (m);
+- \+ w_size × the squared relative change of length and width.
+
+The cheapest candidate wins. The CPU twin (`fs_grid_cpu`, `fs_refine_cpu`) runs the same arithmetic. With `--check`, the grid and the first box of two scans must be bit-identical to the GPU's.
+
+**Weights.** They were chosen on the dev scene and the training seeds 101-110 only (`scripts/box_freespace_eval.py tune`).
+- Every setting tried improved the boxes there.
+- w_free = 1, w_out = 10, w_size = 3 did best: IoU 0.724 → 0.776.
+- Without the size term (w_size = 0) it was worse: 0.764.
+
+**Test on fresh seeds 61-80.** No earlier step ran these. The criterion was fixed in the script: the IoU rises, it is better in significantly more seeds, and the centre error does not rise. Report: [results/box_freespace_2026-10-06.md](results/box_freespace_2026-10-06.md).
+
+| Vehicles' boxes, seeds 61-80 (618) | BEV IoU | IoU ≥ 0.5 | centre error |
+|---|---:|---:|---:|
+| L-shape + size prior | 0.703 | 509 | 0.49 m |
+| **+ free-space refinement** | **0.758** | **544** | **0.38 m** |
+
+- **The criterion holds.** The refinement is better in 20 of 20 seeds (per observation, 381 better and 121 worse).
+- **Cost.** About 1 ms per scan for the grid and about 2 ms per refined box: 10 ms per scan on the dev scene, more than the rest of the pipeline together. The search runs one thread per candidate with serial loops over the footprint and the points. A warp per candidate, with the CPU replaying its reduction order as for the L-shape fits, would cut that.
+- **Library.** It refines the completed boxes into `LidarCluster::refined` (`LidarObjectsConfig::free_space_refinement`, on by default). The tracks still use the completed boxes.
+
 ## Reproduce
 
 ```bash
@@ -499,6 +538,8 @@ cmake --build build --target gpu_ground_segmentation -j$(nproc)
 ./bin/gpu_ground_segmentation                       # also writes the GIF
 ./bin/gpu_ground_segmentation --check --no-video    # the CTest gate
 python scripts/lidar_objects_summary.py             # the current-performance table (seeds 1-20)
+python scripts/box_freespace_eval.py tune           # free-space weights on the dev scene and seeds 101-110
+python scripts/box_freespace_eval.py test --weights 1,10,3   # the test on fresh seeds 61-80
 python scripts/box_fitting_heldout.py               # held-out scenes, seeds 1-20
 python scripts/train_box_classifier.py              # retrain the class (random scenes and drives, 0.8-2.5 m), then rebuild
 python scripts/box_class_heights_eval.py run --tag A --seeds 41-60   # a class at 0.8 / 1.2 / 1.8 / 2.5 m
@@ -518,7 +559,9 @@ height threshold's, CPU and GPU agree on at least 99.9% of the labels, at least
 the same partition, the L-shape boxes beat the axis-aligned ones in mean heading
 error and mean IoU, the CPU and GPU boxes are identical, and the size prior
 raises the mean IoU and lowers the mean centre error of the L-shape boxes, with
-either the height rule's class or the learned class. CTest runs it as
+either the height rule's class or the learned class, the free-space refinement
+improves the mean IoU and centre error further, and the CPU and GPU refinements
+are identical. CTest runs it as
 `gpu_ground_segmentation_gate` (labels `gpu;pointcloud;ground`).
 
 With `--sequence`, `--check` instead requires:
