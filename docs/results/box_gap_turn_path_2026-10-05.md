@@ -131,6 +131,8 @@ The peak did not survive fresh seeds (1600-1699, 100 per cell), with `oi_face_ro
 
 The development gain was noise on 30 seeds, and on the hard plant the braking hurts. It is not kept.
 
+**Resolved by a model residual:** [box_momentum_residual_2026-10-06.md](box_momentum_residual_2026-10-06.md). The rollouts carry on the last step's unexplained box motion, and on fresh seeds the hard plant goes from 168 to 186 of 200, with the smooth plant unchanged.
+
 The same run reproduces the planner comparison of the main evaluation on new seeds:
 - smooth plant: anchor 71, turnpath 192 of 200;
 - hard plant: anchor 193, turnpath 183 of 200.
