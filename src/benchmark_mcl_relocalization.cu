@@ -33,6 +33,7 @@
 #include <chrono>
 #include <cmath>
 #include <cstdint>
+#include <memory>
 #include <cstdio>
 #include <cstdlib>
 #include <fstream>
@@ -450,6 +451,13 @@ struct Config {
     float reloc_frac = 0.5f;    // share of the particles replaced by relocalization samples
     int reloc_top = 32;
     float inject_prior = 1e-4f; // reloc: prior weight of a relocalization particle against the belief
+    int dual_np = 1000;         // reloc_dual: particles of the candidate set
+    float dual_exclude = 1.0f;  // reloc_dual: candidates keep this far (m) from the belief's estimate
+    int dual_max_age = 30;      // reloc_dual: steps a candidate set may run without winning
+    float dual_drop = 20.0f;    // reloc_dual: drop it this far (nats) below the prior
+    bool dual_swap = true;      // reloc_dual: keep the old belief as the alternative after a switch
+    bool dual_gate = true;      // reloc_dual: switch only while the belief's alpha is below reset_th
+    float dual_drift = 2.0f;    // reloc_dual: nats per step the candidates must win by (CUSUM drift)
     float lr_gate = 1.1f;       // reloc_lr: run the grid check when alpha is below this (1.1: every step)
     float lr_margin = 0.05f;    // reloc_lr: reset when the best grid pose beats the belief by this, per beam
     float aug_slow = 0.001f, aug_fast = 0.1f;
@@ -464,8 +472,9 @@ struct Result {
 
 class Filter {
 public:
-    Filter(const World& w, const Config& cfg, unsigned long long seed) : w_(w), cfg_(cfg), host_rng_(seed) {
-        n_ = cfg.np;
+    Filter(const World& w, const Config& cfg, unsigned long long seed, int n = 0)
+        : w_(w), cfg_(cfg), host_rng_(seed) {
+        n_ = n > 0 ? n : cfg.np;
         CUDA_CHECK(cudaMalloc(&d_x_, n_ * sizeof(float))); CUDA_CHECK(cudaMalloc(&d_y_, n_ * sizeof(float)));
         CUDA_CHECK(cudaMalloc(&d_th_, n_ * sizeof(float))); CUDA_CHECK(cudaMalloc(&d_ll_, n_ * sizeof(float)));
         CUDA_CHECK(cudaMalloc(&d_rng_, n_ * sizeof(curandState)));
@@ -549,6 +558,19 @@ public:
             grid_runs++;
             if (reset) weigh();
         }
+        // this scan's marginal likelihood under the belief: log sum w ll / sum w
+        {
+            double m0 = -1e300, m1 = -1e300, s0 = 0.0, s1 = 0.0;
+            for (int i = 0; i < n_; i++) {
+                m0 = std::max(m0, (double)lw_[i]);
+                m1 = std::max(m1, (double)lw_[i] + ll_[i]);
+            }
+            for (int i = 0; i < n_; i++) {
+                s0 += std::exp(lw_[i] - m0);
+                s1 += std::exp((double)lw_[i] + ll_[i] - m1);
+            }
+            last_logz = (float)((m1 + std::log(s1)) - (m0 + std::log(s0)));
+        }
         for (int i = 0; i < n_; i++) lw_[i] += ll_[i];
         download_weights();
         estimate();
@@ -560,6 +582,50 @@ public:
     float last_alpha = 0;            // mean per-beam likelihood of the last step
     float last_gap = 0;              // reloc_lr: (best grid pose - belief) per beam, coarse field
     int grid_runs = 0;               // relocalization grid searches run
+    float last_logz = 0;             // log marginal likelihood of the last scan under the belief
+    bool has_beams() const { return nbf_ > 0 && nc_ > 0; }
+    // reloc_dual: spread all particles around the best poses of m's grid search
+    // on m's current scan, away from m's estimate: the hypothesis "the robot is
+    // somewhere else".
+    void init_from_grid(Filter& m) {
+        m.grid_search(m.ex, m.ey, cfg_.dual_exclude);
+        m.grid_runs++;
+        const int k = (int)m.top_.size();
+        std::vector<double> p(k);
+        for (int q = 0; q < k; q++) p[q] = std::exp((double)m.cs_[m.top_[q]] - m.cs_[m.top_[0]]);
+        std::discrete_distribution<int> pick(p.begin(), p.end());
+        std::normal_distribution<float> N(0.0f, 1.0f);
+        for (int i = 0; i < n_; i++) {
+            int c = m.top_[pick(host_rng_)];
+            x_[i] = cell_x(w_.cand_cells[c]) + N(host_rng_) * 0.1f;
+            y_[i] = cell_y(w_.cand_cells[c]) + N(host_rng_) * 0.1f;
+            th_[i] = wrap_angle(-PI_F + m.ch_[c] * (2.0f * PI_F / RELOC_HEADINGS) + N(host_rng_) * 0.05f);
+        }
+        std::fill(lw_.begin(), lw_.end(), 0.0f);
+        upload();
+    }
+    // reloc_dual: take over another filter's belief (resampled to this size).
+    struct Snapshot { std::vector<float> x, y, th, lw; float ex, ey, eth; };
+    Snapshot snapshot() const { return Snapshot{x_, y_, th_, lw_, ex, ey, eth}; }
+    void adopt(const Filter& c) { take(c.snapshot()); }
+    void take(const Snapshot& c) {
+        const int cn = (int)c.x.size();
+        double mx = *std::max_element(c.lw.begin(), c.lw.end());
+        std::vector<double> cw(cn);
+        double sum = 0.0;
+        for (int i = 0; i < cn; i++) { cw[i] = std::exp(c.lw[i] - mx); sum += cw[i]; }
+        std::uniform_real_distribution<double> U(0.0, 1.0);
+        double r = U(host_rng_) / n_, acc = cw[0] / sum;
+        int j = 0;
+        for (int i = 0; i < n_; i++) {
+            double u = r + (double)i / n_;
+            while (u > acc && j < cn - 1) acc += cw[++j] / sum;
+            x_[i] = c.x[j]; y_[i] = c.y[j]; th_[i] = c.th[j];
+        }
+        std::fill(lw_.begin(), lw_.end(), 0.0f);
+        upload();
+        ex = c.ex; ey = c.ey; eth = c.eth;
+    }
 
 private:
     void upload() {
@@ -630,11 +696,16 @@ private:
     }
     // Score every candidate pose on the GPU (best heading per position) and keep
     // the best positions.
-    void grid_search() {
+    // With exclude_r > 0, positions within exclude_r of (exclude_x, exclude_y) are left out.
+    void grid_search(float exclude_x = 0.0f, float exclude_y = 0.0f, float exclude_r = -1.0f) {
         reloc_kernel<<<nc_, 128>>>(d_cand_, nc_, d_lfc_, d_br_, d_ba_, nbf_, d_cs_, d_ch_);
         cs_.resize(nc_); ch_.resize(nc_);
         CUDA_CHECK(cudaMemcpy(cs_.data(), d_cs_, nc_ * sizeof(float), cudaMemcpyDeviceToHost));
         CUDA_CHECK(cudaMemcpy(ch_.data(), d_ch_, nc_ * sizeof(int), cudaMemcpyDeviceToHost));
+        if (exclude_r > 0.0f)
+            for (int c = 0; c < nc_; c++)
+                if (std::hypot(cell_x(w_.cand_cells[c]) - exclude_x, cell_y(w_.cand_cells[c]) - exclude_y) < exclude_r)
+                    cs_[c] = -1e30f;
         int m = std::min(cfg_.reloc_top, nc_);
         top_.resize(nc_);
         std::iota(top_.begin(), top_.end(), 0);
@@ -712,8 +783,8 @@ private:
     curandState* d_rng_ = nullptr;
 };
 
-static const char* METHOD_NAMES[] = {"mcl", "aug", "er", "reloc", "reloc_lr"};
-constexpr int N_METHODS = 5;
+static const char* METHOD_NAMES[] = {"mcl", "aug", "er", "reloc", "reloc_lr", "reloc_dual"};
+constexpr int N_METHODS = 6;
 
 static bool g_trace = false;
 
@@ -728,15 +799,53 @@ static Result run_episode(const World& w, const Episode& e, const Config& cfg, c
     int run = 0, loc_after = 0, n_before = 0;
     float err_after_sum = 0.0f;
     float reloc_ms = 0.0f;
+    // reloc_dual: a second particle set around the grid's best poses runs beside the
+    // belief; it replaces the belief once the log odds of "the robot was moved"
+    // (starting at the kidnap prior, plus each scan's log marginal likelihood ratio)
+    // turn positive, and is dropped when it keeps losing.
+    const bool dual = method == 5;
+    std::unique_ptr<Filter> cand;
+    if (dual) cand.reset(new Filter(w, cfg, 7919ull * seed + 101ull * method + 29ull, cfg.dual_np));
+    bool alive = false;
+    float lam = 0.0f, dummy_ms = 0.0f;
+    int age = 0;
     auto t0 = std::chrono::high_resolution_clock::now();
     for (int t = 0; t < e.steps; t++) {
-        bool reset = f.step(method, e.ox[t], e.oy[t], e.oth[t], &e.scan[t * NB], t > 0, reloc_ms);
+        bool reset = f.step(dual ? 0 : method, e.ox[t], e.oy[t], e.oth[t], &e.scan[t * NB], t > 0, reloc_ms);
+        if (dual) {
+            bool switched = false;
+            if (alive) {
+                cand->step(0, e.ox[t], e.oy[t], e.oth[t], &e.scan[t * NB], t > 0, dummy_ms);
+                lam += cand->last_logz - f.last_logz - cfg.dual_drift;
+                age++;
+                // switch only while the belief itself fails to explain the scan
+                if (lam > 0.0f && (!cfg.dual_gate || f.last_alpha < cfg.reset_th)) {
+                    switched = reset = true;
+                    if (cfg.dual_swap) {
+                        // the old belief stays on as the alternative: the switch can be undone
+                        Filter::Snapshot old = f.snapshot();
+                        f.adopt(*cand);
+                        cand->take(old);
+                        lam = std::log(cfg.inject_prior); age = 0;
+                    } else {
+                        f.adopt(*cand); alive = false;
+                    }
+                }
+                else if (age >= cfg.dual_max_age || lam < std::log(cfg.inject_prior) - cfg.dual_drop) alive = false;
+            }
+            if (!alive && !switched && f.last_alpha < cfg.reset_th && f.has_beams()) {
+                auto g0 = std::chrono::high_resolution_clock::now();
+                cand->init_from_grid(f);
+                reloc_ms += std::chrono::duration<float, std::milli>(std::chrono::high_resolution_clock::now() - g0).count();
+                alive = true; lam = std::log(cfg.inject_prior); age = 0;
+            }
+        }
         float pe = std::hypot(f.ex - e.x[t], f.ey - e.y[t]);
         float ae = std::fabs(wrap_angle(f.eth - e.th[t]));
         bool loc = pe < 0.3f && ae < 0.2f;
         if (g_trace && t % 5 == 0)
-            std::printf("  trace %s %s t %d alpha %.3f gap %.3f err %.2f %.2f reset %d\n", cell.c_str(),
-                        METHOD_NAMES[method], t, f.last_alpha, f.last_gap, pe, ae, (int)reset);
+            std::printf("  trace %s %s t %d alpha %.3f gap %.3f err %.2f %.2f reset %d dual %d lam %.1f\n", cell.c_str(),
+                        METHOD_NAMES[method], t, f.last_alpha, f.last_gap, pe, ae, (int)reset, (int)alive, lam);
         if (reset) { r.resets++; if (t < start) r.resets_before++; }
         if (t < start) { r.err_before += pe; r.localized_before += loc; n_before++; continue; }
         if (loc) { loc_after++; err_after_sum += pe; }
@@ -766,7 +875,7 @@ static std::vector<std::string> split(const std::string& s) {
 int main(int argc, char** argv) {
     using namespace cudabot;
     int seed_count = 10, seed_offset = 0, steps = 400, kidnap_step = 100;
-    std::string csv_path, methods_arg = "mcl,aug,er,reloc,reloc_lr", cells_arg = "kidnap,global";
+    std::string csv_path, methods_arg = "mcl,aug,er,reloc,reloc_lr,reloc_dual", cells_arg = "kidnap,global";
     Config cfg;
     Env env;
     for (int i = 1; i < argc; i++) {
@@ -796,6 +905,13 @@ int main(int argc, char** argv) {
         else if (a == "--reloc-frac") cfg.reloc_frac = (float)std::atof(next().c_str());
         else if (a == "--reloc-top") cfg.reloc_top = std::atoi(next().c_str());
         else if (a == "--inject-prior") cfg.inject_prior = (float)std::atof(next().c_str());
+        else if (a == "--dual-exclude") cfg.dual_exclude = (float)std::atof(next().c_str());
+        else if (a == "--dual-swap") cfg.dual_swap = std::atoi(next().c_str()) != 0;
+        else if (a == "--dual-gate") cfg.dual_gate = std::atoi(next().c_str()) != 0;
+        else if (a == "--dual-drift") cfg.dual_drift = (float)std::atof(next().c_str());
+        else if (a == "--dual-np") cfg.dual_np = std::atoi(next().c_str());
+        else if (a == "--dual-max-age") cfg.dual_max_age = std::atoi(next().c_str());
+        else if (a == "--dual-drop") cfg.dual_drop = (float)std::atof(next().c_str());
         else if (a == "--lr-gate") cfg.lr_gate = (float)std::atof(next().c_str());
         else if (a == "--lr-margin") cfg.lr_margin = (float)std::atof(next().c_str());
         else { std::fprintf(stderr, "unknown option %s\n", a.c_str()); return 1; }
