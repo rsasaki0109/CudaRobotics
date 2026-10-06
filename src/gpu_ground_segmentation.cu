@@ -578,12 +578,17 @@ __global__ void voxel_bounds_kernel(const float* pts, const int* items, const in
     for (int c = 0; c < 3; ++c) { vbox[v * 6 + c] = lo[c]; vbox[v * 6 + 3 + c] = hi[c]; }
 }
 
-// one thread = one (voxel, neighbour offset) pair
+// one warp = one (voxel, neighbour offset) pair. Near the sensor a voxel holds
+// hundreds of points, and a pair that turns out not to be connected tests every
+// point pair; the 32 lanes share those tests and stop as soon as one lane finds
+// a pair within CL_EPS. Every decision that ends the warp's work is taken on
+// warp-uniform values (lane 0's union-find check is broadcast), so the warp
+// exits together.
 __global__ void voxel_unite_kernel(const float* pts, const int* items, const int* vstart, const int* vkey,
                                    const float* vbox, int* parent, int n_vox) {
-    int t = blockIdx.x * blockDim.x + threadIdx.x;
-    if (t >= n_vox * N_VOFF) return;
-    int v = t / N_VOFF, o = t - v * N_VOFF;
+    int w = (blockIdx.x * blockDim.x + threadIdx.x) >> 5, lane = threadIdx.x & 31;
+    if (w >= n_vox * N_VOFF) return;   // whole warps
+    int v = w / N_VOFF, o = w - v * N_VOFF;
     int key = vkey[v];
     int x = key % VNX + c_voff[o * 3 + 0], y = (key / VNX) % VNY + c_voff[o * 3 + 1];
     int z = key / (VNX * VNY) + c_voff[o * 3 + 2];
@@ -597,13 +602,23 @@ __global__ void voxel_unite_kernel(const float* pts, const int* items, const int
         gap2 += g * g;
     }
     if (gap2 > CL_EPS * CL_EPS) return;   // bounds too far apart
-    if (uf_find(parent, v) == uf_find(parent, u)) return;   // already connected
-    for (int a = vstart[v]; a < vstart[v + 1]; ++a) {
-        const float* p = &pts[items[a] * 3];
-        for (int b = vstart[u]; b < vstart[u + 1]; ++b) {
-            const float* q = &pts[items[b] * 3];
-            float ex = p[0] - q[0], ey = p[1] - q[1], ez = p[2] - q[2];
-            if (ex * ex + ey * ey + ez * ez <= CL_EPS * CL_EPS) { uf_unite(parent, v, u); return; }
+    int joined = lane == 0 ? uf_find(parent, v) == uf_find(parent, u) : 0;
+    if (__shfl_sync(0xffffffffu, joined, 0)) return;   // already connected
+    int a0 = vstart[v], nb = vstart[u + 1] - vstart[u], b0 = vstart[u];
+    int n_pair = (vstart[v + 1] - a0) * nb;
+    for (int base = 0; base < n_pair; base += 32) {
+        int q = base + lane;
+        bool close = false;
+        if (q < n_pair) {
+            int ia = q / nb, ib = q - ia * nb;
+            const float* p = &pts[items[a0 + ia] * 3];
+            const float* r = &pts[items[b0 + ib] * 3];
+            float ex = p[0] - r[0], ey = p[1] - r[1], ez = p[2] - r[2];
+            close = ex * ex + ey * ey + ez * ez <= CL_EPS * CL_EPS;
+        }
+        if (__any_sync(0xffffffffu, close)) {
+            if (lane == 0) uf_unite(parent, v, u);
+            return;
         }
     }
 }
@@ -707,11 +722,11 @@ __global__ void lshape_key_kernel(const int* label, int* key, int* idx, int n) {
 
 // one warp = one (cluster, heading) pair
 __global__ void lshape_score_kernel(const float* pts, const int* items, const int* rkey, const int* start,
-                                    const int* cnt, const float* cs, float* score, int n_runs) {
+                                    const int* cnt, const float* cs, float* score, int n_runs, int min_n) {
     int w = (blockIdx.x * blockDim.x + threadIdx.x) >> 5, lane = threadIdx.x & 31;
     if (w >= n_runs * N_TH) return;   // whole warps
     int r = w / N_TH, k = w - r * N_TH;
-    if (rkey[r] == 0x7fffffff || cnt[r] < CL_MIN) return;
+    if (rkey[r] == 0x7fffffff || cnt[r] < min_n) return;
     int a0 = start[r], a1 = a0 + cnt[r];
     float c = cs[k * 2], s = cs[k * 2 + 1];
     float lohi[4] = { 1e9f, -1e9f, 1e9f, -1e9f };
@@ -739,10 +754,11 @@ __global__ void lshape_score_kernel(const float* pts, const int* items, const in
 
 // one thread = one cluster: best heading (the first on ties), then its rectangle
 __global__ void lshape_select_kernel(const float* pts, const int* items, const int* rkey, const int* start,
-                                     const int* cnt, const float* cs, const float* score, Obb* obb, int n_runs) {
+                                     const int* cnt, const float* cs, const float* score, Obb* obb, int n_runs,
+                                     int min_n) {
     int r = blockIdx.x * blockDim.x + threadIdx.x;
     if (r >= n_runs) return;
-    if (rkey[r] == 0x7fffffff || cnt[r] < CL_MIN) { obb[r].th = -1; return; }
+    if (rkey[r] == 0x7fffffff || cnt[r] < min_n) { obb[r].th = -1; return; }
     int best = 0;
     for (int k = 1; k < N_TH; ++k) if (score[r * N_TH + k] > score[r * N_TH + best]) best = k;
     obb[r] = lshape_rect(pts, items, start[r], start[r] + cnt[r], cs, best);
@@ -759,6 +775,73 @@ static void heading_table(std::vector<float>& cs) {
         cs[k * 2] = (float)std::cos(th); cs[k * 2 + 1] = (float)std::sin(th);
     }
 }
+
+// GPU L-shape fitting of a batch of point sets (the trackers' refits): the same
+// kernels as for the clusters, one warp per (set, heading), so the boxes are
+// bit-identical to lshape_fit_cpu's.
+struct GpuBoxFitter {
+    float *d_pts = nullptr, *d_score = nullptr, *d_cs = nullptr;
+    int *d_items = nullptr, *d_rkey = nullptr, *d_start = nullptr, *d_cnt = nullptr;
+    Obb* d_obb = nullptr;
+    size_t cap_pts = 0, cap_sets = 0;
+    GpuBoxFitter() {
+        std::vector<float> cs;
+        heading_table(cs);
+        CUDA_CHECK(cudaMalloc(&d_cs, cs.size() * sizeof(float)));
+        CUDA_CHECK(cudaMemcpy(d_cs, cs.data(), cs.size() * sizeof(float), cudaMemcpyHostToDevice));
+    }
+    ~GpuBoxFitter() {
+        cudaFree(d_pts); cudaFree(d_score); cudaFree(d_cs); cudaFree(d_items); cudaFree(d_rkey);
+        cudaFree(d_start); cudaFree(d_cnt); cudaFree(d_obb);
+    }
+    // sets: xyz points per set; returns one box per set, and the GPU time (upload, kernels, download) in ms
+    float run(const std::vector<const std::vector<float>*>& sets, std::vector<Obb>& out) {
+        size_t n_sets = sets.size(), n_pts = 0;
+        out.resize(n_sets);
+        if (!n_sets) return 0.0f;
+        std::vector<int> start(n_sets), cnt(n_sets);
+        for (size_t k = 0; k < n_sets; ++k) { start[k] = (int)n_pts; cnt[k] = (int)(sets[k]->size() / 3); n_pts += cnt[k]; }
+        if (n_pts > cap_pts) {
+            cap_pts = n_pts * 2;
+            cudaFree(d_pts); cudaFree(d_items);
+            CUDA_CHECK(cudaMalloc(&d_pts, cap_pts * 3 * sizeof(float)));
+            CUDA_CHECK(cudaMalloc(&d_items, cap_pts * sizeof(int)));
+            std::vector<int> iota_items(cap_pts);
+            std::iota(iota_items.begin(), iota_items.end(), 0);
+            CUDA_CHECK(cudaMemcpy(d_items, iota_items.data(), cap_pts * sizeof(int), cudaMemcpyHostToDevice));
+        }
+        if (n_sets > cap_sets) {
+            cap_sets = n_sets * 2;
+            cudaFree(d_rkey); cudaFree(d_start); cudaFree(d_cnt); cudaFree(d_score); cudaFree(d_obb);
+            CUDA_CHECK(cudaMalloc(&d_rkey, cap_sets * sizeof(int)));
+            CUDA_CHECK(cudaMemset(d_rkey, 0, cap_sets * sizeof(int)));
+            CUDA_CHECK(cudaMalloc(&d_start, cap_sets * sizeof(int)));
+            CUDA_CHECK(cudaMalloc(&d_cnt, cap_sets * sizeof(int)));
+            CUDA_CHECK(cudaMalloc(&d_score, cap_sets * N_TH * sizeof(float)));
+            CUDA_CHECK(cudaMalloc(&d_obb, cap_sets * sizeof(Obb)));
+        }
+        std::vector<float> flat(n_pts * 3);
+        for (size_t k = 0; k < n_sets; ++k) std::copy(sets[k]->begin(), sets[k]->end(), flat.begin() + start[k] * 3);
+        cudaEvent_t e0, e1;
+        CUDA_CHECK(cudaEventCreate(&e0)); CUDA_CHECK(cudaEventCreate(&e1));
+        CUDA_CHECK(cudaEventRecord(e0));
+        CUDA_CHECK(cudaMemcpy(d_pts, flat.data(), flat.size() * sizeof(float), cudaMemcpyHostToDevice));
+        CUDA_CHECK(cudaMemcpy(d_start, start.data(), n_sets * sizeof(int), cudaMemcpyHostToDevice));
+        CUDA_CHECK(cudaMemcpy(d_cnt, cnt.data(), n_sets * sizeof(int), cudaMemcpyHostToDevice));
+        const int B = 256, n = (int)n_sets;
+        lshape_score_kernel<<<(n * N_TH * 32 + B - 1) / B, B>>>(d_pts, d_items, d_rkey, d_start, d_cnt, d_cs, d_score,
+                                                               n, 1);
+        lshape_select_kernel<<<(n + B - 1) / B, B>>>(d_pts, d_items, d_rkey, d_start, d_cnt, d_cs, d_score, d_obb, n, 1);
+        CUDA_CHECK(cudaMemcpy(out.data(), d_obb, n_sets * sizeof(Obb), cudaMemcpyDeviceToHost));
+        CUDA_CHECK(cudaEventRecord(e1));
+        CUDA_CHECK(cudaEventSynchronize(e1));
+        CUDA_CHECK(cudaGetLastError());
+        float ms = 0.0f;
+        CUDA_CHECK(cudaEventElapsedTime(&ms, e0, e1));
+        CUDA_CHECK(cudaEventDestroy(e0)); CUDA_CHECK(cudaEventDestroy(e1));
+        return ms;
+    }
+};
 
 // GPU L-shape fitting of every cluster of >= CL_MIN points of a device label array.
 struct GpuLShape {
@@ -792,9 +875,9 @@ struct GpuLShape {
                                .first - rkey);
         thrust::exclusive_scan(cnt, cnt + n_runs, thrust::device_ptr<int>(d_start));
         lshape_score_kernel<<<(n_runs * N_TH * 32 + B - 1) / B, B>>>(d_pts, d_idx, d_rkey, d_start, d_cnt, d_cs,
-                                                               d_score, n_runs);
+                                                               d_score, n_runs, CL_MIN);
         lshape_select_kernel<<<(n_runs + B - 1) / B, B>>>(d_pts, d_idx, d_rkey, d_start, d_cnt, d_cs, d_score,
-                                                          d_obb, n_runs);
+                                                          d_obb, n_runs, CL_MIN);
         CUDA_CHECK(cudaEventRecord(e1));
         CUDA_CHECK(cudaEventSynchronize(e1));
         CUDA_CHECK(cudaGetLastError());
@@ -854,7 +937,7 @@ struct GpuVoxelClusterer {
             n_vox = last_excl + last_flag;
         }
         CUDA_CHECK(cudaMemcpy(d_vstart + n_vox, &n_valid, sizeof(int), cudaMemcpyHostToDevice));
-        int Gx = (n_vox + B - 1) / B, Gp = (n_vox * N_VOFF + B - 1) / B;
+        int Gx = (n_vox + B - 1) / B, Gp = (int)(((long long)n_vox * N_VOFF * 32 + B - 1) / B);
         CUDA_CHECK(cudaMemset(d_label, 0xff, N_RAYS * sizeof(int)));   // -1
         if (n_vox > 0) {
             voxel_bounds_kernel<<<Gx, B>>>(d_pts, d_items, d_vstart, d_vbox, n_vox);
@@ -1211,9 +1294,9 @@ static Obb lshape_fit_cpu(const float* pts, const int* items, int n, const std::
     return lshape_rect(pts, items, 0, n, cs.data(), best);
 }
 
-// Add a cluster's points (sensor frame, sensor at (px, py, pz)) and refit.
+// Add a cluster's points (sensor frame, sensor at (px, py, pz)); `fit` gets the points to refit the box to.
 static void track_add(Track& T, const std::vector<float>& pts, const std::vector<int>& items, float px, float py,
-                      float pz, int scan, const std::vector<float>& cs) {
+                      float pz, int scan, std::vector<float>& fit) {
     for (int i : items) {
         float x = pts[i * 3] + px, y = pts[i * 3 + 1] + py, z = pts[i * 3 + 2] + pz;
         long long kx = (long long)std::floor(x / TRK_VOX) + 100000, ky = (long long)std::floor(y / TRK_VOX) + 100000;
@@ -1231,7 +1314,8 @@ static void track_add(Track& T, const std::vector<float>& pts, const std::vector
     std::vector<int> idx;
     for (size_t v = 0; v < T.hits.size(); ++v) if (T.hits[v] >= need) idx.push_back((int)v);
     if ((int)idx.size() < CL_MIN) { idx.resize(T.hits.size()); std::iota(idx.begin(), idx.end(), 0); }
-    T.box = lshape_fit_cpu(T.pts.data(), idx.data(), (int)idx.size(), cs);
+    fit.clear();
+    for (int v : idx) fit.insert(fit.end(), T.pts.begin() + v * 3, T.pts.begin() + v * 3 + 3);
 }
 
 // ---- motion tracking (--moving) ----
@@ -1259,7 +1343,26 @@ struct MotionState {
     std::vector<float> pts, t;   // world x, y, z per point (one per voxel per scan), and its time
     float t_box = 0.0f;
     bool moving = false;         // the hypothesis the last refit chose
+    // the stand-still hypothesis's voxel grid, kept up to date as points arrive (moving the points by a
+    // zero velocity leaves them where they are, so it equals a recount over all points)
+    std::unordered_map<long long, int> svox;
+    std::vector<float> sP;
+    std::vector<int> shits, slast;
 };
+
+static long long trk_voxel_key(float x, float y, float z) {
+    long long kx = (long long)std::floor(x / TRK_VOX) + 100000, ky = (long long)std::floor(y / TRK_VOX) + 100000;
+    long long kz = (long long)std::floor(z / TRK_VOX) + 1000;
+    return (kx * 200000 + ky) * 2000 + kz;
+}
+
+// Add a point (world frame, at scan `scan`) to the stand-still voxel grid.
+static void motion_add_static(MotionState& M, float x, float y, float z, int scan) {
+    auto it = M.svox.emplace(trk_voxel_key(x, y, z), (int)M.shits.size());
+    int v = it.first->second;
+    if (it.second) { M.sP.push_back(x); M.sP.push_back(y); M.sP.push_back(z); M.shits.push_back(0); M.slast.push_back(-1); }
+    if (M.slast[v] != scan) { M.slast[v] = scan; M.shits[v]++; }
+}
 
 static void kf_predict(MotionState& M, double dt) {
     double F[4][4] = { { 1, 0, dt, 0 }, { 0, 1, 0, dt }, { 0, 0, 1, 0 }, { 0, 0, 0, 1 } }, FP[4][4] = {}, Pn[4][4] = {};
@@ -1312,19 +1415,25 @@ static int motion_voxels(const MotionState& M, float t_now, float vx, float vy, 
     return consistent;
 }
 
-// Refit a motion track's box at time t_now: standing still or moving, whichever is more consistent.
-static void motion_refit(Track& T, MotionState& M, float t_now, const std::vector<float>& cs) {
+// The points to refit a motion track's box to at time t_now: standing still or moving, whichever is more
+// consistent.
+static void motion_refit(Track& T, MotionState& M, float t_now, std::vector<float>& fit) {
     int need = std::min(g_trk_hits, T.scans);
     std::vector<float> P0, P1;
     std::vector<int> i0, i1;
-    int n0 = motion_voxels(M, t_now, 0.0f, 0.0f, need, P0, i0);
+    // stand still: the incremental grid
+    for (size_t v = 0; v < M.shits.size(); ++v) if (M.shits[v] >= need) i0.push_back((int)v);
+    int n0 = (int)i0.size();
+    if (n0 < CL_MIN) { i0.resize(M.shits.size()); std::iota(i0.begin(), i0.end(), 0); }
+    P0 = M.sP;
     M.moving = false;
     if (std::hypot(M.x[2], M.x[3]) > MV_STATIC) {
         int n1 = motion_voxels(M, t_now, (float)M.x[2], (float)M.x[3], need, P1, i1);
         M.moving = n1 > n0;
     }
-    T.box = M.moving ? lshape_fit_cpu(P1.data(), i1.data(), (int)i1.size(), cs)
-                     : lshape_fit_cpu(P0.data(), i0.data(), (int)i0.size(), cs);
+    const std::vector<float>& P = M.moving ? P1 : P0;
+    fit.clear();
+    for (int v : (M.moving ? i1 : i0)) fit.insert(fit.end(), P.begin() + v * 3, P.begin() + v * 3 + 3);
     M.t_box = t_now;
 }
 
@@ -1336,6 +1445,8 @@ struct Tracker {
     std::vector<int> track_of = std::vector<int>(N_RAYS, -1), last_track = std::vector<int>(N_BOX, -1);
     int id_switches = 0;
     float t_prev = 0.0f;
+    std::vector<int> fit_track;                 // the tracks to refit after update(), and their points
+    std::vector<std::vector<float>> fit_pts;
 
     // The track's box at time t (motion tracks: moved by the estimated velocity).
     Obb box_at(int k, float t) const {
@@ -1351,6 +1462,7 @@ struct Tracker {
                 const std::vector<int>& ccls, const std::vector<std::vector<int>>& citems, const std::vector<int>& ckeys,
                 const std::vector<Obb>& cobb, const std::vector<float>& pts, const std::vector<float>& cs) {
         std::fill(track_of.begin(), track_of.end(), -1);
+        fit_track.clear(); fit_pts.clear();
         if (motion) for (MotionState& M : ms) kf_predict(M, t - t_prev);
         t_prev = t;
         std::vector<std::tuple<float, int, int>> pairs;   // distance, candidate, track
@@ -1393,6 +1505,8 @@ struct Tracker {
                 kf_update(ms[cand_track[k]], zx, zy);
             }
             Track& T = tracks[cand_track[k]];
+            fit_track.push_back(cand_track[k]);
+            fit_pts.emplace_back();
             if (motion) {
                 MotionState& M = ms[cand_track[k]];
                 std::unordered_set<long long> seen;   // one point per voxel per scan
@@ -1403,15 +1517,46 @@ struct Tracker {
                     long long kz = (long long)std::floor(z / TRK_VOX) + 1000;
                     if (!seen.insert((kx * 200000 + ky) * 2000 + kz).second) continue;
                     M.pts.push_back(x); M.pts.push_back(y); M.pts.push_back(z); M.t.push_back(t);
+                    motion_add_static(M, x, y, z, (int)std::lround(t / SCAN_DT));
                 }
                 T.scans++;
-                motion_refit(T, M, t, cs);
+                motion_refit(T, M, t, fit_pts.back());
             } else {
-                track_add(T, pts, citems[k], px, py, pz, scan, cs);
+                track_add(T, pts, citems[k], px, py, pz, scan, fit_pts.back());
             }
             T.votes[ccls[cand[k]]]++;
             track_of[ckeys[cand[k]]] = cand_track[k];
         }
+    }
+
+    // Refit the boxes of the tracks update() touched: on the GPU in one batch (gpu != nullptr) or on the CPU.
+    // With verify, the CPU fits too and `same` turns false on any difference. Returns the fit time in ms.
+    double fit(GpuBoxFitter* gpu, const std::vector<float>& cs, bool verify, bool& same) {
+        std::vector<Obb> boxes(fit_track.size());
+        double ms = 0.0;
+        if (gpu) {
+            std::vector<const std::vector<float>*> sets;
+            for (const auto& P : fit_pts) sets.push_back(&P);
+            ms = gpu->run(sets, boxes);
+        } else {
+            auto c0 = std::chrono::high_resolution_clock::now();
+            for (size_t j = 0; j < fit_track.size(); ++j) boxes[j] = fit_cpu(j, cs);
+            ms = std::chrono::duration<double, std::milli>(std::chrono::high_resolution_clock::now() - c0).count();
+        }
+        for (size_t j = 0; j < fit_track.size(); ++j) {
+            if (gpu && verify) {
+                Obb c = fit_cpu(j, cs);
+                if (std::memcmp(&c, &boxes[j], sizeof(Obb)) != 0) same = false;
+            }
+            tracks[fit_track[j]].box = boxes[j];
+        }
+        return ms;
+    }
+
+    Obb fit_cpu(size_t j, const std::vector<float>& cs) const {
+        std::vector<int> idx(fit_pts[j].size() / 3);
+        std::iota(idx.begin(), idx.end(), 0);
+        return lshape_fit_cpu(fit_pts[j].data(), idx.data(), (int)idx.size(), cs);
     }
 
     // The majority class of track k counting one more vote for class c.
@@ -1535,7 +1680,7 @@ int main(int argc, char** argv) {
     unsigned int seed = 0;
     const char* obs_csv = nullptr;
     const char* cls_csv = nullptr;
-    bool sequence = false, moving = false;
+    bool sequence = false, moving = false, trk_cpu_fit = false;
     for (int i = 1; i < argc; ++i) {
         if (!std::strcmp(argv[i], "--no-video")) no_video = true;
         else if (!std::strcmp(argv[i], "--check")) check = true;
@@ -1543,6 +1688,7 @@ int main(int argc, char** argv) {
         else if (!std::strcmp(argv[i], "--obs-csv") && i + 1 < argc) obs_csv = argv[++i];
         else if (!std::strcmp(argv[i], "--cls-csv") && i + 1 < argc) cls_csv = argv[++i];
         else if (!std::strcmp(argv[i], "--sequence")) sequence = true;
+        else if (!std::strcmp(argv[i], "--trk-cpu-fit")) trk_cpu_fit = true;
         else if (!std::strcmp(argv[i], "--moving")) moving = sequence = true;
         else if (!std::strcmp(argv[i], "--trk-hits") && i + 1 < argc) g_trk_hits = std::max(1, std::atoi(argv[++i]));
     }
@@ -1630,6 +1776,10 @@ int main(int argc, char** argv) {
     std::vector<float> h_cs;
     heading_table(h_cs);
     double ls_gpu_ms = 0.0, ls_cpu_ms = 0.0;
+    // per-scan stage times of the pipeline (--sequence): 0 segmentation (GPU), 1 voxel clustering (GPU),
+    // 2 L-shape (GPU), 3 classification + cluster lists (host), 4 static tracker, 5 motion tracker (host)
+    // 6 static tracker's box fits, 7 motion tracker's box fits (GPU unless --trk-cpu-fit)
+    std::vector<std::array<double, 8>> stage_ms;
     long ls_fits = 0;
     bool ls_same = true;
     BoxScore bsum[3] = {};   // all observations, one face visible, two faces visible
@@ -1646,6 +1796,8 @@ int main(int argc, char** argv) {
     std::vector<cv::Mat> frames;
     std::vector<Obb> fits, done, trk_draw;
     Tracker trk[2];   // static, motion
+    GpuBoxFitter box_fitter;
+    bool trk_fit_same = true;
     trk[1].motion = true;
     BoxScore bmov = {}, bpark = {};   // vehicle observations: moving traffic, parked cars and the van
     double verr_sum[2][2] = {};       // [tracker][moving]
@@ -1702,6 +1854,7 @@ int main(int argc, char** argv) {
             ++valid; agree += lab[i] == clab[i];
         }
         cpu_ms_total += cpu_ms; gpu_ms_total += gpu_ms;
+        double vms_scan = 0.0;
         all_gt.insert(all_gt.end(), gt.begin(), gt.end());
         all_gpu.insert(all_gpu.end(), lab.begin(), lab.end());
         all_cpu.insert(all_cpu.end(), clab.begin(), clab.end());
@@ -1736,6 +1889,7 @@ int main(int argc, char** argv) {
                 float vms = 1e30f;
                 for (int rep = 0; rep < 5; ++rep) vms = std::min(vms, vclusterer.run(d_pts, active, vlab, n_vox));
                 vcl_gpu_ms += vms;
+                vms_scan = vms;
                 vox_total += n_vox;
                 if (vlab != clab_obj) vcl_same = false;
 
@@ -1784,6 +1938,7 @@ int main(int argc, char** argv) {
                 }
                 for (Tracker& T : trk) std::fill(T.track_of.begin(), T.track_of.end(), -1);
                 if (sequence) {
+                    auto h0 = std::chrono::high_resolution_clock::now();
                     const float px = poses[s][0], py = poses[s][1], pz = ground_h(px, py) + SENSOR_H;
                     std::vector<int> cand, ccls(ckeys.size(), -1), slot(N_RAYS, -1);
                     for (size_t r = 0; r < ckeys.size(); ++r) {
@@ -1793,7 +1948,16 @@ int main(int argc, char** argv) {
                     std::vector<std::vector<int>> citems(cand.size());
                     for (int i = 0; i < N_RAYS; ++i)
                         if (clab_obj[i] >= 0 && slot[clab_obj[i]] >= 0) citems[slot[clab_obj[i]]].push_back(i);
-                    for (Tracker& T : trk) T.update(t_scan, px, py, pz, s, cand, ccls, citems, ckeys, cobb, pts, h_cs);
+                    auto h1 = std::chrono::high_resolution_clock::now();
+                    double tk_ms[2], fit_ms[2];
+                    for (int k = 0; k < 2; ++k) {
+                        auto u0 = std::chrono::high_resolution_clock::now();
+                        trk[k].update(t_scan, px, py, pz, s, cand, ccls, citems, ckeys, cobb, pts, h_cs);
+                        tk_ms[k] = std::chrono::duration<double, std::milli>(std::chrono::high_resolution_clock::now() - u0).count();
+                        fit_ms[k] = trk[k].fit(trk_cpu_fit ? nullptr : &box_fitter, h_cs, check, trk_fit_same);
+                    }
+                    stage_ms.push_back({ { gpu_ms, vms_scan, lms, std::chrono::duration<double, std::milli>(h1 - h0).count(),
+                                           tk_ms[0], tk_ms[1], fit_ms[0], fit_ms[1] } });
                     const Tracker& D = trk[moving ? 1 : 0];   // drawn
                     for (size_t k = 0; k < D.tracks.size(); ++k) {
                         if (std::find(D.track_of.begin(), D.track_of.end(), (int)k) == D.track_of.end()) continue;
@@ -1983,6 +2147,27 @@ int main(int argc, char** argv) {
                 cl_cpu_ms / N_SCAN, cl_gpu_ms / N_SCAN, vcl_gpu_ms / N_SCAN, vox_total / N_SCAN,
                 cl_same ? "yes" : "no", vcl_same ? "yes" : "no");
     std::printf("\n--- oriented boxes of the clusters (L-shape fitting, %d headings, closeness criterion) ---\n", N_TH);
+    if (!stage_ms.empty()) {
+        const char* sname[8] = { "segmentation (GPU)", "voxel clustering (GPU)", "L-shape (GPU)",
+                                 "classification (host)", "static tracker (host)", "motion tracker (host)",
+                                 trk_cpu_fit ? "static box fits (CPU)" : "static box fits (GPU)",
+                                 trk_cpu_fit ? "motion box fits (CPU)" : "motion box fits (GPU)" };
+        std::printf("\n--- pipeline time per scan (%zu scans): mean / max ---\n", stage_ms.size());
+        double tot_mean = 0.0, tot_max = 0.0;
+        for (int k = 0; k < 8; ++k) {
+            double m = 0.0, mx = 0.0;
+            for (const auto& a : stage_ms) { m += a[k]; mx = std::max(mx, a[k]); }
+            m /= stage_ms.size();
+            std::printf("%-24s %8.3f / %8.3f ms\n", sname[k], m, mx);
+        }
+        for (const auto& a : stage_ms) {   // the pipeline runs one tracker: the motion tracker
+            double t = a[0] + a[1] + a[2] + a[3] + a[5] + a[7];
+            tot_mean += t; tot_max = std::max(tot_max, t);
+        }
+        std::printf("%-24s %8.3f / %8.3f ms (segmentation .. motion tracker and its fits)\n", "pipeline",
+                    tot_mean / stage_ms.size(), tot_max);
+        if (check) std::printf("tracker boxes, GPU vs CPU fits identical: %s\n", trk_fit_same ? "yes" : "no");
+    }
     std::printf("fits per scan %ld; CPU %.2f ms, GPU %.3f ms per scan; CPU and GPU boxes identical: %s\n",
                 ls_fits / N_SCAN, ls_cpu_ms / N_SCAN, ls_gpu_ms / N_SCAN, ls_same ? "yes" : "no");
     auto box_line = [&](const char* name, const BoxScore& S) {
@@ -2034,7 +2219,7 @@ int main(int argc, char** argv) {
         double hyb = (bmov.iou[11] + bpark.iou[11]) / all_n, one = (bmov.iou[6] + bpark.iou[6]) / all_n;
         double mot = (bmov.iou[10] + bpark.iou[10]) / all_n;
         mot_better = mot_better && hyb > one && hyb > mot;
-        ok = sg.f1 >= 0.95 && agree_pct >= 99.9 && cl_same && vcl_same && ls_same && mot_better;
+        ok = sg.f1 >= 0.95 && agree_pct >= 99.9 && cl_same && vcl_same && ls_same && trk_fit_same && mot_better;
         if (check) {
             std::printf("check: %s (model F1 >= 0.95, CPU/GPU agreement >= 99.9%%, identical CPU/GPU partition and "
                         "boxes; the motion tracker's boxes with the size prior beat the static tracker's on the moving "
@@ -2048,7 +2233,7 @@ int main(int argc, char** argv) {
     if (sequence) {
         bool trk_better = bsum[0].iou[7] > bsum[0].iou[0] && bsum[0].iou[8] > bsum[0].iou[6] &&
                           bsum[0].centre[8] < bsum[0].centre[6];
-        ok = sg.f1 >= 0.95 && agree_pct >= 99.9 && cl_same && vcl_same && ls_same && trk_better;
+        ok = sg.f1 >= 0.95 && agree_pct >= 99.9 && cl_same && vcl_same && ls_same && trk_fit_same && trk_better;
         if (check) {
             std::printf("check: %s (model F1 >= 0.95, CPU/GPU agreement >= 99.9%%, identical CPU/GPU partition and "
                         "boxes, tracked boxes beat single-scan ones in IoU, and with the size prior in IoU and "
