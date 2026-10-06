@@ -427,7 +427,8 @@ static void rotz_left(float a, const float* R, float* out) {
 
 int main(int argc, char** argv) {
     using namespace cudabot;
-    std::string seq_path, csv_path;
+    std::string seq_path, csv_path, map_seq_path;
+    int map_seq_stride = 2;
     int map_stride = 10, tests = 40, yaws = 16, grid = 3, cpu_tests = 5, refine = 4;
     float prior_err = 2.0f, grid_step = 2.0f, scan_voxel = 1.0f, map_res = 2.0f;
     unsigned seed = 1;
@@ -436,6 +437,8 @@ int main(int argc, char** argv) {
         auto next = [&]() { return std::string(i + 1 < argc ? argv[++i] : ""); };
         if (a == "--sequence") seq_path = next();
         else if (a == "--csv") csv_path = next();
+        else if (a == "--map-sequence") map_seq_path = next();
+        else if (a == "--map-sequence-stride") map_seq_stride = std::atoi(next().c_str());
         else if (a == "--map-stride") map_stride = std::atoi(next().c_str());
         else if (a == "--tests") tests = std::atoi(next().c_str());
         else if (a == "--yaws") yaws = std::atoi(next().c_str());
@@ -456,10 +459,21 @@ int main(int argc, char** argv) {
     auto ms = [](clk::time_point a) { return std::chrono::duration<double, std::milli>(clk::now() - a).count(); };
 
     auto t0 = clk::now();
-    NdtMap map = build_map(frames, origin, map_stride, map_res);
+    // the map: every map_stride-th test-sequence scan, or (--map-sequence) another session's
+    // scans at their ground-truth poses in the same world frame
+    std::vector<Frame> map_frames;
+    if (!map_seq_path.empty() && (!load_sequence(map_seq_path, map_frames) || map_frames.empty())) {
+        std::fprintf(stderr, "cannot read %s\n", map_seq_path.c_str());
+        return 1;
+    }
+    const bool other = !map_frames.empty();
+    const int mstride = other ? map_seq_stride : map_stride;
+    NdtMap map = build_map(other ? map_frames : frames, origin, mstride, map_res);
+    map_frames.clear(); map_frames.shrink_to_fit();
     size_t nvalid = std::count(map.valid.begin(), map.valid.end(), 1);
-    std::printf("map: %zu scans, %d x %d x %d cells at %.1f m, %zu valid, built in %.0f ms\n",
-                (frames.size() + map_stride - 1) / map_stride, map.nx, map.ny, map.nz, map.res, nvalid, ms(t0));
+    std::printf("map (%s): stride %d, %d x %d x %d cells at %.1f m, %zu valid, built in %.0f ms\n",
+                other ? map_seq_path.c_str() : "this sequence", mstride, map.nx, map.ny, map.nz, map.res, nvalid,
+                ms(t0));
     MapView hm{map.res, map.ox, map.oy, map.oz, map.d1, map.d2, map.nx, map.ny, map.nz,
                map.valid.data(), map.mean.data(), map.icov.data()};
     uint8_t* d_valid; float *d_mean, *d_icov;
