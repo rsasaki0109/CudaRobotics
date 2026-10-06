@@ -1,15 +1,48 @@
-# GPU LiDAR Ground Segmentation
+# GPU LiDAR Ground Segmentation and Object Pipeline
 
-`gpu_ground_segmentation` separates ground from non-ground points in a LiDAR
-scan on the GPU. It is the first step of most LiDAR pipelines (obstacle
-extraction, clustering, mapping) and complements the repo's KISS-ICP, voxel
-mapping and DBSCAN demos.
+`gpu_ground_segmentation` runs a LiDAR object pipeline on the GPU, on synthetic scans with exact ground truth. The pipeline:
+1. separates ground from non-ground points;
+2. clusters the rest into objects;
+3. fits an oriented box to each cluster, classes it (car, van or other) and completes it with a size prior;
+4. tracks the vehicles across scans, parked or moving.
+
+The production path is also a library, `CudaRobotics::lidar_objects_gpu` (see [Library](#library)). It complements the repo's KISS-ICP, voxel mapping and DBSCAN demos.
+
+## Current performance
+
+Measured with the current build and class on held-out scenes and drives (seeds 1-20), by `scripts/lidar_objects_summary.py` ([results/lidar_objects_summary_2026-10-06.md](results/lidar_objects_summary_2026-10-06.md)). The sensor is 1.8 m above the ground unless a height is given. Boxes are the vehicles', completed with the size prior.
+
+| Stage | measure | value |
+|---|---|---:|
+| ground segmentation | F1 (a plain height threshold: 0.835) | **0.983** |
+| clustering | objects found as one cluster | **97%** (2242 / 2309) |
+| boxes, single scan | BEV IoU: axis-aligned / L-shape / + size prior | 0.402 / 0.500 / **0.728** |
+| boxes, tracked along a drive | BEV IoU | **0.763** |
+| boxes, moving traffic | BEV IoU: single scan / motion tracker / hybrid | 0.754 / 0.761 / **0.781** |
+| motion tracker | velocity error, moving / parked vehicles | 0.63 / 0.63 m/s |
+| motion tracker | identity switches over 20 drives | 30 |
+| time per scan (`--moving`) | mean / max over a drive's scans | 9.5 / 18.8 ms (this run, shared GPU) |
+
+| Sensor height | cars classed car | vans classed van | others classed car or van | box IoU with the prior |
+|---:|---:|---:|---:|---:|
+| 0.8 m | 367 / 407 | 34 / 80 | 140 / 2330 | 0.581 |
+| 1.2 m | 428 / 450 | 71 / 107 | 89 / 2894 | 0.637 |
+| 1.8 m | 454 / 472 | 122 / 148 | 46 / 4469 | 0.728 |
+| 2.5 m | 470 / 476 | 154 / 160 | 24 / 6171 | 0.789 |
+
+**Reading the rest of this page.** The sections below follow the development in order, each with the numbers measured at the time:
+- every result on held-out seeds, with the negative results kept;
+- the boxes and trackers before "Sensor height and the class" were measured with the first class, which the class in use has since replaced.
+
+The table above is the current state.
+
+## Ground segmentation
 
 A single height threshold fails as soon as the ground is not flat: a ramp rises
 above it and a curb splits it. The demo implements a concentric-zone ground model
 in the spirit of Patchwork.
 
-## Method
+### Method
 
 1. **Bin.** Each point gets a polar bin (24 rings with geometrically growing width, from 2 m to 60 m, × 72 sectors). Points are stably sorted by bin: thrust on the GPU, `std::stable_sort` on the CPU, giving the same order.
 2. **Fit, one warp per bin.**
@@ -24,7 +57,7 @@ The check and the labelling are `__host__ __device__` routines shared with the
 CPU reference. The fit is the same algorithm, with the GPU's sums taken
 lane-strided.
 
-## Scene
+### Scene
 
 A synthetic 64 × 1024 LiDAR (-24.8° to +2° elevation, 1.8 m mounting height, 2 cm range noise), ray-cast per beam with exact ground-truth labels.
 
@@ -32,7 +65,7 @@ A synthetic 64 × 1024 LiDAR (-24.8° to +2° elevation, 1.8 m mounting height, 
 - **Objects:** cars (one on the ramp), a van, a wall, a crate, a bench, poles and pedestrians. The boxes stand at headings from -15° to 35°, so that the box fitting below has headings to find.
 - **Scans:** eight scans from sensor poses on the flat part, on the ramp and on the sidewalk side.
 
-## Results (8 scans, 482643 returns)
+### Results (8 scans, 482643 returns)
 
 | Method | precision | recall | F1 |
 |---|---:|---:|---:|
@@ -465,6 +498,7 @@ cmake -S . -B build
 cmake --build build --target gpu_ground_segmentation -j$(nproc)
 ./bin/gpu_ground_segmentation                       # also writes the GIF
 ./bin/gpu_ground_segmentation --check --no-video    # the CTest gate
+python scripts/lidar_objects_summary.py             # the current-performance table (seeds 1-20)
 python scripts/box_fitting_heldout.py               # held-out scenes, seeds 1-20
 python scripts/train_box_classifier.py              # retrain the class (random scenes and drives, 0.8-2.5 m), then rebuild
 python scripts/box_class_heights_eval.py run --tag A --seeds 41-60   # a class at 0.8 / 1.2 / 1.8 / 2.5 m
