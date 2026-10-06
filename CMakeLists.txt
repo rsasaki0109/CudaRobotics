@@ -284,6 +284,7 @@ cudabot_demo(lqr_full src/lqr_speed_steer_control.cpp OPENCV)
 
 cudabot_demo(benchmark_pf src/benchmark_pf.cu RELAXED_CONSTEXPR)
 cudabot_demo(benchmark_mcl_relocalization src/benchmark_mcl_relocalization.cu RELAXED_CONSTEXPR)
+cudabot_demo(benchmark_ndt_localization src/benchmark_ndt_localization.cu RELAXED_CONSTEXPR)
 
 cudabot_demo(benchmark_rrt src/benchmark_rrt.cu)
 
