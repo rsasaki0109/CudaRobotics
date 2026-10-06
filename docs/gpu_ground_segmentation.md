@@ -212,6 +212,8 @@ The L-shape fitting and the size prior were designed on the scene above.
 
 ## Learned class
 
+> This section describes the first learned class, trained at 1.8 m on random scenes. The class in use replaced it: it is trained on drives too and across sensor heights (see "Sensor height and the class"). The numbers in this section and in the tracking sections below were measured with the first class.
+
 A small classifier replaces the height rule. It takes six features of a cluster's L-shape box:
 - the long side, the short side and the visible height;
 - log(point count) and the range;
@@ -387,10 +389,9 @@ cudarobotics::LidarObjectsResult r = pipe.process(xyz, n, sensor_x, sensor_y, se
 - **Sensor settings** (`LidarObjectsConfig`):
   - `sensor_height` (1.8 m): the ground model starts from flat ground this far below the sensor.
   - `upper_beam_deg` (+2°): the class's top-margin feature.
-  - `height_aware_class` (off): the class trained across sensor heights, for sensors well away from 1.8 m (next section).
 
   With the defaults, the demo's outputs are byte-identical to before.
-- **Tested setups.** `tests/lidar_objects_gpu_smoke.cu` drives a sensor past a car at 1.8 m / 0°, 2.2 m / 30°, 1.5 m / −60° and 0.8 m / 45°; at 2.2 m and 0.8 m with the height-aware class. In every case the ground, the car's cluster, its heading in the sensor's frame and its track come out right. How well the class does at each height is measured on held-out scenes, in the next section.
+- **Tested setups.** `tests/lidar_objects_gpu_smoke.cu` drives a sensor past a car at 1.8 m / 0°, 2.2 m / 30°, 1.5 m / −60° and 0.8 m / 45°. In every case the ground, the car's cluster, its heading in the sensor's frame and its track come out right. How well the class does at each height is measured on held-out scenes, in the next section.
 - **The height setting matters.** The same 0.8 m scans with the default 1.8 m label 98.2% of the ground instead of 99.96%, and the test checks this.
 - **Code layout.** The algorithms live in `include/cudarobotics/lidar_objects_core.cuh`. It is header-only with internal linkage, so the library and this demo share it.
 - **Checks.**
@@ -402,9 +403,9 @@ cudarobotics::LidarObjectsResult r = pipe.process(xyz, n, sensor_x, sensor_y, se
 
 ## Sensor height and the class
 
-The default class was trained on scans from 1.8 m. From lower sensors it fails: the roof of a car reaches the upper beam, as a van's does from 1.8 m. `--sensor-height H` scans from other heights, and `scripts/box_class_heights_eval.py` measures the class on held-out scenes (seeds 1-20) at 0.8, 1.2, 1.8 and 2.5 m.
+The first class was trained on scans from 1.8 m. From lower sensors it fails: the roof of a car reaches the upper beam, as a van's does from 1.8 m. `--sensor-height H` scans from other heights, and `scripts/box_class_heights_eval.py` measures the class on held-out scenes (seeds 1-20) at 0.8, 1.2, 1.8 and 2.5 m.
 
-A second class, the **height-aware** one, adds the sensor's height as a seventh feature (`include/lidar_box_classifier_heights.h`). It was trained on the same training seeds 101-200, with each scene's height drawn from 0.8-2.5 m. Full report: [results/box_class_heights_2026-10-06.md](results/box_class_heights_2026-10-06.md).
+A second class, the **height-aware** one, adds the sensor's height as a seventh feature. It was trained on the same training seeds 101-200, with each scene's height drawn from 0.8-2.5 m (`train_box_classifier.py --drive-seeds ""` rebuilds it). Full report: [results/box_class_heights_2026-10-06.md](results/box_class_heights_2026-10-06.md).
 
 | Height | cars classed car | vans classed van | others classed car or van | box IoU with the prior |
 |---:|---:|---:|---:|---:|
@@ -413,11 +414,11 @@ A second class, the **height-aware** one, adds the sensor's height as a seventh 
 | 1.8 m | 446 → 450 / 472 | 134 → 126 / 148 | 25 → 28 / 4469 | 0.720 → 0.715 (8 / 8) |
 | 2.5 m | 470 → 458 / 476 | 96 → **150** / 160 | 29 → 17 / 6171 | 0.774 → 0.776 (10 / 10) |
 
-Each cell is default → height-aware.
+Each cell is first class → height-aware.
 
 **At 1.8 m it loses on the drives,** although per cluster it looks the same. Rerunning the evaluations above with the height-aware class (`results/*_v2_2026-10-06.md`) gives, on the held-out seeds:
 
-| At 1.8 m, boxes with the prior | default | height-aware | seeds better / worse |
+| At 1.8 m, boxes with the prior | first class | height-aware | seeds better / worse |
 |---|---:|---:|---:|
 | single scan, held-out scenes | 0.585 | 0.581 | 7 / 9 |
 | tracked along a drive | **0.757** | 0.739 | 2 / 18 (p = 0.0004) |
@@ -426,8 +427,36 @@ Each cell is default → height-aware.
 
 - **Why the drives differ.** The scenes the class is measured and trained on have no lane traffic seen only from its rear. On the drives, the height-aware class calls more of those scans vans or nothing.
 - **More data did not fix it.** Training on 200 scenes (seeds 101-300) made it worse on the drives: the motion tracker fell from 0.725 to 0.684, and the single-scan boxes on the drives from 0.711 to 0.676, both lower in 20 of 20 seeds.
-- **So the default stays.** The height-aware class is opt-in: `LidarObjectsConfig::height_aware_class`, or `--height-aware-class` in the demo. Use it for sensors well away from 1.8 m.
+- **So the height-aware class did not become the default.** For a while it was opt-in (`height_aware_class`).
 - **Lesson.** A class that matches per cluster can still change what the trackers downstream do. The per-cluster report alone would have passed it.
+
+### Training on drives too: the class in use
+
+The diagnosis points at the training data, so the class in use is trained on drives too.
+- **Training data.** The same random scenes (seeds 101-200) plus the `--moving` drives of seeds 101-200. Every scene's sensor height is drawn from 0.8-2.5 m. That gives 146482 clusters.
+- **Features.** The same seven as the height-aware class.
+- **Test.** It was tested on **fresh seeds 41-60**, which no earlier step ran. The criteria were fixed in `scripts/box_class_drives_eval.py` before the run:
+  - on the 1.8 m drives, every box metric drops by at most 0.005 IoU against the first class, with no significant per-seed loss;
+  - at 0.8 and 1.2 m, it stays within 0.01 IoU of the height-aware class.
+
+| 1.8 m drives (seeds 41-60), boxes with the prior | first class | class in use | seeds better / worse |
+|---|---:|---:|---:|
+| tracked along a drive | 0.754 | **0.764** | 13 / 7 |
+| motion tracker, moving traffic | 0.729 | **0.757** | 15 / 5 (p = 0.04) |
+| single scan, moving traffic | 0.720 | **0.759** | 19 / 1 |
+| hybrid, moving traffic | 0.741 | **0.779** | 18 / 2 |
+
+| Random scenes (seeds 41-60) | cars classed car (first → in use) | box IoU with the prior (first → height-aware → in use) |
+|---:|---:|---:|
+| 0.8 m | 57 → **362** / 409 | 0.477 → 0.568 → 0.566 |
+| 1.2 m | 204 → **418** / 449 | 0.533 → 0.594 → 0.602 |
+| 1.8 m | 452 → 453 / 472 | 0.708 → 0.704 → 0.719 |
+| 2.5 m | 469 → 472 / 477 (vans 89 → 153 / 160) | 0.762 → 0.782 → 0.787 |
+
+- **Both criteria hold.** On the drives it does not just hold the line: every box metric improves, with the single-scan and hybrid boxes better in 19 and 18 of 20 seeds.
+- **Cost.** At 1.8 m on the random scenes, 54 instead of 29 of 4424 other clusters are classed as vehicles.
+- **One class for every height.** It replaces both earlier classes, and the `height_aware_class` option is gone.
+- **Reports:** [results/box_class_drives_2026-10-06.md](results/box_class_drives_2026-10-06.md), [results/box_class_heights_drivedata_2026-10-06.md](results/box_class_heights_drivedata_2026-10-06.md).
 
 ## Reproduce
 
@@ -437,12 +466,10 @@ cmake --build build --target gpu_ground_segmentation -j$(nproc)
 ./bin/gpu_ground_segmentation                       # also writes the GIF
 ./bin/gpu_ground_segmentation --check --no-video    # the CTest gate
 python scripts/box_fitting_heldout.py               # held-out scenes, seeds 1-20
-python scripts/train_box_classifier.py              # retrain the default class (seeds 101-200, 1.8 m), then rebuild
-python scripts/train_box_classifier.py --features 7 --heights 0.8-2.5 \
-    --header include/lidar_box_classifier_heights.h --namespace lidar_box_classifier_heights   # the height-aware class
-python scripts/box_class_heights_eval.py run --tag default        # the class at 0.8 / 1.2 / 1.8 / 2.5 m
-python scripts/box_class_heights_eval.py run --tag heights --flags=--height-aware-class
-python scripts/box_class_heights_eval.py report --base default --new heights
+python scripts/train_box_classifier.py              # retrain the class (random scenes and drives, 0.8-2.5 m), then rebuild
+python scripts/box_class_heights_eval.py run --tag A --seeds 41-60   # a class at 0.8 / 1.2 / 1.8 / 2.5 m
+python scripts/box_class_drives_eval.py run --tag A                  # a class on the 1.8 m drives (seeds 41-60)
+# ... rebuild with another class, run with --tag B, then: report --base A --new B (both scripts)
 python scripts/train_box_classifier.py --eval-seeds 1-20   # its confusion on the held-out scenes
 ./bin/gpu_ground_segmentation --sequence            # tracking along a drive; writes the tracking GIF
 python scripts/box_tracking_eval.py                 # tracking, dev and held-out drives, K = 1, 3, 5

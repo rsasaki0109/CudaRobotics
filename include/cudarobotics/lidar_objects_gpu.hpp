@@ -20,15 +20,12 @@ struct LidarObjectsConfig {
     std::size_t max_points = 131072;   // per scan
     int track_min_scans = 3;           // a tracked voxel counts once seen in this many scans
     // The sensor: its height above the ground (the ground model starts from flat
-    // ground this far below it) and its upper beam's elevation (a feature of the
-    // class: an object as tall as the beam reaches may be cut off). The class was
-    // trained on a 64-beam scan at 1.8 m with the upper beam at +2 degrees.
+    // ground this far below it; a feature of the class) and its upper beam's
+    // elevation (a feature of the class: an object as tall as the beam reaches may
+    // be cut off). The class was trained on 64-beam scans from 0.8-2.5 m with the
+    // upper beam at +2 degrees.
     float sensor_height = 1.8f;        // m
     float upper_beam_deg = 2.0f;       // degrees
-    // The class trained on scans from 0.8-2.5 m, which also reads the sensor's
-    // height, instead of the one trained at 1.8 m. Use it for sensors well away
-    // from 1.8 m; at 1.8 m the default does better on the drives.
-    bool height_aware_class = false;
 };
 
 enum class LidarObjectClass : int { None = -1, Car = 0, Van = 1 };

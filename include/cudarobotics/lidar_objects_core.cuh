@@ -45,7 +45,6 @@
 
 #include "cuda_check.cuh"
 #include "lidar_box_classifier.h"
-#include "lidar_box_classifier_heights.h"
 
 namespace cudabot {
 
@@ -771,8 +770,8 @@ static const char* FEAT_NAME[N_FEAT] = { "long", "short", "height", "log_n", "ra
                                          "sensor_height" };
 
 // vert_max: the scan's upper beam angle (radians); sensor_h: the sensor's height above the ground. The
-// last feature (used by the height-aware class only) lets the class read the others for the sensor's
-// height: from a low sensor a car's roof reaches the upper beam as a van's does from a high one.
+// last feature lets the class read the others for the sensor's height: from a low sensor a car's roof
+// reaches the upper beam as a van's does from a high one.
 static void box_features(const Obb& B, float* f, float vert_max = VERT_MAX, float sensor_h = SENSOR_H) {
     f[0] = std::max(B.len, B.wid);
     f[1] = std::min(B.len, B.wid);
@@ -803,18 +802,13 @@ static int mlp_argmax(const float* feat, const float (&mean)[NI], const float (&
     return arg;
 }
 
-// The class: by default the MLP trained on scans from 1.8 m (the first six
-// features); with height_aware the MLP trained on scans from 0.8-2.5 m, which
-// also reads the sensor's height. The default is better at 1.8 m on the drives,
-// the height-aware one far from it (docs/gpu_ground_segmentation.md).
-static int classify_box_mlp(const Obb& B, float vert_max = VERT_MAX, float sensor_h = SENSOR_H,
-                            bool height_aware = false) {
+// The class: the MLP of lidar_box_classifier.h, trained on random scenes and on
+// drives, from sensors 0.8-2.5 m above the ground (docs/gpu_ground_segmentation.md).
+static int classify_box_mlp(const Obb& B, float vert_max = VERT_MAX, float sensor_h = SENSOR_H) {
     namespace M = lidar_box_classifier;
-    namespace H = lidar_box_classifier_heights;
     float f[N_FEAT];
     box_features(B, f, vert_max, sensor_h);
-    int arg = height_aware ? mlp_argmax(f, H::MEAN, H::STD, H::W1, H::B1, H::W2, H::B2)
-                           : mlp_argmax(f, M::MEAN, M::STD, M::W1, M::B1, M::W2, M::B2);
+    int arg = mlp_argmax(f, M::MEAN, M::STD, M::W1, M::B1, M::W2, M::B2);
     return arg < N_CLS ? arg : -1;   // classes: car, van, none
 }
 
