@@ -516,6 +516,13 @@ planning the turn into a heading-aware object path (`oi_face_rot_turnpath_mppi`)
 takes the two gap cells from 69 to 194 of 200 on the smooth plant, while on the
 hard plant the box pivots on the wall corner by itself and the earlier planner
 stays ahead (191 vs 179 of 200).
+The hard plant's failures were momentum the smooth rollout model lacks. Carrying
+the last step's model residual (observed minus smooth-predicted box motion) into
+the rollouts with decay (`oi_face_rot_turnpath_resid_mppi`,
+[`results/box_momentum_residual_2026-10-06.md`](results/box_momentum_residual_2026-10-06.md))
+raises the hard plant from 168 to 186 of 200 on fresh seeds (p = 0.005) and is
+bit-identical on the smooth plant; swapping in the hard-contact model instead
+collapses the smooth plant.
 
 | Scenario | Planner | Success | Steps | Final Dist | Cost | Avg ms |
 |---|---|---:|---:|---:|---:|---:|

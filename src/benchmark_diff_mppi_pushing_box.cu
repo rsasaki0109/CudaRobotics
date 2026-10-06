@@ -134,6 +134,14 @@ struct Variant {
                                         // its reference pose, aim the first push from the actual
                                         // box instead (<0: never)
     float oi_path_margin = 0.05f;       // wall clearance used by plan_object_path
+    int oi_dyn = 0;                     // object-informed rollout model: 0 smooth (quasi-static),
+                                        // 1 hard contact (momentum, friction) from rest,
+                                        // 2 hard contact from the box velocity estimated
+                                        //   from the last two observed poses
+                                        // 3 smooth plus the residual: the box motion the smooth
+                                        //   model missed last step, carried on with decay
+    float oi_res_decay = 0.85f;         // oi_dyn = 3: per-step decay of the residual velocity
+    int oi_res_parts = 3;               // oi_dyn = 3: residual parts carried, 1 translation, 2 rotation
 };
 
 struct EpisodeMetrics {
@@ -445,6 +453,31 @@ __host__ __device__ inline void push_step_box_hard_f(
         float dl = fmaxf(0.0f, 1.0f - hp.damp_lin * h);
         float da = fmaxf(0.0f, 1.0f - hp.damp_ang * h);
         vx *= dl; vy *= dl; w *= da;
+    }
+}
+
+// One control step of the hard-contact plant with the rigid rectangle walls of p
+// (push the box out and drop its velocity into the wall; between two walls a pose
+// that does not fit is blocked: keep the previous pose and stop the box). The
+// episode's true plant and the object-informed rollouts with oi_dyn > 0 both use it.
+__host__ __device__ inline void push_step_box_hard_walls_f(
+    float& px, float& py, float& ox, float& oy, float& oth, float& vx, float& vy, float& w,
+    float ux, float uy, const HardParams& hp, const BoxParams& p)
+{
+    const float prev_ox = ox, prev_oy = oy, prev_oth = oth;
+    push_step_box_hard_f(px, py, ox, oy, oth, vx, vy, w, ux, uy, hp);
+    if (p.obstacle_count > 0 && p.obs_full_overlap) {
+        for (int it = 0; it < 4; it++) {
+            float nx, ny, pen = box_aabb_overlap_f(ox, oy, oth, p, nx, ny);
+            if (pen <= 0.0f) break;
+            ox += nx * pen; oy += ny * pen;
+            float vn = vx * nx + vy * ny;
+            if (vn < 0.0f) { vx -= vn * nx; vy -= vn * ny; }
+        }
+        if (p.obs2 && box_obstacle_penetration_f(ox, oy, oth, p) > 1e-3f) {
+            ox = prev_ox; oy = prev_oy; oth = prev_oth;
+            vx = vy = w = 0.0f;
+        }
     }
 }
 
@@ -1116,13 +1149,16 @@ __global__ void rollout_object_informed_kernel(
     const float* d_start, const float* d_nominal, float* d_costs, float* d_perturbed,
     curandState* d_rng, BoxParams p, float gx, float gy, float gth, int K, int T,
     float sigma, bool use_low_pass, float lp_alpha, float oi_ref_weight_pos,
-    float oi_ref_weight_ang, float oi_obj_speed, float oi_ang_speed, ObjPath path, int ref_delay)
+    float oi_ref_weight_ang, float oi_obj_speed, float oi_ang_speed, ObjPath path, int ref_delay,
+    int dyn, HardParams hp, float v0x, float v0y, float w0, float res_decay)
 {
     int k = blockIdx.x * blockDim.x + threadIdx.x;
     if (k >= K) return;
     curandState rng = d_rng[k];
     const float ox0=d_start[2], oy0=d_start[3], oth0=d_start[4];
     float px=d_start[0], py=d_start[1], ox=ox0, oy=oy0, oth=oth0;
+    float vx = v0x, vy = v0y, w = w0;   // dyn 1-2: box velocity of the hard-contact model;
+                                        // dyn 3: the residual velocity, decaying each step
     float cost = 0.0f;
     float fx = 0.0f, fy = 0.0f;
     float alpha = clampf_local(lp_alpha, 0.02f, 1.0f);
@@ -1141,7 +1177,13 @@ __global__ void rollout_object_informed_kernel(
         float uy = clampf_local(d_nominal[t*2+1] + ny * sigma, -p.u_max, p.u_max);
         d_perturbed[k*T*2 + t*2 + 0] = ux;
         d_perturbed[k*T*2 + t*2 + 1] = uy;
-        push_step_box_f(px, py, ox, oy, oth, ux, uy, p);
+        if (dyn == 1 || dyn == 2) push_step_box_hard_walls_f(px, py, ox, oy, oth, vx, vy, w, ux, uy, hp, p);
+        else push_step_box_f(px, py, ox, oy, oth, ux, uy, p);
+        if (dyn == 3) {
+            // the motion the smooth model missed last step carries on and decays
+            ox += vx * p.dt; oy += vy * p.dt; oth += w * p.dt;
+            vx *= res_decay; vy *= res_decay; w *= res_decay;
+        }
         cost += stage_cost_box_f(px, py, ox, oy, oth, ux, uy, gx, gy, gth, p);
         float rx, ry, rth;
         if (path.n >= 2)
@@ -1522,6 +1564,8 @@ public:
         hard_p_.damp_ang *= plant_damping_scale;
 
         reset_state();
+        vest_x_ = vest_y_ = vest_w_ = 0.0f;
+        res_x_ = res_y_ = res_w_ = 0.0f;
         if (external_plant_reset)
             external_plant_reset(px_, py_, ox_, oy_, oth_);
         fill(h_nominal_.begin(), h_nominal_.end(), 0.0f);
@@ -1601,33 +1645,29 @@ public:
             prev_ux = h_nominal_[0];
             prev_uy = h_nominal_[1];
             have_prev_control = true;
+            const float pre_ox = ox_, pre_oy = oy_, pre_oth = oth_;
+            // the controller's own (smooth) prediction of this step, for the oi_dyn = 3 residual
+            float qpx = px_, qpy = py_, qox = ox_, qoy = oy_, qoth = oth_;
+            push_step_box_f(qpx, qpy, qox, qoy, qoth, h_nominal_[0], h_nominal_[1], sc_.params);
             if (external_plant_step)
                 external_plant_step(
                     h_nominal_[0], h_nominal_[1],
                     px_, py_, ox_, oy_, oth_, vx_, vy_, w_);
-            else if (true_plant_hard) {
-                const float prev_ox = ox_, prev_oy = oy_, prev_oth = oth_;
-                push_step_box_hard_f(px_, py_, ox_, oy_, oth_, vx_, vy_, w_, h_nominal_[0], h_nominal_[1], hard_p);
-                // Rectangle-overlap walls are rigid in the hard plant too: push the box
-                // out and drop the velocity component into the wall. Legacy corner-test
+            else if (true_plant_hard)
+                // Rectangle-overlap walls are rigid in the hard plant too. Legacy corner-test
                 // walls stay non-physical here, so published hard-plant rows reproduce.
-                if (plant_p.obstacle_count > 0 && plant_p.obs_full_overlap) {
-                    for (int it = 0; it < 4; it++) {
-                        float nx, ny, pen = box_aabb_overlap_f(ox_, oy_, oth_, plant_p, nx, ny);
-                        if (pen <= 0.0f) break;
-                        ox_ += nx * pen; oy_ += ny * pen;
-                        float vn = vx_ * nx + vy_ * ny;
-                        if (vn < 0.0f) { vx_ -= vn * nx; vy_ -= vn * ny; }
-                    }
-                    // Between two walls a pose that does not fit is blocked (as in the
-                    // smooth plant): keep the previous pose and stop the box.
-                    if (plant_p.obs2 && box_obstacle_penetration_f(ox_, oy_, oth_, plant_p) > 1e-3f) {
-                        ox_ = prev_ox; oy_ = prev_oy; oth_ = prev_oth;
-                        vx_ = vy_ = w_ = 0.0f;
-                    }
-                }
-            } else
+                push_step_box_hard_walls_f(px_, py_, ox_, oy_, oth_, vx_, vy_, w_, h_nominal_[0], h_nominal_[1],
+                                           hard_p, plant_p);
+            else
                 push_step_box_f(px_, py_, ox_, oy_, oth_, h_nominal_[0], h_nominal_[1], plant_p);
+            // the box velocity the oi_dyn = 2 rollouts start from: the last step's pose change
+            vest_x_ = (ox_ - pre_ox) / sc_.params.dt;
+            vest_y_ = (oy_ - pre_oy) / sc_.params.dt;
+            vest_w_ = wrapf(oth_ - pre_oth) / sc_.params.dt;
+            // what the smooth model missed (momentum, sliding), as a velocity: oi_dyn = 3
+            res_x_ = (ox_ - qox) / sc_.params.dt;
+            res_y_ = (oy_ - qoy) / sc_.params.dt;
+            res_w_ = wrapf(oth_ - qoth) / sc_.params.dt;
             cum_cost_ += stage_cost_box_f(px_, py_, ox_, oy_, oth_, h_nominal_[0], h_nominal_[1], sc_.gx, sc_.gy, sc_.gth, sc_.params);
             if (box_obstacle_penetration_f(ox_, oy_, oth_, plant_p) > 0.01f) {
                 collision_count++;
@@ -1746,7 +1786,12 @@ private:
                 d_start_, d_nominal_, d_costs_, d_perturbed_, d_rng_,
                 sc_.params, sc_.gx, sc_.gy, sc_.gth, K_, T_, v_.sigma,
                 v_.use_low_pass_sampling, v_.lp_alpha, v_.oi_ref_weight_pos,
-                v_.oi_ref_weight_ang, v_.oi_obj_speed, v_.oi_ang_speed, path_, ref_delay_);
+                v_.oi_ref_weight_ang, v_.oi_obj_speed, v_.oi_ang_speed, path_, ref_delay_,
+                v_.oi_dyn, model_hard_p(),
+                v_.oi_dyn == 2 ? vest_x_ : v_.oi_dyn == 3 && (v_.oi_res_parts & 1) ? res_x_ : 0.0f,
+                v_.oi_dyn == 2 ? vest_y_ : v_.oi_dyn == 3 && (v_.oi_res_parts & 1) ? res_y_ : 0.0f,
+                v_.oi_dyn == 2 ? vest_w_ : v_.oi_dyn == 3 && (v_.oi_res_parts & 2) ? res_w_ : 0.0f,
+                v_.oi_res_decay);
         else if (v_.use_low_pass_sampling)
             rollout_low_pass_kernel<<<(K_+b-1)/b,b>>>(
                 d_start_, d_nominal_, d_costs_, d_perturbed_, d_rng_,
@@ -2115,6 +2160,13 @@ private:
     Variant v_; BoxScenario sc_; int K_, T_, seed_;
     ObjPath path_;                          // object-level path (oi_use_path variants only)
     int ref_delay_ = 0;                     // face-switch seed: steps before the box moves
+    // The hard-contact model of the oi_dyn > 0 rollouts: the plant's contact law (friction,
+    // damping) on the controller's box geometry.
+    HardParams model_hard_p() const {
+        HardParams m = hard_p_;
+        m.hx = sc_.params.hx; m.hy = sc_.params.hy;
+        return m;
+    }
     float stall_ox_ = 0, stall_oy_ = 0, stall_oth_ = 0;   // box pose when it last moved
     int stall_count_ = 0;                   // control steps since then
     float2 stall_first_ = make_float2(1e9f, 1e9f);   // seed's first target at the last stalled step
@@ -2128,6 +2180,8 @@ private:
     HardParams hard_p_;                     // hard-contact params (true plant and/or fidelity-arm rollout)
     float px_=0,py_=0,ox_=0,oy_=0,oth_=0;
     float vx_=0,vy_=0,w_=0;                 // box velocity (hard true plant only)
+    float vest_x_=0,vest_y_=0,vest_w_=0;    // box velocity estimated from the last two observed poses
+    float res_x_=0,res_y_=0,res_w_=0;       // last step's observed minus smooth-predicted box motion / dt
     int steps_=0; bool reached_=false; float cum_cost_=0, min_dist_=0;
     vector<float> h_nominal_;
     float *d_start_=nullptr,*d_nominal_=nullptr,*d_costs_=nullptr,*d_weights_=nullptr,*d_perturbed_=nullptr;
@@ -2404,6 +2458,9 @@ int main(int argc, char** argv) {
     float override_oi_slide_hysteresis = -1.0f;
     float override_oi_push_actual_dist = -2.0f;
     int override_oi_heading_path = -1;
+    int override_oi_dyn = -1;
+    float override_oi_res_decay = -1.0f;
+    int override_oi_res_parts = -1;
     float override_oi_turn_tol = -1.0f, override_oi_turn_blend = -2.0f;
     for (int i=1;i<argc;i++){ string a=argv[i];
         if (a=="--quick") quick=true;
@@ -2434,6 +2491,9 @@ int main(int argc, char** argv) {
         else if (a=="--override-oi-slide-hysteresis"&&i+1<argc) override_oi_slide_hysteresis=(float)atof(argv[++i]);
         else if (a=="--override-oi-push-actual-dist"&&i+1<argc) override_oi_push_actual_dist=(float)atof(argv[++i]);
         else if (a=="--override-oi-heading-path"&&i+1<argc) override_oi_heading_path=atoi(argv[++i]);
+        else if (a=="--override-oi-dyn"&&i+1<argc) override_oi_dyn=atoi(argv[++i]);
+        else if (a=="--override-oi-res-decay"&&i+1<argc) override_oi_res_decay=(float)atof(argv[++i]);
+        else if (a=="--override-oi-res-parts"&&i+1<argc) override_oi_res_parts=atoi(argv[++i]);
         else if (a=="--override-oi-turn-tol"&&i+1<argc) override_oi_turn_tol=(float)atof(argv[++i]);
         else if (a=="--override-oi-turn-blend"&&i+1<argc) override_oi_turn_blend=(float)atof(argv[++i]);
         else if (a=="--dump-traj"&&i+1<argc) dump_traj_prefix=argv[++i];
@@ -2697,6 +2757,8 @@ int main(int argc, char** argv) {
     { Variant v; v.name="oi_face_rot_anchor_mppi"; v.use_object_informed=true; v.oi_use_path=true; v.oi_axis_path=true; v.oi_axis_when_blocked=true; v.oi_face_safe_slide=true; v.oi_face_rotate=true; v.oi_face_switch=true; v.oi_face_route_actual=true; v.oi_face_aim_final=true; v.oi_ref_weight_pos=1.5f; v.oi_ref_weight_ang=3.0f; v.oi_obj_speed=0.6f; v.oi_ang_speed=1.2f; v.oi_seed_blend=0.12f; v.oi_near_seed_blend=0.6f; v.oi_rot_radius=1.0f; v.oi_stall_steps=40; v.oi_stall_pusher_dist=0.10f; v.oi_stall_pusher_window=20; v.oi_stall_blend=0.6f; v.oi_push_actual_dist=0.30f; variants.push_back(v); }
     // ...and plans through passages the box only fits turned (box_gap_turn_path).
     { Variant v; v.name="oi_face_rot_turnpath_mppi"; v.use_object_informed=true; v.oi_use_path=true; v.oi_axis_path=true; v.oi_axis_when_blocked=true; v.oi_face_safe_slide=true; v.oi_face_rotate=true; v.oi_face_switch=true; v.oi_face_route_actual=true; v.oi_face_aim_final=true; v.oi_ref_weight_pos=1.5f; v.oi_ref_weight_ang=3.0f; v.oi_obj_speed=0.6f; v.oi_ang_speed=1.2f; v.oi_seed_blend=0.12f; v.oi_near_seed_blend=0.6f; v.oi_rot_radius=1.0f; v.oi_stall_steps=40; v.oi_stall_pusher_dist=0.10f; v.oi_stall_pusher_window=20; v.oi_stall_blend=0.6f; v.oi_push_actual_dist=0.30f; v.oi_heading_path=true; variants.push_back(v); }
+    // ...and carries the motion its smooth model missed last step into the rollouts (box_momentum_residual).
+    { Variant v; v.name="oi_face_rot_turnpath_resid_mppi"; v.use_object_informed=true; v.oi_use_path=true; v.oi_axis_path=true; v.oi_axis_when_blocked=true; v.oi_face_safe_slide=true; v.oi_face_rotate=true; v.oi_face_switch=true; v.oi_face_route_actual=true; v.oi_face_aim_final=true; v.oi_ref_weight_pos=1.5f; v.oi_ref_weight_ang=3.0f; v.oi_obj_speed=0.6f; v.oi_ang_speed=1.2f; v.oi_seed_blend=0.12f; v.oi_near_seed_blend=0.6f; v.oi_rot_radius=1.0f; v.oi_stall_steps=40; v.oi_stall_pusher_dist=0.10f; v.oi_stall_pusher_window=20; v.oi_stall_blend=0.6f; v.oi_push_actual_dist=0.30f; v.oi_heading_path=true; v.oi_dyn=3; variants.push_back(v); }
     // axis-aligned path when the straight line is blocked, straight path otherwise
     { Variant v; v.name="oi_face_auto_mppi"; v.use_object_informed=true; v.oi_use_path=true; v.oi_axis_path=true; v.oi_axis_when_blocked=true; v.oi_face_safe_slide=true; v.oi_face_switch=true; v.oi_face_route_actual=true; v.oi_face_aim_final=true; v.oi_ref_weight_pos=1.5f; v.oi_ref_weight_ang=3.0f; v.oi_obj_speed=0.6f; v.oi_ang_speed=1.2f; v.oi_seed_blend=0.12f; variants.push_back(v); }
     { Variant v; v.name="oi_path_slow_mppi"; v.use_object_informed=true; v.oi_use_path=true; v.oi_ref_weight_pos=1.5f; v.oi_ref_weight_ang=3.0f; v.oi_obj_speed=0.6f; v.oi_ang_speed=1.2f; v.oi_seed_blend=0.12f; variants.push_back(v); }
@@ -2738,6 +2800,9 @@ int main(int argc, char** argv) {
         if (override_oi_slide_hysteresis >= 0.0f && v.oi_face_switch) v.oi_slide_hysteresis = override_oi_slide_hysteresis;
         if (override_oi_push_actual_dist > -1.5f && v.oi_face_switch) v.oi_push_actual_dist = override_oi_push_actual_dist;
         if (override_oi_heading_path >= 0 && v.oi_use_path) v.oi_heading_path = override_oi_heading_path != 0;
+        if (override_oi_dyn >= 0 && v.use_object_informed) v.oi_dyn = override_oi_dyn;
+        if (override_oi_res_decay >= 0.0f) v.oi_res_decay = override_oi_res_decay;
+        if (override_oi_res_parts >= 0) v.oi_res_parts = override_oi_res_parts;
         if (override_oi_turn_tol > 0.0f) v.oi_turn_tol = override_oi_turn_tol;
         if (override_oi_turn_blend > -1.5f) v.oi_turn_blend = override_oi_turn_blend;
     }
