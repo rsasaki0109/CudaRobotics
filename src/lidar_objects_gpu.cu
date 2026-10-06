@@ -30,6 +30,14 @@ LidarObjectBox to_box(const cudabot::Obb& B) {
 
 LidarObjectClass to_class(int k) { return k < 0 ? LidarObjectClass::None : static_cast<LidarObjectClass>(k); }
 
+// A box in the world-aligned frame back into the sensor's frame (rotated by -yaw).
+LidarObjectBox to_sensor_frame(LidarObjectBox b, float c, float s, float yaw) {
+    float x = b.cx, y = b.cy;
+    b.cx = c * x + s * y; b.cy = -s * x + c * y;
+    b.yaw -= yaw;
+    return b;
+}
+
 }  // namespace
 
 struct LidarObjectPipeline::Impl {
@@ -71,21 +79,35 @@ LidarObjectPipeline::~LidarObjectPipeline() = default;
 
 void LidarObjectPipeline::reset() { impl_->reset(); }
 
-LidarObjectsResult LidarObjectPipeline::process(const float* xyz, std::size_t n_points, double sensor_x,
-                                                double sensor_y, double sensor_z, double t_scan) {
+LidarObjectsResult LidarObjectPipeline::process(const float* xyz_in, std::size_t n_points, double sensor_x,
+                                                double sensor_y, double sensor_z, double t_scan, double sensor_yaw) {
     using namespace cudabot;
     Impl& I = *impl_;
     if (n_points > (std::size_t)I.cap) throw std::length_error("LidarObjectPipeline: more points than max_points");
     const int n = (int)n_points;
     const float px = (float)sensor_x, py = (float)sensor_y, pz = (float)sensor_z, t = (float)t_scan;
+    const float sensor_h = I.cfg.sensor_height, vert_max = I.cfg.upper_beam_deg * PI_F / 180.0f;
     LidarObjectsResult R;
+    // The pipeline works in a frame centred at the sensor with the world's axes: rotate the points by the yaw.
+    const bool rotate = sensor_yaw != 0.0;
+    const float yaw = (float)sensor_yaw, cy = std::cos(yaw), sy = std::sin(yaw);
+    std::vector<float> rotated;
+    const float* xyz = xyz_in;
+    if (rotate) {
+        rotated.resize((size_t)n * 3);
+        for (int i = 0; i < n; ++i) {
+            float x = xyz_in[i * 3], y = xyz_in[i * 3 + 1];
+            rotated[i * 3] = cy * x - sy * y; rotated[i * 3 + 1] = sy * x + cy * y; rotated[i * 3 + 2] = xyz_in[i * 3 + 2];
+        }
+        xyz = rotated.data();
+    }
 
     // ---- ground segmentation ----
     CUDA_CHECK(cudaMemcpy(I.d_pts, xyz, (size_t)n * 3 * sizeof(float), cudaMemcpyHostToDevice));
     cudaEvent_t e0, e1;
     CUDA_CHECK(cudaEventCreate(&e0)); CUDA_CHECK(cudaEventCreate(&e1));
     CUDA_CHECK(cudaEventRecord(e0));
-    if (n > 0) I.seg.run(I.d_pts, I.d_valid, n);
+    if (n > 0) I.seg.run(I.d_pts, I.d_valid, n, sensor_h);
     CUDA_CHECK(cudaEventRecord(e1));
     CUDA_CHECK(cudaEventSynchronize(e1));
     CUDA_CHECK(cudaGetLastError());
@@ -108,7 +130,7 @@ LidarObjectsResult LidarObjectPipeline::process(const float* xyz, std::size_t n_
     std::vector<int> ccls(keys.size());
     std::vector<Obb> done(keys.size());
     for (size_t r = 0; r < keys.size(); ++r) {
-        ccls[r] = classify_box_mlp(obb[r]);
+        ccls[r] = classify_box_mlp(obb[r], vert_max);
         done[r] = complete_box(obb[r], ccls[r], 1.0f);
         LidarCluster C;
         C.label = keys[r]; C.box = to_box(obb[r]); C.cls = to_class(ccls[r]); C.completed = to_box(done[r]);
@@ -144,6 +166,13 @@ LidarObjectsResult LidarObjectPipeline::process(const float* xyz, std::size_t n_
         R.tracks.push_back(out);
     }
     R.tracking_ms = (float)std::chrono::duration<double, std::milli>(std::chrono::high_resolution_clock::now() - h0).count();
+    if (rotate) {   // the boxes back into the sensor's frame
+        for (LidarCluster& C : R.clusters) {
+            C.box = to_sensor_frame(C.box, cy, sy, yaw);
+            C.completed = to_sensor_frame(C.completed, cy, sy, yaw);
+        }
+        for (LidarTrack& T : R.tracks) T.box = to_sensor_frame(T.box, cy, sy, yaw);
+    }
     ++I.scan;
     return R;
 }

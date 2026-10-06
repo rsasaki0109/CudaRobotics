@@ -381,15 +381,24 @@ cudarobotics::LidarObjectsResult r = pipe.process(xyz, n, sensor_x, sensor_y, se
 - **Steps.**
   - GPU: ground segmentation → voxel clustering → L-shape boxes.
   - Host: learned class and size prior → motion tracker, whose box refits are batched on the GPU → hybrid box.
-- **Input.** Points relative to the sensor, with the axes aligned to the world (z up). The sensor's world position and the scan time go with each scan.
-- **Built-in assumptions.** The sensor model is compiled in:
-  - the ground model expects the sensor 1.8 m above the ground;
-  - the learned class was trained on a 64-beam scan with its upper beam at +2°.
+- **Input.** Points in the sensor's frame, z up. Each scan comes with the sensor's world position, its heading (`sensor_yaw`) and the scan time.
+  - The pipeline rotates the points by the heading into a world-aligned frame and rotates the boxes back.
+  - The tracks' velocities are in the world frame.
+- **Sensor settings** (`LidarObjectsConfig`):
+  - `sensor_height` (1.8 m): the ground model starts from flat ground this far below the sensor.
+  - `upper_beam_deg` (+2°): the class's top-margin feature.
+
+  With the defaults, the demo's outputs are byte-identical to before.
+- **Tested setups.** `tests/lidar_objects_gpu_smoke.cu` drives a sensor past a car at 1.8 m / 0°, 2.2 m / 30°, 1.5 m / −60° and 0.8 m / 45°. In every case the ground, the car's cluster, its heading and its track come out right.
+- **The class has a limit.** The class was trained at 1.8 m. From the 0.8 m sensor, the car's roof reaches the upper beam, so the car passes for a van and is completed to 6 m. The test checks the class only within 0.5 m of 1.8 m.
+- **The height setting matters.** The same 0.8 m scans with the default 1.8 m label 98.2% of the ground instead of 99.96%, and the test checks this.
 - **Code layout.** The algorithms live in `include/cudarobotics/lidar_objects_core.cuh`. It is header-only with internal linkage, so the library and this demo share it.
 - **Checks.**
   - On every scan, the demo runs the library on the scan's returns. It checks that the ground labels, the clusters, the boxes and, on the drives, the tracks are exactly its own; every gate requires this.
   - `tests/lidar_objects_gpu_smoke.cu` uses only the public interface: flat ground and a car passed by the sensor (CTest `lidar_objects_gpu_smoke`).
-- **Limitations.** Rotated sensors need their points rotated first. Calls run on the default CUDA stream and are not thread-safe.
+- **Limitations.**
+  - A level sensor is assumed: roll and pitch are not modelled.
+  - Calls run on the default CUDA stream and are not thread-safe.
 
 ## Reproduce
 

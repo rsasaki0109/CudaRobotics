@@ -15,8 +15,9 @@
 //                         object-frame accumulation, stand-still vs moving test)
 //
 // The points are in a frame centred at the sensor with its axes aligned to the
-// world (z up); the ground model assumes the sensor SENSOR_H above the ground
-// and the box class a scan whose upper beam is VERT_MAX. Each GPU routine has a
+// world (z up). The ground model takes the sensor's height above the ground and
+// the box class the scan's upper beam angle (defaults SENSOR_H, VERT_MAX: the
+// sensor the class was trained on). Each GPU routine has a
 // CPU twin with the same arithmetic in the same order (the boxes are
 // bit-identical), which the demo src/gpu_ground_segmentation.cu checks.
 //
@@ -50,7 +51,7 @@ namespace cudabot {
 // ---- sensor model the pipeline assumes ----
 static constexpr float PI_F = 3.14159265f;
 static constexpr float VERT_MIN = -24.8f * PI_F / 180.0f, VERT_MAX = 2.0f * PI_F / 180.0f;
-static constexpr float SENSOR_H = 1.8f;
+static constexpr float SENSOR_H = 1.8f;   // default height above the ground
 
 // ---- polar grid ----
 static const int N_RING = 24, N_SECTOR = 72, N_BIN = N_RING * N_SECTOR;
@@ -160,8 +161,8 @@ __host__ __device__ static inline void bin_center(int b, float& cx, float& cy) {
 }
 
 // Walk one sector outward: keep a plane only if it continues the last kept one.
-__host__ __device__ static inline void check_sector(BinPlane* planes, int sec) {
-    float last_z = -SENSOR_H, last_r = 0.0f;
+__host__ __device__ static inline void check_sector(BinPlane* planes, int sec, float sensor_h) {
+    float last_z = -sensor_h, last_r = 0.0f;
     for (int ring = 0; ring < N_RING; ++ring) {
         BinPlane& P = planes[ring * N_SECTOR + sec];
         if (!P.ok) continue;
@@ -251,9 +252,9 @@ static __global__ void fit_kernel(const float* pts, const int* idx, const int* s
     if (lane == 0) planes[b] = P;
 }
 
-static __global__ void check_kernel(BinPlane* planes) {
+static __global__ void check_kernel(BinPlane* planes, float sensor_h) {
     int s = blockIdx.x * blockDim.x + threadIdx.x;
-    if (s < N_SECTOR) check_sector(planes, s);
+    if (s < N_SECTOR) check_sector(planes, s, sensor_h);
 }
 
 static __global__ void label_kernel(const float* pts, const int* bin, const BinPlane* planes, int* lab, int n) {
@@ -767,19 +768,20 @@ static int classify_box(const Obb& B) {
 static const int N_FEAT = 6;
 static const char* FEAT_NAME[N_FEAT] = { "long", "short", "height", "log_n", "range", "top_margin_deg" };
 
-static void box_features(const Obb& B, float* f) {
+// vert_max: the scan's upper beam angle (radians).
+static void box_features(const Obb& B, float* f, float vert_max = VERT_MAX) {
     f[0] = std::max(B.len, B.wid);
     f[1] = std::min(B.len, B.wid);
     f[2] = B.zhi - B.zlo;
     f[3] = std::log((float)B.n);
     f[4] = std::hypot(B.cx, B.cy);
-    f[5] = VERT_MAX * (180.0f / PI_F) - std::atan(B.tmax) * (180.0f / PI_F);   // 0 when the top reaches the upper beam
+    f[5] = vert_max * (180.0f / PI_F) - std::atan(B.tmax) * (180.0f / PI_F);   // 0 when the top reaches the upper beam
 }
 
-static int classify_box_mlp(const Obb& B) {
+static int classify_box_mlp(const Obb& B, float vert_max = VERT_MAX) {
     namespace M = lidar_box_classifier;
     float f[N_FEAT], h[M::N_HID], best = -1e30f;
-    box_features(B, f);
+    box_features(B, f, vert_max);
     for (int i = 0; i < N_FEAT; ++i) f[i] = (f[i] - M::MEAN[i]) / M::STD[i];
     for (int j = 0; j < M::N_HID; ++j) {
         float a = M::B1[j];
@@ -1197,7 +1199,7 @@ struct GpuGroundSegmenter {
         cudaFree(d_planes);
     }
     // Launches the work on the default stream; the labels are in d_lab.
-    void run(const float* d_pts, const int* d_valid, int n) {
+    void run(const float* d_pts, const int* d_valid, int n, float sensor_h = SENSOR_H) {
         const int B = 256, G = (n + B - 1) / B;
         bin_kernel<<<G, B>>>(d_pts, d_valid, d_bin, n);
         thrust::sequence(thrust::device_ptr<int>(d_idx), thrust::device_ptr<int>(d_idx) + n);
@@ -1206,7 +1208,7 @@ struct GpuGroundSegmenter {
                                    thrust::device_ptr<int>(d_idx));
         bin_range_kernel<<<G, B>>>(d_sorted_bin, d_start, n);
         fit_kernel<<<(N_BIN * 32 + 127) / 128, 128>>>(d_pts, d_idx, d_start, d_planes);
-        check_kernel<<<1, N_SECTOR>>>(d_planes);
+        check_kernel<<<1, N_SECTOR>>>(d_planes, sensor_h);
         label_kernel<<<G, B>>>(d_pts, d_bin, d_planes, d_lab, n);
     }
 };

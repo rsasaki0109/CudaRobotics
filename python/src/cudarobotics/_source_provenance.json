@@ -1,7 +1,7 @@
 {
   "algorithm": "sha256-text-lf",
   "schema_version": 1,
-  "source_digest": "b5187d6f082e50faed168213b5bb0270625d3886d632ac206f33b8e9d1c45fa7",
+  "source_digest": "244f0934856c2f0b2f33067e812db32fc52e69105ab51496f403f980f43c7bce",
   "sources": {
     "CMakeLists.txt": "d661f49cf50e486b338f2f1b01f121189295824d722dd76e4f852044494ba1b0",
     "README.md": "cd19a92f86e90e86d0e2eda7f132c2cf1755a743e0b2ef3e843dcb8e16955a6b",
@@ -23,7 +23,7 @@
     "core/include/cudarobotics/imu_preintegration.hpp": "89c6ceab97e56ed29cf8cc8f3d14d2ae151cef5b2c7562cc1c6ec5f251584b6f",
     "core/include/cudarobotics/kinematics.hpp": "663d2be791bc8bbcc7727ef9433df78e04d0474a84af10d271dad93b9a6e1b23",
     "core/include/cudarobotics/kiss_icp_gpu.hpp": "cb5d094334c5050a01207c21a2ff16ca10de77d94d9730fcf31a19e2153d6575",
-    "core/include/cudarobotics/lidar_objects_gpu.hpp": "bd1273f3503e83d7273746e87e36d8faa84097a094e8258101e11ecae7ef0b75",
+    "core/include/cudarobotics/lidar_objects_gpu.hpp": "a5271ed531ab1eec7a2f5af74b7f4c0d0b3c254fb584bbad7ee55820ca735462",
     "core/include/cudarobotics/math_tools.hpp": "6430898c4400927aa826edb81a1bc10f3e923a962e157f115b938d41a2cb60b5",
     "core/include/cudarobotics/numerical_derivative.hpp": "4d1277d8ae4375c7a25071fe5f453d1b831cc0d37dc9010cb3c60c74fad7b839",
     "core/include/cudarobotics/polygon.hpp": "53e76f867db8dd8d18547fc2f90630699fe5afc54aa0ad4a2974d912def92ea7",

@@ -19,12 +19,18 @@ namespace cudarobotics {
 struct LidarObjectsConfig {
     std::size_t max_points = 131072;   // per scan
     int track_min_scans = 3;           // a tracked voxel counts once seen in this many scans
+    // The sensor: its height above the ground (the ground model starts from flat
+    // ground this far below it) and its upper beam's elevation (a feature of the
+    // class: an object as tall as the beam reaches may be cut off). The class was
+    // trained on a 64-beam scan at 1.8 m with the upper beam at +2 degrees.
+    float sensor_height = 1.8f;        // m
+    float upper_beam_deg = 2.0f;       // degrees
 };
 
 enum class LidarObjectClass : int { None = -1, Car = 0, Van = 1 };
 
-// A box on the ground plane. Frame: centred at the sensor, axes aligned with the
-// world (z up), as the input points.
+// A box on the ground plane, in the frame of the input points: centred at the
+// sensor, rotated by the sensor's yaw (z up).
 struct LidarObjectBox {
     float cx = 0.0f, cy = 0.0f;           // centre
     float length = 0.0f, width = 0.0f;    // length along yaw
@@ -44,7 +50,7 @@ struct LidarTrack {
     int id = -1;
     LidarObjectClass cls = LidarObjectClass::None;   // the majority of its clusters' classes
     bool moving = false;                  // the stand-still test's verdict
-    float vx = 0.0f, vy = 0.0f;           // Kalman-filter velocity, m/s
+    float vx = 0.0f, vy = 0.0f;           // Kalman-filter velocity, m/s, in the world frame
     // The hybrid box with the size prior: this scan's box for a moving track
     // (traffic shows no new faces), the track's accumulated box otherwise.
     LidarObjectBox box;
@@ -66,12 +72,13 @@ public:
     LidarObjectPipeline(const LidarObjectPipeline&) = delete;
     LidarObjectPipeline& operator=(const LidarObjectPipeline&) = delete;
 
-    // xyz: n points (x, y, z) relative to the sensor, axes aligned with the world
-    // (z up). The ground model assumes the sensor 1.8 m above the ground, and the
-    // class a 64-beam scan with its upper beam at +2 degrees. sensor_x, _y, _z:
-    // the sensor's world position; t: the scan's time in seconds, increasing.
+    // xyz: n points (x, y, z) in the sensor's frame, z up (a level sensor: no
+    // roll or pitch). sensor_x, _y, _z: the sensor's world position; sensor_yaw:
+    // its heading in the world (radians); t: the scan's time in seconds,
+    // increasing. The results are in the frame of the points, except the tracks'
+    // velocities (world frame).
     LidarObjectsResult process(const float* xyz, std::size_t n, double sensor_x, double sensor_y, double sensor_z,
-                               double t);
+                               double t, double sensor_yaw = 0.0);
 
     // Forget all tracks.
     void reset();
