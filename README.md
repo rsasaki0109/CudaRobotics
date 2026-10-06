@@ -354,6 +354,7 @@ does not, and what would be required for a paper-faithful reproduction.
 | `gpu_diff_contact_push` | Differentiable contact pushing with GPU rollout scoring. |
 | `gpu_constrained_mpc` | Constrained nonlinear MPC (AL-iLQR) for multi-robot obstacle avoidance. |
 | [`gpu_kiss_icp`](docs/gpu_kiss_icp.md) | KISS-ICP-style LiDAR odometry using the [reusable GPU streaming core](docs/kiss_icp_gpu_core.md), exact voxel-hash correspondences, accuracy gates, and JSON metrics. |
+| [`gpu_ground_segmentation`](docs/gpu_ground_segmentation.md) | LiDAR object pipeline: concentric-zone ground segmentation, voxel Euclidean clustering, L-shape boxes with a learned class and size prior, and Kalman tracking of parked and moving vehicles (~10 ms per 64-beam scan); also a library, `CudaRobotics::lidar_objects_gpu`. |
 
 | | |
 |---|---|
