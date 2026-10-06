@@ -59,6 +59,8 @@
 // --seed N (N > 0) draws a held-out scene: new box positions (within 1 m),
 // headings and car / van sizes, and new sensor poses. --obs-csv PATH writes one
 // row per box observation (scripts/box_fitting_heldout.py aggregates them), and
+// --sensor-height H scans from a sensor H above the ground (default 1.8 m),
+// --height-aware-class uses the class trained on scans from 0.8-2.5 m, and
 // --cls-csv PATH one row of classifier features per cluster
 // (scripts/train_box_classifier.py trains the learned class on them).
 //
@@ -199,13 +201,13 @@ __host__ __device__ static inline float hash_gauss(unsigned int a, unsigned int 
 }
 
 // One ray per thread: sensor-frame point (x, y, z relative to the sensor) and label.
-__global__ void scan_kernel(float sx, float sy, unsigned int scan_id, float* pts, int* gt, int* gt_obj) {
+__global__ void scan_kernel(float sx, float sy, float sensor_h, unsigned int scan_id, float* pts, int* gt, int* gt_obj) {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i >= N_RAYS) return;
     int ch = i / N_AZ, az = i - ch * N_AZ;
     float el = VERT_MIN + (VERT_MAX - VERT_MIN) * ch / (N_CH - 1);
     float yaw = 2.0f * PI_F * az / N_AZ;
-    float o[3] = { sx, sy, ground_h(sx, sy) + SENSOR_H };
+    float o[3] = { sx, sy, ground_h(sx, sy) + sensor_h };
     float d[3] = { cosf(el) * cosf(yaw), cosf(el) * sinf(yaw), sinf(el) };
     float t; int label, obj;
     gt_obj[i] = -1;
@@ -545,7 +547,7 @@ static Score score(const std::vector<int>& gt, const std::vector<int>& lab) {
 }
 
 // CPU pipeline: same binning, stable sort, fit, check and label.
-static void cpu_segment(const std::vector<float>& pts, const std::vector<int>& gt, std::vector<int>& lab) {
+static void cpu_segment(const std::vector<float>& pts, const std::vector<int>& gt, float sensor_h, std::vector<int>& lab) {
     int n = (int)gt.size();
     std::vector<int> bin(n), idx(n);
     for (int i = 0; i < n; ++i)
@@ -561,7 +563,7 @@ static void cpu_segment(const std::vector<float>& pts, const std::vector<int>& g
         bin_center(b, cx, cy);
         planes[b] = fit_bin(pts.data(), idx.data(), start[b], start[b + 1], cx, cy);
     }
-    for (int s = 0; s < N_SECTOR; ++s) check_sector(planes.data(), s, SENSOR_H);
+    for (int s = 0; s < N_SECTOR; ++s) check_sector(planes.data(), s, sensor_h);
     lab.assign(n, 0);
     for (int i = 0; i < n; ++i) {
         int b = bin[i];
@@ -579,6 +581,8 @@ int main(int argc, char** argv) {
     const char* cls_csv = nullptr;
     bool sequence = false, moving = false, trk_cpu_fit = false;
     int trk_hits = 3;
+    float sensor_h = SENSOR_H;   // --sensor-height: the scanning sensor's height above the ground
+    bool height_aware = false;   // --height-aware-class: the class trained on scans from 0.8-2.5 m
     for (int i = 1; i < argc; ++i) {
         if (!std::strcmp(argv[i], "--no-video")) no_video = true;
         else if (!std::strcmp(argv[i], "--check")) check = true;
@@ -587,6 +591,8 @@ int main(int argc, char** argv) {
         else if (!std::strcmp(argv[i], "--cls-csv") && i + 1 < argc) cls_csv = argv[++i];
         else if (!std::strcmp(argv[i], "--sequence")) sequence = true;
         else if (!std::strcmp(argv[i], "--trk-cpu-fit")) trk_cpu_fit = true;
+        else if (!std::strcmp(argv[i], "--sensor-height") && i + 1 < argc) sensor_h = (float)std::atof(argv[++i]);
+        else if (!std::strcmp(argv[i], "--height-aware-class")) height_aware = true;
         else if (!std::strcmp(argv[i], "--moving")) moving = sequence = true;
         else if (!std::strcmp(argv[i], "--trk-hits") && i + 1 < argc) trk_hits = std::max(1, std::atoi(argv[++i]));
     }
@@ -692,6 +698,8 @@ int main(int argc, char** argv) {
     cudarobotics::LidarObjectsConfig lib_cfg;
     lib_cfg.max_points = N_RAYS;
     lib_cfg.track_min_scans = trk_hits;
+    lib_cfg.sensor_height = sensor_h;
+    lib_cfg.height_aware_class = height_aware;
     cudarobotics::LidarObjectPipeline lib(lib_cfg);   // the library: must give exactly the results below
     bool lib_same = true;
     trk[1].motion = true;
@@ -704,7 +712,7 @@ int main(int argc, char** argv) {
         const float t_scan = s * SCAN_DT;
         for (int b = 0; b < N_BOX; ++b) { h_box_t[b] = h_box[b]; h_box_t[b].cx += box_speed[b] * t_scan; }
         if (moving) CUDA_CHECK(cudaMemcpyToSymbol(c_box, h_box_t, sizeof(h_box_t)));
-        scan_kernel<<<G, B>>>(poses[s][0], poses[s][1], (unsigned int)s, d_pts, d_gt, d_gt_obj);
+        scan_kernel<<<G, B>>>(poses[s][0], poses[s][1], sensor_h, (unsigned int)s, d_pts, d_gt, d_gt_obj);
         CUDA_CHECK(cudaGetLastError());
         std::vector<float> pts(N_RAYS * 3);
         std::vector<int> gt(N_RAYS);
@@ -716,7 +724,7 @@ int main(int argc, char** argv) {
         // ---- GPU segmentation (timed: bin, sort, fit, check, label) ----
         for (int rep = 0; rep < 2; ++rep) {   // first pass warms up
             CUDA_CHECK(cudaEventRecord(e0));
-            segmenter.run(d_pts, d_gt, N_RAYS);
+            segmenter.run(d_pts, d_gt, N_RAYS, sensor_h);
             CUDA_CHECK(cudaEventRecord(e1));
             CUDA_CHECK(cudaEventSynchronize(e1));
         }
@@ -729,13 +737,13 @@ int main(int argc, char** argv) {
         // ---- CPU segmentation ----
         std::vector<int> clab;
         auto t0 = std::chrono::high_resolution_clock::now();
-        cpu_segment(pts, gt, clab);
+        cpu_segment(pts, gt, sensor_h, clab);
         auto t1 = std::chrono::high_resolution_clock::now();
         double cpu_ms = std::chrono::duration<double, std::milli>(t1 - t0).count();
 
         // ---- height-threshold baseline: ground if within 0.25 m of flat ground under the sensor ----
         std::vector<int> thr(N_RAYS, 0);
-        for (int i = 0; i < N_RAYS; ++i) thr[i] = gt[i] >= 0 && pts[i * 3 + 2] < -SENSOR_H + 0.25f;
+        for (int i = 0; i < N_RAYS; ++i) thr[i] = gt[i] >= 0 && pts[i * 3 + 2] < -sensor_h + 0.25f;
 
         for (int i = 0; i < N_RAYS; ++i) {
             if (gt[i] < 0) continue;
@@ -799,8 +807,8 @@ int main(int argc, char** argv) {
                     }
                     for (size_t r = 0; r < ckeys.size(); ++r) {
                         float f[N_FEAT];
-                        box_features(cobb[r], f);
-                        int rule = classify_box(cobb[r]), mlp = classify_box_mlp(cobb[r]);
+                        box_features(cobb[r], f, VERT_MAX, sensor_h);
+                        int rule = classify_box(cobb[r]), mlp = classify_box_mlp(cobb[r], VERT_MAX, sensor_h, height_aware);
                         std::fprintf(clsf, "%u,%d,%d,%d,%d", seed, s, cl_of[r], rule < 0 ? 2 : rule, mlp < 0 ? 2 : mlp);
                         for (int i = 0; i < N_FEAT; ++i) std::fprintf(clsf, ",%.5f", f[i]);
                         std::fprintf(clsf, "\n");
@@ -821,16 +829,16 @@ int main(int argc, char** argv) {
                 fits.clear(); done.clear(); trk_draw.clear();
                 for (const Obb& b : cobb) {
                     fits.push_back(b);
-                    int k = classify_box_mlp(b);
+                    int k = classify_box_mlp(b, VERT_MAX, sensor_h, height_aware);
                     if (k >= 0) done.push_back(complete_box(b, k, 1.0f));
                 }
                 for (Tracker& T : trk) T.track_of.assign(N_RAYS, -1);
                 if (sequence) {
                     auto h0 = std::chrono::high_resolution_clock::now();
-                    const float px = poses[s][0], py = poses[s][1], pz = ground_h(px, py) + SENSOR_H;
+                    const float px = poses[s][0], py = poses[s][1], pz = ground_h(px, py) + sensor_h;
                     std::vector<int> cand, ccls(ckeys.size(), -1), slot(N_RAYS, -1);
                     for (size_t r = 0; r < ckeys.size(); ++r) {
-                        ccls[r] = classify_box_mlp(cobb[r]);
+                        ccls[r] = classify_box_mlp(cobb[r], VERT_MAX, sensor_h, height_aware);
                         if (ccls[r] >= 0) { slot[ckeys[r]] = (int)cand.size(); cand.push_back((int)r); }
                     }
                     std::vector<std::vector<int>> citems(cand.size());
@@ -862,7 +870,7 @@ int main(int argc, char** argv) {
                         if (gt[i] >= 0) { orig.push_back(i); xyz.insert(xyz.end(), &pts[i * 3], &pts[i * 3] + 3); }
                     const float px = poses[s][0], py = poses[s][1];
                     cudarobotics::LidarObjectsResult L =
-                        lib.process(xyz.data(), orig.size(), px, py, ground_h(px, py) + SENSOR_H, t_scan);
+                        lib.process(xyz.data(), orig.size(), px, py, ground_h(px, py) + sensor_h, t_scan);
                     bool same = true;
                     for (size_t j = 0; j < orig.size() && same; ++j) {   // labels are smallest indices: map them
                         int i = orig[j];
@@ -876,7 +884,7 @@ int main(int argc, char** argv) {
                         same = orig[C.label] == ckeys[r] && C.box.cx == O.cx && C.box.cy == O.cy &&
                                C.box.length == O.len && C.box.width == O.wid && C.box.yaw == O.yaw &&
                                C.box.z_min == O.zlo && C.box.z_max == O.zhi && C.box.points == O.n &&
-                               (int)C.cls == classify_box_mlp(O);
+                               (int)C.cls == classify_box_mlp(O, VERT_MAX, sensor_h, height_aware);
                     }
                     if (sequence) {   // tracks: the hybrid boxes of the motion tracker above
                         size_t m = 0;
@@ -888,7 +896,7 @@ int main(int argc, char** argv) {
                             const MotionState& M = trk[1].ms[j];
                             Obb raw, tracked;
                             trk[1].boxes(j, t_scan, px, py, raw, tracked);
-                            Obb H = M.moving ? complete_box(cobb[r], classify_box_mlp(cobb[r]), 1.0f) : tracked;
+                            Obb H = M.moving ? complete_box(cobb[r], classify_box_mlp(cobb[r], VERT_MAX, sensor_h, height_aware), 1.0f) : tracked;
                             same = T.id == j && T.moving == M.moving && T.vx == (float)M.x[2] && T.vy == (float)M.x[3] &&
                                    T.box.cx == H.cx && T.box.cy == H.cy && T.box.length == H.len &&
                                    T.box.width == H.wid && T.box.yaw == H.yaw;
@@ -905,7 +913,7 @@ int main(int argc, char** argv) {
                     // the axis-aligned box of the same points is heading 0
                     std::vector<int> items;
                     for (int i = 0; i < N_RAYS; ++i) if (clab_obj[i] == c) items.push_back(i);
-                    int cls = classify_box(cobb[r]), cls_mlp = classify_box_mlp(cobb[r]);
+                    int cls = classify_box(cobb[r]), cls_mlp = classify_box_mlp(cobb[r], VERT_MAX, sensor_h, height_aware);
                     Obb fit[N_BM] = { cobb[r], lshape_rect(pts.data(), items.data(), 0, (int)items.size(), h_cs.data(), 0),
                                       complete_box(cobb[r], cls, 1.0f), complete_box(cobb[r], cls, 0.9f),
                                       complete_box(cobb[r], cls, 1.1f), complete_box(cobb[r], cls, 1.0f, false),

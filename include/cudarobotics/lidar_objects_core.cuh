@@ -45,6 +45,7 @@
 
 #include "cuda_check.cuh"
 #include "lidar_box_classifier.h"
+#include "lidar_box_classifier_heights.h"
 
 namespace cudabot {
 
@@ -765,35 +766,55 @@ static int classify_box(const Obb& B) {
 // scenes of seeds 101-200, none of which is evaluated) on six features of the
 // L-shape box. The last one says whether the top of the object may be cut off
 // by the scan's upper beam: a van taller than the beam reaches looks short.
-static const int N_FEAT = 6;
-static const char* FEAT_NAME[N_FEAT] = { "long", "short", "height", "log_n", "range", "top_margin_deg" };
+static const int N_FEAT = 7;
+static const char* FEAT_NAME[N_FEAT] = { "long", "short", "height", "log_n", "range", "top_margin_deg",
+                                         "sensor_height" };
 
-// vert_max: the scan's upper beam angle (radians).
-static void box_features(const Obb& B, float* f, float vert_max = VERT_MAX) {
+// vert_max: the scan's upper beam angle (radians); sensor_h: the sensor's height above the ground. The
+// last feature (used by the height-aware class only) lets the class read the others for the sensor's
+// height: from a low sensor a car's roof reaches the upper beam as a van's does from a high one.
+static void box_features(const Obb& B, float* f, float vert_max = VERT_MAX, float sensor_h = SENSOR_H) {
     f[0] = std::max(B.len, B.wid);
     f[1] = std::min(B.len, B.wid);
     f[2] = B.zhi - B.zlo;
     f[3] = std::log((float)B.n);
     f[4] = std::hypot(B.cx, B.cy);
     f[5] = vert_max * (180.0f / PI_F) - std::atan(B.tmax) * (180.0f / PI_F);   // 0 when the top reaches the upper beam
+    f[6] = sensor_h;
 }
 
-static int classify_box_mlp(const Obb& B, float vert_max = VERT_MAX) {
-    namespace M = lidar_box_classifier;
-    float f[N_FEAT], h[M::N_HID], best = -1e30f;
-    box_features(B, f, vert_max);
-    for (int i = 0; i < N_FEAT; ++i) f[i] = (f[i] - M::MEAN[i]) / M::STD[i];
-    for (int j = 0; j < M::N_HID; ++j) {
-        float a = M::B1[j];
-        for (int i = 0; i < N_FEAT; ++i) a += M::W1[j][i] * f[i];
+// One forward pass of a generated MLP (tanh hidden layer) over the first NI features; returns the arg max.
+template <int NI, int NH, int NO>
+static int mlp_argmax(const float* feat, const float (&mean)[NI], const float (&sd)[NI], const float (&W1)[NH][NI],
+                      const float (&B1)[NH], const float (&W2)[NO][NH], const float (&B2)[NO]) {
+    float f[NI], h[NH], best = -1e30f;
+    for (int i = 0; i < NI; ++i) f[i] = (feat[i] - mean[i]) / sd[i];
+    for (int j = 0; j < NH; ++j) {
+        float a = B1[j];
+        for (int i = 0; i < NI; ++i) a += W1[j][i] * f[i];
         h[j] = std::tanh(a);
     }
     int arg = 0;
-    for (int k = 0; k < M::N_OUT; ++k) {
-        float a = M::B2[k];
-        for (int j = 0; j < M::N_HID; ++j) a += M::W2[k][j] * h[j];
+    for (int k = 0; k < NO; ++k) {
+        float a = B2[k];
+        for (int j = 0; j < NH; ++j) a += W2[k][j] * h[j];
         if (a > best) { best = a; arg = k; }
     }
+    return arg;
+}
+
+// The class: by default the MLP trained on scans from 1.8 m (the first six
+// features); with height_aware the MLP trained on scans from 0.8-2.5 m, which
+// also reads the sensor's height. The default is better at 1.8 m on the drives,
+// the height-aware one far from it (docs/gpu_ground_segmentation.md).
+static int classify_box_mlp(const Obb& B, float vert_max = VERT_MAX, float sensor_h = SENSOR_H,
+                            bool height_aware = false) {
+    namespace M = lidar_box_classifier;
+    namespace H = lidar_box_classifier_heights;
+    float f[N_FEAT];
+    box_features(B, f, vert_max, sensor_h);
+    int arg = height_aware ? mlp_argmax(f, H::MEAN, H::STD, H::W1, H::B1, H::W2, H::B2)
+                           : mlp_argmax(f, M::MEAN, M::STD, M::W1, M::B1, M::W2, M::B2);
     return arg < N_CLS ? arg : -1;   // classes: car, van, none
 }
 
