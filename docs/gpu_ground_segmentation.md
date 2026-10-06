@@ -364,6 +364,33 @@ Each cell is the mean / max over the scans, and "after" is from two runs.
 - **Stand-still grid.** The motion tracker's stand-still hypothesis keeps its voxel grid up to date as points arrive instead of recounting all of them each scan. A zero velocity leaves the points where they are, so the grid and the boxes are the same, and the output files are byte-identical.
 - **Budget.** The worst scan now takes 11 ms of a 10 Hz LiDAR's 100 ms. The remaining host work is the moving hypothesis's recount and the trackers' voxel grids.
 
+## Library
+
+The production path is also a library: `CudaRobotics::lidar_objects_gpu`, with the interface in `include/cudarobotics/lidar_objects_gpu.hpp` (no CUDA headers needed). It takes one call per scan:
+
+```cpp
+#include "cudarobotics/lidar_objects_gpu.hpp"
+
+cudarobotics::LidarObjectPipeline pipe;   // up to 131072 points per scan
+cudarobotics::LidarObjectsResult r = pipe.process(xyz, n, sensor_x, sensor_y, sensor_z, t);
+// r.ground[i], r.cluster[i]   per point: ground flag, cluster label (-1 for ground)
+// r.clusters                   per cluster of >= 10 points: L-shape box, learned class, size-prior box
+// r.tracks                     per track this scan updated: hybrid box, class, velocity, moving flag
+```
+
+- **Steps.**
+  - GPU: ground segmentation → voxel clustering → L-shape boxes.
+  - Host: learned class and size prior → motion tracker, whose box refits are batched on the GPU → hybrid box.
+- **Input.** Points relative to the sensor, with the axes aligned to the world (z up). The sensor's world position and the scan time go with each scan.
+- **Built-in assumptions.** The sensor model is compiled in:
+  - the ground model expects the sensor 1.8 m above the ground;
+  - the learned class was trained on a 64-beam scan with its upper beam at +2°.
+- **Code layout.** The algorithms live in `include/cudarobotics/lidar_objects_core.cuh`. It is header-only with internal linkage, so the library and this demo share it.
+- **Checks.**
+  - On every scan, the demo runs the library on the scan's returns. It checks that the ground labels, the clusters, the boxes and, on the drives, the tracks are exactly its own; every gate requires this.
+  - `tests/lidar_objects_gpu_smoke.cu` uses only the public interface: flat ground and a car passed by the sensor (CTest `lidar_objects_gpu_smoke`).
+- **Limitations.** Rotated sensors need their points rotated first. Calls run on the default CUDA stream and are not thread-safe.
+
 ## Reproduce
 
 ```bash

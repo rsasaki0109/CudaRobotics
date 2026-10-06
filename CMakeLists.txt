@@ -594,7 +594,21 @@ cudabot_demo(gpu_tsdf_fusion src/gpu_tsdf_fusion.cu OPENCV RELAXED_CONSTEXPR NO_
 
 cudabot_demo(gpu_dbscan src/gpu_dbscan.cu OPENCV RELAXED_CONSTEXPR NO_FMAD)
 
+add_library(cudarobotics_lidar_objects_gpu STATIC src/lidar_objects_gpu.cu)
+add_library(CudaRobotics::lidar_objects_gpu ALIAS cudarobotics_lidar_objects_gpu)
+target_include_directories(cudarobotics_lidar_objects_gpu
+  PUBLIC ${CMAKE_SOURCE_DIR}/include)
+# --fmad=false: the GPU boxes must equal the CPU references bit for bit
+target_compile_options(cudarobotics_lidar_objects_gpu PRIVATE
+  $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr --fmad=false>)
+set_target_properties(cudarobotics_lidar_objects_gpu PROPERTIES
+  POSITION_INDEPENDENT_CODE ON)
+
+add_executable(lidar_objects_gpu_smoke tests/lidar_objects_gpu_smoke.cu)
+target_link_libraries(lidar_objects_gpu_smoke cudarobotics_lidar_objects_gpu)
+
 cudabot_demo(gpu_ground_segmentation src/gpu_ground_segmentation.cu OPENCV RELAXED_CONSTEXPR NO_FMAD)
+target_link_libraries(gpu_ground_segmentation cudarobotics_lidar_objects_gpu)
 
 cudabot_demo(gpu_sgm_stereo src/gpu_sgm_stereo.cu OPENCV RELAXED_CONSTEXPR NO_FMAD)
 
@@ -708,6 +722,12 @@ add_test(NAME gpu_batched_ik_gate
 set_tests_properties(gpu_batched_ik_gate PROPERTIES
   TIMEOUT 300
   LABELS "gpu;manipulation;ik")
+
+add_test(NAME lidar_objects_gpu_smoke
+  COMMAND $<TARGET_FILE:lidar_objects_gpu_smoke>)
+set_tests_properties(lidar_objects_gpu_smoke PROPERTIES
+  TIMEOUT 120
+  LABELS "gpu;pointcloud;ground")
 
 add_test(NAME gpu_ground_segmentation_gate
   COMMAND $<TARGET_FILE:gpu_ground_segmentation> --check --no-video
