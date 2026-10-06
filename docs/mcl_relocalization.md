@@ -107,16 +107,46 @@ Counts are out of 100 episodes. One grid search takes 1.3-1.8 ms on the GPU, and
 - **Recovery in the hard environment is not the same as staying right.** `reloc` recovers 99 kidnappings, but only 84 end localized. In identical rooms the scan cannot tell which room the robot is in, and the estimate can flip between copies until a door comes into view.
 - **The likelihood-ratio trigger did not fix the false resets.** In identical rooms another room's pose really does score as well as the true one.
 
+## Follow-up: a separate candidate hypothesis (negative)
+
+`reloc_dual` keeps the belief whole and runs the relocalization particles as a second filter beside it (1000 particles). The candidate set replaces the belief only when it wins a sequential test:
+- **Log odds.** The log odds that the robot was moved start at the kidnap prior, log 1e-4.
+- **Per scan.** Each scan adds the log of the two sets' marginal likelihoods (candidate over belief).
+- **Switch and drop.** The set switches when the odds turn positive. It is dropped when it falls 20 nats below the prior or runs 30 steps without winning.
+
+After a real kidnapping, the belief explains the scan tens of nats worse per step, so the switch comes one step later. The idea was that look-alike poses would never win.
+
+Development seeds 0-29, hard environment, kidnap cell. Every row recovers all 30 kidnappings. Columns: runs with a reset or switch before the kidnap, and the share of steps localized before it.
+
+| Variant | runs with a reset / switch before the kidnap | localized before the kidnap |
+|---|---:|---:|
+| `reloc` (reference) | 18 | 0.98 |
+| candidate set, switch on positive odds | 3 | 0.97 |
+| + candidates kept 1 m away from the belief's estimate | 4 | 0.93 |
+| + a CUSUM drift: the candidates must win by 2 nats per step | 3 | 0.97 |
+| + switch only while the belief's own alpha is below 0.45 | 3 | 0.97 |
+| + keep the old belief as the alternative after a switch | 3 | 0.97 |
+
+A drift of 1 / 2 / 3 / 5 nats per step gives 0.94 / 0.97 / 0.97 / 0.97. The open environment stays perfect (30/30, no switch before the kidnap) in every variant. The last row is the code's `reloc_dual`.
+
+- **Fewer false switches, but not less harm.** The separate set cuts the runs with a false reset from 18 to 3. Each remaining false switch is a full jump to another room, though, and the share of localized steps does not improve. No fresh-seed test was run: development already shows no gain on the failed condition.
+- **Why the test cannot help.** It is the likelihood model, not the reset rule.
+  - On seed 9, at step 10, the true pose scores -23.8 and a pose in an identical room -15. Many beams hit unmapped clutter, and the look-alike pose explains the short readings better.
+  - The trace of seed 29 shows the same thing in smaller steps: a copy room beats the true pose by 2-3.5 nats per scan for several scans.
+  - With the scan model preferring the wrong room, every rule built on it can be talked into the switch.
+  - Switching back does not happen either: in an identical room the true pose never wins clearly.
+
 ## Limitations and next steps
 
 - Simulated worlds, one map size, one sensor model, 2000 particles, CPU resampling.
 - The hard environment is extreme: every room is an exact copy.
-- **Next:** make the reset itself safer, not just the trigger. For example, keep the old belief whole and add the relocalization particles as a separate weighted hypothesis set that must win over several scans before it replaces the belief. Test on new fresh seeds.
+- **Next:** a scan model that knows occlusion. A beam model that ray-casts each particle's expected range on the GPU, with a probability for short readings, would explain clutter returns at the true pose instead of rewarding a look-alike room for them. It changes the filter for every method, so the whole comparison would be rerun on new fresh seeds.
 
 ## Reproduce
 
 ```bash
 ./bin/benchmark_mcl_relocalization --env open --seed-count 30 [--methods mcl,aug,er,reloc,reloc_lr] [--trace]
 ./bin/benchmark_mcl_relocalization --env hard --seed-count 30 --inject-prior 1e-2   # development sweeps
+./bin/benchmark_mcl_relocalization --env hard --seed-count 30 --methods reloc,reloc_dual   # first ablation row: --dual-exclude 0 --dual-drift 0 --dual-gate 0 --dual-swap 0
 python scripts/mcl_relocalization_eval.py     # the test on fresh seeds 100-199 (writes the CSVs and the report)
 ```
