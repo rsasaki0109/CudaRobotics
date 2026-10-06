@@ -561,7 +561,7 @@ static void cpu_segment(const std::vector<float>& pts, const std::vector<int>& g
         bin_center(b, cx, cy);
         planes[b] = fit_bin(pts.data(), idx.data(), start[b], start[b + 1], cx, cy);
     }
-    for (int s = 0; s < N_SECTOR; ++s) check_sector(planes.data(), s);
+    for (int s = 0; s < N_SECTOR; ++s) check_sector(planes.data(), s, SENSOR_H);
     lab.assign(n, 0);
     for (int i = 0; i < n; ++i) {
         int b = bin[i];
