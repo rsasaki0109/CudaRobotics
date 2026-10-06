@@ -41,6 +41,7 @@
 #include <queue>
 #include <random>
 #include <sstream>
+#include <thread>
 #include <string>
 #include <vector>
 
@@ -404,6 +405,54 @@ __global__ void weight_kernel(const float* px, const float* py, const float* pth
     loglik[i] = s;
 }
 
+// Beam model (Thrun et al., Probabilistic Robotics 6.3): each beam's expected
+// range is ray-cast in the map, here by sphere tracing on the distance field.
+// A reading short of it can be an unmapped obstacle (z_short), so clutter in
+// front of a wall does not count against the true pose.
+struct BeamModel {
+    float z_hit = 0.75f, z_short = 0.2f, z_rand = 0.05f;
+    float sigma = 0.1f, lambda_short = 0.5f;
+    float max_range = 8.0f;
+};
+
+__host__ __device__ inline float expected_range(const float* dist, float x, float y, float c, float s, float max_r) {
+    float r = 0.0f;
+    for (int it = 0; it < 256 && r < max_r; it++) {
+        int i = (int)floorf((x + r * c) / RES), j = (int)floorf((y + r * s) / RES);
+        if (i < 0 || i >= GW || j < 0 || j >= GH) return max_r;
+        float d = dist[j * GW + i];
+        if (d <= 0.0f) return r;
+        r += fmaxf(d - 0.75f * RES, 0.25f * RES);   // the cell's centre may be up to 0.71 cells off
+    }
+    return max_r;
+}
+
+__host__ __device__ inline float beam_model_loglik(float z, float zs, const BeamModel& m) {
+    const float inv = 1.0f / (2.5066283f * m.sigma);
+    float e = (z - zs) / m.sigma;
+    float p = m.z_rand / m.max_range;
+    if (zs < m.max_range) p += m.z_hit * inv * expf(-0.5f * e * e);
+    if (z < zs) p += m.z_short * m.lambda_short * expf(-m.lambda_short * z) / (1.0f - expf(-m.lambda_short * zs));
+    return logf(p);
+}
+
+__global__ void weight_beam_kernel(const float* px, const float* py, const float* pth, float* loglik, int n,
+                                   const float* dist, const float* br, const float* ba, int nbf, BeamModel m)
+{
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i >= n) return;
+    float x = px[i], y = py[i], th = pth[i];
+    int ci = (int)floorf(x / RES), cj = (int)floorf(y / RES);
+    float s = 0.0f;
+    if (ci < 0 || ci >= GW || cj < 0 || cj >= GH || dist[cj * GW + ci] < 0.05f) s -= 50.0f;
+    for (int b = 0; b < nbf; b++) {
+        float a = th + ba[b];
+        float zs = expected_range(dist, x, y, cosf(a), sinf(a), m.max_range);
+        s += beam_model_loglik(br[b], zs, m);
+    }
+    loglik[i] = s;
+}
+
 // Expansion reset: scatter every particle.
 __global__ void expand_kernel(float* px, float* py, float* pth, curandState* rng, int n, float sxy, float sth) {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
@@ -446,7 +495,11 @@ __global__ void reloc_kernel(const int* cand, int ncand, const float* lf_coarse,
 // ---------------------------------------------------------------------------
 struct Config {
     int np = 2000;
-    float reset_th = 0.45f;     // mean per-beam likelihood below which er / reloc trigger
+    bool beam_model = false;    // weigh with the beam model instead of the likelihood field
+    BeamModel beam;
+    float max_range = 8.0f;     // the sensor's range (from the environment)
+    float reset_th = -1.0f;     // mean per-beam likelihood below which er / reloc trigger
+                                // (default: 0.45 likelihood field, 0.55 beam model)
     float er_sxy = 0.2f, er_sth = 0.2f;
     float reloc_frac = 0.5f;    // share of the particles replaced by relocalization samples
     int reloc_top = 32;
@@ -584,6 +637,37 @@ public:
     int grid_runs = 0;               // relocalization grid searches run
     float last_logz = 0;             // log marginal likelihood of the last scan under the belief
     bool has_beams() const { return nbf_ > 0 && nc_ > 0; }
+    // timing: one relocalization grid search on the current scan; returns the best score
+    float timed_grid() { grid_search(); return grid_best_; }
+    // timing: one weighting of all particles on the GPU; returns the sum of log likelihoods
+    double timed_weigh() { weigh(); return std::accumulate(ll_.begin(), ll_.end(), 0.0); }
+    // the same weighting with the beam model on the CPU, split over `threads` threads
+    double cpu_weigh_beam(int threads) {
+        CUDA_CHECK(cudaMemcpy(x_.data(), d_x_, n_ * sizeof(float), cudaMemcpyDeviceToHost));
+        CUDA_CHECK(cudaMemcpy(y_.data(), d_y_, n_ * sizeof(float), cudaMemcpyDeviceToHost));
+        CUDA_CHECK(cudaMemcpy(th_.data(), d_th_, n_ * sizeof(float), cudaMemcpyDeviceToHost));
+        BeamModel m = cfg_.beam; m.max_range = cfg_.max_range;
+        std::vector<float> out(n_);
+        auto work = [&](int k) {
+            for (int i = k; i < n_; i += threads) {
+                float x = x_[i], y = y_[i], th = th_[i];
+                int ci = (int)std::floor(x / RES), cj = (int)std::floor(y / RES);
+                float sc = 0.0f;
+                if (ci < 0 || ci >= GW || cj < 0 || cj >= GH || w_.dist[cj * GW + ci] < 0.05f) sc -= 50.0f;
+                for (int b = 0; b < nbf_; b++) {
+                    float a = th + ba_h_[b];
+                    sc += beam_model_loglik(br_h_[b], expected_range(w_.dist.data(), x, y, std::cos(a), std::sin(a),
+                                                                     m.max_range), m);
+                }
+                out[i] = sc;
+            }
+        };
+        std::vector<std::thread> pool;
+        for (int k = 1; k < threads; k++) pool.emplace_back(work, k);
+        work(0);
+        for (auto& t : pool) t.join();
+        return std::accumulate(out.begin(), out.end(), 0.0);
+    }
     // reloc_dual: spread all particles around the best poses of m's grid search
     // on m's current scan, away from m's estimate: the hypothesis "the robot is
     // somewhere else".
@@ -642,8 +726,13 @@ private:
         th_[i] = (2.0f * U(host_rng_) - 1.0f) * PI_F;
     }
     void weigh() {
-        weight_kernel<<<(n_ + THREADS - 1) / THREADS, THREADS>>>(d_x_, d_y_, d_th_, d_ll_, n_, d_lf_, d_dist_,
-                                                                 d_br_, d_ba_, nbf_);
+        if (cfg_.beam_model) {
+            BeamModel m = cfg_.beam; m.max_range = cfg_.max_range;
+            weight_beam_kernel<<<(n_ + THREADS - 1) / THREADS, THREADS>>>(d_x_, d_y_, d_th_, d_ll_, n_, d_dist_,
+                                                                          d_br_, d_ba_, nbf_, m);
+        } else
+            weight_kernel<<<(n_ + THREADS - 1) / THREADS, THREADS>>>(d_x_, d_y_, d_th_, d_ll_, n_, d_lf_, d_dist_,
+                                                                     d_br_, d_ba_, nbf_);
         CUDA_CHECK(cudaMemcpy(ll_.data(), d_ll_, n_ * sizeof(float), cudaMemcpyDeviceToHost));
     }
     // mean over particles of the per-beam (geometric mean) likelihood
@@ -864,6 +953,91 @@ static Result run_episode(const World& w, const Episode& e, const Config& cfg, c
     return r;
 }
 
+// CPU reference of the relocalization grid search (same candidates, headings,
+// beams and coarse field), split over `threads` threads; returns the best score.
+static float cpu_grid(const World& w, const std::vector<float>& br, const std::vector<float>& ba, int threads) {
+    const int nc = (int)w.cand_cells.size(), nb = (int)br.size();
+    std::vector<float> dx(RELOC_HEADINGS * nb), dy(RELOC_HEADINGS * nb);
+    for (int h = 0; h < RELOC_HEADINGS; h++)
+        for (int b = 0; b < nb; b++) {
+            float a = -PI_F + h * (2.0f * PI_F / RELOC_HEADINGS) + ba[b];
+            dx[h * nb + b] = br[b] * std::cos(a); dy[h * nb + b] = br[b] * std::sin(a);
+        }
+    std::vector<float> best(threads, -1e30f);
+    auto work = [&](int k) {
+        for (int c = k; c < nc; c += threads) {
+            float x = cell_x(w.cand_cells[c]), y = cell_y(w.cand_cells[c]);
+            for (int h = 0; h < RELOC_HEADINGS; h++) {
+                float sc = 0.0f;
+                for (int b = 0; b < nb; b++) {
+                    int gi = (int)std::floor((x + dx[h * nb + b]) / RES), gj = (int)std::floor((y + dy[h * nb + b]) / RES);
+                    sc += (gi < 0 || gi >= GW || gj < 0 || gj >= GH) ? std::log(Z_RAND) : w.lf_coarse[gj * GW + gi];
+                }
+                best[k] = std::max(best[k], sc);
+            }
+        }
+    };
+    std::vector<std::thread> pool;
+    for (int k = 1; k < threads; k++) pool.emplace_back(work, k);
+    work(0);
+    for (auto& t : pool) t.join();
+    return *std::max_element(best.begin(), best.end());
+}
+
+// Time the grid search on the GPU and on the CPU (1 thread and all threads).
+static void time_grid(const Env& env, const Config& cfg, int seeds) {
+    using clk = std::chrono::high_resolution_clock;
+    auto ms = [](clk::time_point a) { return std::chrono::duration<float, std::milli>(clk::now() - a).count(); };
+    const int hw = std::max(1u, std::thread::hardware_concurrency());
+    double g = 0, c1 = 0, cn = 0, wg = 0, w1 = 0, wn = 0; long long poses = 0; int nbs = 0;
+    for (int s = 0; s < seeds; s++) {
+        std::mt19937 wrng(1000003u * (unsigned)s + 11u);
+        World w = make_world(wrng, env);
+        std::mt19937 erng(2000003u * (unsigned)s + 3u);
+        Episode e = make_episode(w, env, erng, 1, -1);
+        Filter f(w, cfg, 1ull + s);
+        f.init_at(e.x[0], e.y[0], e.th[0]);
+        float dummy = 0.0f;
+        f.step(0, 0, 0, 0, &e.scan[0], false, dummy);
+        std::vector<float> br, ba;
+        for (int b = 0; b < NB; b += BEAM_STRIDE)
+            if (e.scan[b] < MAX_R) { br.push_back(e.scan[b]); ba.push_back(b * 2.0f * PI_F / NB - PI_F); }
+        float gs = f.timed_grid();   // warm-up
+        auto t0 = clk::now();
+        for (int r = 0; r < 10; r++) gs = f.timed_grid();
+        g += ms(t0) / 10;
+        t0 = clk::now();
+        float c1s = cpu_grid(w, br, ba, 1);
+        c1 += ms(t0);
+        t0 = clk::now();
+        float cns = cpu_grid(w, br, ba, hw);
+        cn += ms(t0);
+        if (std::fabs(gs - c1s) > 1e-2f * std::fabs(c1s) + 1e-2f || c1s != cns)
+            std::printf("seed %d: best score GPU %.3f CPU %.3f / %.3f\n", s, gs, c1s, cns);
+        poses += (long long)w.cand_cells.size() * RELOC_HEADINGS; nbs += (int)br.size();
+        if (cfg.beam_model) {
+            double gl = f.timed_weigh();
+            t0 = clk::now();
+            for (int r = 0; r < 10; r++) gl = f.timed_weigh();
+            wg += ms(t0) / 10;
+            t0 = clk::now();
+            double c1l = f.cpu_weigh_beam(1);
+            w1 += ms(t0);
+            t0 = clk::now();
+            f.cpu_weigh_beam(hw);
+            wn += ms(t0);
+            if (std::fabs(gl - c1l) > 1e-3 * std::fabs(c1l) + 1.0)
+                std::printf("seed %d: beam log likelihood sum GPU %.2f CPU %.2f\n", s, gl, c1l);
+        }
+    }
+    if (cfg.beam_model)
+        std::printf("beam-model weighting, %d particles: GPU %.3f ms, CPU 1 thread %.2f ms, CPU %d threads %.2f ms\n",
+                    cfg.np, wg / seeds, w1 / seeds, hw, wn / seeds);
+    std::printf("grid search, %s env, %d worlds: %.0f poses x %.0f beams; GPU %.2f ms, CPU 1 thread %.1f ms, "
+                "CPU %d threads %.1f ms\n", env.name.c_str(), seeds, (double)poses / seeds, (double)nbs / seeds,
+                g / seeds, c1 / seeds, hw, cn / seeds);
+}
+
 }  // namespace cudabot
 
 static std::vector<std::string> split(const std::string& s) {
@@ -878,6 +1052,7 @@ int main(int argc, char** argv) {
     std::string csv_path, methods_arg = "mcl,aug,er,reloc,reloc_lr,reloc_dual", cells_arg = "kidnap,global";
     Config cfg;
     Env env;
+    int time_grid_seeds = 0;
     for (int i = 1; i < argc; i++) {
         std::string a = argv[i];
         auto next = [&]() { return std::string(i + 1 < argc ? argv[++i] : ""); };
@@ -889,6 +1064,12 @@ int main(int argc, char** argv) {
         else if (a == "--cells") cells_arg = next();
         else if (a == "--csv") csv_path = next();
         else if (a == "--trace") g_trace = true;
+        else if (a == "--sensor") {
+            std::string v = next();
+            if (v == "beam") cfg.beam_model = true;
+            else if (v != "field") { std::fprintf(stderr, "unknown sensor %s\n", v.c_str()); return 1; }
+        }
+        else if (a == "--time-grid") time_grid_seeds = std::atoi(next().c_str());
         else if (a == "--env") {
             std::string v = next();
             if (v == "hard") { env.name = "hard"; env.fov_deg = 270.0f; env.max_range = 5.0f; env.clutter = 25; env.repeat_rooms = true; }
@@ -921,6 +1102,9 @@ int main(int argc, char** argv) {
         for (int k = 0; k < N_METHODS; k++) if (m == METHOD_NAMES[k]) methods.push_back(k);
     std::vector<std::string> cells = split(cells_arg);
 
+    cfg.max_range = env.max_range;
+    if (cfg.reset_th < 0.0f) cfg.reset_th = cfg.beam_model ? 0.55f : 0.45f;
+    if (time_grid_seeds > 0) { time_grid(env, cfg, time_grid_seeds); return 0; }
     std::vector<Result> rows;
     for (int s = seed_offset; s < seed_offset + seed_count; s++) {
         std::mt19937 wrng(1000003u * (unsigned)s + 11u);

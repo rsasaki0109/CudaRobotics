@@ -136,11 +136,86 @@ A drift of 1 / 2 / 3 / 5 nats per step gives 0.94 / 0.97 / 0.97 / 0.97. The open
   - With the scan model preferring the wrong room, every rule built on it can be talked into the switch.
   - Switching back does not happen either: in an identical room the true pose never wins clearly.
 
+## Follow-up: an occlusion-aware beam model
+
+`--sensor beam` weighs every method with the beam model of Probabilistic Robotics (6.3) instead of the likelihood field.
+- **Expected range.** Each beam's expected range is ray-cast in the map: sphere tracing on the distance field, one GPU thread per particle.
+- **Short readings.** A reading short of the expected range has its own term (z_short = 0.2, λ = 0.5/m), so a box in front of a wall is not evidence against the true pose.
+- **Other parameters.** z_hit = 0.75, σ = 0.1 m, z_rand = 0.05.
+- **Threshold.** The reset threshold for this model's per-beam likelihood scale (0.55) was chosen on development seeds 0-29. While tracking, the scale runs 0.75-2.1; when lost, about 0.2.
+
+### Is the GPU worth it here?
+
+Timing (`--time-grid`) on the same scans. The best scores and log-likelihood sums agree between CPU and GPU.
+
+| Work per scan | GPU | CPU, 1 thread | CPU, 12 threads |
+|---|---:|---:|---:|
+| relocalization grid search (open: 546k poses × 55 beams) | 1.6 ms | 348 ms | 123 ms |
+| relocalization grid search (hard: 521k poses × 34 beams) | 1.0 ms | 210 ms | 75 ms |
+| beam-model weighting, 2000 particles (open / hard) | 0.23 / 0.18 ms | 28 / 18 ms | 8.7 / 5.7 ms |
+| beam-model weighting, 10000 particles (open / hard) | 0.27 / 0.24 ms | 153 / 107 ms | 41 / 36 ms |
+
+- **The grid search is where the GPU matters.** On the GPU it takes 1-1.6 ms. Even with 12 threads the CPU needs 75-123 ms, the whole budget of a 10 Hz scanner. The GPU makes the exhaustive search affordable on every trigger.
+  - The CPU code here is the plain loop. A branch-and-bound matcher (as in Cartographer) prunes most poses, so the honest claim is "exhaustive search at 1 ms without pruning", not "impossible on a CPU".
+- **The beam model is affordable on either at 2000 particles.** A CPU thread pool handles it, so at this size it is a modeling choice, not a GPU one.
+  - The GPU makes it nearly free (0.2 ms), and at 10000 particles a single CPU thread no longer fits a 10 Hz loop (107-153 ms).
+- **The filter itself (2D MCL with a few thousand particles) does not need a GPU.**
+
+### Development (seeds 0-29)
+
+With the beam model, no method is harmed before the kidnap in either environment: the localized share is 1.00 for every method.
+- **Hard environment, kidnap cell.** `reloc` recovers 30/30 and ends localized in 29.
+- **Open environment.** At a threshold of 0.4, some recoveries in the open environment end in a look-alike pose (localized after 0.83). At 0.55 it is 1.00.
+
+### Test on fresh seeds (200-299)
+
+No earlier step ran these seeds. Same three-part criterion as before, fixed before they ran. Report: [results/mcl_relocalization_beam_test_2026-10-07.md](results/mcl_relocalization_beam_test_2026-10-07.md).
+
+| Environment | Method | kidnap: recovered | median steps | final | localized before the kidnap | global: recovered | final |
+|---|---|---:|---:|---:|---:|---:|---:|
+| open | `aug` | 96 | 58 | 96 | 1.000 | 40 | 41 |
+| open | `reloc` | **100** | **0** | **100** | 1.000 | **100** | **100** |
+| hard | `aug` | 53 | 72 | 55 | 0.980 | 26 | 28 |
+| hard | `reloc` | **100** | **0** | 94 | 0.979 | **100** | 97 |
+| hard | `reloc_lr` | 99 | 0 | **96** | **0.990** | 100 | **100** |
+| hard | `reloc_dual` | 99 | 1 | 91 | 0.987 | 100 | 98 |
+
+Paired, `reloc` against `aug`:
+
+| Environment | kidnap | global |
+|---|---|---|
+| open | 4 / 0, p = 0.12 | 60 / 0, p = 2e-18 |
+| hard | 47 / 0, p = 1e-14 | 74 / 0, p = 1e-22 |
+
+**The criterion is not met.**
+- **The failure:** condition 1 fails in the open environment. With the beam model, augmented MCL also recovers 96 of the 100 kidnappings. Only 4 seeds differ, too few for the sign test.
+- **What still holds:**
+  - The safety condition that failed with the likelihood field now holds: 0.979 against 0.980.
+  - Global localization and the hard environment stay far apart.
+  - `reloc` recovers on the kidnap step itself, where `aug` takes a median of 58 steps.
+
+**The same seeds with the likelihood field.** Run with `--sensor field --seed-offset 200`, outside the criterion:
+
+| Environment | Method | kidnap: recovered | final | localized before the kidnap | global: final |
+|---|---|---:|---:|---:|---:|
+| open | `aug`, field → beam | 82 → 96 | 83 → 96 | 1.000 → 1.000 | 35 → 41 |
+| hard | `aug`, field → beam | 41 → 53 | 40 → 55 | 0.979 → 0.980 | 21 → 28 |
+| hard | `reloc`, field → beam | 100 → 100 | 91 → 94 | **0.932 → 0.979** | 90 → 97 |
+
+### Reading
+
+- **The occlusion-aware model removes the cost of relocalization.** Relocalization's damage to good tracking in the hard environment (0.932 localized before the kidnap) goes away (0.979, the same as `aug`). The cause found in the follow-up above was the scan model, and fixing the model fixed it.
+- **It helps every method.** Augmented MCL gains most in the open environment (82 → 96 kidnap recoveries), which is why the pre-registered count comparison there lost its power.
+- **The likelihood-ratio trigger looks best in the hard environment:** 0.990 localized before the kidnap, 96 final, 100 global. It was not the pre-registered method, so this is a lead, not a result.
+
 ## Limitations and next steps
 
 - Simulated worlds, one map size, one sensor model, 2000 particles, CPU resampling.
 - The hard environment is extreme: every room is an exact copy.
-- **Next:** a scan model that knows occlusion. A beam model that ray-casts each particle's expected range on the GPU, with a probability for short readings, would explain clutter returns at the true pose instead of rewarding a look-alike room for them. It changes the filter for every method, so the whole comparison would be rerun on new fresh seeds.
+- **Done: a scan model that knows occlusion** (the beam model above). It fixed the safety condition.
+- **Next:**
+  - Real data: a 2D LiDAR bag with a map, where the clutter is real rather than drawn.
+  - A branch-and-bound CPU baseline for the grid search, to state the GPU's advantage against the best CPU method rather than a plain loop.
 
 ## Reproduce
 
@@ -149,4 +224,6 @@ A drift of 1 / 2 / 3 / 5 nats per step gives 0.94 / 0.97 / 0.97 / 0.97. The open
 ./bin/benchmark_mcl_relocalization --env hard --seed-count 30 --inject-prior 1e-2   # development sweeps
 ./bin/benchmark_mcl_relocalization --env hard --seed-count 30 --methods reloc,reloc_dual   # first ablation row: --dual-exclude 0 --dual-drift 0 --dual-gate 0 --dual-swap 0
 python scripts/mcl_relocalization_eval.py     # the test on fresh seeds 100-199 (writes the CSVs and the report)
+python scripts/mcl_relocalization_eval.py --sensor beam --seed-offset 200 --date 2026-10-07   # beam model, seeds 200-299
+./bin/benchmark_mcl_relocalization --env hard --sensor beam --time-grid 10 [--particles 10000]   # CPU vs GPU timing
 ```
