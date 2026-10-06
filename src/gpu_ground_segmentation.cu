@@ -584,6 +584,7 @@ int main(int argc, char** argv) {
     int trk_hits = 3;
     float sensor_h = SENSOR_H;   // --sensor-height: the scanning sensor's height above the ground
     FsParams fs_params = FS_DEFAULT;   // --fs-weights w_free,w_out,w_size
+    bool track_merge = true;           // --no-track-merge: keep duplicate parked motion tracks
     for (int i = 1; i < argc; ++i) {
         if (!std::strcmp(argv[i], "--no-video")) no_video = true;
         else if (!std::strcmp(argv[i], "--check")) check = true;
@@ -593,6 +594,7 @@ int main(int argc, char** argv) {
         else if (!std::strcmp(argv[i], "--sequence")) sequence = true;
         else if (!std::strcmp(argv[i], "--trk-cpu-fit")) trk_cpu_fit = true;
         else if (!std::strcmp(argv[i], "--sensor-height") && i + 1 < argc) sensor_h = (float)std::atof(argv[++i]);
+        else if (!std::strcmp(argv[i], "--no-track-merge")) track_merge = false;
         else if (!std::strcmp(argv[i], "--fs-weights") && i + 1 < argc)
             std::sscanf(argv[++i], "%f,%f,%f", &fs_params.w_free, &fs_params.w_out, &fs_params.w_size);
         else if (!std::strcmp(argv[i], "--moving")) moving = sequence = true;
@@ -648,7 +650,7 @@ int main(int argc, char** argv) {
     CUDA_CHECK(cudaMemcpyToSymbol(c_cyl, h_cyl, sizeof(h_cyl)));
     FILE* obs = obs_csv ? std::fopen(obs_csv, "w") : nullptr;
     if (obs) {
-        std::fprintf(obs, "seed,scan,box,faces,cls,cls_mlp,track,mtrack,speed,verr_static,verr_motion,mtrack2,verr_motion_fs");
+        std::fprintf(obs, "seed,scan,box,faces,cls,cls_mlp,track,mtrack,speed,verr_static,verr_motion,mtrack2,verr_motion_fs,mtrack_scans");
         for (int m = 0; m < N_BM; ++m)
             std::fprintf(obs, ",iou_%s,centre_%s,yaw_%s", BM_KEY[m], BM_KEY[m], BM_KEY[m]);
         std::fprintf(obs, "\n");
@@ -710,6 +712,7 @@ int main(int argc, char** argv) {
     bool lib_same = true;
     trk[1].motion = true;
     trk[2].motion = true;
+    for (Tracker& T : trk) T.merge = track_merge;
     for (Tracker& T : trk) T.trk_hits = trk_hits;
     BoxScore bmov = {}, bpark = {};   // vehicle observations: moving traffic, parked cars and the van
     double verr_sum[2][2] = {};       // [tracker][moving]
@@ -1049,7 +1052,7 @@ int main(int argc, char** argv) {
                     if (obs) {
                         std::fprintf(obs, "%u,%d,%d,%d,%d,%d,%d,%d,%.3f,%.4f,%.4f", seed, s, b, faces, cls, cls_mlp, tid,
                                      mtid, box_speed[b], verr[0], verr[1]);
-                        std::fprintf(obs, ",%d,%.4f", mtid2, verr[2]);
+                        std::fprintf(obs, ",%d,%.4f,%d", mtid2, verr[2], mtid >= 0 ? trk[1].tracks[mtid].scans : 0);
                         for (int m = 0; m < N_BM; ++m) std::fprintf(obs, ",%.5f,%.5f,%.4f", e_iou[m], e_ctr[m], e_yaw[m]);
                         std::fprintf(obs, "\n");
                     }

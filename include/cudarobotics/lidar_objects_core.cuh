@@ -854,6 +854,7 @@ struct Track {
     std::unordered_map<long long, int> vox;
     int votes[N_CLS], scans = 0;
     Obb box;                  // world frame
+    bool dead = false;        // merged into another track: never matched again
 };
 
 static float rect_dist(const Obb& B, float x, float y) {
@@ -1049,6 +1050,7 @@ static void motion_refit(Track& T, MotionState& M, float t_now, int trk_hits, st
 // One tracker: static (world-frame accumulation) or motion (Kalman filter, object-frame accumulation).
 struct Tracker {
     bool motion = false;
+    bool merge = true;  // merge duplicate parked motion tracks (merge_duplicates)
     int trk_hits = 3;   // a voxel counts once seen in this many scans
     std::vector<Track> tracks;
     std::vector<MotionState> ms;
@@ -1083,6 +1085,7 @@ struct Tracker {
             Obb W = cobb[cand[k]];
             W.cx += px; W.cy += py;
             for (size_t j = 0; j < tracks.size(); ++j) {
+                if (tracks[j].dead) continue;
                 if (motion) {   // predicted centre vs measured centre
                     Obb Z = meas ? (*meas)[cand[k]] : complete_box(cobb[cand[k]], track_class((int)j, ccls[cand[k]]), 1.0f);
                     float d = (float)std::hypot(Z.cx + px - ms[j].x[0], Z.cy + py - ms[j].x[1]);
@@ -1164,7 +1167,54 @@ struct Tracker {
             }
             tracks[fit_track[j]].box = boxes[j];
         }
+        if (motion && merge) merge_duplicates();
         return ms;
+    }
+
+    // Motion tracks: two parked tracks whose boxes fit together in one box of the
+    // older track's class size (x 1.2) are one vehicle split in two (typically
+    // as the view of a car beside the road turns from its rear to its side, its
+    // cluster breaks into two); the younger one's points and class votes join the
+    // older track, and it retires. Without this the car's cluster can alternate
+    // between the two tracks, each time an identity switch. Two parked cars do not
+    // fit in one car's box.
+    bool fit_together(int a, int b) const {
+        const Obb& A = tracks[a].box;
+        float c = std::cos(A.yaw), s = std::sin(A.yaw), lo[2] = { 1e9f, 1e9f }, hi[2] = { -1e9f, -1e9f };
+        for (int q = 0; q < 2; ++q) {
+            float x[4], y[4];
+            rect_corners(q ? tracks[b].box : A, x, y);
+            for (int k = 0; k < 4; ++k) {
+                float u = c * x[k] + s * y[k], v = -s * x[k] + c * y[k];
+                lo[0] = std::min(lo[0], u); hi[0] = std::max(hi[0], u);
+                lo[1] = std::min(lo[1], v); hi[1] = std::max(hi[1], v);
+            }
+        }
+        int tc = 0;
+        for (int k = 1; k < N_CLS; ++k) if (tracks[a].votes[k] > tracks[a].votes[tc]) tc = k;
+        float l = std::max(hi[0] - lo[0], hi[1] - lo[1]), w = std::min(hi[0] - lo[0], hi[1] - lo[1]);
+        return l <= 1.2f * PRIOR[tc].len && w <= 1.2f * PRIOR[tc].wid;
+    }
+
+    void merge_duplicates() {
+        for (size_t b = 0; b < tracks.size(); ++b) {
+            if (tracks[b].dead || ms[b].moving) continue;
+            for (size_t a = 0; a < b; ++a) {
+                if (tracks[a].dead || ms[a].moving) continue;
+                if (!fit_together((int)a, (int)b)) continue;
+                MotionState& A = ms[a];
+                const MotionState& Bm = ms[b];
+                for (size_t i = 0; i < Bm.t.size(); ++i) {
+                    float x = Bm.pts[i * 3], y = Bm.pts[i * 3 + 1], z = Bm.pts[i * 3 + 2];
+                    A.pts.push_back(x); A.pts.push_back(y); A.pts.push_back(z);
+                    A.t.push_back(Bm.t[i]); A.scan.push_back(Bm.scan[i]);
+                    motion_add_static(A, x, y, z, Bm.scan[i]);
+                }
+                for (int c = 0; c < N_CLS; ++c) tracks[a].votes[c] += tracks[b].votes[c];
+                tracks[b].dead = true;
+                break;
+            }
+        }
     }
 
     Obb fit_cpu(size_t j, const std::vector<float>& cs) const {
