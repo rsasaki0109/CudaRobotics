@@ -60,7 +60,6 @@
 // headings and car / van sizes, and new sensor poses. --obs-csv PATH writes one
 // row per box observation (scripts/box_fitting_heldout.py aggregates them), and
 // --sensor-height H scans from a sensor H above the ground (default 1.8 m),
-// --height-aware-class uses the class trained on scans from 0.8-2.5 m, and
 // --cls-csv PATH one row of classifier features per cluster
 // (scripts/train_box_classifier.py trains the learned class on them).
 //
@@ -582,7 +581,6 @@ int main(int argc, char** argv) {
     bool sequence = false, moving = false, trk_cpu_fit = false;
     int trk_hits = 3;
     float sensor_h = SENSOR_H;   // --sensor-height: the scanning sensor's height above the ground
-    bool height_aware = false;   // --height-aware-class: the class trained on scans from 0.8-2.5 m
     for (int i = 1; i < argc; ++i) {
         if (!std::strcmp(argv[i], "--no-video")) no_video = true;
         else if (!std::strcmp(argv[i], "--check")) check = true;
@@ -592,7 +590,6 @@ int main(int argc, char** argv) {
         else if (!std::strcmp(argv[i], "--sequence")) sequence = true;
         else if (!std::strcmp(argv[i], "--trk-cpu-fit")) trk_cpu_fit = true;
         else if (!std::strcmp(argv[i], "--sensor-height") && i + 1 < argc) sensor_h = (float)std::atof(argv[++i]);
-        else if (!std::strcmp(argv[i], "--height-aware-class")) height_aware = true;
         else if (!std::strcmp(argv[i], "--moving")) moving = sequence = true;
         else if (!std::strcmp(argv[i], "--trk-hits") && i + 1 < argc) trk_hits = std::max(1, std::atoi(argv[++i]));
     }
@@ -699,7 +696,6 @@ int main(int argc, char** argv) {
     lib_cfg.max_points = N_RAYS;
     lib_cfg.track_min_scans = trk_hits;
     lib_cfg.sensor_height = sensor_h;
-    lib_cfg.height_aware_class = height_aware;
     cudarobotics::LidarObjectPipeline lib(lib_cfg);   // the library: must give exactly the results below
     bool lib_same = true;
     trk[1].motion = true;
@@ -808,7 +804,7 @@ int main(int argc, char** argv) {
                     for (size_t r = 0; r < ckeys.size(); ++r) {
                         float f[N_FEAT];
                         box_features(cobb[r], f, VERT_MAX, sensor_h);
-                        int rule = classify_box(cobb[r]), mlp = classify_box_mlp(cobb[r], VERT_MAX, sensor_h, height_aware);
+                        int rule = classify_box(cobb[r]), mlp = classify_box_mlp(cobb[r], VERT_MAX, sensor_h);
                         std::fprintf(clsf, "%u,%d,%d,%d,%d", seed, s, cl_of[r], rule < 0 ? 2 : rule, mlp < 0 ? 2 : mlp);
                         for (int i = 0; i < N_FEAT; ++i) std::fprintf(clsf, ",%.5f", f[i]);
                         std::fprintf(clsf, "\n");
@@ -829,7 +825,7 @@ int main(int argc, char** argv) {
                 fits.clear(); done.clear(); trk_draw.clear();
                 for (const Obb& b : cobb) {
                     fits.push_back(b);
-                    int k = classify_box_mlp(b, VERT_MAX, sensor_h, height_aware);
+                    int k = classify_box_mlp(b, VERT_MAX, sensor_h);
                     if (k >= 0) done.push_back(complete_box(b, k, 1.0f));
                 }
                 for (Tracker& T : trk) T.track_of.assign(N_RAYS, -1);
@@ -838,7 +834,7 @@ int main(int argc, char** argv) {
                     const float px = poses[s][0], py = poses[s][1], pz = ground_h(px, py) + sensor_h;
                     std::vector<int> cand, ccls(ckeys.size(), -1), slot(N_RAYS, -1);
                     for (size_t r = 0; r < ckeys.size(); ++r) {
-                        ccls[r] = classify_box_mlp(cobb[r], VERT_MAX, sensor_h, height_aware);
+                        ccls[r] = classify_box_mlp(cobb[r], VERT_MAX, sensor_h);
                         if (ccls[r] >= 0) { slot[ckeys[r]] = (int)cand.size(); cand.push_back((int)r); }
                     }
                     std::vector<std::vector<int>> citems(cand.size());
@@ -884,7 +880,7 @@ int main(int argc, char** argv) {
                         same = orig[C.label] == ckeys[r] && C.box.cx == O.cx && C.box.cy == O.cy &&
                                C.box.length == O.len && C.box.width == O.wid && C.box.yaw == O.yaw &&
                                C.box.z_min == O.zlo && C.box.z_max == O.zhi && C.box.points == O.n &&
-                               (int)C.cls == classify_box_mlp(O, VERT_MAX, sensor_h, height_aware);
+                               (int)C.cls == classify_box_mlp(O, VERT_MAX, sensor_h);
                     }
                     if (sequence) {   // tracks: the hybrid boxes of the motion tracker above
                         size_t m = 0;
@@ -896,7 +892,7 @@ int main(int argc, char** argv) {
                             const MotionState& M = trk[1].ms[j];
                             Obb raw, tracked;
                             trk[1].boxes(j, t_scan, px, py, raw, tracked);
-                            Obb H = M.moving ? complete_box(cobb[r], classify_box_mlp(cobb[r], VERT_MAX, sensor_h, height_aware), 1.0f) : tracked;
+                            Obb H = M.moving ? complete_box(cobb[r], classify_box_mlp(cobb[r], VERT_MAX, sensor_h), 1.0f) : tracked;
                             same = T.id == j && T.moving == M.moving && T.vx == (float)M.x[2] && T.vy == (float)M.x[3] &&
                                    T.box.cx == H.cx && T.box.cy == H.cy && T.box.length == H.len &&
                                    T.box.width == H.wid && T.box.yaw == H.yaw;
@@ -913,7 +909,7 @@ int main(int argc, char** argv) {
                     // the axis-aligned box of the same points is heading 0
                     std::vector<int> items;
                     for (int i = 0; i < N_RAYS; ++i) if (clab_obj[i] == c) items.push_back(i);
-                    int cls = classify_box(cobb[r]), cls_mlp = classify_box_mlp(cobb[r], VERT_MAX, sensor_h, height_aware);
+                    int cls = classify_box(cobb[r]), cls_mlp = classify_box_mlp(cobb[r], VERT_MAX, sensor_h);
                     Obb fit[N_BM] = { cobb[r], lshape_rect(pts.data(), items.data(), 0, (int)items.size(), h_cs.data(), 0),
                                       complete_box(cobb[r], cls, 1.0f), complete_box(cobb[r], cls, 0.9f),
                                       complete_box(cobb[r], cls, 1.1f), complete_box(cobb[r], cls, 1.0f, false),

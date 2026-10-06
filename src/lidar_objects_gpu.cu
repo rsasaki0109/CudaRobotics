@@ -130,7 +130,7 @@ LidarObjectsResult LidarObjectPipeline::process(const float* xyz_in, std::size_t
     std::vector<int> ccls(keys.size());
     std::vector<Obb> done(keys.size());
     for (size_t r = 0; r < keys.size(); ++r) {
-        ccls[r] = classify_box_mlp(obb[r], vert_max, sensor_h, I.cfg.height_aware_class);
+        ccls[r] = classify_box_mlp(obb[r], vert_max, sensor_h);
         done[r] = complete_box(obb[r], ccls[r], 1.0f);
         LidarCluster C;
         C.label = keys[r]; C.box = to_box(obb[r]); C.cls = to_class(ccls[r]); C.completed = to_box(done[r]);

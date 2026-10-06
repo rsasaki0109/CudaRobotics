@@ -61,13 +61,11 @@ void make_scan(float sx, float sy, float h, float yaw, std::vector<float>& xyz, 
 bool run_case(float h, float yaw_deg) {
     cudarobotics::LidarObjectsConfig cfg;
     cfg.sensor_height = h;
-    cfg.height_aware_class = std::fabs(h - 1.8f) > 0.3f;   // the class trained across heights, away from 1.8 m
     cudarobotics::LidarObjectPipeline pipe(cfg);
     const float yaw = yaw_deg * kPi / 180.0f;
     bool ok = true;
     int classed_scans = 0, track_id = -1, heading_ok = 0;
-    std::printf("sensor %.1f m above the ground, heading %.0f deg, %s class\n", h, yaw_deg,
-                cfg.height_aware_class ? "height-aware" : "default");
+    std::printf("sensor %.1f m above the ground, heading %.0f deg\n", h, yaw_deg);
     for (int k = 0; k < 6; ++k) {
         float sx = 4.0f + 1.0f * k, sy = 0.0f;
         std::vector<float> xyz;
