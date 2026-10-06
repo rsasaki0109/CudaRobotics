@@ -21,7 +21,7 @@ Measured with the current build and class on held-out scenes and drives (seeds 1
 | boxes, moving traffic | BEV IoU: single scan / motion tracker / hybrid | 0.754 / 0.761 / **0.781** |
 | motion tracker | velocity error, moving / parked vehicles | 0.63 / 0.63 m/s |
 | motion tracker | identity switches over 20 drives | 30 |
-| time per scan (`--moving`) | mean / max over a drive's scans, without / with the free-space refinement | 10.1 / 19.7 ms; about +10 ms (this run, shared GPU) |
+| time per scan (`--moving`) | mean / max over a drive's scans, without / with the free-space refinement | 10.1 / 19.7 ms; about +6 ms (this run, shared GPU) |
 
 | Sensor height | cars classed car | vans classed van | others classed car or van | box IoU with the prior |
 |---:|---:|---:|---:|---:|
@@ -527,7 +527,18 @@ The cheapest candidate wins. The CPU twin (`fs_grid_cpu`, `fs_refine_cpu`) runs 
 | **+ free-space refinement** | **0.758** | **544** | **0.38 m** |
 
 - **The criterion holds.** The refinement is better in 20 of 20 seeds (per observation, 381 better and 121 worse).
-- **Cost.** About 1 ms per scan for the grid and about 2 ms per refined box: 10 ms per scan on the dev scene, more than the rest of the pipeline together. The search runs one thread per candidate with serial loops over the footprint and the points. A warp per candidate, with the CPU replaying its reduction order as for the L-shape fits, would cut that.
+- **Cost.** About 6 ms per scan on the dev scene (7 ms on the `--moving` drive): about 1 ms for the grid, the rest for the search.
+- **Speed-up history.** The first version took 10 ms (11 ms on the drive). Every change below keeps the outputs byte-identical.
+
+  | Change | search | kept |
+  |---|---:|---|
+  | first version: one thread per candidate, then one thread per box scanning its ~31,000 costs for the cheapest | 7-11 ms | |
+  | the cheapest candidate by a block-wide reduction over (cost, index) pairs: the same first minimum | −3 ms | yes |
+  | one block row per box, its points staged in shared memory, each thread summing them in point order | ±0 | yes |
+  | one warp per candidate, lane 0 adding the outside distances in point order | 18 ms in all | no |
+  | the grid around each box copied into shared memory (up to 44 KB per block) | 20 ms in all | no |
+
+  The serial sum in point order is what keeps the cost bit for bit the CPU's. A warp cannot split that sum without changing it, and the large shared patch cut the blocks per SM.
 - **Library.** It refines the completed boxes into `LidarCluster::refined` (`LidarObjectsConfig::free_space_refinement`, on by default). The tracks still use the completed boxes.
 
 ## Reproduce

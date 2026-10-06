@@ -1294,6 +1294,31 @@ __host__ __device__ static inline Obb fs_candidate(const Obb& B0, const float* c
     return C;
 }
 
+// Whether footprint sample (i, j) of box C (heading cos c, sin s) lies on a cell a ray crossed below ztop.
+__host__ __device__ static inline int fs_free_sample(const int* grid, const Obb& C, float c, float s, float ztop, int i,
+                                                     int j) {
+    float a = -0.5f * C.len + (i + 0.5f) * FS_CELL, b = -0.5f * C.wid + (j + 0.5f) * FS_CELL;
+    float x = C.cx + c * a - s * b, y = C.cy + s * a + c * b;
+    int ix = (int)floorf((x + FS_HALF) / FS_CELL), iy = (int)floorf((y + FS_HALF) / FS_CELL);
+    if (ix < 0 || iy < 0 || ix >= FS_N || iy >= FS_N) return 0;
+    return (float)grid[iy * FS_N + ix] < ztop;
+}
+
+// The distance of point i outside box C (0 inside).
+__host__ __device__ static inline float fs_outside(const float* pts, int i, const Obb& C, float c, float s) {
+    float dx = pts[i * 3] - C.cx, dy = pts[i * 3 + 1] - C.cy;
+    float u = fabsf(c * dx + s * dy) - 0.5f * C.len, v = fabsf(-s * dx + c * dy) - 0.5f * C.wid;
+    u = fmaxf(u, 0.0f); v = fmaxf(v, 0.0f);
+    return sqrtf(u * u + v * v);
+}
+
+__host__ __device__ static inline float fs_total(const Obb& B0, const Obb& C, int free_cells, float out, int n, FsParams P) {
+    float dl = C.len / B0.len - 1.0f, dw = C.wid / B0.wid - 1.0f;
+    return P.w_free * free_cells * (FS_CELL * FS_CELL) + P.w_out * out / (float)(n > 0 ? n : 1) +
+           P.w_size * (dl * dl + dw * dw);
+}
+
+// The cost of candidate C (serial; the GPU kernel splits it over a warp with the same result).
 __host__ __device__ static inline float fs_cost(const int* grid, const float* pts, const int* items, int a0, int a1,
                                                 const Obb& B0, const Obb& C, const float* cs, FsParams P) {
     float c = cs[2 + C.th * 2], s = cs[3 + C.th * 2];
@@ -1301,46 +1326,80 @@ __host__ __device__ static inline float fs_cost(const int* grid, const float* pt
     int nl = (int)(C.len / FS_CELL), nw = (int)(C.wid / FS_CELL);
     int free_cells = 0;
     for (int i = 0; i < nl; ++i)
-        for (int j = 0; j < nw; ++j) {
-            float a = -0.5f * C.len + (i + 0.5f) * FS_CELL, b = -0.5f * C.wid + (j + 0.5f) * FS_CELL;
-            float x = C.cx + c * a - s * b, y = C.cy + s * a + c * b;
-            int ix = (int)floorf((x + FS_HALF) / FS_CELL), iy = (int)floorf((y + FS_HALF) / FS_CELL);
-            if (ix < 0 || iy < 0 || ix >= FS_N || iy >= FS_N) continue;
-            free_cells += (float)grid[iy * FS_N + ix] < ztop;
-        }
+        for (int j = 0; j < nw; ++j) free_cells += fs_free_sample(grid, C, c, s, ztop, i, j);
     float out = 0.0f;
-    for (int a = a0; a < a1; ++a) {
-        float dx = pts[items[a] * 3] - C.cx, dy = pts[items[a] * 3 + 1] - C.cy;
-        float u = fabsf(c * dx + s * dy) - 0.5f * C.len, v = fabsf(-s * dx + c * dy) - 0.5f * C.wid;
-        u = fmaxf(u, 0.0f); v = fmaxf(v, 0.0f);
-        out += sqrtf(u * u + v * v);
-    }
-    float dl = C.len / B0.len - 1.0f, dw = C.wid / B0.wid - 1.0f;
-    return P.w_free * free_cells * (FS_CELL * FS_CELL) + P.w_out * out / (float)(a1 - a0 > 0 ? a1 - a0 : 1) +
-           P.w_size * (dl * dl + dw * dw);
+    for (int a = a0; a < a1; ++a) out += fs_outside(pts, items[a], C, c, s);
+    return fs_total(B0, C, free_cells, out, a1 - a0, P);
 }
 
-// one thread = one (cluster, candidate)
+// one thread = one candidate, one block row (blockIdx.y) = one cluster. The
+// block stages its cluster's points in shared memory, FS_BLOCK at a time; every
+// thread still adds their outside distances in point order, so the cost is bit
+// for bit fs_cost's.
+static const int FS_BLOCK = 256;
 static __global__ void fs_cost_kernel(const int* grid, const float* pts, const int* items, const int* start,
-                                      const Obb* B0, const float* cs, FsParams P, float* cost, int n_clusters) {
-    long long t = (long long)blockIdx.x * blockDim.x + threadIdx.x;
-    if (t >= (long long)n_clusters * FS_NCAND) return;
-    int r = (int)(t / FS_NCAND), k = (int)(t - (long long)r * FS_NCAND);
-    const float* c = &cs[r * (2 + 2 * FS_NYAW)];
-    Obb C = fs_candidate(B0[r], c, k);
-    cost[t] = fs_cost(grid, pts, items, start[r], start[r + 1], B0[r], C, c, P);
+                                      const Obb* B0, const float* cs, FsParams P, float* cost) {
+    __shared__ float px[FS_BLOCK], py[FS_BLOCK];
+    const int r = blockIdx.y, k = blockIdx.x * FS_BLOCK + threadIdx.x;
+    const bool active = k < FS_NCAND;
+    const float* tab = &cs[r * (2 + 2 * FS_NYAW)];
+    const Obb& b0 = B0[r];
+    Obb C = fs_candidate(b0, tab, active ? k : 0);
+    float c = tab[2 + C.th * 2], s = tab[3 + C.th * 2];
+    int free_cells = 0;
+    if (active) {
+        float ztop = b0.zhi * 1000.0f - FS_TOL_MM;
+        int nl = (int)(C.len / FS_CELL), nw = (int)(C.wid / FS_CELL);
+        for (int i = 0; i < nl; ++i)
+            for (int j = 0; j < nw; ++j) free_cells += fs_free_sample(grid, C, c, s, ztop, i, j);
+    }
+    const int a0 = start[r], a1 = start[r + 1];
+    float out = 0.0f;
+    for (int base = a0; base < a1; base += FS_BLOCK) {
+        int a = base + threadIdx.x;
+        if (a < a1) { px[threadIdx.x] = pts[items[a] * 3]; py[threadIdx.x] = pts[items[a] * 3 + 1]; }
+        __syncthreads();
+        int m = a1 - base < FS_BLOCK ? a1 - base : FS_BLOCK;
+        if (active)
+            for (int t = 0; t < m; ++t) {   // fs_outside on the staged point
+                float dx = px[t] - C.cx, dy = py[t] - C.cy;
+                float u = fabsf(c * dx + s * dy) - 0.5f * C.len, v = fabsf(-s * dx + c * dy) - 0.5f * C.wid;
+                u = fmaxf(u, 0.0f); v = fmaxf(v, 0.0f);
+                out += sqrtf(u * u + v * v);
+            }
+        __syncthreads();
+    }
+    if (active) cost[(long long)r * FS_NCAND + k] = fs_total(b0, C, free_cells, out, a1 - a0, P);
 }
 
-// one thread = one cluster: the cheapest candidate (the first on ties)
-static __global__ void fs_select_kernel(const Obb* B0, const float* cs, const float* cost, Obb* out, int n_clusters) {
-    int r = blockIdx.x * blockDim.x + threadIdx.x;
-    if (r >= n_clusters) return;
+// one block = one cluster: the cheapest candidate, the first on ties (the least
+// (cost, index) pair, which is what a serial scan keeping the first minimum finds)
+static __global__ void fs_select_kernel(const Obb* B0, const float* cs, const float* cost, Obb* out) {
+    __shared__ float bc[FS_BLOCK];
+    __shared__ int bk[FS_BLOCK];
+    const int r = blockIdx.x;
     const float* q = &cost[(long long)r * FS_NCAND];
-    int best = 0;
-    for (int k = 1; k < FS_NCAND; ++k) if (q[k] < q[best]) best = k;
-    Obb C = fs_candidate(B0[r], &cs[r * (2 + 2 * FS_NYAW)], best);
-    C.th = B0[r].th;
-    out[r] = C;
+    float best_c = 0.0f;
+    int best = -1;
+    for (int k = threadIdx.x; k < FS_NCAND; k += FS_BLOCK)
+        if (best < 0 || q[k] < best_c) { best_c = q[k]; best = k; }
+    bc[threadIdx.x] = best_c; bk[threadIdx.x] = best;
+    __syncthreads();
+    for (int h = FS_BLOCK / 2; h > 0; h >>= 1) {
+        if (threadIdx.x < h) {
+            int o = threadIdx.x + h;
+            if (bk[o] >= 0 && (bk[threadIdx.x] < 0 || bc[o] < bc[threadIdx.x] ||
+                               (bc[o] == bc[threadIdx.x] && bk[o] < bk[threadIdx.x]))) {
+                bc[threadIdx.x] = bc[o]; bk[threadIdx.x] = bk[o];
+            }
+        }
+        __syncthreads();
+    }
+    if (threadIdx.x == 0) {
+        Obb C = fs_candidate(B0[r], &cs[r * (2 + 2 * FS_NYAW)], bk[0]);
+        C.th = B0[r].th;
+        out[r] = C;
+    }
 }
 
 // The cos / sin table of one box: its heading, then the FS_NYAW candidate headings.
@@ -1399,9 +1458,9 @@ struct GpuFreeSpaceRefiner {
             CUDA_CHECK(cudaMemcpy(d_start, start.data(), (nb + 1) * sizeof(int), cudaMemcpyHostToDevice));
             CUDA_CHECK(cudaMemcpy(d_cs, cs.data(), cs.size() * sizeof(float), cudaMemcpyHostToDevice));
             CUDA_CHECK(cudaMemcpy(d_b0, boxes.data(), nb * sizeof(Obb), cudaMemcpyHostToDevice));
-            long long nt = (long long)nb * FS_NCAND;
-            fs_cost_kernel<<<(int)((nt + B - 1) / B), B>>>(d_grid, d_pts, d_items, d_start, d_b0, d_cs, P, d_cost, nb);
-            fs_select_kernel<<<(nb + B - 1) / B, B>>>(d_b0, d_cs, d_cost, d_out, nb);
+            dim3 grid_dim((FS_NCAND + FS_BLOCK - 1) / FS_BLOCK, nb);   // candidates x clusters
+            fs_cost_kernel<<<grid_dim, FS_BLOCK>>>(d_grid, d_pts, d_items, d_start, d_b0, d_cs, P, d_cost);
+            fs_select_kernel<<<nb, FS_BLOCK>>>(d_b0, d_cs, d_cost, d_out);
             CUDA_CHECK(cudaMemcpy(out.data(), d_out, nb * sizeof(Obb), cudaMemcpyDeviceToHost));
         }
         CUDA_CHECK(cudaEventRecord(e1));
