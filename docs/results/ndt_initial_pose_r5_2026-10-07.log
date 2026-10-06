@@ -1,0 +1,45 @@
+map: 120 scans, 155 x 161 x 23 cells at 2.0 m, 21955 valid, built in 236 ms
+frame   15:  5279 points, 576 hypotheses, track err 0.035 m, init ok   (err 0.04 m, 0.1 deg), GPU 75.0 ms, CPU 1 thread 18557 ms, 12 threads 4598 ms
+frame   45:  5247 points, 576 hypotheses, track err 0.049 m, init ok   (err 0.05 m, 0.0 deg), GPU 334.1 ms, CPU 1 thread 19995 ms, 12 threads 4990 ms
+frame   75:  5287 points, 576 hypotheses, track err 0.038 m, init ok   (err 0.04 m, 0.1 deg), GPU 164.4 ms, CPU 1 thread 19540 ms, 12 threads 4861 ms
+frame  105:  4647 points, 576 hypotheses, track err 0.037 m, init ok   (err 0.04 m, 0.0 deg), GPU 320.5 ms
+frame  135:  4636 points, 576 hypotheses, track err 0.054 m, init ok   (err 0.05 m, 0.7 deg), GPU 73.1 ms
+frame  165:  5353 points, 576 hypotheses, track err 0.127 m, init ok   (err 0.13 m, 0.8 deg), GPU 83.7 ms
+frame  195:  5920 points, 576 hypotheses, track err 0.020 m, init ok   (err 0.02 m, 0.1 deg), GPU 86.8 ms
+frame  225:  7315 points, 576 hypotheses, track err 0.111 m, init ok   (err 0.11 m, 0.5 deg), GPU 110.5 ms
+frame  255:  7746 points, 576 hypotheses, track err 0.041 m, init ok   (err 0.04 m, 0.2 deg), GPU 110.5 ms
+frame  285:  7770 points, 576 hypotheses, track err 0.131 m, init ok   (err 0.13 m, 0.3 deg), GPU 123.4 ms
+frame  315:  7500 points, 576 hypotheses, track err 0.134 m, init ok   (err 0.12 m, 0.5 deg), GPU 121.8 ms
+frame  345:  5429 points, 576 hypotheses, track err 0.063 m, init ok   (err 0.06 m, 0.1 deg), GPU 85.8 ms
+frame  375:  5806 points, 576 hypotheses, track err 0.086 m, init ok   (err 0.09 m, 0.2 deg), GPU 91.5 ms
+frame  405:  4407 points, 576 hypotheses, track err 0.024 m, init ok   (err 0.02 m, 0.0 deg), GPU 71.7 ms
+frame  435:  4421 points, 576 hypotheses, track err 0.018 m, init ok   (err 0.02 m, 0.4 deg), GPU 66.6 ms
+frame  465:  5796 points, 576 hypotheses, track err 0.054 m, init ok   (err 0.05 m, 0.5 deg), GPU 88.3 ms
+frame  495:  6670 points, 576 hypotheses, track err 0.039 m, init ok   (err 0.04 m, 0.2 deg), GPU 96.1 ms
+frame  525:  6754 points, 576 hypotheses, track err 0.102 m, init ok   (err 0.10 m, 0.7 deg), GPU 97.9 ms
+frame  555:  5845 points, 576 hypotheses, track err 0.099 m, init ok   (err 0.10 m, 0.1 deg), GPU 86.2 ms
+frame  585:  5151 points, 576 hypotheses, track err 0.063 m, init ok   (err 0.06 m, 0.1 deg), GPU 71.2 ms
+frame  615:  5401 points, 576 hypotheses, track err 0.042 m, init ok   (err 0.04 m, 0.2 deg), GPU 72.7 ms
+frame  645:  5787 points, 576 hypotheses, track err 0.021 m, init ok   (err 0.02 m, 0.0 deg), GPU 83.7 ms
+frame  675:  6565 points, 576 hypotheses, track err 0.043 m, init ok   (err 0.04 m, 0.2 deg), GPU 100.0 ms
+frame  705:  6558 points, 576 hypotheses, track err 0.065 m, init ok   (err 0.07 m, 0.1 deg), GPU 102.8 ms
+frame  735:  6400 points, 576 hypotheses, track err 0.036 m, init ok   (err 0.04 m, 0.0 deg), GPU 98.0 ms
+frame  765:  5990 points, 576 hypotheses, track err 0.054 m, init ok   (err 0.05 m, 0.2 deg), GPU 89.9 ms
+frame  795:  5629 points, 576 hypotheses, track err 0.065 m, init ok   (err 0.07 m, 0.0 deg), GPU 80.2 ms
+frame  825:  6431 points, 576 hypotheses, track err 0.035 m, init ok   (err 0.04 m, 0.2 deg), GPU 91.8 ms
+frame  855:  6718 points, 576 hypotheses, track err 0.137 m, init ok   (err 0.14 m, 0.2 deg), GPU 102.3 ms
+frame  885:  7382 points, 576 hypotheses, track err 0.048 m, init ok   (err 0.05 m, 0.0 deg), GPU 111.7 ms
+frame  915:  7635 points, 576 hypotheses, track err 0.073 m, init ok   (err 0.07 m, 0.1 deg), GPU 112.9 ms
+frame  945:  8105 points, 576 hypotheses, track err 0.045 m, init ok   (err 0.04 m, 0.7 deg), GPU 123.7 ms
+frame  975:  8279 points, 576 hypotheses, track err 0.040 m, init ok   (err 0.04 m, 0.1 deg), GPU 123.9 ms
+frame 1005:  8443 points, 576 hypotheses, track err 0.028 m, init ok   (err 0.03 m, 0.0 deg), GPU 129.5 ms
+frame 1035:  9575 points, 576 hypotheses, track err 0.037 m, init ok   (err 0.04 m, 0.1 deg), GPU 143.3 ms
+frame 1065:  9758 points, 576 hypotheses, track err 0.048 m, init ok   (err 0.05 m, 0.1 deg), GPU 145.5 ms
+frame 1095:  8370 points, 576 hypotheses, track err 0.124 m, init ok   (err 0.13 m, 0.2 deg), GPU 126.9 ms
+frame 1125:  8584 points, 576 hypotheses, track err 0.117 m, init ok   (err 0.12 m, 1.7 deg), GPU 141.7 ms
+frame 1155:  8393 points, 576 hypotheses, track err 0.072 m, init ok   (err 0.07 m, 1.0 deg), GPU 130.9 ms
+frame 1185:  7972 points, 576 hypotheses, track err 0.049 m, init ok   (err 0.05 m, 0.1 deg), GPU 121.1 ms
+
+tracking from the ground truth within 0.3 m: 40/40
+initial pose (prior error up to 5.0 m, yaw unknown, 576 hypotheses): 40/40 within 0.5 m and 2 deg
+time per initialization: GPU 114.8 ms (all 40); on the 3 CPU-timed scans GPU 191.2 ms, CPU 1 thread 19364 ms, CPU 12 threads 4817 ms
