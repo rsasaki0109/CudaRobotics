@@ -1228,4 +1228,210 @@ struct GpuGroundSegmenter {
     }
 };
 
+
+// ---- free-space box refinement ----
+// A ray proves the space it crossed empty. The free-space grid (FS_CELL cells
+// over the sensor's BEV, FS_HALF around it) keeps, per cell, the lowest height
+// (mm, sensor frame) at which a ray crossed it, up to FS_MARGIN before the ray's
+// end (the surface it hit). A box that reaches the ground and rises to the top
+// of its cluster contradicts every cell under it that a ray crossed below that
+// top. Around a completed box, FS_NCAND candidates (shifts along and across it,
+// headings, lengths, widths) are scored by
+//   w_free * (free area inside the box, m^2)
+//   + w_out * (mean distance of the cluster's points outside the box, m)
+//   + w_size * ((length / length0 - 1)^2 + (width / width0 - 1)^2),
+// one GPU thread per (cluster, candidate), and the cheapest wins (the first on
+// ties). The CPU runs the same arithmetic in the same order.
+static constexpr float FS_CELL = 0.1f, FS_HALF = 60.0f, FS_MARGIN = 0.3f, FS_STEP = 0.05f, FS_TOL_MM = 50.0f;
+static const int FS_N = 1200;   // cells per side
+static const int FS_NU = 21, FS_NV = 11, FS_NYAW = 9, FS_NL = 5, FS_NW = 3;
+static const int FS_NCAND = FS_NU * FS_NV * FS_NYAW * FS_NL * FS_NW;
+static constexpr float FS_DU = 0.1f, FS_DV = 0.1f, FS_DYAW = 1.0f * PI_F / 180.0f;
+
+struct FsParams { float w_free, w_out, w_size; };
+static const FsParams FS_DEFAULT = { 1.0f, 10.0f, 3.0f };   // chosen on the dev scene and training seeds 101-110
+
+// One ray (sensor at the origin) into the grid: per crossed cell, the lowest height.
+__host__ __device__ static inline void fs_ray(const float* p, int* grid) {
+    float r = sqrtf(p[0] * p[0] + p[1] * p[1]);
+    if (r <= FS_MARGIN) return;
+    float end = r - FS_MARGIN;
+    for (float t = 0.0f; t < end; t += FS_STEP) {
+        float f = t / r;
+        float x = p[0] * f, y = p[1] * f, z = p[2] * f;
+        int ix = (int)floorf((x + FS_HALF) / FS_CELL), iy = (int)floorf((y + FS_HALF) / FS_CELL);
+        if (ix < 0 || iy < 0 || ix >= FS_N || iy >= FS_N) return;
+        int zmm = (int)floorf(z * 1000.0f);
+#ifdef __CUDA_ARCH__
+        atomicMin(&grid[iy * FS_N + ix], zmm);
+#else
+        int& g = grid[iy * FS_N + ix];
+        if (zmm < g) g = zmm;
+#endif
+    }
+}
+
+static __global__ void fs_grid_kernel(const float* pts, const int* valid, int* grid, int n) {
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i < n && valid[i] >= 0) fs_ray(&pts[i * 3], grid);
+}
+
+// The candidate box k around B0; cs: cos / sin of B0's heading and of the FS_NYAW headings.
+__host__ __device__ static inline Obb fs_candidate(const Obb& B0, const float* cs, int k) {
+    int iw = k % FS_NW; k /= FS_NW;
+    int il = k % FS_NL; k /= FS_NL;
+    int iy = k % FS_NYAW; k /= FS_NYAW;
+    int iv = k % FS_NV; k /= FS_NV;
+    int iu = k;
+    float du = (iu - FS_NU / 2) * FS_DU, dv = (iv - FS_NV / 2) * FS_DV;
+    Obb C = B0;
+    C.cx = B0.cx + cs[0] * du - cs[1] * dv;
+    C.cy = B0.cy + cs[1] * du + cs[0] * dv;
+    C.yaw = B0.yaw + (iy - FS_NYAW / 2) * FS_DYAW;
+    C.len = B0.len * (0.9f + 0.05f * il);
+    C.wid = B0.wid * (0.9f + 0.1f * iw);
+    C.th = iy;   // which heading of the table
+    return C;
+}
+
+__host__ __device__ static inline float fs_cost(const int* grid, const float* pts, const int* items, int a0, int a1,
+                                                const Obb& B0, const Obb& C, const float* cs, FsParams P) {
+    float c = cs[2 + C.th * 2], s = cs[3 + C.th * 2];
+    float ztop = B0.zhi * 1000.0f - FS_TOL_MM;
+    int nl = (int)(C.len / FS_CELL), nw = (int)(C.wid / FS_CELL);
+    int free_cells = 0;
+    for (int i = 0; i < nl; ++i)
+        for (int j = 0; j < nw; ++j) {
+            float a = -0.5f * C.len + (i + 0.5f) * FS_CELL, b = -0.5f * C.wid + (j + 0.5f) * FS_CELL;
+            float x = C.cx + c * a - s * b, y = C.cy + s * a + c * b;
+            int ix = (int)floorf((x + FS_HALF) / FS_CELL), iy = (int)floorf((y + FS_HALF) / FS_CELL);
+            if (ix < 0 || iy < 0 || ix >= FS_N || iy >= FS_N) continue;
+            free_cells += (float)grid[iy * FS_N + ix] < ztop;
+        }
+    float out = 0.0f;
+    for (int a = a0; a < a1; ++a) {
+        float dx = pts[items[a] * 3] - C.cx, dy = pts[items[a] * 3 + 1] - C.cy;
+        float u = fabsf(c * dx + s * dy) - 0.5f * C.len, v = fabsf(-s * dx + c * dy) - 0.5f * C.wid;
+        u = fmaxf(u, 0.0f); v = fmaxf(v, 0.0f);
+        out += sqrtf(u * u + v * v);
+    }
+    float dl = C.len / B0.len - 1.0f, dw = C.wid / B0.wid - 1.0f;
+    return P.w_free * free_cells * (FS_CELL * FS_CELL) + P.w_out * out / (float)(a1 - a0 > 0 ? a1 - a0 : 1) +
+           P.w_size * (dl * dl + dw * dw);
+}
+
+// one thread = one (cluster, candidate)
+static __global__ void fs_cost_kernel(const int* grid, const float* pts, const int* items, const int* start,
+                                      const Obb* B0, const float* cs, FsParams P, float* cost, int n_clusters) {
+    long long t = (long long)blockIdx.x * blockDim.x + threadIdx.x;
+    if (t >= (long long)n_clusters * FS_NCAND) return;
+    int r = (int)(t / FS_NCAND), k = (int)(t - (long long)r * FS_NCAND);
+    const float* c = &cs[r * (2 + 2 * FS_NYAW)];
+    Obb C = fs_candidate(B0[r], c, k);
+    cost[t] = fs_cost(grid, pts, items, start[r], start[r + 1], B0[r], C, c, P);
+}
+
+// one thread = one cluster: the cheapest candidate (the first on ties)
+static __global__ void fs_select_kernel(const Obb* B0, const float* cs, const float* cost, Obb* out, int n_clusters) {
+    int r = blockIdx.x * blockDim.x + threadIdx.x;
+    if (r >= n_clusters) return;
+    const float* q = &cost[(long long)r * FS_NCAND];
+    int best = 0;
+    for (int k = 1; k < FS_NCAND; ++k) if (q[k] < q[best]) best = k;
+    Obb C = fs_candidate(B0[r], &cs[r * (2 + 2 * FS_NYAW)], best);
+    C.th = B0[r].th;
+    out[r] = C;
+}
+
+// The cos / sin table of one box: its heading, then the FS_NYAW candidate headings.
+static void fs_heading_table(const Obb& B0, float* cs) {
+    cs[0] = std::cos(B0.yaw); cs[1] = std::sin(B0.yaw);
+    for (int k = 0; k < FS_NYAW; ++k) {
+        float y = B0.yaw + (k - FS_NYAW / 2) * FS_DYAW;
+        cs[2 + 2 * k] = std::cos(y); cs[3 + 2 * k] = std::sin(y);
+    }
+}
+
+// GPU free-space refinement of a batch of completed boxes (sensor frame) of one scan.
+struct GpuFreeSpaceRefiner {
+    int cap;
+    int *d_grid, *d_items = nullptr, *d_start = nullptr;
+    float *d_cs = nullptr, *d_cost = nullptr;
+    Obb *d_b0 = nullptr, *d_out = nullptr;
+    size_t cap_items = 0, cap_boxes = 0;
+    explicit GpuFreeSpaceRefiner(int cap_points) : cap(cap_points) {
+        CUDA_CHECK(cudaMalloc(&d_grid, (size_t)FS_N * FS_N * sizeof(int)));
+    }
+    ~GpuFreeSpaceRefiner() {
+        cudaFree(d_grid); cudaFree(d_items); cudaFree(d_start); cudaFree(d_cs); cudaFree(d_cost);
+        cudaFree(d_b0); cudaFree(d_out);
+    }
+    // d_pts / d_valid: the scan (n points, valid < 0 = no return); boxes and their clusters' point indices
+    // (items, start: CSR). Returns the time in ms (grid and search).
+    float run(const float* d_pts, const int* d_valid, int n, const std::vector<Obb>& boxes,
+              const std::vector<int>& items, const std::vector<int>& start, FsParams P, std::vector<Obb>& out) {
+        const int B = 256;
+        int nb = (int)boxes.size();
+        out = boxes;
+        cudaEvent_t e0, e1;
+        CUDA_CHECK(cudaEventCreate(&e0)); CUDA_CHECK(cudaEventCreate(&e1));
+        CUDA_CHECK(cudaEventRecord(e0));
+        CUDA_CHECK(cudaMemset(d_grid, 0x7f, (size_t)FS_N * FS_N * sizeof(int)));
+        fs_grid_kernel<<<(n + B - 1) / B, B>>>(d_pts, d_valid, d_grid, n);
+        if (nb > 0) {
+            if (items.size() > cap_items) {
+                cap_items = items.size() * 2;
+                cudaFree(d_items);
+                CUDA_CHECK(cudaMalloc(&d_items, cap_items * sizeof(int)));
+            }
+            if ((size_t)nb > cap_boxes) {
+                cap_boxes = nb * 2;
+                cudaFree(d_start); cudaFree(d_cs); cudaFree(d_cost); cudaFree(d_b0); cudaFree(d_out);
+                CUDA_CHECK(cudaMalloc(&d_start, (cap_boxes + 1) * sizeof(int)));
+                CUDA_CHECK(cudaMalloc(&d_cs, cap_boxes * (2 + 2 * FS_NYAW) * sizeof(float)));
+                CUDA_CHECK(cudaMalloc(&d_cost, cap_boxes * FS_NCAND * sizeof(float)));
+                CUDA_CHECK(cudaMalloc(&d_b0, cap_boxes * sizeof(Obb)));
+                CUDA_CHECK(cudaMalloc(&d_out, cap_boxes * sizeof(Obb)));
+            }
+            std::vector<float> cs(nb * (2 + 2 * FS_NYAW));
+            for (int r = 0; r < nb; ++r) fs_heading_table(boxes[r], &cs[r * (2 + 2 * FS_NYAW)]);
+            CUDA_CHECK(cudaMemcpy(d_items, items.data(), items.size() * sizeof(int), cudaMemcpyHostToDevice));
+            CUDA_CHECK(cudaMemcpy(d_start, start.data(), (nb + 1) * sizeof(int), cudaMemcpyHostToDevice));
+            CUDA_CHECK(cudaMemcpy(d_cs, cs.data(), cs.size() * sizeof(float), cudaMemcpyHostToDevice));
+            CUDA_CHECK(cudaMemcpy(d_b0, boxes.data(), nb * sizeof(Obb), cudaMemcpyHostToDevice));
+            long long nt = (long long)nb * FS_NCAND;
+            fs_cost_kernel<<<(int)((nt + B - 1) / B), B>>>(d_grid, d_pts, d_items, d_start, d_b0, d_cs, P, d_cost, nb);
+            fs_select_kernel<<<(nb + B - 1) / B, B>>>(d_b0, d_cs, d_cost, d_out, nb);
+            CUDA_CHECK(cudaMemcpy(out.data(), d_out, nb * sizeof(Obb), cudaMemcpyDeviceToHost));
+        }
+        CUDA_CHECK(cudaEventRecord(e1));
+        CUDA_CHECK(cudaEventSynchronize(e1));
+        CUDA_CHECK(cudaGetLastError());
+        float ms = 0.0f;
+        CUDA_CHECK(cudaEventElapsedTime(&ms, e0, e1));
+        CUDA_CHECK(cudaEventDestroy(e0)); CUDA_CHECK(cudaEventDestroy(e1));
+        return ms;
+    }
+};
+
+// CPU twin: the grid of a scan, and the refinement of one box.
+static void fs_grid_cpu(const std::vector<float>& pts, const std::vector<int>& valid, std::vector<int>& grid) {
+    grid.assign((size_t)FS_N * FS_N, 0x7f7f7f7f);
+    for (size_t i = 0; i < valid.size(); ++i) if (valid[i] >= 0) fs_ray(&pts[i * 3], grid.data());
+}
+
+static Obb fs_refine_cpu(const std::vector<int>& grid, const std::vector<float>& pts, const int* items, int a0, int a1,
+                         const Obb& B0, FsParams P) {
+    float cs[2 + 2 * FS_NYAW];
+    fs_heading_table(B0, cs);
+    int best = 0;
+    float best_c = 0.0f;
+    for (int k = 0; k < FS_NCAND; ++k) {
+        float c = fs_cost(grid.data(), pts.data(), items, a0, a1, B0, fs_candidate(B0, cs, k), cs, P);
+        if (k == 0 || c < best_c) { best_c = c; best = k; }
+    }
+    Obb C = fs_candidate(B0, cs, best);
+    C.th = B0.th;
+    return C;
+}
 }  // namespace cudabot

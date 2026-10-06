@@ -53,7 +53,7 @@ def main():
     seeds = range(a, b + 1)
 
     f1, f1_thr, found, objects = [], [], 0, 0
-    single, lshape, aabb = [], [], []
+    single, lshape, aabb, refined = [], [], [], []
     tracked, motion, hybrid, single_drive, verr_m, verr_p = [], [], [], [], [], []
     switches_motion, timing = 0, []
     per_height = {}
@@ -67,6 +67,7 @@ def main():
         for r in rows:
             if r["box"] in VEH:
                 single.append(float(r["iou_prior_mlp"])); lshape.append(float(r["iou_lshape"]))
+                refined.append(float(r["iou_fs"]))
                 aabb.append(float(r["iou_aabb"]))
         _, rows, _ = run(binary, ["--sequence", "--seed", str(seed)], obs)
         tracked += [float(r["iou_trk_prior"]) for r in rows if r["box"] in VEH]
@@ -99,8 +100,8 @@ def main():
     w.write("| Stage | measure | value |\n|---|---|---:|\n")
     w.write("| ground segmentation | F1 (height threshold for reference) | %.3f (%.3f) |\n" % (mean(f1), mean(f1_thr)))
     w.write("| clustering | objects found as one cluster | %d / %d (%.0f%%) |\n" % (found, objects, 100.0 * found / objects))
-    w.write("| boxes, single scan | BEV IoU: axis-aligned / L-shape / + size prior | %.3f / %.3f / %.3f |\n"
-            % (mean(aabb), mean(lshape), mean(single)))
+    w.write("| boxes, single scan | BEV IoU: axis-aligned / L-shape / + size prior / + free space | "
+            "%.3f / %.3f / %.3f / %.3f |\n" % (mean(aabb), mean(lshape), mean(single), mean(refined)))
     w.write("| boxes, tracked along a drive | BEV IoU | %.3f |\n" % mean(tracked))
     w.write("| boxes, moving traffic | BEV IoU: single scan / motion tracker / hybrid | %.3f / %.3f / %.3f |\n"
             % (mean(single_drive), mean(motion), mean(hybrid)))

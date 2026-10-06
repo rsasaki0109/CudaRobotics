@@ -426,13 +426,13 @@ static double bev_iou(const cv::RotatedRect& a, const cv::RotatedRect& b) {
 }
 
 // Box scores, summed over observations, per box method.
-static const int N_BM = 12;
+static const int N_BM = 13;
 static const char* BM_NAME[N_BM] = { "L-shape", "axis-aligned", "L + prior", "L + prior x0.9", "L + prior x1.1",
                                      "L + prior, no end rule", "L + prior, learned class", "tracked L-shape",
                                      "tracked L + prior", "motion-tracked L-shape", "motion-tracked L + prior",
-                                     "hybrid L + prior" };
+                                     "hybrid L + prior", "L + prior + free space" };
 static const char* BM_KEY[N_BM] = { "lshape", "aabb", "prior", "prior_x0.9", "prior_x1.1", "prior_noend", "prior_mlp",
-                                    "trk_lshape", "trk_prior", "mtrk_lshape", "mtrk_prior", "hybrid" };
+                                    "trk_lshape", "trk_prior", "mtrk_lshape", "mtrk_prior", "hybrid", "fs" };
 
 // Held-out scene: boxes move within 1 m and take a new heading (the wall stays),
 // cars and the van take new sizes, and the sensor takes new poses on the road.
@@ -581,6 +581,7 @@ int main(int argc, char** argv) {
     bool sequence = false, moving = false, trk_cpu_fit = false;
     int trk_hits = 3;
     float sensor_h = SENSOR_H;   // --sensor-height: the scanning sensor's height above the ground
+    FsParams fs_params = FS_DEFAULT;   // --fs-weights w_free,w_out,w_size
     for (int i = 1; i < argc; ++i) {
         if (!std::strcmp(argv[i], "--no-video")) no_video = true;
         else if (!std::strcmp(argv[i], "--check")) check = true;
@@ -590,6 +591,8 @@ int main(int argc, char** argv) {
         else if (!std::strcmp(argv[i], "--sequence")) sequence = true;
         else if (!std::strcmp(argv[i], "--trk-cpu-fit")) trk_cpu_fit = true;
         else if (!std::strcmp(argv[i], "--sensor-height") && i + 1 < argc) sensor_h = (float)std::atof(argv[++i]);
+        else if (!std::strcmp(argv[i], "--fs-weights") && i + 1 < argc)
+            std::sscanf(argv[++i], "%f,%f,%f", &fs_params.w_free, &fs_params.w_out, &fs_params.w_size);
         else if (!std::strcmp(argv[i], "--moving")) moving = sequence = true;
         else if (!std::strcmp(argv[i], "--trk-hits") && i + 1 < argc) trk_hits = std::max(1, std::atoi(argv[++i]));
     }
@@ -692,6 +695,11 @@ int main(int argc, char** argv) {
     Tracker trk[2];   // static, motion
     GpuBoxFitter box_fitter;
     bool trk_fit_same = true;
+    GpuFreeSpaceRefiner fs_refiner(N_RAYS);
+    double fs_ms = 0.0;
+    long fs_boxes = 0;
+    bool fs_same = true;
+    int fs_checked = 0;
     cudarobotics::LidarObjectsConfig lib_cfg;
     lib_cfg.max_points = N_RAYS;
     lib_cfg.track_min_scans = trk_hits;
@@ -858,6 +866,36 @@ int main(int argc, char** argv) {
                         trk_draw.push_back(dn);
                     }
                 }
+                // ---- free-space refinement of the classed clusters' completed boxes ----
+                std::vector<Obb> fs_of(ckeys.size());
+                {
+                    std::vector<Obb> b0;
+                    std::vector<int> rs, slot(N_RAYS, -1), items, start(1, 0);
+                    for (size_t r = 0; r < ckeys.size(); ++r) {
+                        int k = classify_box_mlp(cobb[r], VERT_MAX, sensor_h);
+                        fs_of[r] = complete_box(cobb[r], k, 1.0f);
+                        if (k < 0) continue;
+                        slot[ckeys[r]] = (int)b0.size();
+                        rs.push_back((int)r);
+                        b0.push_back(fs_of[r]);
+                    }
+                    std::vector<std::vector<int>> lists(b0.size());
+                    for (int i = 0; i < N_RAYS; ++i)
+                        if (clab_obj[i] >= 0 && slot[clab_obj[i]] >= 0) lists[slot[clab_obj[i]]].push_back(i);
+                    for (const auto& L : lists) { items.insert(items.end(), L.begin(), L.end()); start.push_back((int)items.size()); }
+                    std::vector<Obb> refined;
+                    fs_ms += fs_refiner.run(d_pts, d_gt, N_RAYS, b0, items, start, fs_params, refined);
+                    fs_boxes += (long)b0.size();
+                    for (size_t q = 0; q < rs.size(); ++q) fs_of[rs[q]] = refined[q];
+                    if (check && !b0.empty() && fs_checked++ < 2) {   // the CPU twin (slow): the grid and the first box, two scans
+                        std::vector<int> grid_cpu, grid_gpu((size_t)FS_N * FS_N);
+                        fs_grid_cpu(pts, gt, grid_cpu);
+                        CUDA_CHECK(cudaMemcpy(grid_gpu.data(), fs_refiner.d_grid, grid_gpu.size() * sizeof(int),
+                                              cudaMemcpyDeviceToHost));
+                        Obb c0 = fs_refine_cpu(grid_cpu, pts, items.data(), start[0], start[1], b0[0], fs_params);
+                        if (grid_cpu != grid_gpu || std::memcmp(&c0, &refined[0], sizeof(Obb)) != 0) fs_same = false;
+                    }
+                }
                 // ---- the library on this scan's returns: the same ground, clusters, boxes and tracks ----
                 {
                     std::vector<float> xyz;
@@ -880,7 +918,10 @@ int main(int argc, char** argv) {
                         same = orig[C.label] == ckeys[r] && C.box.cx == O.cx && C.box.cy == O.cy &&
                                C.box.length == O.len && C.box.width == O.wid && C.box.yaw == O.yaw &&
                                C.box.z_min == O.zlo && C.box.z_max == O.zhi && C.box.points == O.n &&
-                               (int)C.cls == classify_box_mlp(O, VERT_MAX, sensor_h);
+                               (int)C.cls == classify_box_mlp(O, VERT_MAX, sensor_h) &&
+                               C.refined.cx == fs_of[r].cx && C.refined.cy == fs_of[r].cy &&
+                               C.refined.length == fs_of[r].len && C.refined.width == fs_of[r].wid &&
+                               C.refined.yaw == fs_of[r].yaw;
                     }
                     if (sequence) {   // tracks: the hybrid boxes of the motion tracker above
                         size_t m = 0;
@@ -914,7 +955,8 @@ int main(int argc, char** argv) {
                                       complete_box(cobb[r], cls, 1.0f), complete_box(cobb[r], cls, 0.9f),
                                       complete_box(cobb[r], cls, 1.1f), complete_box(cobb[r], cls, 1.0f, false),
                                       complete_box(cobb[r], cls_mlp, 1.0f), cobb[r], complete_box(cobb[r], cls_mlp, 1.0f),
-                                      cobb[r], complete_box(cobb[r], cls_mlp, 1.0f), complete_box(cobb[r], cls_mlp, 1.0f) };
+                                      cobb[r], complete_box(cobb[r], cls_mlp, 1.0f), complete_box(cobb[r], cls_mlp, 1.0f),
+                                      fs_of[r] };
                     int tid = trk[0].track_of[c], mtid = trk[1].track_of[c];
                     if (tid >= 0) {
                         trk[0].boxes(tid, t_scan, poses[s][0], poses[s][1], fit[7], fit[8]);
@@ -1107,10 +1149,12 @@ int main(int argc, char** argv) {
         if (!S.n) return;
         std::printf("%s: n %d, classed car %d / van %d / none %d (learned: %d / %d / %d)\n", name, S.n, S.cls[0],
                     S.cls[1], S.cls[N_CLS], S.cls_mlp[0], S.cls_mlp[1], S.cls_mlp[N_CLS]);
-        for (int m = 0; m < (moving ? N_BM : sequence ? N_BM - 3 : N_BM - 5); ++m)
+        for (int m = 0; m < N_BM; ++m) {
+            if (m != 12 && m >= (moving ? 12 : sequence ? 9 : 7)) continue;   // the trackers' only where they run
             std::printf("  %-15s heading err %5.2f deg  IoU %.3f  (>= 0.5: %3d)  centre err %.2f m  "
                         "long side err %.2f m  short side err %.2f m\n", BM_NAME[m],
                         S.yaw[m] / S.n, S.iou[m] / S.n, S.good[m], S.centre[m] / S.n, S.len[m] / S.n, S.wid[m] / S.n);
+        }
     };
     box_line("all box observations", bsum[0]);
     box_line("one face visible", bsum[1]);
@@ -1139,10 +1183,13 @@ int main(int argc, char** argv) {
     bool prior_better = bsum[0].iou[2] > bsum[0].iou[0] && bsum[0].centre[2] < bsum[0].centre[0] &&
                         bsum[0].iou[6] > bsum[0].iou[0] && bsum[0].centre[6] < bsum[0].centre[0];
     double found_rate = cl_sum[0].objects ? (double)cl_sum[0].found / cl_sum[0].objects : 0.0;
+    std::printf("free-space refinement: %ld boxes, GPU %.2f ms per scan%s\n", fs_boxes, fs_ms / N_SCAN,
+                check ? (fs_same ? ", CPU and GPU identical" : ", CPU and GPU DIFFER") : "");
     std::printf("library pipeline (cudarobotics::LidarObjectPipeline) gives the same ground, clusters, boxes%s: %s\n",
                 sequence ? " and tracks" : "", lib_same ? "yes" : "no");
     bool ok = sg.f1 >= 0.95 && sg.f1 > st.f1 && agree_pct >= 99.9 && found_rate >= 0.9 && cl_same && vcl_same &&
-              ls_better && ls_same && prior_better && lib_same;
+              ls_better && ls_same && prior_better && lib_same && fs_same &&
+              bsum[0].iou[12] > bsum[0].iou[6] && bsum[0].centre[12] < bsum[0].centre[6];
     if (moving) {
         // (the motion tracker does not beat the single-scan box on the moving vehicles, which the sensor
         // sees from behind or ahead only: see docs/gpu_ground_segmentation.md)
@@ -1180,7 +1227,8 @@ int main(int argc, char** argv) {
     if (check) {
         std::printf("check: %s (model F1 >= 0.95, above the height threshold, CPU/GPU agreement >= 99.9%%, "
                     ">= 90%% of objects found as one cluster, identical CPU/GPU partition, L-shape boxes beat "
-                    "axis-aligned ones, identical CPU/GPU boxes, size prior improves IoU and centre error with either class)\n", ok ? "PASS" : "FAIL");
+                    "axis-aligned ones, identical CPU/GPU boxes, size prior improves IoU and centre error with either class, "
+                    "free-space refinement improves them further, identical CPU/GPU refinement)\n", ok ? "PASS" : "FAIL");
         return ok ? 0 : 1;
     }
     return 0;

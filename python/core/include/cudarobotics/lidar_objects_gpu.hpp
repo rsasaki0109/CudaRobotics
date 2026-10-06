@@ -26,6 +26,9 @@ struct LidarObjectsConfig {
     // upper beam at +2 degrees.
     float sensor_height = 1.8f;        // m
     float upper_beam_deg = 2.0f;       // degrees
+    // Refine the completed boxes with the free space the scan's rays crossed
+    // (LidarCluster::refined; about 2 ms per vehicle on the GPU).
+    bool free_space_refinement = true;
 };
 
 enum class LidarObjectClass : int { None = -1, Car = 0, Van = 1 };
@@ -45,6 +48,10 @@ struct LidarCluster {
     LidarObjectBox box;                   // L-shape box of its points
     LidarObjectClass cls = LidarObjectClass::None;
     LidarObjectBox completed;             // box completed with the class's size prior (the box for None)
+    // The completed box moved, turned and resized within a small range to the
+    // free space the scan's rays crossed and the cluster's points (the completed
+    // box for None, or without free_space_refinement).
+    LidarObjectBox refined;
 };
 
 struct LidarTrack {
@@ -63,7 +70,7 @@ struct LidarObjectsResult {
     std::vector<int> cluster;             // per input point: its cluster's label, -1 for ground
     std::vector<LidarCluster> clusters;   // the clusters of at least 10 points, by label
     std::vector<LidarTrack> tracks;       // the tracks this scan updated
-    float segmentation_ms = 0.0f, clustering_ms = 0.0f, boxes_ms = 0.0f;   // GPU
+    float segmentation_ms = 0.0f, clustering_ms = 0.0f, boxes_ms = 0.0f, refinement_ms = 0.0f;   // GPU
     float tracking_ms = 0.0f;             // host, with the GPU box refits
 };
 
