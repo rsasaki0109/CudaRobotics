@@ -25,6 +25,10 @@ struct LidarObjectsConfig {
     // trained on a 64-beam scan at 1.8 m with the upper beam at +2 degrees.
     float sensor_height = 1.8f;        // m
     float upper_beam_deg = 2.0f;       // degrees
+    // The class trained on scans from 0.8-2.5 m, which also reads the sensor's
+    // height, instead of the one trained at 1.8 m. Use it for sensors well away
+    // from 1.8 m; at 1.8 m the default does better on the drives.
+    bool height_aware_class = false;
 };
 
 enum class LidarObjectClass : int { None = -1, Car = 0, Van = 1 };
@@ -48,6 +52,7 @@ struct LidarCluster {
 
 struct LidarTrack {
     int id = -1;
+    int cluster = -1;                     // the label of the cluster that updated it in this scan
     LidarObjectClass cls = LidarObjectClass::None;   // the majority of its clusters' classes
     bool moving = false;                  // the stand-still test's verdict
     float vx = 0.0f, vy = 0.0f;           // Kalman-filter velocity, m/s, in the world frame
