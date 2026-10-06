@@ -18,10 +18,10 @@ Measured with the current build and class on held-out scenes and drives (seeds 1
 | clustering | objects found as one cluster | **97%** (2242 / 2309) |
 | boxes, single scan | BEV IoU: axis-aligned / L-shape / + size prior / + free space | 0.402 / 0.500 / 0.728 / **0.777** |
 | boxes, tracked along a drive | BEV IoU | **0.763** |
-| boxes, moving traffic | BEV IoU: single scan / motion tracker / hybrid | 0.754 / 0.761 / **0.781** |
+| boxes, moving traffic | BEV IoU: single scan / motion tracker / hybrid / + free space (parked tracks) | 0.754 / 0.761 / 0.781 / **0.799** |
 | motion tracker | velocity error, moving / parked vehicles | 0.63 / 0.63 m/s |
 | motion tracker | identity switches over 20 drives | 30 |
-| time per scan (`--moving`) | mean / max over a drive's scans, without / with the free-space refinement | 10.1 / 19.7 ms; about +6 ms (this run, shared GPU) |
+| time per scan (`--moving`) | mean / max over a drive's scans, without the free-space refinement | 8.7 / 15.7 ms (this run, shared GPU); the refinement adds about 6 ms for the boxes and more for the parked tracks |
 
 | Sensor height | cars classed car | vans classed van | others classed car or van | box IoU with the prior |
 |---:|---:|---:|---:|---:|
@@ -539,7 +539,43 @@ The cheapest candidate wins. The CPU twin (`fs_grid_cpu`, `fs_refine_cpu`) runs 
   | the grid around each box copied into shared memory (up to 44 KB per block) | 20 ms in all | no |
 
   The serial sum in point order is what keeps the cost bit for bit the CPU's. A warp cannot split that sum without changing it, and the large shared patch cut the blocks per SM.
-- **Library.** It refines the completed boxes into `LidarCluster::refined` (`LidarObjectsConfig::free_space_refinement`, on by default). The tracks still use the completed boxes.
+- **Library.** It refines the completed boxes into `LidarCluster::refined` (`LidarObjectsConfig::free_space_refinement`, on by default). The next section brings the free space to the tracks.
+
+### Free space in the trackers
+
+The hybrid box takes this scan's completed box for a moving track and the track's accumulated box for a parked one. Four variants bring in the free space, all on the motion tracker:
+
+| Variant | moving tracks | parked tracks |
+|---|---|---|
+| hybrid (before) | this scan's completed box | the track's box |
+| 1 | this scan's refined box | the track's box |
+| 2 | this scan's refined box | the track's box, refined with this scan's free space and its cluster's points |
+| 3 | as 2, on a tracker whose Kalman filter measures the refined boxes' centres | |
+| 4 | this scan's completed box | the track's box, refined as in 2 |
+
+**Selection.** The variants were compared on the dev drive and training seeds 101-110 only (`scripts/box_fs_tracking_eval.py select`, 2384 vehicle observations).
+
+| Variant | IoU, all vehicles | moving | parked | centre error |
+|---|---:|---:|---:|---:|
+| hybrid | 0.792 | 0.843 | 0.767 | 0.306 m |
+| 1 | 0.785 | 0.818 | 0.768 | 0.316 m |
+| 2 | 0.809 | 0.821 | 0.803 | 0.287 m |
+| 3 | 0.810 | 0.820 | 0.804 | 0.282 m |
+| **4** | **0.816** | **0.845** | 0.802 | **0.277 m** |
+
+- **Moving traffic gets nothing from the free space.** It is seen end-on from its own lane, so few rays pass beside or behind it, and the refined scan box is worse than the completed one (0.843 → 0.818).
+- **Parked cars gain.** The free space trims and moves their accumulated boxes (0.767 → 0.802).
+- **Measuring the Kalman filter on the refined centres** barely changed the velocity error (0.564 → 0.558 m/s).
+
+**Test on fresh drives 81-100.** No earlier step ran these. The criterion was fixed in the script: higher IoU over all vehicles, better in significantly more seeds, and no higher centre error. Report: [results/box_fs_tracking_2026-10-06.md](results/box_fs_tracking_2026-10-06.md).
+
+| Fresh drives 81-100 (4319 vehicle observations) | IoU, all | moving | parked | centre error |
+|---|---:|---:|---:|---:|
+| hybrid | 0.782 | 0.854 | 0.746 | 0.32 m |
+| **variant 4** | **0.805** | **0.858** | **0.779** | **0.28 m** |
+
+- **The criterion holds.** Variant 4 is better in 20 of 20 drives (per observation, 1767 better and 812 worse).
+- **Library.** The library's hybrid box is now variant 4. With `free_space_refinement`, a parked track's `LidarTrack::box` is refined with each scan's free space. The demo checks the library equals its own, and the `--moving` gate requires variant 4 to beat the hybrid.
 
 ## Reproduce
 
@@ -551,6 +587,8 @@ cmake --build build --target gpu_ground_segmentation -j$(nproc)
 python scripts/lidar_objects_summary.py             # the current-performance table (seeds 1-20)
 python scripts/box_freespace_eval.py tune           # free-space weights on the dev scene and seeds 101-110
 python scripts/box_freespace_eval.py test --weights 1,10,3   # the test on fresh seeds 61-80
+python scripts/box_fs_tracking_eval.py select       # free space in the trackers: the variants on the tuning drives
+python scripts/box_fs_tracking_eval.py test --variant hyb_fs4   # the test on fresh drives 81-100
 python scripts/box_fitting_heldout.py               # held-out scenes, seeds 1-20
 python scripts/train_box_classifier.py              # retrain the class (random scenes and drives, 0.8-2.5 m), then rebuild
 python scripts/box_class_heights_eval.py run --tag A --seeds 41-60   # a class at 0.8 / 1.2 / 1.8 / 2.5 m
@@ -587,7 +625,8 @@ With `--moving`, `--check` requires:
 - motion-tracker boxes (with the size prior) that beat the static tracker's on the moving vehicles in IoU and centre error, and match them on the parked ones (within 0.01 IoU);
 - no more identity switches than the static tracker;
 - a velocity error under 1.5 m/s on the moving vehicles;
-- hybrid boxes that beat the single-scan and the motion tracker's boxes over all vehicles.
+- hybrid boxes that beat the single-scan and the motion tracker's boxes over all vehicles;
+- the parked tracks' boxes refined with the free space (variant 4) beating the hybrid.
 
 CTest runs it as `gpu_ground_segmentation_motion_gate`.
 

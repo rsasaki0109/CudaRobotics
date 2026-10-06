@@ -165,12 +165,32 @@ LidarObjectsResult LidarObjectPipeline::process(const float* xyz_in, std::size_t
     I.trk.update(t, px, py, pz, I.scan, cand, ccls, citems, keys, obb, pts, I.cs);
     bool same = true;
     I.trk.fit(&I.fitter, I.cs, false, same);
+    // the parked tracks' boxes refined with this scan's free space
+    std::vector<Obb> trk_ref(cand.size());
+    std::vector<char> trk_ref_ok(cand.size(), 0);
+    if (I.cfg.free_space_refinement) {
+        std::vector<Obb> b0, ref;
+        std::vector<int> ks, items, start(1, 0);
+        for (size_t k = 0; k < cand.size(); ++k) {
+            int j = I.trk.track_of[keys[cand[k]]];
+            if (I.trk.ms[j].moving) continue;
+            Obb raw, dn;
+            I.trk.boxes(j, t, px, py, raw, dn);
+            dn.zhi = obb[cand[k]].zhi;   // the cluster's top, in the sensor frame
+            b0.push_back(dn); ks.push_back((int)k);
+            items.insert(items.end(), citems[k].begin(), citems[k].end());
+            start.push_back((int)items.size());
+        }
+        if (!b0.empty()) R.refinement_ms += I.refiner.run(I.d_pts, I.d_valid, n, b0, items, start, FS_DEFAULT, ref);
+        for (size_t q = 0; q < ks.size(); ++q) { trk_ref[ks[q]] = ref[q]; trk_ref_ok[ks[q]] = 1; }
+    }
     for (size_t k = 0; k < cand.size(); ++k) {
         int j = I.trk.track_of[keys[cand[k]]];
         const Track& T = I.trk.tracks[j];
         const MotionState& M = I.trk.ms[j];
         Obb raw, tracked;
         I.trk.boxes(j, t, px, py, raw, tracked);
+        if (trk_ref_ok[k]) tracked = trk_ref[k];
         LidarTrack out;
         out.id = j;
         out.cluster = keys[cand[k]];

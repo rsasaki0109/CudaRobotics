@@ -1068,9 +1068,12 @@ struct Tracker {
     }
 
     // cand: clusters (indices into ckeys / cobb) the learned class calls cars or vans, with their classes and points.
+    // meas: the motion tracks' measurement box per cluster (sensor frame); null: the cluster's box completed with
+    // the track's class.
     void update(float t, float px, float py, float pz, int scan, const std::vector<int>& cand,
                 const std::vector<int>& ccls, const std::vector<std::vector<int>>& citems, const std::vector<int>& ckeys,
-                const std::vector<Obb>& cobb, const std::vector<float>& pts, const std::vector<float>& cs) {
+                const std::vector<Obb>& cobb, const std::vector<float>& pts, const std::vector<float>& cs,
+                const std::vector<Obb>* meas = nullptr) {
         track_of.assign(pts.size() / 3, -1);
         fit_track.clear(); fit_pts.clear();
         if (motion) for (MotionState& M : ms) kf_predict(M, t - t_prev);
@@ -1081,7 +1084,7 @@ struct Tracker {
             W.cx += px; W.cy += py;
             for (size_t j = 0; j < tracks.size(); ++j) {
                 if (motion) {   // predicted centre vs measured centre
-                    Obb Z = complete_box(cobb[cand[k]], track_class((int)j, ccls[cand[k]]), 1.0f);
+                    Obb Z = meas ? (*meas)[cand[k]] : complete_box(cobb[cand[k]], track_class((int)j, ccls[cand[k]]), 1.0f);
                     float d = (float)std::hypot(Z.cx + px - ms[j].x[0], Z.cy + py - ms[j].x[1]);
                     float dr = rect_rect_dist(box_at((int)j, t), W);
                     if (d < MV_GATE || dr < TRK_GATE) pairs.emplace_back(dr + 0.01f * d, (int)k, (int)j);
@@ -1100,7 +1103,8 @@ struct Tracker {
         }
         for (size_t k = 0; k < cand.size(); ++k) {
             int jt = cand_track[k];
-            Obb Z = complete_box(cobb[cand[k]], jt >= 0 ? track_class(jt, ccls[cand[k]]) : ccls[cand[k]], 1.0f);
+            Obb Z = meas ? (*meas)[cand[k]]
+                         : complete_box(cobb[cand[k]], jt >= 0 ? track_class(jt, ccls[cand[k]]) : ccls[cand[k]], 1.0f);
             double zx = Z.cx + px, zy = Z.cy + py;   // the measurement (motion tracks)
             if (cand_track[k] < 0) {
                 cand_track[k] = (int)tracks.size();

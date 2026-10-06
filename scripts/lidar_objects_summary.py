@@ -54,7 +54,7 @@ def main():
 
     f1, f1_thr, found, objects = [], [], 0, 0
     single, lshape, aabb, refined = [], [], [], []
-    tracked, motion, hybrid, single_drive, verr_m, verr_p = [], [], [], [], [], []
+    tracked, motion, hybrid, hybrid_fs, single_drive, verr_m, verr_p = [], [], [], [], [], [], []
     switches_motion, timing = 0, []
     per_height = {}
     for seed in seeds:
@@ -76,6 +76,7 @@ def main():
             if r["box"] not in VEH_MOVING:
                 continue
             motion.append(float(r["iou_mtrk_prior"])); hybrid.append(float(r["iou_hybrid"]))
+            hybrid_fs.append(float(r["iou_hyb_fs4"]))
             single_drive.append(float(r["iou_prior_mlp"]))
             if float(r["verr_motion"]) >= 0:
                 (verr_m if float(r["speed"]) > 0 else verr_p).append(float(r["verr_motion"]))
@@ -103,8 +104,8 @@ def main():
     w.write("| boxes, single scan | BEV IoU: axis-aligned / L-shape / + size prior / + free space | "
             "%.3f / %.3f / %.3f / %.3f |\n" % (mean(aabb), mean(lshape), mean(single), mean(refined)))
     w.write("| boxes, tracked along a drive | BEV IoU | %.3f |\n" % mean(tracked))
-    w.write("| boxes, moving traffic | BEV IoU: single scan / motion tracker / hybrid | %.3f / %.3f / %.3f |\n"
-            % (mean(single_drive), mean(motion), mean(hybrid)))
+    w.write("| boxes, moving traffic | BEV IoU: single scan / motion tracker / hybrid / + free space | "
+            "%.3f / %.3f / %.3f / %.3f |\n" % (mean(single_drive), mean(motion), mean(hybrid), mean(hybrid_fs)))
     w.write("| motion tracker | velocity error, moving / parked vehicles | %.2f / %.2f m/s |\n" % (mean(verr_m), mean(verr_p)))
     w.write("| motion tracker | identity switches over %d drives | %d |\n" % (len(seeds), switches_motion))
     w.write("| time per scan (`--moving`) | mean / max over the drives' scans, mean over drives | %.1f / %.1f ms |\n"
