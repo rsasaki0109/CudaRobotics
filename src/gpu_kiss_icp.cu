@@ -553,7 +553,8 @@ std::string validate_kiss_icp_config(const KissIcpConfig& c) {
         return "normal_neighbors must be in [1, 20]";
     if(c.reduction_backend!=KissIcpReductionBackend::Block && c.reduction_backend!=KissIcpReductionBackend::Atomic)
         return "invalid reduction_backend";
-    if(c.map_backend!=KissIcpMapBackend::Dense && c.map_backend!=KissIcpMapBackend::Unordered)
+    if(c.map_backend!=KissIcpMapBackend::Dense && c.map_backend!=KissIcpMapBackend::Pooled &&
+       c.map_backend!=KissIcpMapBackend::Validate && c.map_backend!=KissIcpMapBackend::Unordered)
         return "invalid map_backend";
     if(c.downsample_backend!=KissIcpDownsampleBackend::Cached && c.downsample_backend!=KissIcpDownsampleBackend::Unordered &&
        c.downsample_backend!=KissIcpDownsampleBackend::Pooled && c.downsample_backend!=KissIcpDownsampleBackend::Validate)
@@ -561,7 +562,8 @@ std::string validate_kiss_icp_config(const KissIcpConfig& c) {
     if(c.normal_update!=KissIcpNormalUpdate::Full && c.normal_update!=KissIcpNormalUpdate::Incremental && c.normal_update!=KissIcpNormalUpdate::Validate)
         return "invalid normal_update";
     if(c.normal_update==KissIcpNormalUpdate::Validate &&
-       (c.map_backend!=KissIcpMapBackend::Dense || c.normal_backend!=KissIcpNormalBackend::Voxel))
+       ((c.map_backend!=KissIcpMapBackend::Dense && c.map_backend!=KissIcpMapBackend::Pooled &&
+         c.map_backend!=KissIcpMapBackend::Validate) || c.normal_backend!=KissIcpNormalBackend::Voxel))
         return "normal validation requires dense map and voxel normals";
     if (c.max_scan_points == 0) return "max_scan_points must be positive";
     if (c.max_map_points == 0) return "max_map_points must be positive";
@@ -585,10 +587,16 @@ struct KissIcpOdometry::Impl {
         if (!error.empty()) throw std::invalid_argument(error);
         if(config.downsample_backend==KissIcpDownsampleBackend::Pooled || config.downsample_backend==KissIcpDownsampleBackend::Validate)
             scan_sampler.reset(new kiss_downsample::Sampler(config.max_scan_points));
-        if(config.map_backend==KissIcpMapBackend::Dense) {
+        if(config.map_backend==KissIcpMapBackend::Dense || config.map_backend==KissIcpMapBackend::Pooled ||
+           config.map_backend==KissIcpMapBackend::Validate) {
             const bool cache=config.normal_update!=KissIcpNormalUpdate::Full && config.normal_backend==KissIcpNormalBackend::Voxel;
-            dense_map.reset(new kiss_host_map::Dense(config.max_map_points,config.map_voxel_size,localmap,cache ? &previous_ranks : nullptr));
+            dense_map.reset(new kiss_host_map::Dense(config.max_map_points,config.map_voxel_size,localmap,cache ? &previous_ranks : nullptr,
+                config.map_backend!=KissIcpMapBackend::Dense));
             map_order.reserve(config.max_map_points);
+            if(config.map_backend==KissIcpMapBackend::Validate) {
+                validation_map.reset(new kiss_host_map::Dense(config.max_map_points,config.map_voxel_size,validation_points));
+                validation_order.reserve(config.max_map_points);
+            }
         } else vmap.reserve(config.max_map_points);
         try {
             CUDA_CHECK(cudaMalloc(&dS,config.max_scan_points*3*sizeof(float)));
@@ -668,8 +676,14 @@ struct KissIcpOdometry::Impl {
         localmap.clear();
         map_order.clear();
         if(dense_map) dense_map->clear();
+        if(validation_map) validation_map->clear();
+        validation_order.clear();
         if(normal_cache) normal_cache->reset();
         accumulated_timing = {};
+        if(dense_map) {
+            accumulated_timing.host_map_pool_bytes=dense_map->pool_bytes();
+            accumulated_timing.host_map_order_bytes=dense_map->order_bytes();
+        }
     }
 
     std::vector<float> deskew(
@@ -722,6 +736,7 @@ struct KissIcpOdometry::Impl {
     void insert_map(const std::vector<float>& world,const float* center) {
         auto started=StageClock::now();
         if(dense_map) {
+            const size_t allocations_before=dense_map->pool_allocations();
             dense_map->prune(center,config.map_radius);
             accumulated_timing.map_prune_ms+=stage_ms(started);
             started=StageClock::now();
@@ -731,12 +746,24 @@ struct KissIcpOdometry::Impl {
                 // Keep upload indices coherent after a partially filled map
                 // reaches capacity. The pre-reserved order buffer cannot grow.
                 dense_map->export_order(map_order);
+                accumulated_timing.host_map_upstream_allocations+=dense_map->pool_allocations()-allocations_before;
+                accumulated_timing.host_map_pool_bytes=dense_map->pool_bytes();
                 throw;
             }
             accumulated_timing.map_insert_ms+=stage_ms(started);
             started=StageClock::now();
             dense_map->export_order(map_order);
             accumulated_timing.map_pack_ms+=stage_ms(started);
+            accumulated_timing.host_map_upstream_allocations+=dense_map->pool_allocations()-allocations_before;
+            accumulated_timing.host_map_pool_bytes=dense_map->pool_bytes();
+            if(validation_map) {
+                validation_map->prune(center,config.map_radius);
+                validation_map->insert(world,center,config.map_radius);
+                validation_map->export_order(validation_order);
+                if(validation_points.size()!=localmap.size() || validation_order!=map_order ||
+                   (!localmap.empty() && std::memcmp(validation_points.data(),localmap.data(),localmap.size()*sizeof(float))))
+                    throw std::runtime_error("pooled host map point bits or order differ from dense reference");
+            }
             return;
         }
         const float radius2=config.map_radius*config.map_radius;
@@ -957,10 +984,13 @@ struct KissIcpOdometry::Impl {
     std::vector<float> localmap;
     std::vector<int> map_order;
     std::vector<int> previous_ranks;
+    std::vector<float> validation_points;
+    std::vector<int> validation_order;
     KissIcpTiming accumulated_timing;
     std::unique_ptr<kiss_spatial::Index> spatial;
     std::unique_ptr<kiss_spatial::Index> coarse_spatial;
     std::unique_ptr<kiss_host_map::Dense> dense_map;
+    std::unique_ptr<kiss_host_map::Dense> validation_map;
     std::unique_ptr<kiss_normal_cache::Cache> normal_cache;
     std::unique_ptr<kiss_downsample::Sampler> scan_sampler;
     float *dS=nullptr,*dPw=nullptr,*dQ=nullptr,*dNQ=nullptr,*dD2=nullptr;

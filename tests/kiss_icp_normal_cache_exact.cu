@@ -15,6 +15,7 @@ static bool run(bool ties,int k=12,bool validate=true) {
     config.normal_neighbors=k;
     if(validate) config.normal_update=KissIcpNormalUpdate::Validate;
     KissIcpConfig reference=config;
+    reference.map_backend=KissIcpMapBackend::Dense;
     reference.normal_update=KissIcpNormalUpdate::Full;
     KissIcpOdometry cached(config),full(reference);
     std::vector<float> world;

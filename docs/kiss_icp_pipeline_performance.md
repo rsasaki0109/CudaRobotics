@@ -7,6 +7,9 @@ correspondence gates or ICP iteration limits. The
 method/repeat, accuracy gates and source/input/executable hashes.
 The current pooled-centroid/incremental-normal defaults are covered by the
 [later default-policy comparison](results/kiss_icp_normal_default_2026-10-10.md).
+The default host map subsequently adds [pooled nodes and compact exact-order
+links](kiss_icp_pooled_host_map.md); historical comparisons explicitly retain
+`--kiss-map-backend dense` for the original dense-map allocation/packing path.
 
 ## Changes
 

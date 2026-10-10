@@ -37,6 +37,8 @@ enum class KissIcpReductionBackend {
 enum class KissIcpMapBackend {
     Dense,
     Unordered,  // Retained voxel map and per-frame packing reference.
+    Pooled,  // Dense points with reusable nodes and compact reference-order links.
+    Validate,  // Compare pooled point bits and order with Dense every frame.
 };
 
 enum class KissIcpDownsampleBackend {
@@ -66,7 +68,7 @@ struct KissIcpConfig {
     KissIcpNnBackend nn_backend = KissIcpNnBackend::Voxel;
     KissIcpNormalBackend normal_backend = KissIcpNormalBackend::Voxel;
     KissIcpReductionBackend reduction_backend = KissIcpReductionBackend::Block;
-    KissIcpMapBackend map_backend = KissIcpMapBackend::Dense;
+    KissIcpMapBackend map_backend = KissIcpMapBackend::Pooled;
     KissIcpDownsampleBackend downsample_backend = KissIcpDownsampleBackend::Pooled;
     bool normal_query_cell_order = true;  // Schedule nearby queries together; preserve point IDs.
     KissIcpNormalUpdate normal_update = KissIcpNormalUpdate::Incremental;
@@ -101,6 +103,9 @@ struct KissIcpTiming {
     std::size_t normal_recomputed_points = 0;
     std::size_t downsample_upstream_allocations = 0;  // New arena slabs since reset.
     std::size_t downsample_arena_bytes = 0;  // Current retained slab capacity.
+    std::size_t host_map_upstream_allocations = 0;  // New node-pool slabs since reset.
+    std::size_t host_map_pool_bytes = 0;  // Retained node slabs, excluding buckets/points.
+    std::size_t host_map_order_bytes = 0;  // Reserved integer links for exact order export.
 };
 
 struct KissIcpFrameResult {
