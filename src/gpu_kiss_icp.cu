@@ -555,7 +555,8 @@ std::string validate_kiss_icp_config(const KissIcpConfig& c) {
         return "invalid reduction_backend";
     if(c.map_backend!=KissIcpMapBackend::Dense && c.map_backend!=KissIcpMapBackend::Unordered)
         return "invalid map_backend";
-    if(c.downsample_backend!=KissIcpDownsampleBackend::Cached && c.downsample_backend!=KissIcpDownsampleBackend::Unordered)
+    if(c.downsample_backend!=KissIcpDownsampleBackend::Cached && c.downsample_backend!=KissIcpDownsampleBackend::Unordered &&
+       c.downsample_backend!=KissIcpDownsampleBackend::Pooled && c.downsample_backend!=KissIcpDownsampleBackend::Validate)
         return "invalid downsample_backend";
     if(c.normal_update!=KissIcpNormalUpdate::Full && c.normal_update!=KissIcpNormalUpdate::Incremental && c.normal_update!=KissIcpNormalUpdate::Validate)
         return "invalid normal_update";
@@ -582,6 +583,8 @@ struct KissIcpOdometry::Impl {
     explicit Impl(const KissIcpConfig& value) : config(value) {
         const std::string error = validate_kiss_icp_config(config);
         if (!error.empty()) throw std::invalid_argument(error);
+        if(config.downsample_backend==KissIcpDownsampleBackend::Pooled || config.downsample_backend==KissIcpDownsampleBackend::Validate)
+            scan_sampler.reset(new kiss_downsample::Sampler(config.max_scan_points));
         if(config.map_backend==KissIcpMapBackend::Dense) {
             const bool cache=config.normal_update!=KissIcpNormalUpdate::Full && config.normal_backend==KissIcpNormalBackend::Voxel;
             dense_map.reset(new kiss_host_map::Dense(config.max_map_points,config.map_voxel_size,localmap,cache ? &previous_ranks : nullptr));
@@ -798,8 +801,25 @@ struct KissIcpOdometry::Impl {
             : std::move(raw);
         accumulated_timing.deskew_wall_ms+=stage_ms(stage_start);
         stage_start=StageClock::now();
-        std::vector<float> scan=kiss_downsample::sample(working,config.scan_voxel_size,
-            config.downsample_backend==KissIcpDownsampleBackend::Cached);
+        std::vector<float> reference_scan;
+        const std::vector<float>* sampled=nullptr;
+        if(scan_sampler) {
+            const size_t before=scan_sampler->upstream_allocations();
+            sampled=&scan_sampler->sample(working,config.scan_voxel_size);
+            accumulated_timing.downsample_upstream_allocations+=scan_sampler->upstream_allocations()-before;
+            accumulated_timing.downsample_arena_bytes=scan_sampler->arena_bytes();
+            if(config.downsample_backend==KissIcpDownsampleBackend::Validate) {
+                reference_scan=kiss_downsample::sample(working,config.scan_voxel_size,true);
+                if(reference_scan.size()!=sampled->size() || (!reference_scan.empty() &&
+                   std::memcmp(reference_scan.data(),sampled->data(),reference_scan.size()*sizeof(float))))
+                    throw std::runtime_error("pooled scan centroids or order differ from cached reference");
+            }
+        } else {
+            reference_scan=kiss_downsample::sample(working,config.scan_voxel_size,
+                config.downsample_backend==KissIcpDownsampleBackend::Cached);
+            sampled=&reference_scan;
+        }
+        const std::vector<float>& scan=*sampled;
         accumulated_timing.downsample_ms+=stage_ms(stage_start);
         if(scan.size()/3>config.max_scan_points)
             throw std::length_error("downsampled scan exceeds configured max_scan_points");
@@ -942,6 +962,7 @@ struct KissIcpOdometry::Impl {
     std::unique_ptr<kiss_spatial::Index> coarse_spatial;
     std::unique_ptr<kiss_host_map::Dense> dense_map;
     std::unique_ptr<kiss_normal_cache::Cache> normal_cache;
+    std::unique_ptr<kiss_downsample::Sampler> scan_sampler;
     float *dS=nullptr,*dPw=nullptr,*dQ=nullptr,*dNQ=nullptr,*dD2=nullptr;
     float *dTimes=nullptr,*dDeskew=nullptr,*dMotionTwist=nullptr;
     float *dMap=nullptr,*dMapN=nullptr,*dR=nullptr,*dt=nullptr,*dHg=nullptr;

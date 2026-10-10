@@ -47,7 +47,7 @@ struct Options {
     std::string kiss_nn_backend = "voxel";
     std::string kiss_reduction_backend = "block";
     std::string kiss_map_backend = "dense";
-    std::string kiss_downsample_backend = "cached";
+    std::string kiss_downsample_backend = "pooled";
     std::string kiss_normal_query_order = "cell";
     std::string kiss_normal_update = "full";
     bool check = false;
@@ -286,7 +286,7 @@ void usage(const char* executable) {
         "[--kiss-scan-voxel-size X] [--kiss-map-radius X] "
         "[--kiss-normal-neighbors N] [--kiss-normal-backend voxel|brute] "
         "[--kiss-nn-backend voxel|linked|brute] [--kiss-reduction-backend block|atomic] "
-        "[--kiss-map-backend dense|unordered] [--kiss-downsample-backend cached|unordered] "
+        "[--kiss-map-backend dense|unordered] [--kiss-downsample-backend pooled|cached|unordered|validate] "
         "[--kiss-normal-query-order cell|input] [--kiss-normal-update full|incremental|validate]\n",
         executable);
 }
@@ -364,7 +364,8 @@ Options parse_options(int argc, char** argv) {
         throw std::invalid_argument("invalid KISS-ICP reduction backend");
     if(options.kiss_map_backend!="dense" && options.kiss_map_backend!="unordered")
         throw std::invalid_argument("invalid KISS-ICP map backend");
-    if(options.kiss_downsample_backend!="cached" && options.kiss_downsample_backend!="unordered")
+    if(options.kiss_downsample_backend!="cached" && options.kiss_downsample_backend!="unordered" &&
+       options.kiss_downsample_backend!="pooled" && options.kiss_downsample_backend!="validate")
         throw std::invalid_argument("invalid KISS-ICP downsample backend");
     if(options.kiss_normal_query_order!="cell" && options.kiss_normal_query_order!="input")
         throw std::invalid_argument("invalid KISS-ICP normal query order");
@@ -423,8 +424,9 @@ int main(int argc, char** argv) {
             ? cudarobotics::KissIcpReductionBackend::Block : cudarobotics::KissIcpReductionBackend::Atomic;
         kiss_config.map_backend = options.kiss_map_backend == "dense"
             ? cudarobotics::KissIcpMapBackend::Dense : cudarobotics::KissIcpMapBackend::Unordered;
-        kiss_config.downsample_backend = options.kiss_downsample_backend == "cached"
-            ? cudarobotics::KissIcpDownsampleBackend::Cached : cudarobotics::KissIcpDownsampleBackend::Unordered;
+        kiss_config.downsample_backend = options.kiss_downsample_backend == "pooled" ? cudarobotics::KissIcpDownsampleBackend::Pooled :
+            options.kiss_downsample_backend == "validate" ? cudarobotics::KissIcpDownsampleBackend::Validate :
+            options.kiss_downsample_backend == "cached" ? cudarobotics::KissIcpDownsampleBackend::Cached : cudarobotics::KissIcpDownsampleBackend::Unordered;
         kiss_config.normal_query_cell_order = options.kiss_normal_query_order == "cell";
         kiss_config.normal_update = options.kiss_normal_update == "full" ? cudarobotics::KissIcpNormalUpdate::Full :
             options.kiss_normal_update == "validate" ? cudarobotics::KissIcpNormalUpdate::Validate : cudarobotics::KissIcpNormalUpdate::Incremental;
@@ -475,7 +477,7 @@ int main(int argc, char** argv) {
                "retreating,command_v,command_w,frame_ms,odometry_ms,normal_ms,index_ms,nn_ms,map_points,"
                "validation_ms,deskew_wall_ms,downsample_ms,map_upload_ms,icp_ms,normal_equation_ms,"
                "map_update_ms,map_prune_ms,map_insert_ms,map_pack_ms,map_reorder_ms,"
-               "normal_cache_prepare_ms,normal_reused_points,normal_recomputed_points\n";
+               "normal_cache_prepare_ms,normal_reused_points,normal_recomputed_points,downsample_new_slabs,downsample_arena_bytes\n";
 
         std::vector<double> xy_errors;
         std::vector<double> yaw_errors;
@@ -696,7 +698,9 @@ int main(int argc, char** argv) {
                 << current_timing.map_reorder_ms-previous_timing.map_reorder_ms << ','
                 << current_timing.normal_cache_prepare_ms-previous_timing.normal_cache_prepare_ms << ','
                 << current_timing.normal_reused_points-previous_timing.normal_reused_points << ','
-                << current_timing.normal_recomputed_points-previous_timing.normal_recomputed_points << '\n';
+                << current_timing.normal_recomputed_points-previous_timing.normal_recomputed_points << ','
+                << current_timing.downsample_upstream_allocations-previous_timing.downsample_upstream_allocations << ','
+                << current_timing.downsample_arena_bytes << '\n';
         }
 
         const double wall_ms = std::chrono::duration<double, std::milli>(
@@ -789,6 +793,8 @@ int main(int argc, char** argv) {
              << "  \"reduction_backend\": " << json_string(options.kiss_reduction_backend) << ",\n"
              << "  \"map_backend\": " << json_string(options.kiss_map_backend) << ",\n"
              << "  \"downsample_backend\": " << json_string(options.kiss_downsample_backend) << ",\n"
+             << "  \"downsample_memory\": {\"new_slabs\": " << odometry.timing().downsample_upstream_allocations
+             << ", \"arena_bytes\": " << odometry.timing().downsample_arena_bytes << "},\n"
              << "  \"normal_query_order\": " << json_string(options.kiss_normal_query_order) << ",\n"
              << "  \"normal_update\": " << json_string(options.kiss_normal_update) << ",\n"
              << "  \"normal_cache\": {\"reused_points\": " << odometry.timing().normal_reused_points

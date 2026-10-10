@@ -42,6 +42,8 @@ enum class KissIcpMapBackend {
 enum class KissIcpDownsampleBackend {
     Cached,
     Unordered,
+    Pooled,
+    Validate,  // Byte-compare pooled output with the cached reference.
 };
 
 enum class KissIcpNormalUpdate {
@@ -65,7 +67,7 @@ struct KissIcpConfig {
     KissIcpNormalBackend normal_backend = KissIcpNormalBackend::Voxel;
     KissIcpReductionBackend reduction_backend = KissIcpReductionBackend::Block;
     KissIcpMapBackend map_backend = KissIcpMapBackend::Dense;
-    KissIcpDownsampleBackend downsample_backend = KissIcpDownsampleBackend::Cached;
+    KissIcpDownsampleBackend downsample_backend = KissIcpDownsampleBackend::Pooled;
     bool normal_query_cell_order = true;  // Schedule nearby queries together; preserve point IDs.
     KissIcpNormalUpdate normal_update = KissIcpNormalUpdate::Full;
 };
@@ -97,6 +99,8 @@ struct KissIcpTiming {
     double normal_cache_prepare_ms = 0.0;  // Remapping, transfers, delta index and cache commit.
     std::size_t normal_reused_points = 0;
     std::size_t normal_recomputed_points = 0;
+    std::size_t downsample_upstream_allocations = 0;  // New arena slabs since reset.
+    std::size_t downsample_arena_bytes = 0;  // Current retained slab capacity.
 };
 
 struct KissIcpFrameResult {

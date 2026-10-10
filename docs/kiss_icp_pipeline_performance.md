@@ -34,6 +34,8 @@ Scan centroid aggregation keeps the same unordered container, input-order sums
 and output order. Adjacent points with the same voxel key reuse the previous
 value pointer. CPU tests compare the complete output byte-for-byte, including
 negative cells, boundaries, repeated points and 200,000-point inputs.
+The core also supports [pooled scan centroid storage](kiss_icp_pooled_downsample.md);
+this historical pipeline benchmark explicitly retains the `cached` backend.
 
 Normal queries default to cell order using the existing spatial index's point
 permutation. Nearby queries run together without allocating or sorting another
