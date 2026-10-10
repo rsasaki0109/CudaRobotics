@@ -37,7 +37,12 @@ def summarize(rows: list[dict[str, str]]) -> dict:
     if not rows:
         raise ValueError("no measured frames")
     result = {"frames": len(rows)}
-    for field in ("frame_ms", "odometry_ms", "normal_ms", "index_ms", "nn_ms"):
+    fields = ["frame_ms", "odometry_ms", "normal_ms", "index_ms", "nn_ms"]
+    fields.extend(field for field in (
+        "validation_ms", "deskew_wall_ms", "downsample_ms", "map_upload_ms", "icp_ms",
+        "normal_equation_ms", "map_update_ms", "map_prune_ms", "map_insert_ms", "map_pack_ms", "map_reorder_ms"
+    ) if field in rows[0])
+    for field in fields:
         values = [float(row[field]) for row in rows]
         if any(not math.isfinite(x) or x < 0 for x in values):
             raise ValueError(f"invalid timing: {field}")
@@ -82,6 +87,9 @@ def main() -> None:
     if a.dll_dir:
         env["PATH"] = str(a.dll_dir.resolve()) + os.pathsep + env.get("PATH", "")
     sources = ["src/gpu_kiss_icp.cu", "include/kiss_icp_spatial.cuh",
+               "include/kiss_icp_reduction.cuh", "include/kiss_icp_host_map.hpp",
+               "include/kiss_icp_downsample.hpp",
+               "include/kiss_icp_order.cuh",
                "include/cudarobotics/kiss_icp_gpu.hpp", "tools/cudanav_real_gpu_stack_sequence.cu"]
     result = {"schema": "cudarobotics.kiss_icp_spatial.v1", "gpu": "NVIDIA consumer GPU",
               "git_head": subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip(),
@@ -98,6 +106,9 @@ def main() -> None:
             command = [str(executable.resolve()), "--sequence", str(a.sequence.resolve()),
                        "--json", str(stem.with_suffix(".json").resolve()), "--csv", str(stem.with_suffix(".csv").resolve()),
                        "--kiss-normal-backend", normal, "--kiss-nn-backend", nn,
+                       "--kiss-reduction-backend", "atomic", "--kiss-map-backend", "unordered",
+                       "--kiss-downsample-backend", "unordered",
+                       "--kiss-normal-query-order", "input",
                        "--maximum-ate-rmse-m", "3", "--maximum-final-drift-percent", "5",
                        "--minimum-inliers", "100", "--maximum-all-colliding-evaluations", "6", "--check"]
             if a.maximum_frames:

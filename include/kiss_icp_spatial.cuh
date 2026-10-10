@@ -28,6 +28,9 @@ struct View {
     int capacity;
     float cell, inv;
 };
+__device__ inline int query_point(View v,int rank,bool cell_order) {
+    return cell_order ? v.indices[rank] : rank;
+}
 __device__ inline int slot(View v, int x, int y, int z) {
     const auto k = key(x, y, z);
     int s = static_cast<int>(mix(k) & (v.capacity - 1));

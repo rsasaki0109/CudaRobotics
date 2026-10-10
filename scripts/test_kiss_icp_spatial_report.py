@@ -28,6 +28,17 @@ class QueueMetrics(unittest.TestCase):
         with self.assertRaises(ValueError):
             summarize(rows([float("nan"), 10]))
 
+    def test_optional_pipeline_stages_are_summarized(self):
+        measured = rows([50, 60])
+        measured[0]["downsample_ms"] = "2"
+        measured[1]["downsample_ms"] = "4"
+        result = summarize(measured)
+        self.assertEqual(result["downsample_ms"]["mean"], 3)
+        self.assertEqual(result["downsample_ms"]["p95"], 4)
+        measured[1]["downsample_ms"] = "nan"
+        with self.assertRaises(ValueError):
+            summarize(measured)
+
 
 if __name__ == "__main__":
     unittest.main()

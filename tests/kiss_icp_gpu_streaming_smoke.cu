@@ -1,6 +1,7 @@
 #include "cudarobotics/kiss_icp_gpu.hpp"
 
 #include <cmath>
+#include <cstring>
 #include <cstdio>
 #include <stdexcept>
 #include <vector>
@@ -170,6 +171,30 @@ int main() {
         return 9;
     }
 
+    // Dense host storage must preserve the reference GPU map ordering and thus
+    // block-reduced poses, correspondences and adaptive thresholds bit-for-bit.
+    KissIcpConfig reference_config=config;
+    reference_config.map_backend=KissIcpMapBackend::Unordered;
+    reference_config.normal_query_cell_order=false;
+    KissIcpOdometry dense_ordered(config), unordered(reference_config);
+    for(int frame=0;frame<20;++frame) {
+        if(frame==10) { dense_ordered.reset(); unordered.reset(); }
+        std::vector<float> sequence_scan=scan;
+        for(std::size_t i=0;i<sequence_scan.size();i+=3) {
+            sequence_scan[i]-=.025f*frame;
+            sequence_scan[i+1]-=.01f*std::sin(.2f*frame);
+        }
+        const auto dense_result=dense_ordered.register_scan(sequence_scan,point_times);
+        const auto reference_result=unordered.register_scan(sequence_scan,point_times);
+        if(std::memcmp(&dense_result.pose,&reference_result.pose,sizeof(KissIcpPose)) ||
+           dense_result.map_points!=reference_result.map_points ||
+           dense_result.alignment.inliers!=reference_result.alignment.inliers ||
+           dense_result.alignment.rmse!=reference_result.alignment.rmse ||
+           dense_result.alignment.threshold!=reference_result.alignment.threshold) {
+            std::fprintf(stderr,"dense/reference GPU point order differs at frame %d\n",frame);
+            return 10;
+        }
+    }
     std::printf("KISS-ICP reusable GPU streaming API: PASS\n");
     return 0;
 }

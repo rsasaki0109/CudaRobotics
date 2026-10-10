@@ -78,11 +78,20 @@
 #endif
 #include "cudarobotics/kiss_icp_gpu.hpp"
 #include "kiss_icp_spatial.cuh"
+#include "kiss_icp_reduction.cuh"
+#include "kiss_icp_host_map.hpp"
+#include "kiss_icp_downsample.hpp"
+#include "kiss_icp_order.cuh"
 #ifndef CUDAROBOTICS_KISS_ICP_CORE_ONLY
 #include "cuda_video.h"
 #endif
 
 namespace cudarobotics {
+
+using StageClock = std::chrono::steady_clock;
+static double stage_ms(StageClock::time_point start) {
+    return std::chrono::duration<double,std::milli>(StageClock::now()-start).count();
+}
 
 // ============================ SE(3)/SO(3) helpers (host) ============================
 using Mat3 = KissIcpMat3;
@@ -180,18 +189,6 @@ static std::vector<float> make_world(unsigned seed){
 #endif
 
 // host voxel downsample: keep the centroid of points falling in each voxel.
-static std::vector<float> voxel_downsample(const std::vector<float>& P, float vs){
-    std::unordered_map<int64_t,std::array<float,4>> vox; vox.reserve(P.size()/3);
-    auto key=[&](float x,float y,float z)->int64_t{
-        int64_t ix=(int64_t)std::floor(x/vs), iy=(int64_t)std::floor(y/vs), iz=(int64_t)std::floor(z/vs);
-        return ((ix&0x1FFFFF)<<42) ^ ((iy&0x1FFFFF)<<21) ^ (iz&0x1FFFFF); };
-    for(size_t i=0;i<P.size()/3;++i){ float x=P[i*3],y=P[i*3+1],z=P[i*3+2];
-        auto& a=vox[key(x,y,z)]; a[0]+=x;a[1]+=y;a[2]+=z;a[3]+=1.f; }
-    std::vector<float> out; out.reserve(vox.size()*3);
-    for(auto& kv:vox){ float w=kv.second[3]; out.push_back(kv.second[0]/w);out.push_back(kv.second[1]/w);out.push_back(kv.second[2]/w); }
-    return out;
-}
-
 // ============================ GPU kernels ============================
 // kNN-PCA surface normals on the local map (sign is irrelevant for point-to-plane).
 __device__ static void sym3_smallest_evec(const float C[6], float n[3]){
@@ -228,8 +225,11 @@ __global__ void map_normal_kernel(const float* Map,int m,int K,float* NMap){
         if(d<dk[kk-1]){int p=kk-1; while(p>0&&dk[p-1]>d){dk[p]=dk[p-1];ik[p]=ik[p-1];--p;} dk[p]=d;ik[p]=j;} }
     normal_from_neighbors(Map,i,kk,ik,NMap);
 }
-__global__ void map_normal_spatial_kernel(const float* Map,int m,int K,float* NMap,kiss_spatial::View index,kiss_spatial::View coarse){
-    const int i=blockIdx.x*blockDim.x+threadIdx.x; if(i>=m)return;
+__global__ void map_normal_spatial_kernel(const float* Map,int m,int K,float* NMap,kiss_spatial::View index,kiss_spatial::View coarse,bool cell_order){
+    const int query=blockIdx.x*blockDim.x+threadIdx.x; if(query>=m)return;
+    // Existing bucket indices are a permutation. Only scheduling changes;
+    // neighbours, tie IDs, arithmetic order and output positions stay the same.
+    const int i=kiss_spatial::query_point(index,query,cell_order);
     int ik[20]; kiss_spatial::knn(index,Map,m,i,K,ik,coarse);
     normal_from_neighbors(Map,i,K,ik,NMap);
 }
@@ -414,22 +414,6 @@ __global__ void nn_spatial_kernel(const float* Pw,int n,const float* Map,const f
 // removes the voxel-grid horizontal mismatch that starves point-to-point (the same
 // soft-mean/planar bias measured in gpu_filterreg_p2plane).  Geman-McClure weight
 // w = (k2/(k2+d2))^2 from the point distance d2; correspondences with d2>=tau2 cut.
-__global__ void gn_kernel(const float* __restrict__ Pw,const float* __restrict__ Q,
-                          const float* __restrict__ NQ,const float* __restrict__ D2,
-                          int n,float k2,float* __restrict__ Hg){
-    int i=blockIdx.x*blockDim.x+threadIdx.x; if(i>=n)return;
-    float d2=D2[i]; if(d2>1e29f)return;
-    float px=Pw[i*3],py=Pw[i*3+1],pz=Pw[i*3+2];
-    float nx=NQ[i*3],ny=NQ[i*3+1],nz=NQ[i*3+2];
-    float rs=nx*(px-Q[i*3])+ny*(py-Q[i*3+1])+nz*(pz-Q[i*3+2]);   // plane distance
-    float gm=k2/(k2+d2); float w=gm*gm;                  // Geman-McClure weight
-    float J[18]={1,0,0,0,pz,-py, 0,1,0,-pz,0,px, 0,0,1,py,-px,0};
-    float jp[6]; for(int a=0;a<6;++a)jp[a]=nx*J[a]+ny*J[6+a]+nz*J[12+a];
-    float Hl[21]; int c=0; for(int a=0;a<6;++a)for(int b=a;b<6;++b)Hl[c++]=w*jp[a]*jp[b];
-    for(int k=0;k<21;++k)atomicAdd(&Hg[k],Hl[k]);
-    for(int a=0;a<6;++a)atomicAdd(&Hg[21+a],w*jp[a]*rs);
-    atomicAdd(&Hg[27],w*rs*rs); atomicAdd(&Hg[28],w); atomicAdd(&Hg[29],1.f); }
-
 static bool solve6(const float* Hut,const float* g,float* d){
     float H[36]; int c=0; for(int a=0;a<6;++a)for(int b=a;b<6;++b){H[a*6+b]=H[b*6+a]=Hut[c++];}
     for(int i=0;i<6;++i)H[i*6+i]+=1e-6f; float L[36]={0};
@@ -467,13 +451,16 @@ static Pose icp_to_map(const std::vector<float>& scan, float* dMap,float* dMapN,
                        const int* dPointNext,int hashCapacity,float invCell,NnBackend backend,
                        kiss_spatial::View spatial, Pose Tinit, float tau, int max_it,
                        float* dS,float* dPw,float* dQ,float* dNQ,float* dD2,float* dR,float* dt,float* dHg,
+                       float* dPartialHg,KissIcpReductionBackend reduction,
                        AlignmentStats* stats){
     int n=scan.size()/3;
     CUDA_CHECK(cudaMemcpy(dS,scan.data(),n*3*sizeof(float),cudaMemcpyHostToDevice));
     Pose T=Tinit; float tau2=tau*tau, k2=(tau/2.f)*(tau/2.f);
-    cudaEvent_t nn_start, nn_stop;
+    cudaEvent_t nn_start, nn_stop, gn_start, gn_stop;
     CUDA_CHECK(cudaEventCreate(&nn_start));
     CUDA_CHECK(cudaEventCreate(&nn_stop));
+    CUDA_CHECK(cudaEventCreate(&gn_start));
+    CUDA_CHECK(cudaEventCreate(&gn_stop));
     stats->threshold = tau;
     for(int it=0;it<max_it;++it){
         CUDA_CHECK(cudaMemcpy(dR,T.R.m,9*sizeof(float),cudaMemcpyHostToDevice));
@@ -491,12 +478,18 @@ static Pose icp_to_map(const std::vector<float>& scan, float* dMap,float* dMapN,
                 dPw,n,dMap,dMapN,mapN,tau2,dQ,dNQ,dD2);
         }
         CUDA_CHECK(cudaEventRecord(nn_stop));
-        CUDA_CHECK(cudaMemset(dHg,0,30*sizeof(float)));
-        gn_kernel<<<(n+255)/256,256>>>(dPw,dQ,dNQ,dD2,n,k2,dHg);   // point-to-plane
+        CUDA_CHECK(cudaEventRecord(gn_start));
+        kiss_reduction::launch(dPw,dQ,dNQ,dD2,n,k2,dHg,dPartialHg,
+                              reduction==KissIcpReductionBackend::Atomic);
+        CUDA_CHECK(cudaGetLastError());
+        CUDA_CHECK(cudaEventRecord(gn_stop));
         float Hg[30]; CUDA_CHECK(cudaMemcpy(Hg,dHg,30*sizeof(float),cudaMemcpyDeviceToHost));
         float iteration_nn_ms = 0.0f;
         CUDA_CHECK(cudaEventElapsedTime(&iteration_nn_ms, nn_start, nn_stop));
         stats->nn_ms += iteration_nn_ms;
+        float iteration_gn_ms = 0.f;
+        CUDA_CHECK(cudaEventElapsedTime(&iteration_gn_ms, gn_start, gn_stop));
+        stats->normal_equation_ms += iteration_gn_ms;
         stats->iterations = it + 1;
         stats->inliers = static_cast<int>(Hg[29]);
         stats->rmse = Hg[28] > 0.0f ? std::sqrt(Hg[27] / Hg[28]) : 0.0f;
@@ -507,6 +500,8 @@ static Pose icp_to_map(const std::vector<float>& scan, float* dMap,float* dMapN,
     }
     CUDA_CHECK(cudaEventDestroy(nn_start));
     CUDA_CHECK(cudaEventDestroy(nn_stop));
+    CUDA_CHECK(cudaEventDestroy(gn_start));
+    CUDA_CHECK(cudaEventDestroy(gn_stop));
     return T;
 }
 
@@ -520,6 +515,12 @@ std::string validate_kiss_icp_config(const KissIcpConfig& c) {
     if (c.max_icp_iterations <= 0) return "max_icp_iterations must be positive";
     if (c.normal_neighbors < 1 || c.normal_neighbors > 20)
         return "normal_neighbors must be in [1, 20]";
+    if(c.reduction_backend!=KissIcpReductionBackend::Block && c.reduction_backend!=KissIcpReductionBackend::Atomic)
+        return "invalid reduction_backend";
+    if(c.map_backend!=KissIcpMapBackend::Dense && c.map_backend!=KissIcpMapBackend::Unordered)
+        return "invalid map_backend";
+    if(c.downsample_backend!=KissIcpDownsampleBackend::Cached && c.downsample_backend!=KissIcpDownsampleBackend::Unordered)
+        return "invalid downsample_backend";
     if (c.max_scan_points == 0) return "max_scan_points must be positive";
     if (c.max_map_points == 0) return "max_map_points must be positive";
     if (c.max_scan_points > static_cast<std::size_t>(INT_MAX))
@@ -540,7 +541,10 @@ struct KissIcpOdometry::Impl {
     explicit Impl(const KissIcpConfig& value) : config(value) {
         const std::string error = validate_kiss_icp_config(config);
         if (!error.empty()) throw std::invalid_argument(error);
-        vmap.reserve(config.max_map_points);
+        if(config.map_backend==KissIcpMapBackend::Dense) {
+            dense_map.reset(new kiss_host_map::Dense(config.max_map_points,config.map_voxel_size,localmap));
+            map_order.reserve(config.max_map_points);
+        } else vmap.reserve(config.max_map_points);
         try {
             CUDA_CHECK(cudaMalloc(&dS,config.max_scan_points*3*sizeof(float)));
             CUDA_CHECK(cudaMalloc(&dTimes,config.max_scan_points*sizeof(float)));
@@ -551,10 +555,15 @@ struct KissIcpOdometry::Impl {
             CUDA_CHECK(cudaMalloc(&dNQ,config.max_scan_points*3*sizeof(float)));
             CUDA_CHECK(cudaMalloc(&dD2,config.max_scan_points*sizeof(float)));
             CUDA_CHECK(cudaMalloc(&dMap,config.max_map_points*3*sizeof(float)));
+            if(dense_map) {
+                CUDA_CHECK(cudaMalloc(&dMapDense,config.max_map_points*3*sizeof(float)));
+                CUDA_CHECK(cudaMalloc(&dMapOrder,config.max_map_points*sizeof(int)));
+            }
             CUDA_CHECK(cudaMalloc(&dMapN,config.max_map_points*3*sizeof(float)));
             CUDA_CHECK(cudaMalloc(&dR,9*sizeof(float)));
             CUDA_CHECK(cudaMalloc(&dt,3*sizeof(float)));
             CUDA_CHECK(cudaMalloc(&dHg,30*sizeof(float)));
+            CUDA_CHECK(cudaMalloc(&dPartialHg,((config.max_scan_points+255)/256)*30*sizeof(float)));
             CUDA_CHECK(cudaMalloc(&dHashKeys,config.hash_capacity*sizeof(unsigned long long)));
             CUDA_CHECK(cudaMalloc(&dHashHeads,config.hash_capacity*sizeof(int)));
             CUDA_CHECK(cudaMalloc(&dPointNext,config.max_map_points*sizeof(int)));
@@ -589,9 +598,13 @@ struct KissIcpOdometry::Impl {
         cudaFree(dS); cudaFree(dPw); cudaFree(dQ); cudaFree(dNQ); cudaFree(dD2);
         cudaFree(dTimes); cudaFree(dDeskew); cudaFree(dMotionTwist);
         cudaFree(dMap); cudaFree(dMapN); cudaFree(dR); cudaFree(dt); cudaFree(dHg);
+        cudaFree(dMapDense); cudaFree(dMapOrder);
+        cudaFree(dPartialHg);
         cudaFree(dHashKeys); cudaFree(dHashHeads); cudaFree(dPointNext);
         normal_start=normal_stop=hash_start=hash_stop=deskew_start=deskew_stop=nullptr;
         dS=dPw=dQ=dNQ=dD2=dMap=dMapN=dR=dt=dHg=nullptr;
+        dPartialHg=nullptr;
+        dMapDense=nullptr; dMapOrder=nullptr;
         dTimes=dDeskew=dMotionTwist=nullptr;
         dHashKeys=nullptr;
         dHashHeads=dPointNext=nullptr;
@@ -605,6 +618,8 @@ struct KissIcpOdometry::Impl {
         deviation_initialized = false;
         vmap.clear();
         localmap.clear();
+        map_order.clear();
+        if(dense_map) dense_map->clear();
         accumulated_timing = {};
     }
 
@@ -656,11 +671,32 @@ struct KissIcpOdometry::Impl {
     }
 
     void insert_map(const std::vector<float>& world,const float* center) {
+        auto started=StageClock::now();
+        if(dense_map) {
+            dense_map->prune(center,config.map_radius);
+            accumulated_timing.map_prune_ms+=stage_ms(started);
+            started=StageClock::now();
+            try {
+                dense_map->insert(world,center,config.map_radius);
+            } catch (...) {
+                // Keep upload indices coherent after a partially filled map
+                // reaches capacity. The pre-reserved order buffer cannot grow.
+                dense_map->export_order(map_order);
+                throw;
+            }
+            accumulated_timing.map_insert_ms+=stage_ms(started);
+            started=StageClock::now();
+            dense_map->export_order(map_order);
+            accumulated_timing.map_pack_ms+=stage_ms(started);
+            return;
+        }
         const float radius2=config.map_radius*config.map_radius;
         for(auto it=vmap.begin();it!=vmap.end();){
             float dx=it->second[0]-center[0],dy=it->second[1]-center[1],dz=it->second[2]-center[2];
             if(dx*dx+dy*dy+dz*dz>radius2) it=vmap.erase(it); else ++it;
         }
+        accumulated_timing.map_prune_ms+=stage_ms(started);
+        started=StageClock::now();
         for(size_t i=0;i<world.size()/3;++i){
             float x=world[i*3],y=world[i*3+1],z=world[i*3+2];
             float dx=x-center[0],dy=y-center[1],dz=z-center[2];
@@ -672,17 +708,21 @@ struct KissIcpOdometry::Impl {
                 vmap[key]={x,y,z};
             }
         }
+        accumulated_timing.map_insert_ms+=stage_ms(started);
+        started=StageClock::now();
         localmap.clear(); localmap.reserve(vmap.size()*3);
         for(const auto& item:vmap){
             localmap.push_back(item.second[0]);
             localmap.push_back(item.second[1]);
             localmap.push_back(item.second[2]);
         }
+        accumulated_timing.map_pack_ms+=stage_ms(started);
     }
 
     KissIcpFrameResult register_scan(
         const float* xyz,std::size_t point_count,const float* point_times,
         float declared_minimum_time,float declared_maximum_time) {
+        auto stage_start=StageClock::now();
         if(!xyz) throw std::invalid_argument("scan pointer must not be null");
         if(point_count==0) throw std::invalid_argument("scan must contain at least one point");
         if(point_count>config.max_scan_points)
@@ -705,10 +745,16 @@ struct KissIcpOdometry::Impl {
                     throw std::invalid_argument("point time lies outside scan bounds");
             }
         }
+        accumulated_timing.validation_ms+=stage_ms(stage_start);
+        stage_start=StageClock::now();
         std::vector<float> working=point_times
             ? deskew(raw,point_times,minimum_time,maximum_time)
             : std::move(raw);
-        std::vector<float> scan=voxel_downsample(working,config.scan_voxel_size);
+        accumulated_timing.deskew_wall_ms+=stage_ms(stage_start);
+        stage_start=StageClock::now();
+        std::vector<float> scan=kiss_downsample::sample(working,config.scan_voxel_size,
+            config.downsample_backend==KissIcpDownsampleBackend::Cached);
+        accumulated_timing.downsample_ms+=stage_ms(stage_start);
         if(scan.size()/3>config.max_scan_points)
             throw std::length_error("downsampled scan exceeds configured max_scan_points");
 
@@ -724,7 +770,18 @@ struct KissIcpOdometry::Impl {
             }
             int map_count=static_cast<int>(localmap.size()/3);
             auto upload_start=std::chrono::high_resolution_clock::now();
-            CUDA_CHECK(cudaMemcpy(dMap,localmap.data(),map_count*3*sizeof(float),cudaMemcpyHostToDevice));
+            if(dense_map) {
+                CUDA_CHECK(cudaMemcpy(dMapDense,localmap.data(),map_count*3*sizeof(float),cudaMemcpyHostToDevice));
+                CUDA_CHECK(cudaMemcpy(dMapOrder,map_order.data(),map_count*sizeof(int),cudaMemcpyHostToDevice));
+                CUDA_CHECK(cudaEventRecord(hash_start));
+                kiss_order::gather<<<(map_count+255)/256,256>>>(dMapDense,dMapOrder,map_count,dMap);
+                CUDA_CHECK(cudaGetLastError());
+                CUDA_CHECK(cudaEventRecord(hash_stop));
+                CUDA_CHECK(cudaEventSynchronize(hash_stop));
+                float reorder_ms=0.f;
+                CUDA_CHECK(cudaEventElapsedTime(&reorder_ms,hash_start,hash_stop));
+                accumulated_timing.map_reorder_ms+=reorder_ms;
+            } else CUDA_CHECK(cudaMemcpy(dMap,localmap.data(),map_count*3*sizeof(float),cudaMemcpyHostToDevice));
             auto upload_stop=std::chrono::high_resolution_clock::now();
             accumulated_timing.map_upload_ms+=
                 std::chrono::duration<double,std::milli>(upload_stop-upload_start).count();
@@ -744,7 +801,7 @@ struct KissIcpOdometry::Impl {
             CUDA_CHECK(cudaEventRecord(normal_start));
             if(config.normal_backend==KissIcpNormalBackend::Voxel)
                 map_normal_spatial_kernel<<<(map_count+127)/128,128>>>(
-                    dMap,map_count,config.normal_neighbors,dMapN,spatial_view,coarse_view);
+                    dMap,map_count,config.normal_neighbors,dMapN,spatial_view,coarse_view,config.normal_query_cell_order);
             else map_normal_kernel<<<(map_count+127)/128,128>>>(
                 dMap,map_count,config.normal_neighbors,dMapN);
             CUDA_CHECK(cudaEventRecord(normal_stop));
@@ -766,11 +823,13 @@ struct KissIcpOdometry::Impl {
                 accumulated_timing.index_build_ms+=hash_ms;
             }
             const Pose predicted=current_pose;
+            stage_start=StageClock::now();
             estimate=icp_to_map(
                 scan,dMap,dMapN,map_count,dHashKeys,dHashHeads,dPointNext,
                 static_cast<int>(config.hash_capacity),inv_cell,config.nn_backend,
                 spatial_view,predicted,tau,config.max_icp_iterations,
-                dS,dPw,dQ,dNQ,dD2,dR,dt,dHg,&alignment);
+                dS,dPw,dQ,dNQ,dD2,dR,dt,dHg,dPartialHg,config.reduction_backend,&alignment);
+            accumulated_timing.icp_ms+=stage_ms(stage_start);
             float translation_delta,rotation_delta;
             pose_delta_mag(predicted,estimate,translation_delta,rotation_delta);
             float squared=translation_delta*translation_delta;
@@ -779,7 +838,9 @@ struct KissIcpOdometry::Impl {
         }
         last_delta=pose_mul(pose_inv(current_pose),estimate);
         current_pose=estimate;
+        stage_start=StageClock::now();
         insert_map(to_world(scan,current_pose),current_pose.t);
+        accumulated_timing.map_update_ms+=stage_ms(stage_start);
         ++frames;
         KissIcpFrameResult result;
         result.pose=current_pose;
@@ -802,12 +863,17 @@ struct KissIcpOdometry::Impl {
     bool deviation_initialized=false;
     std::unordered_map<int64_t,std::array<float,3>> vmap;
     std::vector<float> localmap;
+    std::vector<int> map_order;
     KissIcpTiming accumulated_timing;
     std::unique_ptr<kiss_spatial::Index> spatial;
     std::unique_ptr<kiss_spatial::Index> coarse_spatial;
+    std::unique_ptr<kiss_host_map::Dense> dense_map;
     float *dS=nullptr,*dPw=nullptr,*dQ=nullptr,*dNQ=nullptr,*dD2=nullptr;
     float *dTimes=nullptr,*dDeskew=nullptr,*dMotionTwist=nullptr;
     float *dMap=nullptr,*dMapN=nullptr,*dR=nullptr,*dt=nullptr,*dHg=nullptr;
+    float *dPartialHg=nullptr;
+    float *dMapDense=nullptr;
+    int *dMapOrder=nullptr;
     unsigned long long* dHashKeys=nullptr;
     int *dHashHeads=nullptr,*dPointNext=nullptr;
     cudaEvent_t normal_start=nullptr,normal_stop=nullptr,hash_start=nullptr,hash_stop=nullptr;
