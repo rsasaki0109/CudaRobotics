@@ -30,6 +30,7 @@ int main() {
     config.max_scan_points = 128;
     config.max_map_points = 256;
     config.hash_capacity = 512;
+    config.downsample_backend = KissIcpDownsampleBackend::Validate;
 
     KissIcpPose initial;
     initial.t[0] = 2.0f;
@@ -176,6 +177,7 @@ int main() {
     KissIcpConfig reference_config=config;
     reference_config.map_backend=KissIcpMapBackend::Unordered;
     reference_config.normal_query_cell_order=false;
+    reference_config.downsample_backend=KissIcpDownsampleBackend::Cached;
     KissIcpOdometry dense_ordered(config), unordered(reference_config);
     for(int frame=0;frame<20;++frame) {
         if(frame==10) { dense_ordered.reset(); unordered.reset(); }

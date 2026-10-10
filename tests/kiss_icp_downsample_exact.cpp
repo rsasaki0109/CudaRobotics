@@ -4,10 +4,13 @@
 #include <random>
 
 static bool check(const std::vector<float>& points,float cell) {
+    static kiss_downsample::Sampler sampler;
     const auto reference=kiss_downsample::sample(points,cell,false);
     const auto cached=kiss_downsample::sample(points,cell,true);
-    return reference.size()==cached.size() && (reference.empty() ||
-        !std::memcmp(reference.data(),cached.data(),reference.size()*sizeof(float)));
+    const auto& pooled=sampler.sample(points,cell);
+    return reference.size()==cached.size() && reference.size()==pooled.size() && (reference.empty() ||
+        (!std::memcmp(reference.data(),cached.data(),reference.size()*sizeof(float)) &&
+         !std::memcmp(reference.data(),pooled.data(),reference.size()*sizeof(float))));
 }
 
 int main() {
@@ -34,6 +37,16 @@ int main() {
         } else cloud.insert(cloud.end(),{coord(random),coord(random),coord(random)});
     }
     for(float cell:{.05f,.22f,1.f}) if(!check(cloud,cell)) return 4;
+    kiss_downsample::Sampler sampler;
+    sampler.sample(cloud,.22f);
+    const size_t allocations=sampler.upstream_allocations();
+    for(int i=0;i<10;++i) {
+        sampler.sample({},.22f);
+        const auto& actual=sampler.sample(cloud,.22f);
+        const auto expected=kiss_downsample::sample(cloud,.22f,true);
+        if(actual.size()!=expected.size() || std::memcmp(actual.data(),expected.data(),actual.size()*sizeof(float)) ||
+           allocations!=sampler.upstream_allocations()) return 5;
+    }
     std::puts("KISS-ICP cached centroid values and order match the reference: PASS");
     return 0;
 }
