@@ -301,14 +301,14 @@ __host__ __device__ inline float ndt_update(const float* acc, float* R, float* t
 // ---------------------------------------------------------------------------
 // GPU batch: one block per hypothesis
 // ---------------------------------------------------------------------------
-__global__ void ndt_batch_kernel(MapView m, const float* pts, int n, const float* poses, const int* done, float* out) {
+__global__ void ndt_batch_kernel(MapView m, const float* pts, int n, const float* poses, const int* done, float* out, int stride) {
     __shared__ float sh[NDT_THREADS];
     const int hyp = blockIdx.x;
     if (done[hyp]) return;
     const float* P = poses + 12 * hyp;
     float acc[NACC];
     for (int k = 0; k < NACC; k++) acc[k] = 0.0f;
-    for (int i = threadIdx.x; i < n; i += blockDim.x) ndt_point(m, P, P + 9, pts[3 * i], pts[3 * i + 1], pts[3 * i + 2], acc);
+    for (int i = threadIdx.x * stride; i < n; i += blockDim.x * stride) ndt_point(m, P, P + 9, pts[3 * i], pts[3 * i + 1], pts[3 * i + 2], acc);
     for (int k = 0; k < NACC; k++) {
         sh[threadIdx.x] = acc[k];
         __syncthreads();
@@ -329,7 +329,7 @@ __global__ void ndt_update_kernel(int nh, float* poses, int* done, const float* 
     if (step < eps) done[h] = 1;
 }
 
-struct AlignParams { int iters = 30; float max_t = 0.5f, max_r = 0.2f, eps = 1e-3f; };
+struct AlignParams { int iters = 30, stride = 1; float max_t = 0.5f, max_r = 0.2f, eps = 1e-3f; };
 
 // Align every hypothesis in `poses` (12 floats each, updated in place); nvtl gets
 // each final pose's mean per-point best score.
@@ -344,16 +344,16 @@ static void align_gpu(const MapView& dm, const float* d_pts, int n, std::vector<
     CUDA_CHECK(cudaMemcpy(d_poses, poses.data(), poses.size() * sizeof(float), cudaMemcpyHostToDevice));
     CUDA_CHECK(cudaMemset(d_done, 0, nh * sizeof(int)));
     for (int it = 0; it < ap.iters; it++) {
-        ndt_batch_kernel<<<nh, NDT_THREADS>>>(dm, d_pts, n, d_poses, d_done, d_out);
+        ndt_batch_kernel<<<nh, NDT_THREADS>>>(dm, d_pts, n, d_poses, d_done, d_out, ap.stride);
         ndt_update_kernel<<<(nh + 127) / 128, 128>>>(nh, d_poses, d_done, d_out, ap.max_t, ap.max_r, ap.eps);
     }
     CUDA_CHECK(cudaMemset(d_done, 0, nh * sizeof(int)));
-    ndt_batch_kernel<<<nh, NDT_THREADS>>>(dm, d_pts, n, d_poses, d_done, d_out);   // final scores
+    ndt_batch_kernel<<<nh, NDT_THREADS>>>(dm, d_pts, n, d_poses, d_done, d_out, ap.stride);   // final scores
     std::vector<float> out((size_t)nh * NACC);
     CUDA_CHECK(cudaMemcpy(out.data(), d_out, out.size() * sizeof(float), cudaMemcpyDeviceToHost));
     CUDA_CHECK(cudaMemcpy(poses.data(), d_poses, poses.size() * sizeof(float), cudaMemcpyDeviceToHost));
     nvtl.resize(nh);
-    for (int h = 0; h < nh; h++) nvtl[h] = out[h * NACC + 28] / n;
+    for (int h = 0; h < nh; h++) nvtl[h] = out[h * NACC + 28] / ((n + ap.stride - 1) / ap.stride);
     cudaFree(d_poses); cudaFree(d_out); cudaFree(d_done);
 }
 
@@ -369,12 +369,12 @@ static void align_cpu(const MapView& m, const std::vector<float>& pts, std::vect
             float acc[NACC];
             for (int it = 0; it < ap.iters; it++) {
                 std::fill(acc, acc + NACC, 0.0f);
-                for (int i = 0; i < n; i++) ndt_point(m, P, P + 9, pts[3 * i], pts[3 * i + 1], pts[3 * i + 2], acc);
+                for (int i = 0; i < n; i += ap.stride) ndt_point(m, P, P + 9, pts[3 * i], pts[3 * i + 1], pts[3 * i + 2], acc);
                 if (ndt_update(acc, P, P + 9, ap.max_t, ap.max_r) < ap.eps) break;
             }
             std::fill(acc, acc + NACC, 0.0f);
-            for (int i = 0; i < n; i++) ndt_point(m, P, P + 9, pts[3 * i], pts[3 * i + 1], pts[3 * i + 2], acc);
-            nvtl[h] = acc[28] / n;
+            for (int i = 0; i < n; i += ap.stride) ndt_point(m, P, P + 9, pts[3 * i], pts[3 * i + 1], pts[3 * i + 2], acc);
+            nvtl[h] = acc[28] / ((n + ap.stride - 1) / ap.stride);
         }
     };
     std::vector<std::thread> pool;
@@ -387,17 +387,39 @@ static void align_cpu(const MapView& m, const std::vector<float>& pts, std::vect
 // best (by NVTL) with more, smaller steps; returns the index of the best in
 // poses (12 floats each, updated in place). use_gpu = false runs it on the CPU.
 static int initialize(const MapView& hm, const MapView& dm, const std::vector<float>& scan, const float* d_pts,
-                      std::vector<float>& poses, bool use_gpu, int threads, int refine)
+                      std::vector<float>& poses, bool use_gpu, int threads, int refine,
+                      int screen_stride = 1, int screen_iters = 12, int survivors = 64)
 {
     const int n = (int)scan.size() / 3, nh = (int)poses.size() / 12;
     AlignParams coarse, fine;
     fine.iters = 60; fine.max_t = 0.2f; fine.max_r = 0.05f; fine.eps = 1e-4f;
     std::vector<float> nv;
-    if (use_gpu) align_gpu(dm, d_pts, n, poses, nv, coarse);
-    else align_cpu(hm, scan, poses, nv, coarse, threads);
     std::vector<int> order(nh);
     std::iota(order.begin(), order.end(), 0);
-    const int k = std::min(refine, nh);
+    if (screen_stride > 1) {
+        // Broad coverage first; only promising candidates pay for the full scan.
+        AlignParams screen = coarse; screen.stride = screen_stride; screen.iters = screen_iters;
+        if (use_gpu) align_gpu(dm, d_pts, n, poses, nv, screen);
+        else align_cpu(hm, scan, poses, nv, screen, threads);
+        const int keep = std::min(nh, std::max(refine, survivors));
+        std::partial_sort(order.begin(), order.begin() + keep, order.end(), [&](int a, int b) {
+            return nv[a] == nv[b] ? a < b : nv[a] > nv[b];
+        });
+        order.resize(keep);
+        std::vector<float> selected;
+        for (int h : order) selected.insert(selected.end(), poses.begin() + 12 * h, poses.begin() + 12 * h + 12);
+        if (use_gpu) align_gpu(dm, d_pts, n, selected, nv, coarse);
+        else align_cpu(hm, scan, selected, nv, coarse, threads);
+        for (int q = 0; q < keep; q++)
+            std::copy(selected.begin() + 12 * q, selected.begin() + 12 * q + 12, poses.begin() + 12 * order[q]);
+        std::vector<float> full_scores(nh, -1.0f);
+        for (int q = 0; q < keep; q++) full_scores[order[q]] = nv[q];
+        nv.swap(full_scores);
+    } else {
+        if (use_gpu) align_gpu(dm, d_pts, n, poses, nv, coarse);
+        else align_cpu(hm, scan, poses, nv, coarse, threads);
+    }
+    const int k = std::min(refine, (int)order.size());
     std::partial_sort(order.begin(), order.begin() + k, order.end(), [&](int a, int b) { return nv[a] > nv[b]; });
     std::vector<float> top, tv;
     for (int q = 0; q < k; q++) top.insert(top.end(), poses.begin() + 12 * order[q], poses.begin() + 12 * order[q] + 12);
@@ -430,6 +452,7 @@ int main(int argc, char** argv) {
     std::string seq_path, csv_path, map_seq_path;
     int map_seq_stride = 2;
     int map_stride = 10, tests = 40, yaws = 16, grid = 3, cpu_tests = 5, refine = 4;
+    int screen_stride = 1, screen_iters = 12, survivors = 64;
     float prior_err = 2.0f, grid_step = 2.0f, scan_voxel = 1.0f, map_res = 2.0f;
     unsigned seed = 1;
     for (int i = 1; i < argc; i++) {
@@ -448,9 +471,16 @@ int main(int argc, char** argv) {
         else if (a == "--scan-voxel") scan_voxel = (float)std::atof(next().c_str());
         else if (a == "--map-res") map_res = (float)std::atof(next().c_str());
         else if (a == "--refine") refine = std::atoi(next().c_str());
+        else if (a == "--screen-stride") screen_stride = std::atoi(next().c_str());
+        else if (a == "--screen-iters") screen_iters = std::atoi(next().c_str());
+        else if (a == "--survivors") survivors = std::atoi(next().c_str());
         else if (a == "--cpu-tests") cpu_tests = std::atoi(next().c_str());
         else if (a == "--seed") seed = (unsigned)std::atoi(next().c_str());
         else { std::fprintf(stderr, "unknown option %s\n", a.c_str()); return 1; }
+    }
+    if (screen_stride < 1 || screen_iters < 1 || survivors < 1 || refine < 1 || tests < 1 ||
+        map_stride < 1 || map_seq_stride < 1 || grid < 1 || yaws < 1 || scan_voxel <= 0 || map_res <= 0) {
+        std::fprintf(stderr, "counts, strides, resolutions and iteration limits must be positive\n"); return 2;
     }
     std::vector<Frame> frames;
     if (!load_sequence(seq_path, frames) || frames.empty()) { std::fprintf(stderr, "cannot read %s\n", seq_path.c_str()); return 1; }
@@ -497,7 +527,7 @@ int main(int argc, char** argv) {
     std::uniform_real_distribution<float> U(0.0f, 1.0f);
     AlignParams ap;
     std::FILE* csv = csv_path.empty() ? nullptr : std::fopen(csv_path.c_str(), "w");
-    if (csv) std::fprintf(csv, "frame,points,hypotheses,track_err_m,init_ok,init_err_m,init_yaw_err_deg,gpu_ms,cpu1_ms,cpun_ms\n");
+    if (csv) std::fprintf(csv, "frame,points,hypotheses,track_err_m,init_ok,init_err_m,init_yaw_err_deg,gpu_ms,cpu1_ms,cpun_ms,prior_x,prior_y,prior_z,prior_phase,est_tx,est_ty,est_tz,est_r00,est_r01,est_r02,est_r10,est_r11,est_r12,est_r20,est_r21,est_r22\n");
     int ok = 0, track_ok = 0, cpu_runs = 0;
     double gsum = 0, c1sum = 0, cnsum = 0, gsub = 0;
     for (size_t k = 0; k < test_idx.size(); k++) {
@@ -535,7 +565,7 @@ int main(int argc, char** argv) {
         std::vector<float> g = hyps;
         CUDA_CHECK(cudaDeviceSynchronize());
         auto tg = clk::now();
-        int best = initialize(hm, dm, scan, d_pts, g, true, 1, refine);
+        int best = initialize(hm, dm, scan, d_pts, g, true, 1, refine, screen_stride, screen_iters, survivors);
         double gms = ms(tg);
         const float* B = &g[12 * best];
         float err = std::sqrt((B[9] - gt.t[0]) * (B[9] - gt.t[0]) + (B[10] - gt.t[1]) * (B[10] - gt.t[1]) +
@@ -548,11 +578,11 @@ int main(int argc, char** argv) {
         if ((int)k < cpu_tests) {
             std::vector<float> c = hyps;
             auto tc = clk::now();
-            initialize(hm, dm, scan, nullptr, c, false, 1, refine);
+            initialize(hm, dm, scan, nullptr, c, false, 1, refine, screen_stride, screen_iters, survivors);
             c1 = ms(tc);
             c = hyps;
             tc = clk::now();
-            int cb = initialize(hm, dm, scan, nullptr, c, false, hw, refine);
+            int cb = initialize(hm, dm, scan, nullptr, c, false, hw, refine, screen_stride, screen_iters, survivors);
             cn = ms(tc);
             if (cb != best) {
                 // hypotheses that converge to the same pose tie on NVTL up to summation order
@@ -569,8 +599,12 @@ int main(int argc, char** argv) {
                     "GPU %.1f ms%s\n", test_idx[k], n, nh, track_err, success ? "ok  " : "FAIL", err, yerr, gms,
                     c1 >= 0 ? (", CPU 1 thread " + std::to_string((int)c1) + " ms, " + std::to_string(hw) +
                                " threads " + std::to_string((int)cn) + " ms").c_str() : "");
-        if (csv) std::fprintf(csv, "%d,%d,%d,%.4f,%d,%.4f,%.3f,%.3f,%.3f,%.3f\n", test_idx[k], n, nh, track_err, (int)success,
-                              err, yerr, gms, c1, cn);
+        if (csv) {
+            std::fprintf(csv, "%d,%d,%d,%.4f,%d,%.4f,%.3f,%.3f,%.3f,%.3f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f", test_idx[k], n, nh, track_err, (int)success,
+                         err, yerr, gms, c1, cn, px, py, pz, phase, B[9], B[10], B[11]);
+            for (int q = 0; q < 9; q++) std::fprintf(csv, ",%.8f", B[q]);
+            std::fprintf(csv, "\n");
+        }
         cudaFree(d_pts);
     }
     if (csv) std::fclose(csv);
