@@ -44,6 +44,12 @@ enum class KissIcpDownsampleBackend {
     Unordered,
 };
 
+enum class KissIcpNormalUpdate {
+    Full,
+    Incremental,
+    Validate,  // Compare every incremental normal with full recomputation.
+};
+
 struct KissIcpConfig {
     float map_voxel_size = 0.35f;
     float scan_voxel_size = 0.22f;
@@ -61,6 +67,7 @@ struct KissIcpConfig {
     KissIcpMapBackend map_backend = KissIcpMapBackend::Dense;
     KissIcpDownsampleBackend downsample_backend = KissIcpDownsampleBackend::Cached;
     bool normal_query_cell_order = true;  // Schedule nearby queries together; preserve point IDs.
+    KissIcpNormalUpdate normal_update = KissIcpNormalUpdate::Full;
 };
 
 struct KissIcpAlignmentStats {
@@ -87,6 +94,9 @@ struct KissIcpTiming {
     double map_insert_ms = 0.0;
     double map_pack_ms = 0.0;
     double map_reorder_ms = 0.0;  // GPU gathering into the reference point order.
+    double normal_cache_prepare_ms = 0.0;  // Remapping, transfers, delta index and cache commit.
+    std::size_t normal_reused_points = 0;
+    std::size_t normal_recomputed_points = 0;
 };
 
 struct KissIcpFrameResult {

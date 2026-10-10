@@ -25,6 +25,7 @@ SOURCES = ["src/gpu_kiss_icp.cu", "include/cudarobotics/kiss_icp_gpu.hpp",
            "include/kiss_icp_spatial.cuh", "include/kiss_icp_reduction.cuh",
            "include/kiss_icp_host_map.hpp", "include/kiss_icp_downsample.hpp",
            "include/kiss_icp_order.cuh",
+           "include/kiss_icp_normal_cache.cuh",
            "tools/cudanav_real_gpu_stack_sequence.cu",
            "scripts/benchmark_kiss_icp_pipeline.py", "scripts/benchmark_kiss_icp_spatial.py"]
 
@@ -71,6 +72,7 @@ def main() -> None:
                        "--kiss-reduction-backend", reduction, "--kiss-map-backend", map_backend,
                        "--kiss-downsample-backend", downsample,
                        "--kiss-normal-query-order", normal_order,
+                       "--kiss-normal-update", "full",
                        "--maximum-ate-rmse-m", "3", "--maximum-final-drift-percent", "5",
                        "--minimum-inliers", "100", "--maximum-all-colliding-evaluations", "6", "--check"]
             if a.maximum_frames:

@@ -76,6 +76,7 @@ CONTRACT_SOURCES = [
     "include/kiss_icp_host_map.hpp",
     "include/kiss_icp_downsample.hpp",
     "include/kiss_icp_order.cuh",
+    "include/kiss_icp_normal_cache.cuh",
     "src/mppi_gpu.cu",
     "src/voxel_mapping_gpu.cu",
     "tools/cudanav_gpu_closed_loop_s_course.cu",

@@ -66,7 +66,10 @@ The benchmark accepts `--dll-dir` for runtime DLLs. Dataset preparation is in
 not redistributed. `--maximum-frames` is a development prefix, not the full
 quality workload.
 
-All four modes use exact voxel normal/correspondence queries. `baseline` uses
+All four modes use exact voxel normal/correspondence queries and full map-normal
+recomputation, explicitly pinned by the benchmark. The shared core now
+also supports [exact incremental normals](kiss_icp_incremental_normals.md).
+For this pipeline comparison, `baseline` uses
 per-point atomic reduction, the unordered host map and uncached centroids;
 `reduction` changes only assembly; `map` also changes map storage; `optimized`
 also caches adjacent scan voxels and schedules normal queries by cell. The

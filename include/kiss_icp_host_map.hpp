@@ -21,11 +21,12 @@ inline int64_t key(float x,float y,float z,float cell) {
 
 class Dense {
 public:
-    Dense(size_t capacity,float cell,std::vector<float>& points)
-        : capacity_(capacity),cell_(cell),points_(points) {
+    Dense(size_t capacity,float cell,std::vector<float>& points,std::vector<int>* previous=nullptr)
+        : capacity_(capacity),cell_(cell),points_(points),previous_(previous) {
         slots_.reserve(capacity); points_.reserve(capacity*3);
+        if(previous_) previous_->reserve(capacity);
     }
-    void clear() { slots_.clear(); points_.clear(); }
+    void clear() { slots_.clear(); points_.clear(); if(previous_) previous_->clear(); }
     void export_order(std::vector<int>& order) const {
         order.clear(); order.reserve(slots_.size());
         for(const auto& item:slots_) order.push_back(static_cast<int>(item.second));
@@ -41,8 +42,10 @@ public:
             if(i!=last) {
                 for(int a=0;a<3;++a) points_[3*i+a]=points_[3*last+a];
                 slots_.find(key(points_[3*i],points_[3*i+1],points_[3*i+2],cell_))->second=i;
+                if(previous_) (*previous_)[i]=(*previous_)[last];
             }
             points_.resize(points_.size()-3);
+            if(previous_) previous_->resize(previous_->size()-1);
         }
     }
     void insert(const std::vector<float>& world,const float* center,float radius) {
@@ -56,12 +59,14 @@ public:
             if(slots_.size()>=capacity_) throw std::runtime_error("KISS-ICP local map capacity exceeded");
             slots_[voxel]=points_.size()/3;
             points_.push_back(x); points_.push_back(y); points_.push_back(z);
+            if(previous_) previous_->push_back(-1);
         }
     }
 private:
     size_t capacity_;
     float cell_;
     std::vector<float>& points_;
+    std::vector<int>* previous_;
     std::unordered_map<int64_t,size_t> slots_;
 };
 
