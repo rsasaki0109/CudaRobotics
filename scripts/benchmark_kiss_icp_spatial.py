@@ -40,7 +40,8 @@ def summarize(rows: list[dict[str, str]]) -> dict:
     fields = ["frame_ms", "odometry_ms", "normal_ms", "index_ms", "nn_ms"]
     fields.extend(field for field in (
         "validation_ms", "deskew_wall_ms", "downsample_ms", "map_upload_ms", "icp_ms",
-        "normal_equation_ms", "map_update_ms", "map_prune_ms", "map_insert_ms", "map_pack_ms", "map_reorder_ms"
+        "normal_equation_ms", "map_update_ms", "map_prune_ms", "map_insert_ms", "map_pack_ms", "map_reorder_ms",
+        "normal_cache_prepare_ms"
     ) if field in rows[0])
     for field in fields:
         values = [float(row[field]) for row in rows]
@@ -90,6 +91,7 @@ def main() -> None:
                "include/kiss_icp_reduction.cuh", "include/kiss_icp_host_map.hpp",
                "include/kiss_icp_downsample.hpp",
                "include/kiss_icp_order.cuh",
+               "include/kiss_icp_normal_cache.cuh",
                "include/cudarobotics/kiss_icp_gpu.hpp", "tools/cudanav_real_gpu_stack_sequence.cu"]
     result = {"schema": "cudarobotics.kiss_icp_spatial.v1", "gpu": "NVIDIA consumer GPU",
               "git_head": subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip(),
@@ -109,6 +111,7 @@ def main() -> None:
                        "--kiss-reduction-backend", "atomic", "--kiss-map-backend", "unordered",
                        "--kiss-downsample-backend", "unordered",
                        "--kiss-normal-query-order", "input",
+                       "--kiss-normal-update", "full",
                        "--maximum-ate-rmse-m", "3", "--maximum-final-drift-percent", "5",
                        "--minimum-inliers", "100", "--maximum-all-colliding-evaluations", "6", "--check"]
             if a.maximum_frames:

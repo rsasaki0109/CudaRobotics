@@ -28,6 +28,22 @@ static void reference(std::unordered_map<int64_t,Point>& map,const std::vector<f
 }
 
 int main() {
+    std::vector<float> tagged_points;
+    std::vector<int> tags;
+    kiss_host_map::Dense tagged(4,1.f,tagged_points,&tags);
+    float tagged_center[3]={0,0,0};
+    tagged.insert({-1,0,0,.2f,0,0,1,0,0,2,0,0},tagged_center,2.f);
+    if(tags!=std::vector<int>(4,-1)) return 10;
+    tags={0,1,2,3}; tagged_center[0]=2;
+    tagged.prune(tagged_center,2.f);
+    tagged.insert({4,0,0},tagged_center,2.f);
+    for(size_t i=0;i<tags.size();++i) {
+        const float x=tagged_points[3*i];
+        const int expected=x==.2f ? 1 : x==1.f ? 2 : x==2.f ? 3 : -1;
+        if(tags[i]!=expected) return 11;
+    }
+    tagged.clear();
+    if(!tags.empty() || !tagged_points.empty()) return 12;
     std::vector<float> points;
     kiss_host_map::Dense small(4,1.f,points);
     float center[3]={0,0,0};

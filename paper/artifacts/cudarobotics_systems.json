@@ -277,7 +277,7 @@
         {
           "path": "scripts/run_cudanav_kiss_icp_real.py",
           "normalization": "text_lf",
-          "sha256": "85ff9bea6ae9bfd761da60e06aae4d13fe0581342ebc02862b1df3cedc7b5b70"
+          "sha256": "4d58a0a5649de5b8c4579485f45f3a0de0315a845d910b9fa31917a73e410841"
         },
         {
           "path": "scripts/test_cudanav_kiss_icp_real.py",
@@ -292,7 +292,7 @@
         {
           "path": "scripts/run_cudanav_real_gpu_stack.py",
           "normalization": "text_lf",
-          "sha256": "48e45fd7979c991bda3ab021e176a2b8ef3f93e27f481a3447675063a5d909eb"
+          "sha256": "5ae70b8bcf1a24e35784bfcecb5a92936e08f3056bbe4990a37638f26110afad"
         },
         {
           "path": "scripts/test_cudanav_real_gpu_stack.py",
@@ -302,7 +302,7 @@
         {
           "path": "tools/cudanav_real_gpu_stack_sequence.cu",
           "normalization": "text_lf",
-          "sha256": "f94801ecfac8572478c064f1bb5e546c5de3e4e0179f6367839bcd1d94353371"
+          "sha256": "c6df3dde7478bd782fbce7659818d5790cc49fe2f74175346cbb46a06ec6f5b7"
         },
         {
           "path": "scripts/materialize_mcd_timed_rosbag.py",
@@ -1133,7 +1133,7 @@
         {
           "path": "include/cudarobotics/kiss_icp_gpu.hpp",
           "normalization": "text_lf",
-          "sha256": "f46b8392d94f23fa4fb458999b608e548b8f4e14f406dfac48f053717369c95a"
+          "sha256": "abacafa2b117e2a10d03c964b40ebf3d6bdb0c38fdf1ca70ac97e7c322b7e414"
         },
         {
           "path": "include/cudarobotics/voxel_mapping_gpu.hpp",
@@ -1208,7 +1208,7 @@
         {
           "path": "include/kiss_icp_spatial.cuh",
           "normalization": "text_lf",
-          "sha256": "ca2118977dbe20d85f19dea175c397378619955a677d3f171e6032c30dd03ab0"
+          "sha256": "24d74f471a6c1dcc6bdc0a105ab8dd766842e86108f335f67f37e785ecbc682a"
         },
         {
           "path": "include/kiss_icp_reduction.cuh",
@@ -1218,7 +1218,7 @@
         {
           "path": "include/kiss_icp_host_map.hpp",
           "normalization": "text_lf",
-          "sha256": "8c33615aa0ee96e406122529d6b0df9331c40ea523132c7bb8e69d6468975b12"
+          "sha256": "65e011a1e6060e8a32d58581b3568f17dfaa037cb76e1d197e23d26efb1c8a23"
         },
         {
           "path": "include/kiss_icp_downsample.hpp",
@@ -1229,6 +1229,11 @@
           "path": "include/kiss_icp_order.cuh",
           "normalization": "text_lf",
           "sha256": "39886d20b5a28550cd69ede52fee2bedd243b12c982e50e38f2be80d2b447a88"
+        },
+        {
+          "path": "include/kiss_icp_normal_cache.cuh",
+          "normalization": "text_lf",
+          "sha256": "8b7c238c9ecedc5391606424710035a9de9f4d5a8a70e60ee4d5f5fea1d4c0c0"
         }
       ]
     },

@@ -160,10 +160,12 @@ __device__ inline bool search_knn(View v,const float* points,int i,int k,int* id
 // Exact global kNN excluding self. A coarse index handles sparse fine-grid
 // queries before the exhaustive fallback. Each search restarts its top-k;
 // no point is counted twice and no radius cutoff changes the neighbours.
-__device__ inline void knn(View v,const float* points,int n,int i,int k,int* ids,View coarse={}) {
-    float distances[20];
-    if(search_knn(v,points,i,k,ids,distances)) return;
-    if(coarse.keys && search_knn(coarse,points,i,k,ids,distances)) return;
+__device__ inline void knn(View v,const float* points,int n,int i,int k,int* ids,View coarse={},float* output_distances=nullptr) {
+    // An extra neighbour detects ties at the normal support boundary.
+    float distances[21];
+    bool found=search_knn(v,points,i,k,ids,distances);
+    if(!found && coarse.keys) found=search_knn(coarse,points,i,k,ids,distances);
+    if(!found) {
     const float x=points[3*i],y=points[3*i+1],z=points[3*i+2];
     // Restart: a point must not appear twice when the exhaustive path revisits it.
     for (int t=0;t<k;++t) { distances[t]=1e30f; ids[t]=-1; }
@@ -171,6 +173,8 @@ __device__ inline void knn(View v,const float* points,int n,int i,int k,int* ids
         const float ex=points[3*j]-x,ey=points[3*j+1]-y,ez=points[3*j+2]-z;
         insert(ex*ex+ey*ey+ez*ez,j,distances,ids,k);
     }
+    }
+    if(output_distances) for(int t=0;t<k;++t) output_distances[t]=distances[t];
 }
 
 __device__ inline int nearest(View v,const float* points,float x,float y,float z,float gate2,float& best) {

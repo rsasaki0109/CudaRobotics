@@ -530,6 +530,8 @@ add_executable(kiss_icp_spatial_exact tests/kiss_icp_spatial_exact.cu)
 add_executable(kiss_icp_reduction_exact tests/kiss_icp_reduction_exact.cu)
 add_executable(kiss_icp_host_map_exact tests/kiss_icp_host_map_exact.cpp)
 add_executable(kiss_icp_downsample_exact tests/kiss_icp_downsample_exact.cpp)
+add_executable(kiss_icp_normal_cache_exact tests/kiss_icp_normal_cache_exact.cu)
+target_link_libraries(kiss_icp_normal_cache_exact cudarobotics_kiss_icp_gpu)
 target_link_libraries(kiss_icp_gpu_streaming_smoke cudarobotics_kiss_icp_gpu)
 target_compile_options(kiss_icp_gpu_streaming_smoke PRIVATE
   $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
@@ -730,6 +732,8 @@ add_test(NAME kiss_icp_host_map_exact COMMAND $<TARGET_FILE:kiss_icp_host_map_ex
 set_tests_properties(kiss_icp_host_map_exact PROPERTIES TIMEOUT 60 LABELS "cpu;odometry;correctness")
 add_test(NAME kiss_icp_downsample_exact COMMAND $<TARGET_FILE:kiss_icp_downsample_exact>)
 set_tests_properties(kiss_icp_downsample_exact PROPERTIES TIMEOUT 60 LABELS "cpu;odometry;correctness")
+add_test(NAME kiss_icp_normal_cache_exact COMMAND $<TARGET_FILE:kiss_icp_normal_cache_exact>)
+set_tests_properties(kiss_icp_normal_cache_exact PROPERTIES TIMEOUT 60 LABELS "gpu;odometry;correctness")
 
 add_test(NAME voxel_mapping_gpu_smoke
   COMMAND $<TARGET_FILE:voxel_mapping_gpu_smoke>)

@@ -60,6 +60,7 @@ CONTRACT_SOURCES = (
     "include/kiss_icp_host_map.hpp",
     "include/kiss_icp_downsample.hpp",
     "include/kiss_icp_order.cuh",
+    "include/kiss_icp_normal_cache.cuh",
     "tools/cudanav_kiss_icp_sequence.cu",
     "scripts/export_cudanav_kiss_icp_sequence.py",
     "scripts/run_cudanav_kiss_icp_real.py",
