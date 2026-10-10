@@ -59,6 +59,15 @@ previous algorithms for paired comparison. Hash capacity must cover map
 capacity whenever voxel normals or voxel correspondences are selected.
 See [measured spatial-query improvements](kiss_icp_spatial_performance.md).
 
+Normal equations default to block reduction, the host map defaults to dense
+storage with GPU gathering into reference point order, and scan centroids cache
+adjacent identical voxels. Normal queries use existing cell buckets for thread
+scheduling while preserving point IDs and arithmetic; set
+`normal_query_cell_order=false` to retain input scheduling. `KissIcpReductionBackend::Atomic`,
+`KissIcpMapBackend::Unordered` and `KissIcpDownsampleBackend::Unordered` retain
+the previous paths. Cumulative wall/GPU stage timings are exposed by `timing()`.
+See [pipeline latency measurements and reproduction](kiss_icp_pipeline_performance.md).
+
 Configuration can be checked before CUDA allocation with
 `validate_kiss_icp_config()`.
 

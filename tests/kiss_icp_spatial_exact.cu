@@ -6,9 +6,12 @@
 #include <vector>
 
 __global__ void query(kiss_spatial::View index,const float* map,int n,int k,int* neighbors,
-                       const float* queries,int nq,float gate2,int* nearest,float* distances,kiss_spatial::View coarse) {
+                       const float* queries,int nq,float gate2,int* nearest,float* distances,kiss_spatial::View coarse,bool cell_order=false) {
     int i=blockIdx.x*blockDim.x+threadIdx.x;
-    if(i<n) kiss_spatial::knn(index,map,n,i,k,neighbors+i*k,coarse);
+    if(i<n) {
+        const int point=kiss_spatial::query_point(index,i,cell_order);
+        kiss_spatial::knn(index,map,n,point,k,neighbors+point*k,coarse);
+    }
     if(i<nq) nearest[i]=kiss_spatial::nearest(index,map,queries[3*i],queries[3*i+1],queries[3*i+2],gate2,distances[i]);
 }
 bool check(const std::vector<float>& points,int k,float cell,float gate,bool hierarchical=true) {
@@ -35,6 +38,14 @@ bool check(const std::vector<float>& points,int k,float cell,float gate,bool hie
     CUDA_CHECK(cudaMemcpy(ids.data(),neighbors,ids.size()*sizeof(int),cudaMemcpyDeviceToHost));
     CUDA_CHECK(cudaMemcpy(nn.data(),nearest,nn.size()*sizeof(int),cudaMemcpyDeviceToHost));
     CUDA_CHECK(cudaMemcpy(ds.data(),distances,ds.size()*sizeof(float),cudaMemcpyDeviceToHost));
+    query<<<(nq+127)/128,128>>>(v,map,n,k,neighbors,queries,nq,gate*gate,nearest,distances,cv,true);
+    std::vector<int> grouped(n*k);
+    CUDA_CHECK(cudaMemcpy(grouped.data(),neighbors,grouped.size()*sizeof(int),cudaMemcpyDeviceToHost));
+    if(grouped!=ids) {
+        std::fprintf(stderr,"cell scheduling changed exact kNN results\n");
+        cudaFree(map);cudaFree(queries);cudaFree(neighbors);cudaFree(nearest);cudaFree(distances);
+        return false;
+    }
     bool ok=true;
     for(int i=0;i<nq;++i) {
         std::vector<std::pair<float,int>> sorted;

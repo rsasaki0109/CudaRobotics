@@ -45,6 +45,10 @@ struct Options {
     int kiss_normal_neighbors = 12;
     std::string kiss_normal_backend = "voxel";
     std::string kiss_nn_backend = "voxel";
+    std::string kiss_reduction_backend = "block";
+    std::string kiss_map_backend = "dense";
+    std::string kiss_downsample_backend = "cached";
+    std::string kiss_normal_query_order = "cell";
     bool check = false;
 };
 
@@ -280,7 +284,9 @@ void usage(const char* executable) {
         "[--maximum-safety-stop-speed X] [--kiss-map-voxel-size X] "
         "[--kiss-scan-voxel-size X] [--kiss-map-radius X] "
         "[--kiss-normal-neighbors N] [--kiss-normal-backend voxel|brute] "
-        "[--kiss-nn-backend voxel|linked|brute]\n",
+        "[--kiss-nn-backend voxel|linked|brute] [--kiss-reduction-backend block|atomic] "
+        "[--kiss-map-backend dense|unordered] [--kiss-downsample-backend cached|unordered] "
+        "[--kiss-normal-query-order cell|input]\n",
         executable);
 }
 
@@ -326,6 +332,14 @@ Options parse_options(int argc, char** argv) {
             options.kiss_normal_neighbors = std::stoi(next());
         } else if (argument == "--kiss-normal-backend") {
             options.kiss_normal_backend = next();
+        } else if (argument == "--kiss-reduction-backend") {
+            options.kiss_reduction_backend = next();
+        } else if (argument == "--kiss-map-backend") {
+            options.kiss_map_backend = next();
+        } else if (argument == "--kiss-downsample-backend") {
+            options.kiss_downsample_backend = next();
+        } else if (argument == "--kiss-normal-query-order") {
+            options.kiss_normal_query_order = next();
         } else if (argument == "--kiss-nn-backend") {
             options.kiss_nn_backend = next();
         } else if (argument == "--check") {
@@ -343,6 +357,14 @@ Options parse_options(int argc, char** argv) {
     if ((options.kiss_normal_backend != "voxel" && options.kiss_normal_backend != "brute") ||
         (options.kiss_nn_backend != "voxel" && options.kiss_nn_backend != "linked" && options.kiss_nn_backend != "brute"))
         throw std::invalid_argument("invalid KISS-ICP backend");
+    if(options.kiss_reduction_backend!="block" && options.kiss_reduction_backend!="atomic")
+        throw std::invalid_argument("invalid KISS-ICP reduction backend");
+    if(options.kiss_map_backend!="dense" && options.kiss_map_backend!="unordered")
+        throw std::invalid_argument("invalid KISS-ICP map backend");
+    if(options.kiss_downsample_backend!="cached" && options.kiss_downsample_backend!="unordered")
+        throw std::invalid_argument("invalid KISS-ICP downsample backend");
+    if(options.kiss_normal_query_order!="cell" && options.kiss_normal_query_order!="input")
+        throw std::invalid_argument("invalid KISS-ICP normal query order");
     if (options.maximum_frames < 0 || options.control_stride < 1 || options.minimum_inliers < 1 ||
         options.minimum_observed_voxels < 1 || options.minimum_occupied_cells < 1 ||
         options.minimum_control_evaluations < 1 ||
@@ -392,6 +414,13 @@ int main(int argc, char** argv) {
         kiss_config.nn_backend = options.kiss_nn_backend == "voxel" ? cudarobotics::KissIcpNnBackend::Voxel :
             options.kiss_nn_backend == "linked" ? cudarobotics::KissIcpNnBackend::VoxelLinked : cudarobotics::KissIcpNnBackend::BruteForce;
         kiss_config.max_scan_points = 200000;
+        kiss_config.reduction_backend = options.kiss_reduction_backend == "block"
+            ? cudarobotics::KissIcpReductionBackend::Block : cudarobotics::KissIcpReductionBackend::Atomic;
+        kiss_config.map_backend = options.kiss_map_backend == "dense"
+            ? cudarobotics::KissIcpMapBackend::Dense : cudarobotics::KissIcpMapBackend::Unordered;
+        kiss_config.downsample_backend = options.kiss_downsample_backend == "cached"
+            ? cudarobotics::KissIcpDownsampleBackend::Cached : cudarobotics::KissIcpDownsampleBackend::Unordered;
+        kiss_config.normal_query_cell_order = options.kiss_normal_query_order == "cell";
         kiss_config.max_map_points = 200000;
         kiss_config.hash_capacity = 1u << 19;
         cudarobotics::KissIcpOdometry odometry(kiss_config);
@@ -436,7 +465,9 @@ int main(int argc, char** argv) {
                "xy_error_m,inliers,observed_voxels,integrated_rays,occupied_cells,"
                "unknown_cells,projection_gpu_ms,esdf_gpu_ms,mppi_ms,"
                "robot_cost,robot_clearance_m,valid_rollout_ratio,all_colliding,"
-               "retreating,command_v,command_w,frame_ms,odometry_ms,normal_ms,index_ms,nn_ms,map_points\n";
+               "retreating,command_v,command_w,frame_ms,odometry_ms,normal_ms,index_ms,nn_ms,map_points,"
+               "validation_ms,deskew_wall_ms,downsample_ms,map_upload_ms,icp_ms,normal_equation_ms,"
+               "map_update_ms,map_prune_ms,map_insert_ms,map_pack_ms,map_reorder_ms\n";
 
         std::vector<double> xy_errors;
         std::vector<double> yaw_errors;
@@ -643,7 +674,18 @@ int main(int argc, char** argv) {
                 << command_v << ',' << command_w << ',' << frame_ms.back() << ',' << odometry_ms << ','
                 << current_timing.map_normal_ms-previous_timing.map_normal_ms << ','
                 << current_timing.index_build_ms-previous_timing.index_build_ms << ','
-                << odometry_result.alignment.nn_ms << ',' << odometry_result.map_points << '\n';
+                << odometry_result.alignment.nn_ms << ',' << odometry_result.map_points << ','
+                << current_timing.validation_ms-previous_timing.validation_ms << ','
+                << current_timing.deskew_wall_ms-previous_timing.deskew_wall_ms << ','
+                << current_timing.downsample_ms-previous_timing.downsample_ms << ','
+                << current_timing.map_upload_ms-previous_timing.map_upload_ms << ','
+                << current_timing.icp_ms-previous_timing.icp_ms << ','
+                << odometry_result.alignment.normal_equation_ms << ','
+                << current_timing.map_update_ms-previous_timing.map_update_ms << ','
+                << current_timing.map_prune_ms-previous_timing.map_prune_ms << ','
+                << current_timing.map_insert_ms-previous_timing.map_insert_ms << ','
+                << current_timing.map_pack_ms-previous_timing.map_pack_ms << ','
+                << current_timing.map_reorder_ms-previous_timing.map_reorder_ms << '\n';
         }
 
         const double wall_ms = std::chrono::duration<double, std::milli>(
@@ -733,6 +775,10 @@ int main(int argc, char** argv) {
              << "  \"nn_ms_p95\": " << percentile(nn_ms, 0.95) << ",\n"
              << "  \"normal_backend\": " << json_string(options.kiss_normal_backend) << ",\n"
              << "  \"nn_backend\": " << json_string(options.kiss_nn_backend) << ",\n"
+             << "  \"reduction_backend\": " << json_string(options.kiss_reduction_backend) << ",\n"
+             << "  \"map_backend\": " << json_string(options.kiss_map_backend) << ",\n"
+             << "  \"downsample_backend\": " << json_string(options.kiss_downsample_backend) << ",\n"
+             << "  \"normal_query_order\": " << json_string(options.kiss_normal_query_order) << ",\n"
              << "  \"normal_gpu_ms_total\": " << odometry.timing().map_normal_ms << ",\n"
              << "  \"index_gpu_ms_total\": " << odometry.timing().index_build_ms << ",\n"
              << "  \"mapping\": {\n"

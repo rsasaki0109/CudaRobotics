@@ -29,6 +29,21 @@ enum class KissIcpNormalBackend {
     BruteForce,
 };
 
+enum class KissIcpReductionBackend {
+    Block,
+    Atomic,  // Retained per-point atomic reference.
+};
+
+enum class KissIcpMapBackend {
+    Dense,
+    Unordered,  // Retained voxel map and per-frame packing reference.
+};
+
+enum class KissIcpDownsampleBackend {
+    Cached,
+    Unordered,
+};
+
 struct KissIcpConfig {
     float map_voxel_size = 0.35f;
     float scan_voxel_size = 0.22f;
@@ -42,6 +57,10 @@ struct KissIcpConfig {
     std::size_t hash_capacity = 1u << 19;
     KissIcpNnBackend nn_backend = KissIcpNnBackend::Voxel;
     KissIcpNormalBackend normal_backend = KissIcpNormalBackend::Voxel;
+    KissIcpReductionBackend reduction_backend = KissIcpReductionBackend::Block;
+    KissIcpMapBackend map_backend = KissIcpMapBackend::Dense;
+    KissIcpDownsampleBackend downsample_backend = KissIcpDownsampleBackend::Cached;
+    bool normal_query_cell_order = true;  // Schedule nearby queries together; preserve point IDs.
 };
 
 struct KissIcpAlignmentStats {
@@ -49,6 +68,7 @@ struct KissIcpAlignmentStats {
     int inliers = 0;
     float rmse = 0.0f;
     float nn_ms = 0.0f;
+    float normal_equation_ms = 0.0f;
     float threshold = 0.0f;
 };
 
@@ -57,6 +77,16 @@ struct KissIcpTiming {
     double index_build_ms = 0.0;
     double map_upload_ms = 0.0;
     double map_normal_ms = 0.0;
+    // Wall-clock stage durations; map_prune/insert/pack are within map_update.
+    double validation_ms = 0.0;
+    double deskew_wall_ms = 0.0;
+    double downsample_ms = 0.0;
+    double icp_ms = 0.0;
+    double map_update_ms = 0.0;
+    double map_prune_ms = 0.0;
+    double map_insert_ms = 0.0;
+    double map_pack_ms = 0.0;
+    double map_reorder_ms = 0.0;  // GPU gathering into the reference point order.
 };
 
 struct KissIcpFrameResult {
