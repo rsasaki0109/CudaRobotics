@@ -69,7 +69,7 @@ struct KissIcpConfig {
     KissIcpMapBackend map_backend = KissIcpMapBackend::Dense;
     KissIcpDownsampleBackend downsample_backend = KissIcpDownsampleBackend::Pooled;
     bool normal_query_cell_order = true;  // Schedule nearby queries together; preserve point IDs.
-    KissIcpNormalUpdate normal_update = KissIcpNormalUpdate::Full;
+    KissIcpNormalUpdate normal_update = KissIcpNormalUpdate::Incremental;
 };
 
 struct KissIcpAlignmentStats {

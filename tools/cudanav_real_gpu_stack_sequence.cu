@@ -49,7 +49,7 @@ struct Options {
     std::string kiss_map_backend = "dense";
     std::string kiss_downsample_backend = "pooled";
     std::string kiss_normal_query_order = "cell";
-    std::string kiss_normal_update = "full";
+    std::string kiss_normal_update = "incremental";
     bool check = false;
 };
 

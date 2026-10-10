@@ -49,7 +49,7 @@ def plot(result: dict, destination: Path) -> None:
     for ax in axes:
         ax.set_xticks(range(2), modes)
         ax.legend()
-    fig.suptitle("Same real scans and exact normal support")
+    fig.suptitle(f"{result.get('downsample_backend', 'cached').capitalize()} scan centroids; same real scans and exact normal support")
     fig.tight_layout()
     fig.savefig(destination, dpi=160)
     plt.close(fig)
@@ -65,6 +65,10 @@ def main() -> None:
     p.add_argument("--repeats", type=int, default=2)
     p.add_argument("--maximum-frames", type=int, default=0)
     p.add_argument("--dll-dir", type=Path)
+    p.add_argument("--downsample-backend", choices=("pooled", "cached"), default="pooled",
+                   help="Pin the same centroid backend in both modes; cached reproduces the earlier comparison")
+    p.add_argument("--verify-default", action="store_true",
+                   help="Also replay without centroid/normal-update flags and verify pooled/incremental defaults")
     p.add_argument("--plot", action="store_true")
     p.add_argument("--above-normal-priority", action="store_true",
                    help="Windows only: use the same AboveNormal process priority for all runners")
@@ -73,10 +77,13 @@ def main() -> None:
         p.error("repeats must be positive; maximum-frames must be nonnegative")
     if a.above_normal_priority and os.name != "nt":
         p.error("--above-normal-priority is only supported on Windows")
+    if a.verify_default and a.downsample_backend != "pooled":
+        p.error("--verify-default requires --downsample-backend pooled")
     a.out_dir.mkdir(parents=True, exist_ok=False)
     exe = a.out_dir / ("runner.exe" if os.name == "nt" else "runner")
     shutil.copy2(a.executable, exe)
-    sources = list(dict.fromkeys(SOURCES + ["scripts/benchmark_kiss_icp_normals.py"]))
+    sources = list(dict.fromkeys(SOURCES + ["scripts/benchmark_kiss_icp_normals.py",
+        "tests/kiss_icp_normal_cache_exact.cu", "tests/kiss_icp_gpu_streaming_smoke.cu", "CMakeLists.txt"]))
     for relative in sources:
         target = a.out_dir / "sources" / relative
         target.parent.mkdir(parents=True, exist_ok=True)
@@ -92,6 +99,7 @@ def main() -> None:
               "executable_sha256": digest(exe), "sequence": a.sequence.name,
               "sequence_sha256": digest(a.sequence), "sequence_bytes": a.sequence.stat().st_size,
               "maximum_frames": a.maximum_frames,
+              "downsample_backend": a.downsample_backend,
               "process_priority": "above_normal" if a.above_normal_priority else "normal",
               "runs": [], "paired_checks": []}
 
@@ -102,6 +110,8 @@ def main() -> None:
     for repeat in range(a.repeats):
         schedule.extend((mode, repeat) for mode in (
             ("full", "incremental") if repeat % 2 == 0 else ("incremental", "full")))
+    if a.verify_default:
+        schedule.append(("default", 0))
     for mode, repeat in schedule:
         stem = a.out_dir / f"{mode}_{repeat}"
         command = [str(exe.resolve()), "--sequence", str(a.sequence.resolve()),
@@ -109,10 +119,11 @@ def main() -> None:
                    "--csv", str(stem.with_suffix(".csv").resolve()),
                    "--kiss-normal-backend", "voxel", "--kiss-nn-backend", "voxel",
                    "--kiss-reduction-backend", "block", "--kiss-map-backend", "dense",
-                   "--kiss-downsample-backend", "cached", "--kiss-normal-query-order", "cell",
-                   "--kiss-normal-update", mode,
+                   "--kiss-normal-query-order", "cell",
                    "--maximum-ate-rmse-m", "3", "--maximum-final-drift-percent", "5",
                    "--minimum-inliers", "100", "--maximum-all-colliding-evaluations", "6", "--check"]
+        if mode != "default":
+            command.extend(["--kiss-downsample-backend", a.downsample_backend, "--kiss-normal-update", mode])
         if a.maximum_frames:
             command.extend(["--maximum-frames", str(a.maximum_frames), "--minimum-control-evaluations", "1"])
         print(f"Running {mode}, repeat {repeat}", flush=True)
@@ -131,7 +142,8 @@ def main() -> None:
                    ate_rmse_m=metrics["ate_rmse_m"], final_drift_percent=metrics["final_drift_percent"],
                    inliers_min=metrics["inliers_min"], mppi=metrics["mppi"],
                    odometry_config=metrics["odometry_config"], duration_s=metrics["duration_s"],
-                   normal_cache=metrics["normal_cache"])
+                   normal_cache=metrics["normal_cache"], downsample_memory=metrics["downsample_memory"],
+                   actual_normal_update=metrics["normal_update"], actual_downsample_backend=metrics["downsample_backend"])
         cache = run["normal_cache"]
         total = cache["reused_points"] + cache["recomputed_points"]
         cache["reuse_fraction"] = cache["reused_points"] / total if total else 0.
@@ -166,8 +178,21 @@ def main() -> None:
             for x, y in zip(full_zero, read_rows(a.out_dir / f"full_{repeat}.csv")))}
         for repeat in range(1, a.repeats)]
     result["compared_csv_fields"] = COMPARE_FIELDS
+    if a.verify_default:
+        default = next(r for r in result["runs"] if r["mode"] == "default")
+        incremental = next(r for r in result["runs"] if r["mode"] == "incremental" and r["repeat"] == 0)
+        default_rows, incremental_rows = (read_rows(a.out_dir / f"{m}_0.csv") for m in ("default", "incremental"))
+        result["default_checks"] = {
+            "pooled_centroids": default["actual_downsample_backend"] == "pooled",
+            "incremental_normals": default["actual_normal_update"] == "incremental",
+            "normal_reuse_executed": default["normal_cache"]["reused_points"] > 0,
+            "frame_p95_under_40ms": default["timing"]["frame_ms"]["p95"] < 40,
+            "trajectory_and_map_csv_equal": len(default_rows) == len(incremental_rows) and all(
+                x[field] == y[field] for x, y in zip(default_rows, incremental_rows) for field in COMPARE_FIELDS),
+            "ate_equal": default["ate_rmse_m"] == incremental["ate_rmse_m"],
+            "drift_equal": default["final_drift_percent"] == incremental["final_drift_percent"]}
     save()
-    report = ["# Exact incremental map normals", "", "One executable, sequential full-route replays. Validation timing includes an extra full-normal kernel.", "",
+    report = ["# Exact incremental map normals", "", f"One executable, sequential full-route replays; {a.downsample_backend} centroids in both modes. Validation timing includes an extra full-normal kernel.", "",
               "| Mode / repeat | Frame mean ms | p95 ms | p99 ms | GPU normals mean ms | Cache prepare mean ms | Reused | ATE m | Quality |",
               "|---|---:|---:|---:|---:|---:|---:|---:|---|"]
     for r in result["runs"]:
@@ -181,6 +206,8 @@ def main() -> None:
         raise SystemExit("One or more quality gates failed; failures retained.")
     if any(not all(v for k, v in c.items() if k != "repeat") for c in result["paired_checks"]):
         raise SystemExit("One or more paired performance/exactness checks failed; failures retained.")
+    if not all(result.get("default_checks", {}).values()):
+        raise SystemExit("One or more default-policy checks failed; failures retained.")
 
 
 if __name__ == "__main__":
