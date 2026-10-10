@@ -277,7 +277,7 @@
         {
           "path": "scripts/run_cudanav_kiss_icp_real.py",
           "normalization": "text_lf",
-          "sha256": "a8747dd06cb19fe98143361c3dc9b60abbdedc310fc25ee64f406f5c99c90574"
+          "sha256": "eb830dffa6c1b5499600472245cf6cdaad00377dac684b78605b26487dbccfcd"
         },
         {
           "path": "scripts/test_cudanav_kiss_icp_real.py",
@@ -292,7 +292,7 @@
         {
           "path": "scripts/run_cudanav_real_gpu_stack.py",
           "normalization": "text_lf",
-          "sha256": "4b10de634dcc83b4c35c92fed03263669c7f64676d44ea9808356fc3033eb0c2"
+          "sha256": "e59e2d8c4cb1c2b7ada4c8999827772677ce4174e1128e575580c76f5ac03227"
         },
         {
           "path": "scripts/test_cudanav_real_gpu_stack.py",
@@ -302,7 +302,7 @@
         {
           "path": "tools/cudanav_real_gpu_stack_sequence.cu",
           "normalization": "text_lf",
-          "sha256": "c052df602f76575173c707e8be934a21d8b5b4f480f9077aa41286e6b1bb99a7"
+          "sha256": "67e1827be62131f4e72b83feab8a5aefa4f83f1857932dd3cd5f8bdce31bdfc1"
         },
         {
           "path": "scripts/materialize_mcd_timed_rosbag.py",
@@ -1133,7 +1133,7 @@
         {
           "path": "include/cudarobotics/kiss_icp_gpu.hpp",
           "normalization": "text_lf",
-          "sha256": "cb5d094334c5050a01207c21a2ff16ca10de77d94d9730fcf31a19e2153d6575"
+          "sha256": "e96319e5fe0858035162e321e3e2355f65bca6c4284e3f5b7268563c071a62fd"
         },
         {
           "path": "include/cudarobotics/voxel_mapping_gpu.hpp",
@@ -1204,6 +1204,11 @@
           "path": "ros2_ws/src/cuda_voxel_costmap_layer/test/occupancy_bridge_test.cpp",
           "normalization": "text_lf",
           "sha256": "d6e2f93d93d4884b9016d81e5d4721eb6835ebc86cd1442088a4b07ae5d2327c"
+        },
+        {
+          "path": "include/kiss_icp_spatial.cuh",
+          "normalization": "text_lf",
+          "sha256": "c63b6228f2e7920e6038c74e59a79e36af3296cd13321dcdc473e084d3a2c852"
         }
       ]
     },

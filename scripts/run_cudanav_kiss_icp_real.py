@@ -55,6 +55,7 @@ CONTRACT_SOURCES = (
     "docs/cudanav_real_dataset_smoke.json",
     "include/cudarobotics/kiss_icp_gpu.hpp",
     "src/gpu_kiss_icp.cu",
+    "include/kiss_icp_spatial.cuh",
     "tools/cudanav_kiss_icp_sequence.cu",
     "scripts/export_cudanav_kiss_icp_sequence.py",
     "scripts/run_cudanav_kiss_icp_real.py",

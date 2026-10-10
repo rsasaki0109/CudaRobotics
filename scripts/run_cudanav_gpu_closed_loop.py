@@ -71,6 +71,7 @@ CONTRACT_SOURCES = [
     "include/cudarobotics/voxel_mapping_gpu.hpp",
     "src/esdf_2d_gpu.cu",
     "src/gpu_kiss_icp.cu",
+    "include/kiss_icp_spatial.cuh",
     "src/mppi_gpu.cu",
     "src/voxel_mapping_gpu.cu",
     "tools/cudanav_gpu_closed_loop_s_course.cu",

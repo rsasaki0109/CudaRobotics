@@ -1,0 +1,402 @@
+{
+  "schema": "cudarobotics.kiss_icp_spatial.v1",
+  "gpu": "NVIDIA consumer GPU",
+  "git_head": "85b726fa17703d0f12d90a3afa812b1446db5d98",
+  "git_worktree_dirty": true,
+  "source_hash_normalization": "sha256-bytes",
+  "sources_sha256": {
+    "src/gpu_kiss_icp.cu": "dc7bf7338ac511698e0cba14f1d67ac29c29ae50d63308dddffb569704aaf2a1",
+    "include/kiss_icp_spatial.cuh": "c63b6228f2e7920e6038c74e59a79e36af3296cd13321dcdc473e084d3a2c852",
+    "include/cudarobotics/kiss_icp_gpu.hpp": "98378e6afe8a750071143c27c80a452201f37a52341ba8b42492f7d08fb5928a",
+    "tools/cudanav_real_gpu_stack_sequence.cu": "1a47b279e1305fa29f109ef79603980098776e5663992ce9d93f67472ae6f269"
+  },
+  "executable_sha256": "5c72f97154ec8bb52b5e7c0e715f197b79c9066037da7351902867f8b1690052",
+  "sequence": "sequence.bin",
+  "sequence_sha256": "ca7f383a785dd2795f1bd9d5c68a0d66465adf6b8354d86f39e028b0f96cbaf9",
+  "runs": [
+    {
+      "mode": "legacy",
+      "repeat": 0,
+      "returncode": 0,
+      "timing": {
+        "frames": 1190,
+        "frame_ms": {
+          "mean": 229.3762925210084,
+          "p95": 522.226,
+          "p99": 554.191,
+          "max": 566.984
+        },
+        "odometry_ms": {
+          "mean": 224.74404672268906,
+          "p95": 517.448,
+          "p99": 549.11,
+          "max": 561.846
+        },
+        "normal_ms": {
+          "mean": 125.88531407563025,
+          "p95": 282.563,
+          "p99": 310.576,
+          "max": 316.587
+        },
+        "index_ms": {
+          "mean": 0.08155423193277311,
+          "p95": 0.11216,
+          "p99": 0.145184,
+          "max": 0.191456
+        },
+        "nn_ms": {
+          "mean": 66.05636404201681,
+          "p95": 185.1,
+          "p99": 193.853,
+          "max": 196.664
+        },
+        "fifo_response_p95_ms": 134140.18352200024,
+        "fifo_response_p99_ms": 155265.90959400008,
+        "fifo_final_response_ms": 160326.4319470001,
+        "fifo_deadline_miss_fraction": 0.8831932773109243,
+        "over_100ms_fraction": 0.8815126050420168
+      },
+      "quality_pass": true,
+      "ate_rmse_m": 0.8152303647,
+      "final_drift_percent": 0.4734877825,
+      "inliers_min": 25005,
+      "mppi": {
+        "control_stride": 10,
+        "evaluations": 120,
+        "minimum_nonzero_valid_rollout_ratio": 0.3129882812,
+        "maximum_robot_cost": 80,
+        "minimum_robot_clearance_m": 0.6324555278,
+        "all_colliding_evaluations": 0,
+        "retreating_evaluations": 0,
+        "maximum_all_colliding_abs_v": 0,
+        "invalid_commands": 0,
+        "solve_ms_p95": 0.7273
+      },
+      "odometry_quality_pass": true
+    },
+    {
+      "mode": "normals",
+      "repeat": 0,
+      "returncode": 0,
+      "timing": {
+        "frames": 1190,
+        "frame_ms": {
+          "mean": 120.57834016806723,
+          "p95": 271.515,
+          "p99": 286.107,
+          "max": 295.553
+        },
+        "odometry_ms": {
+          "mean": 115.96336025210084,
+          "p95": 266.546,
+          "p99": 280.096,
+          "max": 287.686
+        },
+        "normal_ms": {
+          "mean": 20.69241811764706,
+          "p95": 39.7005,
+          "p99": 42.1672,
+          "max": 42.5174
+        },
+        "index_ms": {
+          "mean": 0.4359661210084034,
+          "p95": 0.611104,
+          "p99": 0.677824,
+          "max": 1.04234
+        },
+        "nn_ms": {
+          "mean": 63.72507735294118,
+          "p95": 181.267,
+          "p99": 189.139,
+          "max": 191.82
+        },
+        "fifo_response_p95_ms": 24124.588079000096,
+        "fifo_response_p99_ms": 32679.478151000178,
+        "fifo_final_response_ms": 34725.38450400016,
+        "fifo_deadline_miss_fraction": 0.8529411764705882,
+        "over_100ms_fraction": 0.4773109243697479
+      },
+      "quality_pass": true,
+      "ate_rmse_m": 0.8070082829,
+      "final_drift_percent": 0.467157227,
+      "inliers_min": 25006,
+      "mppi": {
+        "control_stride": 10,
+        "evaluations": 120,
+        "minimum_nonzero_valid_rollout_ratio": 0.2265625,
+        "maximum_robot_cost": 71,
+        "minimum_robot_clearance_m": 0.670820415,
+        "all_colliding_evaluations": 0,
+        "retreating_evaluations": 0,
+        "maximum_all_colliding_abs_v": 0,
+        "invalid_commands": 0,
+        "solve_ms_p95": 0.7112
+      },
+      "odometry_quality_pass": true
+    },
+    {
+      "mode": "spatial",
+      "repeat": 0,
+      "returncode": 0,
+      "timing": {
+        "frames": 1190,
+        "frame_ms": {
+          "mean": 61.82086352941177,
+          "p95": 90.606,
+          "p99": 95.7433,
+          "max": 102.876
+        },
+        "odometry_ms": {
+          "mean": 56.97970756302521,
+          "p95": 85.6429,
+          "p99": 89.9842,
+          "max": 96.7946
+        },
+        "normal_ms": {
+          "mean": 20.70386542857143,
+          "p95": 39.816,
+          "p99": 42.1704,
+          "max": 42.5583
+        },
+        "index_ms": {
+          "mean": 0.3703454403361345,
+          "p95": 0.518208,
+          "p99": 0.563648,
+          "max": 1.06202
+        },
+        "nn_ms": {
+          "mean": 3.044898495798319,
+          "p95": 4.56659,
+          "p99": 5.08224,
+          "max": 5.7817
+        },
+        "fifo_response_p95_ms": 90.67879999999423,
+        "fifo_response_p99_ms": 95.74330000000191,
+        "fifo_final_response_ms": 95.07050000000163,
+        "fifo_deadline_miss_fraction": 0.0025210084033613447,
+        "over_100ms_fraction": 0.0016806722689075631
+      },
+      "quality_pass": true,
+      "ate_rmse_m": 0.8139328054,
+      "final_drift_percent": 0.4711867426,
+      "inliers_min": 24995,
+      "mppi": {
+        "control_stride": 10,
+        "evaluations": 120,
+        "minimum_nonzero_valid_rollout_ratio": 0.6206054688,
+        "maximum_robot_cost": 71,
+        "minimum_robot_clearance_m": 0.670820415,
+        "all_colliding_evaluations": 0,
+        "retreating_evaluations": 0,
+        "maximum_all_colliding_abs_v": 0,
+        "invalid_commands": 0,
+        "solve_ms_p95": 0.7026
+      },
+      "odometry_quality_pass": true
+    },
+    {
+      "mode": "spatial",
+      "repeat": 1,
+      "returncode": 0,
+      "timing": {
+        "frames": 1190,
+        "frame_ms": {
+          "mean": 61.13962924369748,
+          "p95": 89.7827,
+          "p99": 94.5913,
+          "max": 100.917
+        },
+        "odometry_ms": {
+          "mean": 56.37345588235294,
+          "p95": 84.8801,
+          "p99": 88.8386,
+          "max": 93.428
+        },
+        "normal_ms": {
+          "mean": 20.69986268907563,
+          "p95": 39.7132,
+          "p99": 42.1925,
+          "max": 42.4742
+        },
+        "index_ms": {
+          "mean": 0.3689444571428571,
+          "p95": 0.511424,
+          "p99": 0.559136,
+          "max": 0.931808
+        },
+        "nn_ms": {
+          "mean": 3.052375882352941,
+          "p95": 4.56912,
+          "p99": 5.0808,
+          "max": 5.64899
+        },
+        "fifo_response_p95_ms": 89.78269999999611,
+        "fifo_response_p99_ms": 94.6414999999979,
+        "fifo_final_response_ms": 96.52139999999781,
+        "fifo_deadline_miss_fraction": 0.0008403361344537816,
+        "over_100ms_fraction": 0.0008403361344537816
+      },
+      "quality_pass": true,
+      "ate_rmse_m": 0.8188713515,
+      "final_drift_percent": 0.4742306121,
+      "inliers_min": 25002,
+      "mppi": {
+        "control_stride": 10,
+        "evaluations": 120,
+        "minimum_nonzero_valid_rollout_ratio": 0.3779296875,
+        "maximum_robot_cost": 71,
+        "minimum_robot_clearance_m": 0.670820415,
+        "all_colliding_evaluations": 0,
+        "retreating_evaluations": 0,
+        "maximum_all_colliding_abs_v": 0,
+        "invalid_commands": 0,
+        "solve_ms_p95": 0.7026
+      },
+      "odometry_quality_pass": true
+    },
+    {
+      "mode": "normals",
+      "repeat": 1,
+      "returncode": 0,
+      "timing": {
+        "frames": 1190,
+        "frame_ms": {
+          "mean": 123.88113773109244,
+          "p95": 271.996,
+          "p99": 282.928,
+          "max": 293.839
+        },
+        "odometry_ms": {
+          "mean": 118.98434470588235,
+          "p95": 266.481,
+          "p99": 277.536,
+          "max": 287.09
+        },
+        "normal_ms": {
+          "mean": 20.715643899159662,
+          "p95": 39.8908,
+          "p99": 42.2006,
+          "max": 42.5834
+        },
+        "index_ms": {
+          "mean": 0.45138998319327733,
+          "p95": 0.629024,
+          "p99": 0.688992,
+          "max": 0.993184
+        },
+        "nn_ms": {
+          "mean": 63.81588000840336,
+          "p95": 181.222,
+          "p99": 189.102,
+          "max": 193.869
+        },
+        "fifo_response_p95_ms": 27559.03158699989,
+        "fifo_response_p99_ms": 36043.09865899985,
+        "fifo_final_response_ms": 38068.761011999886,
+        "fifo_deadline_miss_fraction": 0.8554621848739495,
+        "over_100ms_fraction": 0.4966386554621849
+      },
+      "quality_pass": true,
+      "ate_rmse_m": 0.8283239007,
+      "final_drift_percent": 0.480681398,
+      "inliers_min": 25004,
+      "mppi": {
+        "control_stride": 10,
+        "evaluations": 120,
+        "minimum_nonzero_valid_rollout_ratio": 0.2758789062,
+        "maximum_robot_cost": 80,
+        "minimum_robot_clearance_m": 0.6324555278,
+        "all_colliding_evaluations": 0,
+        "retreating_evaluations": 0,
+        "maximum_all_colliding_abs_v": 0,
+        "invalid_commands": 0,
+        "solve_ms_p95": 0.7561
+      },
+      "odometry_quality_pass": true
+    },
+    {
+      "mode": "legacy",
+      "repeat": 1,
+      "returncode": 0,
+      "timing": {
+        "frames": 1190,
+        "frame_ms": {
+          "mean": 239.65698042016805,
+          "p95": 526.738,
+          "p99": 559.027,
+          "max": 571.522
+        },
+        "odometry_ms": {
+          "mean": 234.63072579831933,
+          "p95": 520.666,
+          "p99": 550.858,
+          "max": 566.068
+        },
+        "normal_ms": {
+          "mean": 130.04260060504203,
+          "p95": 285.192,
+          "p99": 310.927,
+          "max": 318.093
+        },
+        "index_ms": {
+          "mean": 0.08865215462184874,
+          "p95": 0.122624,
+          "p99": 0.177376,
+          "max": 0.272416
+        },
+        "nn_ms": {
+          "mean": 68.63840363865546,
+          "p95": 186.116,
+          "p99": 194.145,
+          "max": 199.942
+        },
+        "fifo_response_p95_ms": 145807.71751700016,
+        "fifo_response_p99_ms": 167069.0535890002,
+        "fifo_final_response_ms": 172162.3069420003,
+        "fifo_deadline_miss_fraction": 0.8840336134453781,
+        "over_100ms_fraction": 0.8831932773109243
+      },
+      "quality_pass": true,
+      "ate_rmse_m": 0.8121742657,
+      "final_drift_percent": 0.4708966215,
+      "inliers_min": 25002,
+      "mppi": {
+        "control_stride": 10,
+        "evaluations": 120,
+        "minimum_nonzero_valid_rollout_ratio": 0.5922851562,
+        "maximum_robot_cost": 80,
+        "minimum_robot_clearance_m": 0.6324555278,
+        "all_colliding_evaluations": 1,
+        "retreating_evaluations": 1,
+        "maximum_all_colliding_abs_v": 0,
+        "invalid_commands": 0,
+        "solve_ms_p95": 0.7728
+      },
+      "odometry_quality_pass": true
+    }
+  ],
+  "paired_checks": [
+    {
+      "repeat": 0,
+      "frame_p95_under_100ms": true,
+      "ate_within_2cm_of_baseline": true,
+      "drift_within_0_02_percentage_points": true
+    },
+    {
+      "repeat": 1,
+      "frame_p95_under_100ms": true,
+      "ate_within_2cm_of_baseline": true,
+      "drift_within_0_02_percentage_points": true
+    }
+  ],
+  "configuration": {
+    "map_voxel_size_m": 0.35,
+    "scan_voxel_size_m": 0.22,
+    "map_radius_m": 40,
+    "normal_neighbors": 12,
+    "control_stride": 10,
+    "sequence_frames": 1190,
+    "sequence_duration_s": 118.902,
+    "scope": "native real-scan shadow execution; no ROS runtime or applied commands"
+  }
+}
