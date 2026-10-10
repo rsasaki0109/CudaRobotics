@@ -53,7 +53,7 @@ jobs:
           -DCMAKE_CUDA_ARCHITECTURES=75
           -DOpenCV_DIR="C:/tools/opencv/build"
           -DEigen3_DIR="C:/vcpkg/installed/x64-windows/share/eigen3"
-          -DCUDABOT_DEMO_FILTER="^(mppi|esdf_mppi|gpu_esdf_mppi_3d|comparison_mppi|benchmark_diff_mppi_pushing_box|gpu_mppi_racing|gpu_cudampc|pf|amcl|test_autodiff|test_gpu_mlp|mppi_reduction_smoke|test_host_math|test_lie_group_math|test_imu_preintegration|test_robust_loss|test_g2o_io|test_graph_optimization|test_mathr_native|test_imu_graph|test_graph_g2o)$"
+          -DCUDABOT_DEMO_FILTER="^(mppi|esdf_mppi|gpu_esdf_mppi_3d|comparison_mppi|benchmark_diff_mppi_pushing_box|gpu_mppi_racing|gpu_cudampc|pf|amcl|test_autodiff|test_gpu_mlp|mppi_reduction_smoke|kiss_icp_host_map_exact|kiss_icp_downsample_exact|test_host_math|test_lie_group_math|test_imu_preintegration|test_robust_loss|test_g2o_io|test_graph_optimization|test_mathr_native|test_imu_graph|test_graph_g2o)$"
 
       - name: Build
         run: cmake --build build --config Release --parallel
