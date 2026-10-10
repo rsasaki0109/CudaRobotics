@@ -302,7 +302,7 @@
         {
           "path": "tools/cudanav_real_gpu_stack_sequence.cu",
           "normalization": "text_lf",
-          "sha256": "24689101b825fd9a6fca9b0d3ae5b12668da41e4515ae661ae16bedaecaa41d3"
+          "sha256": "40c311f41d04ec1efe2dbf45284ee231d4e42a8fdb699352e17f67a8c232ff69"
         },
         {
           "path": "scripts/materialize_mcd_timed_rosbag.py",
@@ -1133,7 +1133,7 @@
         {
           "path": "include/cudarobotics/kiss_icp_gpu.hpp",
           "normalization": "text_lf",
-          "sha256": "1ec49c1654721d7942a4ab68bf6d9cb93c7121efed7360a48b7affc4add76203"
+          "sha256": "537d3b88c7c24aa85aded941bcceac8e8caa577efe4193e171a788d6d08cc4bb"
         },
         {
           "path": "include/cudarobotics/voxel_mapping_gpu.hpp",

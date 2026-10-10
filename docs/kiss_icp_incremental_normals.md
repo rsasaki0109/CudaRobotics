@@ -3,9 +3,11 @@
 The shared odometry core can reuse map normals when their ordered neighbour
 support is unchanged. It keeps scan/map density, voxel resolutions, map radius,
 normal neighbour count, correspondence gates and ICP limits unchanged.
-[Full-route results](results/kiss_icp_normals_2026-10-10.md) compare full and
-incremental updates using one frozen executable, with separate bitwise
-validation of every normal.
+[Default-policy results](results/kiss_icp_normal_default_2026-10-10.md) compare
+full and incremental updates with pooled scan centroids using one frozen
+executable, with separate bitwise validation of every normal. The
+[earlier cached-centroid comparison](results/kiss_icp_normals_2026-10-10.md)
+retains its unsuccessful latency checks and the original opt-in decision.
 
 ## Why reuse is exact
 
@@ -37,17 +39,22 @@ atomic per block.
 
 ## Modes and counters
 
-`KissIcpConfig::normal_update` defaults to `Full`. `Incremental` enables the
-cache for the dense map and voxel normal backend; other map/normal backends
-fall back to full recomputation. `Validate` requires dense/voxel execution
+`KissIcpConfig::normal_update` defaults to `Incremental`. It enables the cache
+for the dense map and voxel normal backend; other map/normal backends fall
+back to full recomputation. Select `Full` to disable cache storage and
+maintenance. `Validate` requires dense/voxel execution
 and recomputes every normal into a separate buffer, comparing all float bits
 each frame; any mismatch throws. Its whole-frame timing includes that extra
 work and must not be used as incremental performance.
 
 The native stack runner accepts `--kiss-normal-update full|incremental|validate`.
-It also defaults to `full`. The measurements reduced GPU normal work but did
-not consistently improve full-frame p95, so incremental execution remains
-opt-in. The 40 ms paired target was missed in three of five timing pairs.
+It also defaults to `incremental`. The earlier cached-centroid comparison
+reduced GPU normal work but missed the 40 ms paired target in three of five
+pairs, so it kept full updates as the default. Pooled centroid aggregation
+subsequently reduced CPU allocation cost. The new comparison with pooled
+centroids passed all three paired p95/equivalence checks at normal process
+priority, including the 40 ms target; the separate default replay also passed.
+These results support the new incremental default.
 Its JSON records the requested mode; unsupported incremental combinations
 still execute the full path. The CSV appends cache preparation duration,
 reused-point count and recomputed-point count. Initial map creation computes no
@@ -81,7 +88,8 @@ ctest --test-dir build --output-on-failure -j 1 -R \
 ctest --test-dir build --label-regex 'cpu|python' --output-on-failure -j 2
 python scripts/benchmark_kiss_icp_normals.py \
   --sequence build/cudanav_real_gpu_stack_release_724d05ca/sequence.bin \
-  --out-dir build/kiss_icp_normal_comparison --repeats 2 --plot
+  --out-dir build/kiss_icp_normal_default_comparison --repeats 3 \
+  --downsample-backend pooled --verify-default --plot
 ```
 
 On Windows add `--config Release` to build and `-C Release` to CTest; the
@@ -89,14 +97,21 @@ benchmark accepts `--dll-dir`. Dataset preparation is described in the
 [timed MCD guide](cudanav_timed_dataset_mcd.md). Input data is external and not
 redistributed. `--maximum-frames` selects a development prefix.
 
-For the supplementary Windows measurement, use `--above-normal-priority` and
-`--repeats 3` with a new output directory. This applies AboveNormal priority
-to both modes; it does not change the product's default process priority.
+To reproduce the earlier centroid configuration, use
+`--downsample-backend cached` and omit `--verify-default`. The earlier supplementary Windows phase
+also used `--above-normal-priority --repeats 3` with a new output directory.
+That applies AboveNormal priority to both modes; the current default-policy
+comparison uses normal process priority.
 
 The benchmark refuses to overwrite its output directory, freezes the executable
 and source snapshots, and hashes sources with normalized LF, plus raw input and
 executable bytes. It runs full-route validation first, then full/incremental
-twice in alternating order, retaining all CSV, JSON, logs and failures. Paired
+in alternating order for the requested repeats, retaining all CSV, JSON, logs
+and failures. Both timing modes explicitly select the same centroid backend.
+`--verify-default` additionally runs without centroid/normal-update flags,
+checking the actual policies, nonzero normal reuse, p95 below 40 ms and the
+same recorded odometry/map outputs, ATE and drift as explicit incremental
+execution. This default replay is separate from the paired timing plot. Paired
 checks require frame p95 below 40 ms, improvement over full updates, equal ATE
 and drift, and matching recorded XY poses, inliers, map point counts and mapping
 counts at every frame. Whole-route validation checks normal bits independently
@@ -109,7 +124,9 @@ of the odometry outputs, observed voxels, integrated rays and unknown cells.
 
 The cache test compares exact poses/alignment statistics against full updates
 over stationary and moving random clouds, new near/far points, equal-distance
-grids and reset, with K=1,12,20. Sparse maps with fewer than K neighbours do not
+grids and reset, with K=1,12,20. Another moving-stream comparison leaves the
+public update mode unspecified and requires real normal reuse against explicit
+Full. Sparse maps with fewer than K neighbours do not
 reuse. Its invalidation test compares against exhaustive GPU distance checks
 at positive/negative cell boundaries, inclusive radius boundaries, large radii
 and partial blocks. The host-map test verifies predecessor metadata survives

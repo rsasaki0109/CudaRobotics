@@ -7,13 +7,13 @@
 
 using namespace cudarobotics;
 
-static bool run(bool ties,int k=12) {
+static bool run(bool ties,int k=12,bool validate=true) {
     KissIcpConfig config;
     config.max_scan_points=2048; config.max_map_points=4096; config.hash_capacity=8192;
     config.map_voxel_size=.08f; config.scan_voxel_size=.06f;
     config.map_radius=3.f; config.threshold_min=.3f; config.threshold_max=.6f;
     config.normal_neighbors=k;
-    config.normal_update=KissIcpNormalUpdate::Validate;
+    if(validate) config.normal_update=KissIcpNormalUpdate::Validate;
     KissIcpConfig reference=config;
     reference.normal_update=KissIcpNormalUpdate::Full;
     KissIcpOdometry cached(config),full(reference);
@@ -43,6 +43,7 @@ static bool run(bool ties,int k=12) {
             std::fprintf(stderr,"incremental/full streaming mismatch ties=%d frame=%d\n",ties,frame); return false;
         }
         saw_reuse|=cached.timing().normal_reused_points>0;
+        if(full.timing().normal_reused_points) return false;
     }
     if(!ties && !saw_reuse) { std::fprintf(stderr,"stationary random cloud never reused normals\n"); return false; }
     return true;
@@ -110,6 +111,9 @@ static bool sparse() {
 
 int main() {
     if(!run(false) || !run(false,1) || !run(false,20) || !run(true,20) || !boundaries() || !sparse()) return 1;
+    // Exercise the public default without selecting an update mode, including
+    // real reuse, movement, support changes and reset against explicit Full.
+    if(!run(false,12,false)) return 3;
     // Validation cannot claim to compare unsupported reference paths.
     KissIcpConfig invalid; invalid.normal_update=KissIcpNormalUpdate::Validate;
     invalid.map_backend=KissIcpMapBackend::Unordered;

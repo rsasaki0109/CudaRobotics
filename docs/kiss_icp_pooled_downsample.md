@@ -41,8 +41,10 @@ differ. Validation timing includes both implementations and comparison work.
 
 The native stack accepts `--kiss-downsample-backend` with
 `pooled|cached|unordered|validate`. Pooled execution is the default after all
-three paired full-route comparisons passed. Map-normal updates remain
-`Full` by default, and all comparisons in this report pin that policy.
+three paired full-route comparisons passed. All comparisons in that report
+pin full map-normal updates. The subsequent
+[default-policy comparison](results/kiss_icp_normal_default_2026-10-10.md)
+combines pooled centroids with incremental normals, now the default.
 
 `KissIcpTiming::downsample_upstream_allocations` counts new arena slabs since
 reset. `downsample_arena_bytes` is the currently retained slab capacity reported

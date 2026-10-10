@@ -178,6 +178,7 @@ int main() {
     reference_config.map_backend=KissIcpMapBackend::Unordered;
     reference_config.normal_query_cell_order=false;
     reference_config.downsample_backend=KissIcpDownsampleBackend::Cached;
+    reference_config.normal_update=KissIcpNormalUpdate::Full;
     KissIcpOdometry dense_ordered(config), unordered(reference_config);
     for(int frame=0;frame<20;++frame) {
         if(frame==10) { dense_ordered.reset(); unordered.reset(); }

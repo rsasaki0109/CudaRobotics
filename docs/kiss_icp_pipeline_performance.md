@@ -5,6 +5,8 @@ changing point density, scan/map voxel resolutions, map radius, neighbour count,
 correspondence gates or ICP iteration limits. The
 [paired real-scan results](results/kiss_icp_pipeline_2026-10-10.md) retain every
 method/repeat, accuracy gates and source/input/executable hashes.
+The current pooled-centroid/incremental-normal defaults are covered by the
+[later default-policy comparison](results/kiss_icp_normal_default_2026-10-10.md).
 
 ## Changes
 
