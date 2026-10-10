@@ -48,6 +48,9 @@ each frame; any mismatch throws. Its whole-frame timing includes that extra
 work and must not be used as incremental performance.
 
 The native stack runner accepts `--kiss-normal-update full|incremental|validate`.
+Incremental execution also offers [split normal scheduling](kiss_icp_split_normals.md)
+through `normal_schedule` / `--kiss-normal-schedule fused|split`.
+Fused remains the default schedule while the split path is measured separately.
 It also defaults to `incremental`. The earlier cached-centroid comparison
 reduced GPU normal work but missed the 40 ms paired target in three of five
 pairs, so it kept full updates as the default. Pooled centroid aggregation
@@ -78,6 +81,8 @@ GPU scratch. The map, index and upload otherwise remain as before. These
 allocations happen at construction, not per normal query. Tie-heavy clouds,
 large support radii, or rapidly changing maps can reuse less; the full mode
 avoids cache storage and maintenance in those workloads.
+Split scheduling adds a 0.763 MiB device recomputation queue at that capacity;
+Fused and Full allocate no queue.
 
 ## Reproduction and checks
 

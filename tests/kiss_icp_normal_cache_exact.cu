@@ -7,17 +7,26 @@
 
 using namespace cudarobotics;
 
-static bool run(bool ties,int k=12,bool validate=true) {
+static bool run(bool ties,int k=12,bool validate=true,bool cell_order=true) {
+    std::fprintf(stderr,"normal comparison ties=%d K=%d validation=%d cell_order=%d\n",ties,k,validate,cell_order);
     KissIcpConfig config;
     config.max_scan_points=2048; config.max_map_points=4096; config.hash_capacity=8192;
     config.map_voxel_size=.08f; config.scan_voxel_size=.06f;
     config.map_radius=3.f; config.threshold_min=.3f; config.threshold_max=.6f;
     config.normal_neighbors=k;
+    config.normal_query_cell_order=cell_order;
+    if(validate) config.normal_schedule=KissIcpNormalSchedule::Split;
     if(validate) config.normal_update=KissIcpNormalUpdate::Validate;
     KissIcpConfig reference=config;
     reference.map_backend=KissIcpMapBackend::Dense;
     reference.normal_update=KissIcpNormalUpdate::Full;
-    KissIcpOdometry cached(config),full(reference);
+    KissIcpConfig fused_config=config;
+    fused_config.normal_schedule=KissIcpNormalSchedule::Fused;
+    KissIcpOdometry cached(config),full(reference),fused(fused_config);
+    const auto queue_bytes=(config.max_map_points+1)*sizeof(int);
+    if(cached.timing().normal_recompute_queue_bytes!=
+       (config.normal_schedule==KissIcpNormalSchedule::Split ? queue_bytes : 0) ||
+       fused.timing().normal_recompute_queue_bytes || full.timing().normal_recompute_queue_bytes) return false;
     std::vector<float> world;
     std::mt19937 random(571);
     std::uniform_real_distribution<float> coordinate(-2.4f,2.4f);
@@ -29,7 +38,7 @@ static bool run(bool ties,int k=12,bool validate=true) {
     for(int frame=0;frame<50;++frame) {
         if(frame==30) {
             KissIcpPose initial; initial.t[0]=1.f; initial.t[1]=-.5f;
-            cached.reset(initial); full.reset(initial);
+            cached.reset(initial); full.reset(initial); fused.reset(initial);
             if(cached.timing().normal_reused_points || cached.timing().normal_recomputed_points) return false;
         }
         auto scan=world;
@@ -37,13 +46,20 @@ static bool run(bool ties,int k=12,bool validate=true) {
         for(size_t i=0;i<scan.size();i+=3) scan[i]-=shift;
         // New voxel representatives both near supports and outside them.
         if(frame>=10 && frame<25) scan.insert(scan.end(),{.037f+frame*.01f,.047f,.071f,2.37f,2.11f,.63f});
-        const auto a=cached.register_scan(scan),b=full.register_scan(scan);
+        const auto a=cached.register_scan(scan),b=full.register_scan(scan),c=fused.register_scan(scan);
         if(std::memcmp(&a.pose,&b.pose,sizeof(KissIcpPose)) || a.map_points!=b.map_points ||
            a.alignment.inliers!=b.alignment.inliers || a.alignment.rmse!=b.alignment.rmse ||
            a.alignment.threshold!=b.alignment.threshold || a.alignment.iterations!=b.alignment.iterations) {
             std::fprintf(stderr,"incremental/full streaming mismatch ties=%d frame=%d\n",ties,frame); return false;
         }
         saw_reuse|=cached.timing().normal_reused_points>0;
+        if(std::memcmp(&a.pose,&c.pose,sizeof(KissIcpPose)) || a.map_points!=c.map_points ||
+           a.alignment.inliers!=c.alignment.inliers || a.alignment.rmse!=c.alignment.rmse ||
+           a.alignment.threshold!=c.alignment.threshold || a.alignment.iterations!=c.alignment.iterations ||
+           cached.timing().normal_reused_points!=fused.timing().normal_reused_points ||
+           cached.timing().normal_recomputed_points!=fused.timing().normal_recomputed_points) {
+            std::fprintf(stderr,"split/fused streaming mismatch ties=%d frame=%d\n",ties,frame); return false;
+        }
         if(full.timing().normal_reused_points) return false;
     }
     if(!ties && !saw_reuse) { std::fprintf(stderr,"stationary random cloud never reused normals\n"); return false; }
@@ -77,6 +93,14 @@ static bool boundaries() {
         queries.insert(queries.end(),{coordinate(random),coordinate(random),coordinate(random)});
         radius2.push_back(i%5==0 ? 100.f : .2f*(i%10));
     }
+    for(float scale:{1.f,1000.f,100000.f}) {
+        for(int x=-3;x<=3;++x) for(float delta:{-1e-6f,0.f,1e-6f}) {
+            const float a=x*scale;
+            added.insert(added.end(),{a,0.f,0.f,a+.5f,0.f,0.f});
+            queries.insert(queries.end(),{a+delta,0.f,0.f}); radius2.push_back(0.f);
+            queries.insert(queries.end(),{a+delta,.5f,0.f}); radius2.push_back(.25f);
+        }
+    }
     float *dp=nullptr,*dq=nullptr,*dr=nullptr; int* missed=nullptr;
     CUDA_CHECK(cudaMalloc(&dp,added.size()*sizeof(float)));
     CUDA_CHECK(cudaMalloc(&dq,queries.size()*sizeof(float)));
@@ -86,7 +110,7 @@ static bool boundaries() {
     CUDA_CHECK(cudaMemcpy(dq,queries.data(),queries.size()*sizeof(float),cudaMemcpyHostToDevice));
     CUDA_CHECK(cudaMemcpy(dr,radius2.data(),radius2.size()*sizeof(float),cudaMemcpyHostToDevice));
     bool ok=true;
-    kiss_spatial::Index index(static_cast<int>(added.size()/3),128);
+    kiss_spatial::Index index(static_cast<int>(added.size()/3),512);
     for(float cell:{.5f,1.05f,8.4f}) {
         auto v=index.build(dp,static_cast<int>(added.size()/3),cell);
         CUDA_CHECK(cudaMemset(missed,0,sizeof(int)));
@@ -102,6 +126,7 @@ static bool boundaries() {
 static bool sparse() {
     KissIcpConfig config; config.max_scan_points=32;config.max_map_points=64;config.hash_capacity=128;
     config.normal_update=KissIcpNormalUpdate::Validate; config.normal_neighbors=20;
+    config.normal_schedule=KissIcpNormalSchedule::Split;
     config.map_voxel_size=.05f; config.scan_voxel_size=.03f;
     std::vector<float> scan;
     for(int i=0;i<12;++i) scan.insert(scan.end(),{i*.13f,(i%3)*.23f,(i%5)*.17f});
@@ -110,15 +135,46 @@ static bool sparse() {
     return odometry.timing().normal_reused_points==0;
 }
 
+static bool empty_queue() {
+    KissIcpConfig config;
+    config.max_scan_points=512; config.max_map_points=512; config.hash_capacity=1024;
+    config.scan_voxel_size=.01f; config.map_voxel_size=.01f; config.map_radius=10.f;
+    config.normal_update=KissIcpNormalUpdate::Validate;
+    config.normal_schedule=KissIcpNormalSchedule::Split;
+    std::mt19937 random(1827);
+    std::uniform_real_distribution<float> coordinate(-1.f,1.f);
+    std::vector<float> scan;
+    for(int i=0;i<257;++i) scan.insert(scan.end(),{coordinate(random),coordinate(random),coordinate(random)});
+    KissIcpOdometry odometry(config);
+    odometry.register_scan(scan); odometry.register_scan(scan);
+    const auto before=odometry.timing();
+    if(before.normal_recomputed_points!=odometry.map_point_count() || before.normal_reused_points) return false;
+    odometry.register_scan(scan);
+    const auto after=odometry.timing();
+    if(after.normal_recomputed_points!=before.normal_recomputed_points ||
+       after.normal_reused_points-before.normal_reused_points!=odometry.map_point_count()) {
+        std::fprintf(stderr,"stationary split update did not exercise empty queue\n"); return false;
+    }
+    return true;
+}
+
 int main() {
-    if(!run(false) || !run(false,1) || !run(false,20) || !run(true,20) || !boundaries() || !sparse()) return 1;
-    // Exercise the public default without selecting an update mode, including
-    // real reuse, movement, support changes and reset against explicit Full.
-    if(!run(false,12,false)) return 3;
-    // Validation cannot claim to compare unsupported reference paths.
-    KissIcpConfig invalid; invalid.normal_update=KissIcpNormalUpdate::Validate;
-    invalid.map_backend=KissIcpMapBackend::Unordered;
-    if(validate_kiss_icp_config(invalid).empty()) return 2;
-    std::puts("Incremental map normals and poses match full recomputation: PASS");
-    return 0;
+    try {
+        if(!run(false) || !run(false,1) || !run(false,20) || !run(true,20) ||
+           !run(false,12,true,false) || !boundaries() || !sparse() || !empty_queue()) return 1;
+        // Exercise the public default without selecting an update mode, including
+        // real reuse, movement, support changes and reset against explicit Full.
+        if(!run(false,12,false)) return 3;
+        // Validation cannot claim to compare unsupported reference paths.
+        KissIcpConfig invalid; invalid.normal_update=KissIcpNormalUpdate::Validate;
+        invalid.map_backend=KissIcpMapBackend::Unordered;
+        if(validate_kiss_icp_config(invalid).empty()) return 2;
+        invalid=KissIcpConfig{}; invalid.normal_schedule=static_cast<KissIcpNormalSchedule>(-1);
+        if(validate_kiss_icp_config(invalid).empty()) return 4;
+        std::puts("Incremental map normals and poses match full recomputation: PASS");
+        return 0;
+    } catch(const std::exception& error) {
+        std::fprintf(stderr,"normal cache test: %s\n",error.what());
+        return 5;
+    }
 }

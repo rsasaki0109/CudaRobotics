@@ -64,7 +64,7 @@ __device__ inline float support_radius(const int* ids,const float* distances,int
 
 class Cache {
 public:
-    Cache(int capacity,int k,int hash_capacity,bool validate) {
+    Cache(int capacity,int k,int hash_capacity,bool validate,bool split=false) {
         to_previous_.reserve(capacity); to_current_.reserve(capacity); added_.reserve(capacity);
         try {
             CUDA_CHECK(cudaMalloc(&d_to_previous_,capacity*sizeof(int)));
@@ -77,6 +77,11 @@ public:
                 CUDA_CHECK(cudaMalloc(&radii_[b],capacity*sizeof(float)));
             }
             CUDA_CHECK(cudaMalloc(&reused_,sizeof(int)));
+            if(split) {
+                CUDA_CHECK(cudaMalloc(&work_,capacity*sizeof(int)));
+                CUDA_CHECK(cudaMalloc(&work_count_,sizeof(int)));
+                work_bytes_=(static_cast<size_t>(capacity)+1)*sizeof(int);
+            }
             if(validate) {
                 CUDA_CHECK(cudaMalloc(&validation_,capacity*3*sizeof(float)));
                 CUDA_CHECK(cudaMalloc(&mismatches_,sizeof(int)));
@@ -112,6 +117,7 @@ public:
         std::swap(normals,previous_normals_);
         std::swap(neighbors_[0],neighbors_[1]); std::swap(radii_[0],radii_[1]);
         CUDA_CHECK(cudaMemset(reused_,0,sizeof(int)));
+        if(work_count_) CUDA_CHECK(cudaMemset(work_count_,0,sizeof(int)));
         CUDA_CHECK(cudaStreamSynchronize(nullptr));
         return {d_to_previous_,d_to_current_,neighbors_[0],previous_normals_,radii_[0],
                 neighbors_[1],radii_[1],reused_,additions};
@@ -126,15 +132,21 @@ public:
     const float* additions() const { return added_points_; }
     float* validation() const { return validation_; }
     int* mismatches() const { return mismatches_; }
+    int* work() const { return work_; }
+    int* work_count() const { return work_count_; }
+    size_t work_bytes() const { return work_bytes_; }
 private:
     void release() noexcept {
         cudaFree(d_to_previous_); cudaFree(d_to_current_); cudaFree(d_added_); cudaFree(added_points_);
         cudaFree(previous_normals_); cudaFree(reused_); cudaFree(validation_); cudaFree(mismatches_);
+        cudaFree(work_); cudaFree(work_count_);
         for(int b=0;b<2;++b) { cudaFree(neighbors_[b]); cudaFree(radii_[b]); }
     }
     int previous_count_=0;
+    size_t work_bytes_=0;
     std::vector<int> to_previous_,to_current_,added_;
     int *d_to_previous_=nullptr,*d_to_current_=nullptr,*d_added_=nullptr,*reused_=nullptr,*mismatches_=nullptr;
+    int *work_=nullptr,*work_count_=nullptr;
     int* neighbors_[2]={nullptr,nullptr};
     float *added_points_=nullptr,*previous_normals_=nullptr,*validation_=nullptr;
     float* radii_[2]={nullptr,nullptr};

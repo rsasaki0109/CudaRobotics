@@ -83,6 +83,7 @@
 #include "kiss_icp_downsample.hpp"
 #include "kiss_icp_order.cuh"
 #include "kiss_icp_normal_cache.cuh"
+#include <cub/block/block_scan.cuh>
 #include <cub/block/block_reduce.cuh>
 #ifndef CUDAROBOTICS_KISS_ICP_CORE_ONLY
 #include "cuda_video.h"
@@ -268,6 +269,52 @@ __global__ void compare_normals_kernel(const float* actual,const float* expected
     if(i<n && (__float_as_uint(actual[3*i])!=__float_as_uint(expected[3*i]) ||
                __float_as_uint(actual[3*i+1])!=__float_as_uint(expected[3*i+1]) ||
                __float_as_uint(actual[3*i+2])!=__float_as_uint(expected[3*i+2]))) atomicAdd(mismatches,1);
+}
+
+// Keep expensive KNN/PCA out of blocks that mostly copy cached normals. Each
+// block compacts its misses; output normals and support IDs still use point IDs.
+__global__ void map_normal_classify_kernel(const float* map,int n,int k,float* normals,
+        kiss_spatial::View index,bool cell_order,kiss_normal_cache::View cache,
+        const float* additions,int* work,int* work_count) {
+    using Scan=cub::BlockScan<int,128>;
+    __shared__ typename Scan::TempStorage storage;
+    __shared__ int base;
+    const int query=blockIdx.x*128+threadIdx.x;
+    int i=-1,miss=0;
+    if(query<n) {
+        i=kiss_spatial::query_point(index,query,cell_order);
+        int ids[20];
+        if(kiss_normal_cache::reuse(cache,map,additions,i,k,ids)) {
+            const int old=cache.to_previous[i];
+            for(int a=0;a<3;++a) normals[3*i+a]=cache.previous_normals[3*old+a];
+            cache.radii[i]=cache.previous_radii[old];
+            for(int a=0;a<k;++a) cache.neighbors[i*k+a]=ids[a];
+        } else miss=1;
+    }
+    int offset,total;
+    Scan(storage).ExclusiveSum(miss,offset,total);
+    if(threadIdx.x==0) {
+        base=atomicAdd(work_count,total);
+        atomicAdd(cache.reused,min(128,n-static_cast<int>(blockIdx.x)*128)-total);
+    }
+    __syncthreads();
+    if(miss) work[base+offset]=i;
+}
+
+template<int Support> __global__ void map_normal_recompute_kernel(const float* map,int n,int k,float* normals,
+        kiss_spatial::View index,kiss_spatial::View coarse,kiss_normal_cache::View cache,
+        const int* work,const int* work_count) {
+    const int count=*work_count;
+    const int query=blockIdx.x*128+threadIdx.x;
+    if(query<count) {
+        const int i=work[query];
+        int ids[Support ? Support : 21]; float distances[Support ? Support : 21];
+        if(Support) kiss_spatial::knn(index,map,n,i,Support,ids,coarse,distances);
+        else kiss_spatial::knn(index,map,n,i,k+1,ids,coarse,distances);
+        normal_from_neighbors(map,i,k,ids,normals);
+        cache.radii[i]=kiss_normal_cache::support_radius(ids,distances,k);
+        for(int a=0;a<k;++a) cache.neighbors[i*k+a]=ids[a];
+    }
 }
 
 __global__ void transform_kernel(const float* __restrict__ S,int n,const float* __restrict__ R,const float* __restrict__ t,float* __restrict__ W){
@@ -561,6 +608,8 @@ std::string validate_kiss_icp_config(const KissIcpConfig& c) {
         return "invalid downsample_backend";
     if(c.normal_update!=KissIcpNormalUpdate::Full && c.normal_update!=KissIcpNormalUpdate::Incremental && c.normal_update!=KissIcpNormalUpdate::Validate)
         return "invalid normal_update";
+    if(c.normal_schedule!=KissIcpNormalSchedule::Fused && c.normal_schedule!=KissIcpNormalSchedule::Split)
+        return "invalid normal_schedule";
     if(c.normal_update==KissIcpNormalUpdate::Validate &&
        ((c.map_backend!=KissIcpMapBackend::Dense && c.map_backend!=KissIcpMapBackend::Pooled &&
          c.map_backend!=KissIcpMapBackend::Validate) || c.normal_backend!=KissIcpNormalBackend::Voxel))
@@ -615,7 +664,8 @@ struct KissIcpOdometry::Impl {
             CUDA_CHECK(cudaMalloc(&dMapN,config.max_map_points*3*sizeof(float)));
             if(dense_map && config.normal_backend==KissIcpNormalBackend::Voxel && config.normal_update!=KissIcpNormalUpdate::Full)
                 normal_cache.reset(new kiss_normal_cache::Cache(static_cast<int>(config.max_map_points),config.normal_neighbors,
-                    static_cast<int>(config.hash_capacity),config.normal_update==KissIcpNormalUpdate::Validate));
+                    static_cast<int>(config.hash_capacity),config.normal_update==KissIcpNormalUpdate::Validate,
+                    config.normal_schedule==KissIcpNormalSchedule::Split));
             CUDA_CHECK(cudaMalloc(&dR,9*sizeof(float)));
             CUDA_CHECK(cudaMalloc(&dt,3*sizeof(float)));
             CUDA_CHECK(cudaMalloc(&dHg,30*sizeof(float)));
@@ -680,6 +730,7 @@ struct KissIcpOdometry::Impl {
         validation_order.clear();
         if(normal_cache) normal_cache->reset();
         accumulated_timing = {};
+        if(normal_cache) accumulated_timing.normal_recompute_queue_bytes=normal_cache->work_bytes();
         if(dense_map) {
             accumulated_timing.host_map_pool_bytes=dense_map->pool_bytes();
             accumulated_timing.host_map_order_bytes=dense_map->order_bytes();
@@ -898,7 +949,18 @@ struct KissIcpOdometry::Impl {
                 accumulated_timing.normal_cache_prepare_ms+=stage_ms(prepare_start);
             }
             CUDA_CHECK(cudaEventRecord(normal_start));
-            if(normal_cache)
+            if(normal_cache && config.normal_schedule==KissIcpNormalSchedule::Split) {
+                map_normal_classify_kernel<<<(map_count+127)/128,128>>>(dMap,map_count,config.normal_neighbors,dMapN,
+                    spatial_view,config.normal_query_cell_order,cache_view,normal_cache->additions(),
+                    normal_cache->work(),normal_cache->work_count());
+                if(config.normal_neighbors==12)
+                    map_normal_recompute_kernel<13><<<(map_count+127)/128,128>>>(dMap,map_count,
+                        config.normal_neighbors,dMapN,spatial_view,coarse_view,cache_view,
+                        normal_cache->work(),normal_cache->work_count());
+                else map_normal_recompute_kernel<0><<<(map_count+127)/128,128>>>(dMap,map_count,
+                        config.normal_neighbors,dMapN,spatial_view,coarse_view,cache_view,
+                        normal_cache->work(),normal_cache->work_count());
+            } else if(normal_cache)
                 map_normal_cached_kernel<<<(map_count+127)/128,128>>>(dMap,map_count,config.normal_neighbors,dMapN,
                     spatial_view,coarse_view,config.normal_query_cell_order,cache_view,normal_cache->additions());
             else if(config.normal_backend==KissIcpNormalBackend::Voxel)
@@ -922,7 +984,8 @@ struct KissIcpOdometry::Impl {
                     compare_normals_kernel<<<(map_count+255)/256,256>>>(dMapN,normal_cache->validation(),map_count,normal_cache->mismatches());
                     int mismatches=0;
                     CUDA_CHECK(cudaMemcpy(&mismatches,normal_cache->mismatches(),sizeof(int),cudaMemcpyDeviceToHost));
-                    if(mismatches) throw std::runtime_error("incremental map normals differ from full recomputation: "+std::to_string(mismatches));
+                    if(mismatches) throw std::runtime_error("incremental map normals differ from full recomputation: "+std::to_string(mismatches)+
+                        " frame="+std::to_string(frames)+" points="+std::to_string(map_count));
                 }
                 auto commit_start=StageClock::now();
                 normal_cache->commit(map_order,previous_ranks);

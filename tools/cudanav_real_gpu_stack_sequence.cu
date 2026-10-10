@@ -50,6 +50,7 @@ struct Options {
     std::string kiss_downsample_backend = "pooled";
     std::string kiss_normal_query_order = "cell";
     std::string kiss_normal_update = "incremental";
+    std::string kiss_normal_schedule = "fused";
     bool check = false;
 };
 
@@ -287,7 +288,8 @@ void usage(const char* executable) {
         "[--kiss-normal-neighbors N] [--kiss-normal-backend voxel|brute] "
         "[--kiss-nn-backend voxel|linked|brute] [--kiss-reduction-backend block|atomic] "
         "[--kiss-map-backend pooled|dense|unordered|validate] [--kiss-downsample-backend pooled|cached|unordered|validate] "
-        "[--kiss-normal-query-order cell|input] [--kiss-normal-update full|incremental|validate]\n",
+        "[--kiss-normal-query-order cell|input] [--kiss-normal-update full|incremental|validate] "
+        "[--kiss-normal-schedule fused|split]\n",
         executable);
 }
 
@@ -343,6 +345,8 @@ Options parse_options(int argc, char** argv) {
             options.kiss_normal_query_order = next();
         } else if (argument == "--kiss-normal-update") {
             options.kiss_normal_update = next();
+        } else if (argument == "--kiss-normal-schedule") {
+            options.kiss_normal_schedule = next();
         } else if (argument == "--kiss-nn-backend") {
             options.kiss_nn_backend = next();
         } else if (argument == "--check") {
@@ -372,6 +376,8 @@ Options parse_options(int argc, char** argv) {
         throw std::invalid_argument("invalid KISS-ICP normal query order");
     if(options.kiss_normal_update!="full" && options.kiss_normal_update!="incremental" && options.kiss_normal_update!="validate")
         throw std::invalid_argument("invalid KISS-ICP normal update mode");
+    if(options.kiss_normal_schedule!="fused" && options.kiss_normal_schedule!="split")
+        throw std::invalid_argument("invalid KISS-ICP normal schedule");
     if (options.maximum_frames < 0 || options.control_stride < 1 || options.minimum_inliers < 1 ||
         options.minimum_observed_voxels < 1 || options.minimum_occupied_cells < 1 ||
         options.minimum_control_evaluations < 1 ||
@@ -431,6 +437,8 @@ int main(int argc, char** argv) {
             options.kiss_downsample_backend == "validate" ? cudarobotics::KissIcpDownsampleBackend::Validate :
             options.kiss_downsample_backend == "cached" ? cudarobotics::KissIcpDownsampleBackend::Cached : cudarobotics::KissIcpDownsampleBackend::Unordered;
         kiss_config.normal_query_cell_order = options.kiss_normal_query_order == "cell";
+        kiss_config.normal_schedule = options.kiss_normal_schedule == "split" ? cudarobotics::KissIcpNormalSchedule::Split :
+            cudarobotics::KissIcpNormalSchedule::Fused;
         kiss_config.normal_update = options.kiss_normal_update == "full" ? cudarobotics::KissIcpNormalUpdate::Full :
             options.kiss_normal_update == "validate" ? cudarobotics::KissIcpNormalUpdate::Validate : cudarobotics::KissIcpNormalUpdate::Incremental;
         kiss_config.max_map_points = 200000;
@@ -803,12 +811,14 @@ int main(int argc, char** argv) {
              << ", \"arena_bytes\": " << odometry.timing().downsample_arena_bytes << "},\n"
              << "  \"normal_query_order\": " << json_string(options.kiss_normal_query_order) << ",\n"
              << "  \"normal_update\": " << json_string(options.kiss_normal_update) << ",\n"
+             << "  \"normal_schedule\": " << json_string(options.kiss_normal_schedule) << ",\n"
              << "  \"host_map_memory\": {\"new_slabs\": " << odometry.timing().host_map_upstream_allocations
              << ", \"node_pool_bytes\": " << odometry.timing().host_map_pool_bytes
              << ", \"order_link_bytes\": " << odometry.timing().host_map_order_bytes << "},\n"
              << "  \"normal_cache\": {\"reused_points\": " << odometry.timing().normal_reused_points
              << ", \"recomputed_points\": " << odometry.timing().normal_recomputed_points
-             << ", \"prepare_ms_total\": " << odometry.timing().normal_cache_prepare_ms << "},\n"
+             << ", \"prepare_ms_total\": " << odometry.timing().normal_cache_prepare_ms
+             << ", \"recompute_queue_bytes\": " << odometry.timing().normal_recompute_queue_bytes << "},\n"
              << "  \"normal_gpu_ms_total\": " << odometry.timing().map_normal_ms << ",\n"
              << "  \"index_gpu_ms_total\": " << odometry.timing().index_build_ms << ",\n"
              << "  \"mapping\": {\n"

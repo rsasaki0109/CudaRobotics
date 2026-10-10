@@ -1,0 +1,1644 @@
+{
+  "schema": "cudarobotics.kiss_icp_normal_schedule.v1",
+  "gpu": "NVIDIA consumer GPU",
+  "git_head": "ee56dd1bfa63128525a6e611fc79c6a5b65cb742",
+  "git_worktree_dirty": true,
+  "source_hash_normalization": "sha256-text-lf",
+  "sources_sha256": {
+    "src/gpu_kiss_icp.cu": "7fab1d0eb72c89865b71d9bc9460cdf965d64cb7b4f285d2c45788dea2359143",
+    "include/cudarobotics/kiss_icp_gpu.hpp": "cb86187de93321cae90712f668f71630d988b0707d0fbf255a4655e43a3d0b8f",
+    "include/kiss_icp_spatial.cuh": "24d74f471a6c1dcc6bdc0a105ab8dd766842e86108f335f67f37e785ecbc682a",
+    "include/kiss_icp_reduction.cuh": "52c2b40f3af3c3cf5e7b964637c54d6f9def241acebff2206b63b988138f63a0",
+    "include/kiss_icp_host_map.hpp": "fd48a0cdd8608beca91cddf9437b7a6e58a205333504297651c268485620c3be",
+    "include/kiss_icp_downsample.hpp": "97f1001842ea3a04e9ff22b1a91afccffba48f7a79094658ec4160aa9b7e687d",
+    "include/kiss_icp_order.cuh": "39886d20b5a28550cd69ede52fee2bedd243b12c982e50e38f2be80d2b447a88",
+    "include/kiss_icp_normal_cache.cuh": "be6a40d4e813d3ede3688a9da8a074bcb0bde390323b91591c4c5653d29e55a2",
+    "tools/cudanav_real_gpu_stack_sequence.cu": "f6bc5a3554ec800181eec4860e4186d598b20826b02af3d8a110b3636c340895",
+    "scripts/benchmark_kiss_icp_pipeline.py": "cc2c58ff21b563c231064ef5c497b438cf559684ec8de2f452429fc693db1a5b",
+    "scripts/benchmark_kiss_icp_spatial.py": "c017ce4f2715cf0dd4624b35153767e01a2974b7b6d1828d6ef7e7f7d796c541",
+    "scripts/benchmark_kiss_icp_normal_schedule.py": "27e713dbc21d1d5881b0f27c66301230a06ac0be3b1a58ccc06edd028fe8f600",
+    "scripts/benchmark_kiss_icp_normals.py": "62e8910a334252c8e84372a266b9cf9ebe004c07c8e68af891e55750b7f126dc",
+    "tests/kiss_icp_host_map_exact.cpp": "f2f49888b53587f24e6b3013ec58d632faa166ac1adb61bbecb8b045e1ea49d5",
+    "tests/kiss_icp_gpu_streaming_smoke.cu": "a15b3d8ae4093c36f9ba1ea4beec63e01625c590a11a2a8fb2deafab02a31c43",
+    "tests/kiss_icp_normal_cache_exact.cu": "909250d3bbfdcc45ee0973173cd59b37a9ff8a94e7c56393359c583bed073afc",
+    "CMakeLists.txt": "85b5f691bcb37d478e59e504f6cd964d89da8a4eb20cd157f435782b71bd289c",
+    "src/mppi_gpu.cu": "0376e1c880a5aae5fc3abd6d6ed6a631aeb77213d605c21a85b9e568db609ac5",
+    "src/voxel_mapping_gpu.cu": "071c2af40b69c9a2d2e77af711c697f6c5c5a2e8686ddcddf2e7146ebaafd900",
+    "src/esdf_2d_gpu.cu": "b9ee820b92e67e4caacac6a727e9d4f7315d7f321f683e08ec22b9b0000cf7b7",
+    "include/cuda_mppi_controller/mppi_gpu.hpp": "4dda021b7dbf6247ebefa668e524a0053e6dd89303048bd4e281f2f26ea32627",
+    "include/cudarobotics/voxel_mapping_gpu.hpp": "36e5638815089bcb30cfd119959d4f94dfa0405e875e1203d92e6172e30849de",
+    "include/cudarobotics/esdf_2d_gpu.hpp": "325ed5c8afd23a87eac668d80d70374af099d8ba472c566bf5bf5ca0ee97e782",
+    "include/cuda_check.cuh": "f358ad19e3b83228d39f1980ce386fa1af52bcb0b0e3e1acfd7967a59375fe96"
+  },
+  "executable_sha256": "9d71633e9eb594223c669b419a2206fd11739e8bceba974bf6936d6a6440b03f",
+  "sequence": "sequence.bin",
+  "sequence_sha256": "ca7f383a785dd2795f1bd9d5c68a0d66465adf6b8354d86f39e028b0f96cbaf9",
+  "sequence_bytes": 1758954344,
+  "maximum_frames": 0,
+  "process_priority": "normal",
+  "expected_default_schedule": "fused",
+  "compared_csv_fields": [
+    "frame",
+    "stamp_ns",
+    "estimated_x",
+    "estimated_y",
+    "xy_error_m",
+    "inliers",
+    "map_points",
+    "observed_voxels",
+    "integrated_rays",
+    "unknown_cells",
+    "normal_reused_points",
+    "normal_recomputed_points"
+  ],
+  "runs": [
+    {
+      "mode": "validate",
+      "repeat": 0,
+      "returncode": 0,
+      "argv": [
+        "build/kiss_split_normals_20261010/final/runner.exe",
+        "--sequence",
+        "build/cudanav_real_gpu_stack_release_724d05ca/sequence.bin",
+        "--json",
+        "build/kiss_split_normals_20261010/final/validate_0.json",
+        "--csv",
+        "build/kiss_split_normals_20261010/final/validate_0.csv",
+        "--kiss-downsample-backend",
+        "pooled",
+        "--kiss-map-backend",
+        "validate",
+        "--kiss-nn-backend",
+        "voxel",
+        "--kiss-normal-backend",
+        "voxel",
+        "--kiss-reduction-backend",
+        "block",
+        "--kiss-normal-query-order",
+        "cell",
+        "--kiss-normal-update",
+        "validate",
+        "--maximum-ate-rmse-m",
+        "3",
+        "--maximum-final-drift-percent",
+        "5",
+        "--minimum-inliers",
+        "100",
+        "--maximum-all-colliding-evaluations",
+        "6",
+        "--check",
+        "--kiss-normal-schedule",
+        "split"
+      ],
+      "timing": {
+        "frames": 1190,
+        "frame_ms": {
+          "mean": 42.82194420168067,
+          "p95": 68.613,
+          "p99": 75.9227,
+          "max": 95.8142
+        },
+        "odometry_ms": {
+          "mean": 37.39561613445378,
+          "p95": 59.3013,
+          "p99": 66.1166,
+          "max": 87.3939
+        },
+        "normal_ms": {
+          "mean": 2.161116581512605,
+          "p95": 3.47702,
+          "p99": 4.25082,
+          "max": 5.04781
+        },
+        "index_ms": {
+          "mean": 0.3049167058823529,
+          "p95": 0.493152,
+          "p99": 0.634112,
+          "max": 1.0552
+        },
+        "nn_ms": {
+          "mean": 3.0706624857142857,
+          "p95": 4.58528,
+          "p99": 5.28112,
+          "max": 18.2489
+        },
+        "validation_ms": {
+          "mean": 1.9321395798319327,
+          "p95": 7.0269,
+          "p99": 7.96,
+          "max": 12.2912
+        },
+        "deskew_wall_ms": {
+          "mean": 0.8691390756302521,
+          "p95": 1.3324,
+          "p99": 1.8106,
+          "max": 18.2306
+        },
+        "downsample_ms": {
+          "mean": 4.497809663865546,
+          "p95": 9.0202,
+          "p99": 11.9582,
+          "max": 24.9629
+        },
+        "map_upload_ms": {
+          "mean": 0.416217731092437,
+          "p95": 0.6317,
+          "p99": 0.8212,
+          "max": 5.6452
+        },
+        "icp_ms": {
+          "mean": 4.63869705882353,
+          "p95": 6.7298,
+          "p99": 8.215,
+          "max": 20.0896
+        },
+        "normal_equation_ms": {
+          "mean": 0.2877248537815126,
+          "p95": 0.36544,
+          "p99": 0.429728,
+          "max": 1.37504
+        },
+        "map_update_ms": {
+          "mean": 9.920039495798319,
+          "p95": 16.507,
+          "p99": 21.0264,
+          "max": 45.7277
+        },
+        "map_prune_ms": {
+          "mean": 0.4960840336134454,
+          "p95": 0.9732,
+          "p99": 1.2162,
+          "max": 2.1817
+        },
+        "map_insert_ms": {
+          "mean": 2.7653212605042015,
+          "p95": 4.7807,
+          "p99": 6.036,
+          "max": 33.463
+        },
+        "map_pack_ms": {
+          "mean": 0.6042564705882353,
+          "p95": 1.1227,
+          "p99": 1.2911,
+          "max": 2.5531
+        },
+        "map_reorder_ms": {
+          "mean": 0.07560142521008403,
+          "p95": 0.133024,
+          "p99": 0.170976,
+          "max": 0.282528
+        },
+        "normal_cache_prepare_ms": {
+          "mean": 0.8113661344537815,
+          "p95": 1.3419,
+          "p99": 1.8615,
+          "max": 7.9321
+        },
+        "fifo_response_p95_ms": 68.6130000000012,
+        "fifo_response_p99_ms": 75.92269999999917,
+        "fifo_final_response_ms": 57.28900000000431,
+        "fifo_deadline_miss_fraction": 0.0,
+        "over_100ms_fraction": 0.0
+      },
+      "quality_pass": true,
+      "ate_rmse_m": 0.805742516,
+      "final_drift_percent": 0.4682323142,
+      "inliers_min": 25004,
+      "mppi": {
+        "control_stride": 10,
+        "evaluations": 120,
+        "minimum_nonzero_valid_rollout_ratio": 0.3427734375,
+        "maximum_robot_cost": 80,
+        "minimum_robot_clearance_m": 0.6324555278,
+        "all_colliding_evaluations": 0,
+        "retreating_evaluations": 0,
+        "maximum_all_colliding_abs_v": 0,
+        "invalid_commands": 0,
+        "solve_ms_p95": 0.7409
+      },
+      "odometry_config": {
+        "map_voxel_size_m": 0.349999994,
+        "scan_voxel_size_m": 0.2199999988,
+        "map_radius_m": 40,
+        "normal_neighbors": 12
+      },
+      "duration_s": 118.901932,
+      "normal_cache": {
+        "reused_points": 99995883,
+        "recomputed_points": 5972888,
+        "prepare_ms_total": 965.5257,
+        "recompute_queue_bytes": 800004
+      },
+      "host_map_memory": {
+        "new_slabs": 19,
+        "node_pool_bytes": 5242880,
+        "order_link_bytes": 1600000
+      },
+      "actual_normal_schedule": "split",
+      "artifacts_sha256": {
+        ".csv": "7921a7420fa4c7fe13fd0ae01347bd82c594ab80c1ce759d849875ee243093a5",
+        ".json": "70ac9f701c3ef3b8e700731764eafe100679932ca918a5e672a06b5bcec5983c",
+        ".log": "e23aa9ba0fb6eef79c3e150536b5c05503c7a306f1cc36342ff3bfc454bc313f"
+      },
+      "all_map_points_order_and_normals_bit_exact": true
+    },
+    {
+      "mode": "fused",
+      "repeat": 0,
+      "returncode": 0,
+      "argv": [
+        "build/kiss_split_normals_20261010/final/runner.exe",
+        "--sequence",
+        "build/cudanav_real_gpu_stack_release_724d05ca/sequence.bin",
+        "--json",
+        "build/kiss_split_normals_20261010/final/fused_0.json",
+        "--csv",
+        "build/kiss_split_normals_20261010/final/fused_0.csv",
+        "--kiss-downsample-backend",
+        "pooled",
+        "--kiss-map-backend",
+        "pooled",
+        "--kiss-nn-backend",
+        "voxel",
+        "--kiss-normal-backend",
+        "voxel",
+        "--kiss-reduction-backend",
+        "block",
+        "--kiss-normal-query-order",
+        "cell",
+        "--kiss-normal-update",
+        "incremental",
+        "--maximum-ate-rmse-m",
+        "3",
+        "--maximum-final-drift-percent",
+        "5",
+        "--minimum-inliers",
+        "100",
+        "--maximum-all-colliding-evaluations",
+        "6",
+        "--check",
+        "--kiss-normal-schedule",
+        "fused"
+      ],
+      "timing": {
+        "frames": 1190,
+        "frame_ms": {
+          "mean": 22.291933529411764,
+          "p95": 29.4941,
+          "p99": 32.6415,
+          "max": 34.9925
+        },
+        "odometry_ms": {
+          "mean": 17.654733025210085,
+          "p95": 23.9176,
+          "p99": 26.5737,
+          "max": 28.2337
+        },
+        "normal_ms": {
+          "mean": 2.344580255462185,
+          "p95": 3.61795,
+          "p99": 4.59133,
+          "max": 5.37571
+        },
+        "index_ms": {
+          "mean": 0.29610105546218485,
+          "p95": 0.482656,
+          "p99": 0.510336,
+          "max": 0.715488
+        },
+        "nn_ms": {
+          "mean": 3.025117524369748,
+          "p95": 4.55005,
+          "p99": 5.08566,
+          "max": 5.59235
+        },
+        "validation_ms": {
+          "mean": 1.2339752100840335,
+          "p95": 2.1994,
+          "p99": 2.8109,
+          "max": 4.2144
+        },
+        "deskew_wall_ms": {
+          "mean": 0.744756974789916,
+          "p95": 1.0227,
+          "p99": 1.2581,
+          "max": 1.9411
+        },
+        "downsample_ms": {
+          "mean": 3.8082264705882354,
+          "p95": 5.3221,
+          "p99": 6.302,
+          "max": 7.2955
+        },
+        "map_upload_ms": {
+          "mean": 0.40911084033613443,
+          "p95": 0.6198,
+          "p99": 0.7184,
+          "max": 0.9293
+        },
+        "icp_ms": {
+          "mean": 4.41900949579832,
+          "p95": 6.2148,
+          "p99": 6.9771,
+          "max": 8.8989
+        },
+        "normal_equation_ms": {
+          "mean": 0.286944268907563,
+          "p95": 0.3616,
+          "p99": 0.372896,
+          "max": 0.449792
+        },
+        "map_update_ms": {
+          "mean": 3.5461778151260503,
+          "p95": 5.3792,
+          "p99": 7.0998,
+          "max": 7.6069
+        },
+        "map_prune_ms": {
+          "mean": 0.4373664705882353,
+          "p95": 0.76,
+          "p99": 0.9224,
+          "max": 1.2893
+        },
+        "map_insert_ms": {
+          "mean": 2.367698487394958,
+          "p95": 3.8502,
+          "p99": 5.0072,
+          "max": 5.6564
+        },
+        "map_pack_ms": {
+          "mean": 0.5722905882352941,
+          "p95": 1.1005,
+          "p99": 1.2553,
+          "max": 1.6271
+        },
+        "map_reorder_ms": {
+          "mean": 0.07560449075630252,
+          "p95": 0.131296,
+          "p99": 0.155424,
+          "max": 0.209088
+        },
+        "normal_cache_prepare_ms": {
+          "mean": 0.7101994117647059,
+          "p95": 1.1568,
+          "p99": 1.4142,
+          "max": 7.6715
+        },
+        "fifo_response_p95_ms": 29.49409999999625,
+        "fifo_response_p99_ms": 32.64150000000154,
+        "fifo_final_response_ms": 30.465100000001257,
+        "fifo_deadline_miss_fraction": 0.0,
+        "over_100ms_fraction": 0.0
+      },
+      "quality_pass": true,
+      "ate_rmse_m": 0.805742516,
+      "final_drift_percent": 0.4682323142,
+      "inliers_min": 25004,
+      "mppi": {
+        "control_stride": 10,
+        "evaluations": 120,
+        "minimum_nonzero_valid_rollout_ratio": 0.3427734375,
+        "maximum_robot_cost": 71,
+        "minimum_robot_clearance_m": 0.670820415,
+        "all_colliding_evaluations": 0,
+        "retreating_evaluations": 0,
+        "maximum_all_colliding_abs_v": 0,
+        "invalid_commands": 0,
+        "solve_ms_p95": 0.7387
+      },
+      "odometry_config": {
+        "map_voxel_size_m": 0.349999994,
+        "scan_voxel_size_m": 0.2199999988,
+        "map_radius_m": 40,
+        "normal_neighbors": 12
+      },
+      "duration_s": 118.901932,
+      "normal_cache": {
+        "reused_points": 99995883,
+        "recomputed_points": 5972888,
+        "prepare_ms_total": 845.1373,
+        "recompute_queue_bytes": 0
+      },
+      "host_map_memory": {
+        "new_slabs": 19,
+        "node_pool_bytes": 5242880,
+        "order_link_bytes": 1600000
+      },
+      "actual_normal_schedule": "fused",
+      "artifacts_sha256": {
+        ".csv": "2bc2e37471fd37733bf9c95a99db8267dff04cc5943fa7e89f2993df22888722",
+        ".json": "cd74bbe28b960f0f8d72038c9e8d957c85848a38b4f4a2fbd5d1cdbf1967b9f9",
+        ".log": "ef6da515ec345b426c99a22ce9e7386773c162415e477f987ae32914a6c73278"
+      }
+    },
+    {
+      "mode": "split",
+      "repeat": 0,
+      "returncode": 0,
+      "argv": [
+        "build/kiss_split_normals_20261010/final/runner.exe",
+        "--sequence",
+        "build/cudanav_real_gpu_stack_release_724d05ca/sequence.bin",
+        "--json",
+        "build/kiss_split_normals_20261010/final/split_0.json",
+        "--csv",
+        "build/kiss_split_normals_20261010/final/split_0.csv",
+        "--kiss-downsample-backend",
+        "pooled",
+        "--kiss-map-backend",
+        "pooled",
+        "--kiss-nn-backend",
+        "voxel",
+        "--kiss-normal-backend",
+        "voxel",
+        "--kiss-reduction-backend",
+        "block",
+        "--kiss-normal-query-order",
+        "cell",
+        "--kiss-normal-update",
+        "incremental",
+        "--maximum-ate-rmse-m",
+        "3",
+        "--maximum-final-drift-percent",
+        "5",
+        "--minimum-inliers",
+        "100",
+        "--maximum-all-colliding-evaluations",
+        "6",
+        "--check",
+        "--kiss-normal-schedule",
+        "split"
+      ],
+      "timing": {
+        "frames": 1190,
+        "frame_ms": {
+          "mean": 21.857570756302522,
+          "p95": 28.7237,
+          "p99": 33.0238,
+          "max": 39.1661
+        },
+        "odometry_ms": {
+          "mean": 17.23864142857143,
+          "p95": 23.573,
+          "p99": 26.8427,
+          "max": 30.3248
+        },
+        "normal_ms": {
+          "mean": 2.17405472605042,
+          "p95": 3.48419,
+          "p99": 4.06666,
+          "max": 5.20461
+        },
+        "index_ms": {
+          "mean": 0.29715138151260506,
+          "p95": 0.483296,
+          "p99": 0.503264,
+          "max": 0.83088
+        },
+        "nn_ms": {
+          "mean": 3.0427111361344537,
+          "p95": 4.55107,
+          "p99": 5.08922,
+          "max": 5.79792
+        },
+        "validation_ms": {
+          "mean": 1.2131495798319327,
+          "p95": 2.2489,
+          "p99": 3.3773,
+          "max": 5.5583
+        },
+        "deskew_wall_ms": {
+          "mean": 0.7212531092436975,
+          "p95": 0.9827,
+          "p99": 1.1714,
+          "max": 1.3483
+        },
+        "downsample_ms": {
+          "mean": 3.677193949579832,
+          "p95": 5.1412,
+          "p99": 6.2253,
+          "max": 7.0706
+        },
+        "map_upload_ms": {
+          "mean": 0.40113789915966386,
+          "p95": 0.6112,
+          "p99": 0.699,
+          "max": 0.8115
+        },
+        "icp_ms": {
+          "mean": 4.431721932773109,
+          "p95": 6.2188,
+          "p99": 6.9763,
+          "max": 8.353
+        },
+        "normal_equation_ms": {
+          "mean": 0.2865152537815126,
+          "p95": 0.360704,
+          "p99": 0.366816,
+          "max": 0.381536
+        },
+        "map_update_ms": {
+          "mean": 3.4899393277310926,
+          "p95": 5.2834,
+          "p99": 6.5422,
+          "max": 7.8501
+        },
+        "map_prune_ms": {
+          "mean": 0.43394571428571427,
+          "p95": 0.7627,
+          "p99": 0.9301,
+          "max": 1.2771
+        },
+        "map_insert_ms": {
+          "mean": 2.323497983193277,
+          "p95": 3.6155,
+          "p99": 4.6242,
+          "max": 5.1945
+        },
+        "map_pack_ms": {
+          "mean": 0.5666174789915966,
+          "p95": 1.1132,
+          "p99": 1.2589,
+          "max": 1.8303
+        },
+        "map_reorder_ms": {
+          "mean": 0.07652939831932773,
+          "p95": 0.13424,
+          "p99": 0.15568,
+          "max": 0.246752
+        },
+        "normal_cache_prepare_ms": {
+          "mean": 0.7009496638655462,
+          "p95": 1.1247,
+          "p99": 1.357,
+          "max": 1.6133
+        },
+        "fifo_response_p95_ms": 28.723700000000463,
+        "fifo_response_p99_ms": 33.02379999999539,
+        "fifo_final_response_ms": 27.074800000002142,
+        "fifo_deadline_miss_fraction": 0.0,
+        "over_100ms_fraction": 0.0
+      },
+      "quality_pass": true,
+      "ate_rmse_m": 0.805742516,
+      "final_drift_percent": 0.4682323142,
+      "inliers_min": 25004,
+      "mppi": {
+        "control_stride": 10,
+        "evaluations": 120,
+        "minimum_nonzero_valid_rollout_ratio": 0.3427734375,
+        "maximum_robot_cost": 80,
+        "minimum_robot_clearance_m": 0.6324555278,
+        "all_colliding_evaluations": 0,
+        "retreating_evaluations": 0,
+        "maximum_all_colliding_abs_v": 0,
+        "invalid_commands": 0,
+        "solve_ms_p95": 0.7901
+      },
+      "odometry_config": {
+        "map_voxel_size_m": 0.349999994,
+        "scan_voxel_size_m": 0.2199999988,
+        "map_radius_m": 40,
+        "normal_neighbors": 12
+      },
+      "duration_s": 118.901932,
+      "normal_cache": {
+        "reused_points": 99995883,
+        "recomputed_points": 5972888,
+        "prepare_ms_total": 834.1301,
+        "recompute_queue_bytes": 800004
+      },
+      "host_map_memory": {
+        "new_slabs": 19,
+        "node_pool_bytes": 5242880,
+        "order_link_bytes": 1600000
+      },
+      "actual_normal_schedule": "split",
+      "artifacts_sha256": {
+        ".csv": "2a884fe1fab52fe80505f0e5199f18927e660a32310d2d32231cdaba667149af",
+        ".json": "6b4431f2916add7eb856519d11a743f46325ea692db2c04e4de9eb6c57f7002b",
+        ".log": "6ef5675a21bf656eed7a719a07a36aec3f84d948e9b24ff9ca3840114e198a02"
+      }
+    },
+    {
+      "mode": "split",
+      "repeat": 1,
+      "returncode": 0,
+      "argv": [
+        "build/kiss_split_normals_20261010/final/runner.exe",
+        "--sequence",
+        "build/cudanav_real_gpu_stack_release_724d05ca/sequence.bin",
+        "--json",
+        "build/kiss_split_normals_20261010/final/split_1.json",
+        "--csv",
+        "build/kiss_split_normals_20261010/final/split_1.csv",
+        "--kiss-downsample-backend",
+        "pooled",
+        "--kiss-map-backend",
+        "pooled",
+        "--kiss-nn-backend",
+        "voxel",
+        "--kiss-normal-backend",
+        "voxel",
+        "--kiss-reduction-backend",
+        "block",
+        "--kiss-normal-query-order",
+        "cell",
+        "--kiss-normal-update",
+        "incremental",
+        "--maximum-ate-rmse-m",
+        "3",
+        "--maximum-final-drift-percent",
+        "5",
+        "--minimum-inliers",
+        "100",
+        "--maximum-all-colliding-evaluations",
+        "6",
+        "--check",
+        "--kiss-normal-schedule",
+        "split"
+      ],
+      "timing": {
+        "frames": 1190,
+        "frame_ms": {
+          "mean": 22.224064453781512,
+          "p95": 29.9219,
+          "p99": 33.0127,
+          "max": 37.9886
+        },
+        "odometry_ms": {
+          "mean": 17.528299663865546,
+          "p95": 24.282,
+          "p99": 26.452,
+          "max": 29.4327
+        },
+        "normal_ms": {
+          "mean": 2.179240630252101,
+          "p95": 3.48349,
+          "p99": 4.1143,
+          "max": 5.12371
+        },
+        "index_ms": {
+          "mean": 0.29722102857142857,
+          "p95": 0.481984,
+          "p99": 0.513696,
+          "max": 0.951552
+        },
+        "nn_ms": {
+          "mean": 3.0419111647058825,
+          "p95": 4.54602,
+          "p99": 5.08608,
+          "max": 5.67293
+        },
+        "validation_ms": {
+          "mean": 1.264285462184874,
+          "p95": 2.2995,
+          "p99": 2.9057,
+          "max": 4.8259
+        },
+        "deskew_wall_ms": {
+          "mean": 0.7415428571428572,
+          "p95": 0.9947,
+          "p99": 1.1299,
+          "max": 1.964
+        },
+        "downsample_ms": {
+          "mean": 3.791217058823529,
+          "p95": 5.3518,
+          "p99": 6.4683,
+          "max": 9.757
+        },
+        "map_upload_ms": {
+          "mean": 0.39617949579831935,
+          "p95": 0.5804,
+          "p99": 0.67,
+          "max": 0.9814
+        },
+        "icp_ms": {
+          "mean": 4.43907193277311,
+          "p95": 6.1537,
+          "p99": 6.8773,
+          "max": 8.3589
+        },
+        "normal_equation_ms": {
+          "mean": 0.2872475428571429,
+          "p95": 0.362688,
+          "p99": 0.369504,
+          "max": 0.787744
+        },
+        "map_update_ms": {
+          "mean": 3.5789110084033613,
+          "p95": 5.6087,
+          "p99": 6.3668,
+          "max": 7.9968
+        },
+        "map_prune_ms": {
+          "mean": 0.4458005882352941,
+          "p95": 0.7648,
+          "p99": 0.9351,
+          "max": 1.1883
+        },
+        "map_insert_ms": {
+          "mean": 2.3844,
+          "p95": 3.9201,
+          "p99": 4.4684,
+          "max": 5.7165
+        },
+        "map_pack_ms": {
+          "mean": 0.5762626050420168,
+          "p95": 1.1222,
+          "p99": 1.2899,
+          "max": 1.5536
+        },
+        "map_reorder_ms": {
+          "mean": 0.07581743865546219,
+          "p95": 0.129088,
+          "p99": 0.15008,
+          "max": 0.21856
+        },
+        "normal_cache_prepare_ms": {
+          "mean": 0.7022056302521008,
+          "p95": 1.1246,
+          "p99": 1.326,
+          "max": 1.7058
+        },
+        "fifo_response_p95_ms": 29.921900000001187,
+        "fifo_response_p99_ms": 33.01270000000659,
+        "fifo_final_response_ms": 30.070300000006682,
+        "fifo_deadline_miss_fraction": 0.0,
+        "over_100ms_fraction": 0.0
+      },
+      "quality_pass": true,
+      "ate_rmse_m": 0.805742516,
+      "final_drift_percent": 0.4682323142,
+      "inliers_min": 25004,
+      "mppi": {
+        "control_stride": 10,
+        "evaluations": 120,
+        "minimum_nonzero_valid_rollout_ratio": 0.3427734375,
+        "maximum_robot_cost": 92,
+        "minimum_robot_clearance_m": 0.5830951929,
+        "all_colliding_evaluations": 0,
+        "retreating_evaluations": 0,
+        "maximum_all_colliding_abs_v": 0,
+        "invalid_commands": 0,
+        "solve_ms_p95": 0.7887
+      },
+      "odometry_config": {
+        "map_voxel_size_m": 0.349999994,
+        "scan_voxel_size_m": 0.2199999988,
+        "map_radius_m": 40,
+        "normal_neighbors": 12
+      },
+      "duration_s": 118.901932,
+      "normal_cache": {
+        "reused_points": 99995883,
+        "recomputed_points": 5972888,
+        "prepare_ms_total": 835.6247,
+        "recompute_queue_bytes": 800004
+      },
+      "host_map_memory": {
+        "new_slabs": 19,
+        "node_pool_bytes": 5242880,
+        "order_link_bytes": 1600000
+      },
+      "actual_normal_schedule": "split",
+      "artifacts_sha256": {
+        ".csv": "4e5672e14eb63eeca85a4f26c981f9850083e4451ce37db35ce594b825a5168a",
+        ".json": "75afcbfe0eb1e5aefb46ca3a068fd3d86171ef41f6bda3004e8498f23f3f2845",
+        ".log": "4f13eb769fc3569fdff6ed31b065417fd2a303e997afc610a1d2d5136c1575b8"
+      }
+    },
+    {
+      "mode": "fused",
+      "repeat": 1,
+      "returncode": 0,
+      "argv": [
+        "build/kiss_split_normals_20261010/final/runner.exe",
+        "--sequence",
+        "build/cudanav_real_gpu_stack_release_724d05ca/sequence.bin",
+        "--json",
+        "build/kiss_split_normals_20261010/final/fused_1.json",
+        "--csv",
+        "build/kiss_split_normals_20261010/final/fused_1.csv",
+        "--kiss-downsample-backend",
+        "pooled",
+        "--kiss-map-backend",
+        "pooled",
+        "--kiss-nn-backend",
+        "voxel",
+        "--kiss-normal-backend",
+        "voxel",
+        "--kiss-reduction-backend",
+        "block",
+        "--kiss-normal-query-order",
+        "cell",
+        "--kiss-normal-update",
+        "incremental",
+        "--maximum-ate-rmse-m",
+        "3",
+        "--maximum-final-drift-percent",
+        "5",
+        "--minimum-inliers",
+        "100",
+        "--maximum-all-colliding-evaluations",
+        "6",
+        "--check",
+        "--kiss-normal-schedule",
+        "fused"
+      ],
+      "timing": {
+        "frames": 1190,
+        "frame_ms": {
+          "mean": 21.73739218487395,
+          "p95": 28.391,
+          "p99": 31.1873,
+          "max": 35.2593
+        },
+        "odometry_ms": {
+          "mean": 17.18253369747899,
+          "p95": 23.2112,
+          "p99": 25.9746,
+          "max": 29.4078
+        },
+        "normal_ms": {
+          "mean": 2.342975063865546,
+          "p95": 3.6184,
+          "p99": 4.61619,
+          "max": 5.4104
+        },
+        "index_ms": {
+          "mean": 0.29579780840336134,
+          "p95": 0.483104,
+          "p99": 0.51056,
+          "max": 0.70528
+        },
+        "nn_ms": {
+          "mean": 3.0209917747899158,
+          "p95": 4.55421,
+          "p99": 5.1713,
+          "max": 5.70989
+        },
+        "validation_ms": {
+          "mean": 1.1401720168067226,
+          "p95": 1.9837,
+          "p99": 2.7702,
+          "max": 5.3982
+        },
+        "deskew_wall_ms": {
+          "mean": 0.744295462184874,
+          "p95": 1.0294,
+          "p99": 1.2459,
+          "max": 1.9953
+        },
+        "downsample_ms": {
+          "mean": 3.6212508403361343,
+          "p95": 5.0022,
+          "p99": 6.3646,
+          "max": 9.2538
+        },
+        "map_upload_ms": {
+          "mean": 0.39933655462184875,
+          "p95": 0.6212,
+          "p99": 0.7215,
+          "max": 0.9329
+        },
+        "icp_ms": {
+          "mean": 4.40128050420168,
+          "p95": 6.1973,
+          "p99": 6.9774,
+          "max": 8.2493
+        },
+        "normal_equation_ms": {
+          "mean": 0.2856992537815126,
+          "p95": 0.3632,
+          "p99": 0.369248,
+          "max": 0.3864
+        },
+        "map_update_ms": {
+          "mean": 3.4194890756302523,
+          "p95": 4.9947,
+          "p99": 5.9834,
+          "max": 6.8388
+        },
+        "map_prune_ms": {
+          "mean": 0.42256109243697476,
+          "p95": 0.736,
+          "p99": 0.8998,
+          "max": 1.5201
+        },
+        "map_insert_ms": {
+          "mean": 2.2595617647058823,
+          "p95": 3.3577,
+          "p99": 4.2297,
+          "max": 4.8434
+        },
+        "map_pack_ms": {
+          "mean": 0.5780151260504202,
+          "p95": 1.1141,
+          "p99": 1.299,
+          "max": 1.4171
+        },
+        "map_reorder_ms": {
+          "mean": 0.07495161008403362,
+          "p95": 0.131872,
+          "p99": 0.155712,
+          "max": 0.210592
+        },
+        "normal_cache_prepare_ms": {
+          "mean": 0.6920525210084033,
+          "p95": 1.1175,
+          "p99": 1.3651,
+          "max": 1.695
+        },
+        "fifo_response_p95_ms": 28.39099999999962,
+        "fifo_response_p99_ms": 31.187300000005052,
+        "fifo_final_response_ms": 27.88959999999497,
+        "fifo_deadline_miss_fraction": 0.0,
+        "over_100ms_fraction": 0.0
+      },
+      "quality_pass": true,
+      "ate_rmse_m": 0.805742516,
+      "final_drift_percent": 0.4682323142,
+      "inliers_min": 25004,
+      "mppi": {
+        "control_stride": 10,
+        "evaluations": 120,
+        "minimum_nonzero_valid_rollout_ratio": 0.3427734375,
+        "maximum_robot_cost": 71,
+        "minimum_robot_clearance_m": 0.670820415,
+        "all_colliding_evaluations": 0,
+        "retreating_evaluations": 0,
+        "maximum_all_colliding_abs_v": 0,
+        "invalid_commands": 0,
+        "solve_ms_p95": 0.7675
+      },
+      "odometry_config": {
+        "map_voxel_size_m": 0.349999994,
+        "scan_voxel_size_m": 0.2199999988,
+        "map_radius_m": 40,
+        "normal_neighbors": 12
+      },
+      "duration_s": 118.901932,
+      "normal_cache": {
+        "reused_points": 99995883,
+        "recomputed_points": 5972888,
+        "prepare_ms_total": 823.5425,
+        "recompute_queue_bytes": 0
+      },
+      "host_map_memory": {
+        "new_slabs": 19,
+        "node_pool_bytes": 5242880,
+        "order_link_bytes": 1600000
+      },
+      "actual_normal_schedule": "fused",
+      "artifacts_sha256": {
+        ".csv": "f098c8d3d077c217395ef243976394414bf71aabd264cef3852ee21b9181c74f",
+        ".json": "0a6cbcca68f68d0cbbf1e4cc4040c05e7e934e2802653982788bc8a6989e41d1",
+        ".log": "ef6da515ec345b426c99a22ce9e7386773c162415e477f987ae32914a6c73278"
+      }
+    },
+    {
+      "mode": "fused",
+      "repeat": 2,
+      "returncode": 0,
+      "argv": [
+        "build/kiss_split_normals_20261010/final/runner.exe",
+        "--sequence",
+        "build/cudanav_real_gpu_stack_release_724d05ca/sequence.bin",
+        "--json",
+        "build/kiss_split_normals_20261010/final/fused_2.json",
+        "--csv",
+        "build/kiss_split_normals_20261010/final/fused_2.csv",
+        "--kiss-downsample-backend",
+        "pooled",
+        "--kiss-map-backend",
+        "pooled",
+        "--kiss-nn-backend",
+        "voxel",
+        "--kiss-normal-backend",
+        "voxel",
+        "--kiss-reduction-backend",
+        "block",
+        "--kiss-normal-query-order",
+        "cell",
+        "--kiss-normal-update",
+        "incremental",
+        "--maximum-ate-rmse-m",
+        "3",
+        "--maximum-final-drift-percent",
+        "5",
+        "--minimum-inliers",
+        "100",
+        "--maximum-all-colliding-evaluations",
+        "6",
+        "--check",
+        "--kiss-normal-schedule",
+        "fused"
+      ],
+      "timing": {
+        "frames": 1190,
+        "frame_ms": {
+          "mean": 22.38047756302521,
+          "p95": 29.3114,
+          "p99": 33.1886,
+          "max": 37.7778
+        },
+        "odometry_ms": {
+          "mean": 17.69119588235294,
+          "p95": 23.6762,
+          "p99": 27.004,
+          "max": 30.3647
+        },
+        "normal_ms": {
+          "mean": 2.3439589714285716,
+          "p95": 3.62554,
+          "p99": 4.63661,
+          "max": 5.2735
+        },
+        "index_ms": {
+          "mean": 0.29750238655462186,
+          "p95": 0.488448,
+          "p99": 0.516736,
+          "max": 0.829056
+        },
+        "nn_ms": {
+          "mean": 3.0274975411764706,
+          "p95": 4.54458,
+          "p99": 5.03808,
+          "max": 5.60394
+        },
+        "validation_ms": {
+          "mean": 1.2483363025210084,
+          "p95": 2.2288,
+          "p99": 2.9051,
+          "max": 6.0771
+        },
+        "deskew_wall_ms": {
+          "mean": 0.7988793277310924,
+          "p95": 1.1674,
+          "p99": 1.4303,
+          "max": 1.7333
+        },
+        "downsample_ms": {
+          "mean": 3.7355778151260504,
+          "p95": 5.3136,
+          "p99": 6.1372,
+          "max": 10.0941
+        },
+        "map_upload_ms": {
+          "mean": 0.40141966386554623,
+          "p95": 0.6062,
+          "p99": 0.7369,
+          "max": 3.6976
+        },
+        "icp_ms": {
+          "mean": 4.421123193277311,
+          "p95": 6.1871,
+          "p99": 6.9292,
+          "max": 8.7392
+        },
+        "normal_equation_ms": {
+          "mean": 0.2859583193277311,
+          "p95": 0.362208,
+          "p99": 0.369216,
+          "max": 0.380288
+        },
+        "map_update_ms": {
+          "mean": 3.571214537815126,
+          "p95": 5.3868,
+          "p99": 6.6881,
+          "max": 8.124
+        },
+        "map_prune_ms": {
+          "mean": 0.44029857142857143,
+          "p95": 0.779,
+          "p99": 0.9231,
+          "max": 1.1932
+        },
+        "map_insert_ms": {
+          "mean": 2.38328243697479,
+          "p95": 3.6992,
+          "p99": 4.661,
+          "max": 5.3466
+        },
+        "map_pack_ms": {
+          "mean": 0.5793502521008403,
+          "p95": 1.1129,
+          "p99": 1.397,
+          "max": 1.6731
+        },
+        "map_reorder_ms": {
+          "mean": 0.07707183697478992,
+          "p95": 0.132064,
+          "p99": 0.15792,
+          "max": 3.31251
+        },
+        "normal_cache_prepare_ms": {
+          "mean": 0.7200882352941177,
+          "p95": 1.1584,
+          "p99": 1.4479,
+          "max": 2.0895
+        },
+        "fifo_response_p95_ms": 29.311399999998685,
+        "fifo_response_p99_ms": 33.18859999999404,
+        "fifo_final_response_ms": 28.19759999999951,
+        "fifo_deadline_miss_fraction": 0.0,
+        "over_100ms_fraction": 0.0
+      },
+      "quality_pass": true,
+      "ate_rmse_m": 0.805742516,
+      "final_drift_percent": 0.4682323142,
+      "inliers_min": 25004,
+      "mppi": {
+        "control_stride": 10,
+        "evaluations": 120,
+        "minimum_nonzero_valid_rollout_ratio": 0.3427734375,
+        "maximum_robot_cost": 80,
+        "minimum_robot_clearance_m": 0.6324555278,
+        "all_colliding_evaluations": 0,
+        "retreating_evaluations": 0,
+        "maximum_all_colliding_abs_v": 0,
+        "invalid_commands": 0,
+        "solve_ms_p95": 0.7904
+      },
+      "odometry_config": {
+        "map_voxel_size_m": 0.349999994,
+        "scan_voxel_size_m": 0.2199999988,
+        "map_radius_m": 40,
+        "normal_neighbors": 12
+      },
+      "duration_s": 118.901932,
+      "normal_cache": {
+        "reused_points": 99995883,
+        "recomputed_points": 5972888,
+        "prepare_ms_total": 856.905,
+        "recompute_queue_bytes": 0
+      },
+      "host_map_memory": {
+        "new_slabs": 19,
+        "node_pool_bytes": 5242880,
+        "order_link_bytes": 1600000
+      },
+      "actual_normal_schedule": "fused",
+      "artifacts_sha256": {
+        ".csv": "9643e739210cf3349c50ce9e4167985b955faecb8e2393db068d3087b6456e86",
+        ".json": "3617ffb29b1e8cfa5ee7f720098416c709b2c2d7b49f726b69d90436ced6cb07",
+        ".log": "6ef5675a21bf656eed7a719a07a36aec3f84d948e9b24ff9ca3840114e198a02"
+      }
+    },
+    {
+      "mode": "split",
+      "repeat": 2,
+      "returncode": 0,
+      "argv": [
+        "build/kiss_split_normals_20261010/final/runner.exe",
+        "--sequence",
+        "build/cudanav_real_gpu_stack_release_724d05ca/sequence.bin",
+        "--json",
+        "build/kiss_split_normals_20261010/final/split_2.json",
+        "--csv",
+        "build/kiss_split_normals_20261010/final/split_2.csv",
+        "--kiss-downsample-backend",
+        "pooled",
+        "--kiss-map-backend",
+        "pooled",
+        "--kiss-nn-backend",
+        "voxel",
+        "--kiss-normal-backend",
+        "voxel",
+        "--kiss-reduction-backend",
+        "block",
+        "--kiss-normal-query-order",
+        "cell",
+        "--kiss-normal-update",
+        "incremental",
+        "--maximum-ate-rmse-m",
+        "3",
+        "--maximum-final-drift-percent",
+        "5",
+        "--minimum-inliers",
+        "100",
+        "--maximum-all-colliding-evaluations",
+        "6",
+        "--check",
+        "--kiss-normal-schedule",
+        "split"
+      ],
+      "timing": {
+        "frames": 1190,
+        "frame_ms": {
+          "mean": 24.09543756302521,
+          "p95": 34.6193,
+          "p99": 40.2695,
+          "max": 72.0716
+        },
+        "odometry_ms": {
+          "mean": 19.007858151260503,
+          "p95": 27.0839,
+          "p99": 30.8508,
+          "max": 62.7916
+        },
+        "normal_ms": {
+          "mean": 2.269232794957983,
+          "p95": 3.67693,
+          "p99": 4.33606,
+          "max": 5.09632
+        },
+        "index_ms": {
+          "mean": 0.31335666890756303,
+          "p95": 0.491776,
+          "p99": 0.622816,
+          "max": 1.06906
+        },
+        "nn_ms": {
+          "mean": 3.1567073899159666,
+          "p95": 4.5712,
+          "p99": 5.16726,
+          "max": 5.63027
+        },
+        "validation_ms": {
+          "mean": 1.4932087394957982,
+          "p95": 3.0593,
+          "p99": 4.5256,
+          "max": 9.464
+        },
+        "deskew_wall_ms": {
+          "mean": 0.8508490756302521,
+          "p95": 1.2728,
+          "p99": 1.5437,
+          "max": 3.7812
+        },
+        "downsample_ms": {
+          "mean": 4.142529579831932,
+          "p95": 6.0654,
+          "p99": 7.784,
+          "max": 36.7652
+        },
+        "map_upload_ms": {
+          "mean": 0.4208316806722689,
+          "p95": 0.6313,
+          "p99": 0.7882,
+          "max": 2.7724
+        },
+        "icp_ms": {
+          "mean": 4.687129159663866,
+          "p95": 6.5232,
+          "p99": 8.045,
+          "max": 16.0163
+        },
+        "normal_equation_ms": {
+          "mean": 0.3134337109243697,
+          "p95": 0.455552,
+          "p99": 0.508896,
+          "max": 5.26941
+        },
+        "map_update_ms": {
+          "mean": 3.8711593277310925,
+          "p95": 6.2323,
+          "p99": 7.4756,
+          "max": 11.2037
+        },
+        "map_prune_ms": {
+          "mean": 0.47935478991596636,
+          "p95": 0.8821,
+          "p99": 1.0622,
+          "max": 1.7887
+        },
+        "map_insert_ms": {
+          "mean": 2.592745630252101,
+          "p95": 4.2654,
+          "p99": 5.1863,
+          "max": 9.2288
+        },
+        "map_pack_ms": {
+          "mean": 0.6070389915966387,
+          "p95": 1.1506,
+          "p99": 1.3507,
+          "max": 5.9487
+        },
+        "map_reorder_ms": {
+          "mean": 0.07956921008403361,
+          "p95": 0.137888,
+          "p99": 0.172768,
+          "max": 0.392384
+        },
+        "normal_cache_prepare_ms": {
+          "mean": 0.7814901680672269,
+          "p95": 1.2567,
+          "p99": 1.6962,
+          "max": 3.0448
+        },
+        "fifo_response_p95_ms": 34.61930000000575,
+        "fifo_response_p99_ms": 40.269500000002154,
+        "fifo_final_response_ms": 27.915500000002794,
+        "fifo_deadline_miss_fraction": 0.0,
+        "over_100ms_fraction": 0.0
+      },
+      "quality_pass": true,
+      "ate_rmse_m": 0.805742516,
+      "final_drift_percent": 0.4682323142,
+      "inliers_min": 25004,
+      "mppi": {
+        "control_stride": 10,
+        "evaluations": 120,
+        "minimum_nonzero_valid_rollout_ratio": 0.3427734375,
+        "maximum_robot_cost": 71,
+        "minimum_robot_clearance_m": 0.670820415,
+        "all_colliding_evaluations": 0,
+        "retreating_evaluations": 0,
+        "maximum_all_colliding_abs_v": 0,
+        "invalid_commands": 0,
+        "solve_ms_p95": 0.7499
+      },
+      "odometry_config": {
+        "map_voxel_size_m": 0.349999994,
+        "scan_voxel_size_m": 0.2199999988,
+        "map_radius_m": 40,
+        "normal_neighbors": 12
+      },
+      "duration_s": 118.901932,
+      "normal_cache": {
+        "reused_points": 99995883,
+        "recomputed_points": 5972888,
+        "prepare_ms_total": 929.9733,
+        "recompute_queue_bytes": 800004
+      },
+      "host_map_memory": {
+        "new_slabs": 19,
+        "node_pool_bytes": 5242880,
+        "order_link_bytes": 1600000
+      },
+      "actual_normal_schedule": "split",
+      "artifacts_sha256": {
+        ".csv": "00198a94465d64ce96b5c063f70ab5e3fe9326f4661bf016401535f235a30852",
+        ".json": "4955c61afcd84bca10da60b699c8dc77fcf2ea8866b34ca0f51f2825e80a9af3",
+        ".log": "e23aa9ba0fb6eef79c3e150536b5c05503c7a306f1cc36342ff3bfc454bc313f"
+      }
+    },
+    {
+      "mode": "default",
+      "repeat": 0,
+      "returncode": 0,
+      "argv": [
+        "build/kiss_split_normals_20261010/final/runner.exe",
+        "--sequence",
+        "build/cudanav_real_gpu_stack_release_724d05ca/sequence.bin",
+        "--json",
+        "build/kiss_split_normals_20261010/final/default_0.json",
+        "--csv",
+        "build/kiss_split_normals_20261010/final/default_0.csv",
+        "--kiss-downsample-backend",
+        "pooled",
+        "--kiss-map-backend",
+        "pooled",
+        "--kiss-nn-backend",
+        "voxel",
+        "--kiss-normal-backend",
+        "voxel",
+        "--kiss-reduction-backend",
+        "block",
+        "--kiss-normal-query-order",
+        "cell",
+        "--kiss-normal-update",
+        "incremental",
+        "--maximum-ate-rmse-m",
+        "3",
+        "--maximum-final-drift-percent",
+        "5",
+        "--minimum-inliers",
+        "100",
+        "--maximum-all-colliding-evaluations",
+        "6",
+        "--check"
+      ],
+      "timing": {
+        "frames": 1190,
+        "frame_ms": {
+          "mean": 22.46219949579832,
+          "p95": 29.3756,
+          "p99": 32.4252,
+          "max": 35.1677
+        },
+        "odometry_ms": {
+          "mean": 17.77322882352941,
+          "p95": 24.1607,
+          "p99": 26.0255,
+          "max": 28.7036
+        },
+        "normal_ms": {
+          "mean": 2.346502008403361,
+          "p95": 3.61651,
+          "p99": 4.55814,
+          "max": 5.24726
+        },
+        "index_ms": {
+          "mean": 0.297644531092437,
+          "p95": 0.483936,
+          "p99": 0.503808,
+          "max": 0.547712
+        },
+        "nn_ms": {
+          "mean": 3.0305878974789917,
+          "p95": 4.53008,
+          "p99": 5.02989,
+          "max": 5.5719
+        },
+        "validation_ms": {
+          "mean": 1.2196094117647058,
+          "p95": 2.1535,
+          "p99": 2.8715,
+          "max": 5.107
+        },
+        "deskew_wall_ms": {
+          "mean": 0.7925104201680673,
+          "p95": 1.1058,
+          "p99": 1.3677,
+          "max": 1.6993
+        },
+        "downsample_ms": {
+          "mean": 3.799628319327731,
+          "p95": 5.1856,
+          "p99": 6.0793,
+          "max": 9.8639
+        },
+        "map_upload_ms": {
+          "mean": 0.4157116806722689,
+          "p95": 0.621,
+          "p99": 0.7107,
+          "max": 0.9168
+        },
+        "icp_ms": {
+          "mean": 4.4331676470588235,
+          "p95": 6.2079,
+          "p99": 6.9517,
+          "max": 8.1522
+        },
+        "normal_equation_ms": {
+          "mean": 0.28702698487394956,
+          "p95": 0.363104,
+          "p99": 0.370208,
+          "max": 0.38064
+        },
+        "map_update_ms": {
+          "mean": 3.5870042016806725,
+          "p95": 5.4934,
+          "p99": 6.4568,
+          "max": 8.5724
+        },
+        "map_prune_ms": {
+          "mean": 0.44232823529411763,
+          "p95": 0.7567,
+          "p99": 1.0064,
+          "max": 1.2381
+        },
+        "map_insert_ms": {
+          "mean": 2.3970697478991596,
+          "p95": 3.7872,
+          "p99": 4.3831,
+          "max": 5.99
+        },
+        "map_pack_ms": {
+          "mean": 0.5783043697478991,
+          "p95": 1.1226,
+          "p99": 1.296,
+          "max": 1.7303
+        },
+        "map_reorder_ms": {
+          "mean": 0.07907269915966386,
+          "p95": 0.139296,
+          "p99": 0.167392,
+          "max": 0.481472
+        },
+        "normal_cache_prepare_ms": {
+          "mean": 0.7116119327731092,
+          "p95": 1.128,
+          "p99": 1.3915,
+          "max": 1.7918
+        },
+        "fifo_response_p95_ms": 29.375599999999395,
+        "fifo_response_p99_ms": 32.425200000001496,
+        "fifo_final_response_ms": 26.76260000000184,
+        "fifo_deadline_miss_fraction": 0.0,
+        "over_100ms_fraction": 0.0
+      },
+      "quality_pass": true,
+      "ate_rmse_m": 0.805742516,
+      "final_drift_percent": 0.4682323142,
+      "inliers_min": 25004,
+      "mppi": {
+        "control_stride": 10,
+        "evaluations": 120,
+        "minimum_nonzero_valid_rollout_ratio": 0.3427734375,
+        "maximum_robot_cost": 71,
+        "minimum_robot_clearance_m": 0.670820415,
+        "all_colliding_evaluations": 0,
+        "retreating_evaluations": 0,
+        "maximum_all_colliding_abs_v": 0,
+        "invalid_commands": 0,
+        "solve_ms_p95": 0.7609
+      },
+      "odometry_config": {
+        "map_voxel_size_m": 0.349999994,
+        "scan_voxel_size_m": 0.2199999988,
+        "map_radius_m": 40,
+        "normal_neighbors": 12
+      },
+      "duration_s": 118.901932,
+      "normal_cache": {
+        "reused_points": 99995883,
+        "recomputed_points": 5972888,
+        "prepare_ms_total": 846.8182,
+        "recompute_queue_bytes": 0
+      },
+      "host_map_memory": {
+        "new_slabs": 19,
+        "node_pool_bytes": 5242880,
+        "order_link_bytes": 1600000
+      },
+      "actual_normal_schedule": "fused",
+      "artifacts_sha256": {
+        ".csv": "a1c7df0bae990c3076690f4473040ff2f1975ec6d0d15dd55ab525cbeca11317",
+        ".json": "1f93534008e90ea8d80a7ea5c467b94a86dfe443224907dd7336c368678180db",
+        ".log": "bc6e0ec759c5943e49b572988b594fdc75c7ecf2dd21266aee0beac23052a47c"
+      }
+    }
+  ],
+  "paired_checks": [
+    {
+      "repeat": 0,
+      "frame_p95_under_40ms": true,
+      "faster_frame_p95": true,
+      "faster_normal_mean": true,
+      "trajectory_map_and_reuse_csv_equal": true,
+      "ate_equal": true,
+      "drift_equal": true
+    },
+    {
+      "repeat": 1,
+      "frame_p95_under_40ms": true,
+      "faster_frame_p95": false,
+      "faster_normal_mean": true,
+      "trajectory_map_and_reuse_csv_equal": true,
+      "ate_equal": true,
+      "drift_equal": true
+    },
+    {
+      "repeat": 2,
+      "frame_p95_under_40ms": true,
+      "faster_frame_p95": false,
+      "faster_normal_mean": true,
+      "trajectory_map_and_reuse_csv_equal": true,
+      "ate_equal": true,
+      "drift_equal": true
+    }
+  ],
+  "p95_saved_ms": [
+    0.7703999999999986,
+    -1.5309000000000026,
+    -5.307900000000004
+  ],
+  "occupied_cell_different_frames": [
+    87,
+    89,
+    81
+  ],
+  "all_pairs_reach_1ms_target": false,
+  "default_checks": {
+    "expected_normal_schedule": true,
+    "expected_queue_storage": true,
+    "frame_p95_under_40ms": true,
+    "trajectory_map_and_reuse_csv_equal": true
+  },
+  "raw_evidence_directory": "build/kiss_split_normals_20261010/final",
+  "publication_generator_sha256": "579f36935639b5a582a197aab8d98216051c20b78b9c3b85a666a1a9fe4a2378",
+  "verification": {
+    "focused_ctest": {
+      "passed": 7,
+      "total": 7
+    },
+    "cpu_python_ctest": {
+      "passed": 82,
+      "total": 82
+    },
+    "gpu_memcheck": {
+      "passed": true,
+      "errors": 0
+    },
+    "final_benchmark": {
+      "returncode": 1,
+      "quality_gates_pass": true,
+      "all_point_order_normal_bits_pass": true,
+      "paired_performance_gate_pass": false,
+      "default_checks_pass": true,
+      "reason": "Two timing pairs regress whole-frame p95; performance gate fails, Fused default retained"
+    },
+    "logs_sha256": {
+      "final_build.log": "31f9c782d6e99ba915ee45139343768757775834d49296aa89c914590f7c1523",
+      "focused_ctest.log": "960bec05680a5e0615f9cc2838d6dd414be3b1493ef2b55080506cb7d473748f",
+      "cpu_python_ctest.log": "4e57973db4affe3c10a00fbbbbe29ee06a439ae499db882c63d25cd6b8b3d168",
+      "gpu_memcheck.log": "616786e6d2466d4213c35c5361f57256d9d263629da548b1d55db8a9c913e8b8"
+    }
+  },
+  "plot_sha256": "dfcc45f3e99b312489e8837dda013df43deed5327f1512c88215817b2aed9915"
+}

@@ -54,6 +54,11 @@ enum class KissIcpNormalUpdate {
     Validate,  // Compare every incremental normal with full recomputation.
 };
 
+enum class KissIcpNormalSchedule {
+    Fused,
+    Split,  // Copy reusable normals, then process a compact recomputation queue.
+};
+
 struct KissIcpConfig {
     float map_voxel_size = 0.35f;
     float scan_voxel_size = 0.22f;
@@ -72,6 +77,7 @@ struct KissIcpConfig {
     KissIcpDownsampleBackend downsample_backend = KissIcpDownsampleBackend::Pooled;
     bool normal_query_cell_order = true;  // Schedule nearby queries together; preserve point IDs.
     KissIcpNormalUpdate normal_update = KissIcpNormalUpdate::Incremental;
+    KissIcpNormalSchedule normal_schedule = KissIcpNormalSchedule::Fused;
 };
 
 struct KissIcpAlignmentStats {
@@ -106,6 +112,7 @@ struct KissIcpTiming {
     std::size_t host_map_upstream_allocations = 0;  // New node-pool slabs since reset.
     std::size_t host_map_pool_bytes = 0;  // Retained node slabs, excluding buckets/points.
     std::size_t host_map_order_bytes = 0;  // Reserved integer links for exact order export.
+    std::size_t normal_recompute_queue_bytes = 0;  // Split queue and its device count.
 };
 
 struct KissIcpFrameResult {
