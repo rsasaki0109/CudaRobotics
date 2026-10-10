@@ -390,6 +390,10 @@ cudabot_demo(gpu_gaussian_splatting_slam src/gpu_gaussian_splatting_slam.cu OPEN
 cudabot_demo(gpu_nerf_volume src/gpu_nerf_volume.cu OPENCV RELAXED_CONSTEXPR)
 
 cudabot_demo(gpu_multi_robot_planner src/gpu_multi_robot_planner.cu OPENCV RELAXED_CONSTEXPR)
+cudabot_demo(gpu_fleet_traffic src/gpu_fleet_traffic.cu OPENCV RELAXED_CONSTEXPR)
+add_test(NAME gpu_fleet_traffic_platoon_smoke
+  COMMAND $<TARGET_FILE:gpu_fleet_traffic> --robots 32 --steps 600 --platoon --no-video --require-completion)
+set_tests_properties(gpu_fleet_traffic_platoon_smoke PROPERTIES LABELS "gpu;performance" TIMEOUT 60)
 
 cudabot_demo(gpu_multi_robot_place_graph_slam src/gpu_multi_robot_place_graph_slam.cu OPENCV RELAXED_CONSTEXPR)
 
@@ -619,6 +623,9 @@ cudabot_demo(gpu_wavefront_planner src/gpu_wavefront_planner.cu OPENCV RELAXED_C
 cudabot_demo(gpu_marching_cubes src/gpu_marching_cubes.cu OPENCV RELAXED_CONSTEXPR NO_FMAD)
 
 cudabot_demo(gpu_mppi_racing src/gpu_mppi_racing.cu OPENCV RELAXED_CONSTEXPR)
+add_test(NAME gpu_mppi_racing_grip_smoke
+  COMMAND $<TARGET_FILE:gpu_mppi_racing> --grip-plant --grip-aware --laps 2 --steps 1000 --no-video --require-success)
+set_tests_properties(gpu_mppi_racing_grip_smoke PROPERTIES LABELS "gpu;performance" TIMEOUT 60)
 
 cudabot_demo(gpu_direct_vo src/gpu_direct_vo.cu OPENCV RELAXED_CONSTEXPR NO_FMAD)
 

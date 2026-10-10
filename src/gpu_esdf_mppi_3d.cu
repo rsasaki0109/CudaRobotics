@@ -90,11 +90,14 @@ constexpr int   MAX_MOVERS = 8;
 constexpr float MOVER_R    = 0.45f;
 struct Movers {
     int n = 0;
-    float p[MAX_MOVERS][3], v[MAX_MOVERS][3];   // current position and velocity
+    float p[MAX_MOVERS][3] = {}, v[MAX_MOVERS][3] = {};   // current position and velocity
     float lo[3], hi[3];                          // region they bounce inside
+    float uncertainty[MAX_MOVERS] = {}, age = 0.0f;
 };
-enum DynMode { MODE_STATIC = 0, MODE_REBUILD = 1, MODE_PREDICT = 2, MODE_PREDICT_BOUNCE = 3, MODE_REBUILD_LOCAL = 4 };
-static const char* MODE_NAMES[] = {"static", "rebuild", "predict", "predict_bounce", "rebuild_local"};
+enum DynMode { MODE_STATIC = 0, MODE_REBUILD = 1, MODE_PREDICT = 2, MODE_PREDICT_BOUNCE = 3,
+               MODE_REBUILD_LOCAL = 4, MODE_STALE = 5, MODE_LATENCY = 6, MODE_RISK = 7 };
+static const char* MODE_NAMES[] = {"static", "rebuild", "predict", "predict_bounce", "rebuild_local",
+                                 "observed_stale", "observed_latency", "observed_risk"};
 
 // Mover coordinate after tau seconds: constant velocity, or with reflections at the
 // region bounds (a triangle wave) when bounce is set.
@@ -270,10 +273,13 @@ __host__ __device__ inline float rollout_cost(const float start[6], const float*
         if (predict) {   // distance to each mover at its predicted position (1: linear, 2: bouncing)
             float tau = (t + 1) * DT;
             for (int i = 0; i < mv.n; i++) {
-                float ex = s[0] - predict_coord(mv.p[i][0], mv.v[i][0], tau, mv.lo[0], mv.hi[0], predict == 2);
-                float ey = s[1] - predict_coord(mv.p[i][1], mv.v[i][1], tau, mv.lo[1], mv.hi[1], predict == 2);
-                float ez = s[2] - predict_coord(mv.p[i][2], mv.v[i][2], tau, mv.lo[2], mv.hi[2], predict == 2);
-                d = fminf(d, sqrtf(ex * ex + ey * ey + ez * ez) - MOVER_R - ROBOT_R);
+                float ex = s[0] - predict_coord(mv.p[i][0], mv.v[i][0], tau, mv.lo[0], mv.hi[0], predict >= 2);
+                float ey = s[1] - predict_coord(mv.p[i][1], mv.v[i][1], tau, mv.lo[1], mv.hi[1], predict >= 2);
+                float ez = s[2] - predict_coord(mv.p[i][2], mv.v[i][2], tau, mv.lo[2], mv.hi[2], predict >= 2);
+                // A bounded envelope covers uncertain velocity and unobserved turns.
+                // Its width grows with prediction time and the age of the observation.
+                float margin = predict == 3 ? fminf(0.65f, mv.uncertainty[i] * (tau + mv.age) + 0.04f) : 0.0f;
+                d = fminf(d, sqrtf(ex * ex + ey * ey + ez * ez) - MOVER_R - ROBOT_R - margin);
             }
         }
         if (d < CLEARANCE) {
@@ -309,6 +315,63 @@ __global__ void rollout_kernel(const float* __restrict__ d_start, const float* _
     for (int i = 0; i < 6; i++) start[i] = d_start[i];
     d_costs[k] = rollout_cost(start, u, d_esdf, d_ctg, mv, predict);
     d_rng[k] = rng;
+}
+
+// A weighted average of safe trajectories can itself be unsafe. Check the
+// near-term average; if necessary retain a feasible sampled trajectory intact.
+__device__ float short_clearance(const float* start, const float* controls, const float* esdf, const Movers& mv) {
+    float s[6]; for (int a = 0; a < 6; a++) s[a] = start[a];
+    float clearance = FLT_MAX;
+    for (int t = 0; t < 12; t++) {
+        step_dynamics(s, controls + t * CTRL_DIM);
+        float d = esdf_at(esdf, s[0], s[1], s[2]) - ROBOT_R;
+        const float tau = (t + 1) * DT;
+        for (int i = 0; i < mv.n; i++) {
+            float d2 = 0;
+            for (int a = 0; a < 3; a++) {
+                const float e = s[a] - predict_coord(mv.p[i][a], mv.v[i][a], tau, mv.lo[a], mv.hi[a], true);
+                d2 += e * e;
+            }
+            const float margin = fminf(0.40f, 0.04f + mv.uncertainty[i] * (tau + mv.age));
+            d = fminf(d, sqrtf(d2) - MOVER_R - ROBOT_R - margin);
+        }
+        clearance = fminf(clearance, d);
+    }
+    return clearance;
+}
+
+__global__ void shield_control(const float* start, const float* esdf, Movers mv,
+                               const float* sampled, const float* costs, float* nominal, int K) {
+    __shared__ int needed, indices[256];
+    __shared__ float scores[256];
+    const int lane = threadIdx.x;
+    if (lane == 0) needed = short_clearance(start, nominal, esdf, mv) < 0.08f;
+    __syncthreads();
+    if (!needed) return;
+    float score = FLT_MAX; int best = -1;
+    for (int k = lane; k < K; k += blockDim.x) {
+        if (costs[k] >= score) continue;
+        if (short_clearance(start, sampled + (size_t)k * T_HORIZON * CTRL_DIM, esdf, mv) >= 0.08f) {
+            score = costs[k]; best = k;
+        }
+    }
+    scores[lane] = score; indices[lane] = best;
+    __syncthreads();
+    for (int offset = 128; offset; offset >>= 1) {
+        if (lane < offset && (scores[lane+offset] < scores[lane] ||
+            (scores[lane+offset] == scores[lane] && indices[lane+offset] >= 0 &&
+             (indices[lane] < 0 || indices[lane+offset] < indices[lane])))) {
+            scores[lane] = scores[lane+offset]; indices[lane] = indices[lane+offset];
+        }
+        __syncthreads();
+    }
+    best = indices[0];
+    if (best >= 0) {
+        for (int j = lane; j < T_HORIZON * CTRL_DIM; j += blockDim.x)
+            nominal[j] = sampled[(size_t)best * T_HORIZON * CTRL_DIM + j];
+    } else if (lane < CTRL_DIM) {
+        nominal[lane] = fminf(A_MAX, fmaxf(-A_MAX, -start[lane+3] / DT));
+    }
 }
 
 // -------------------------------------------------------------------------
@@ -380,11 +443,17 @@ int main(int argc, char** argv) {
     const int seed = args.get_int("seed", 2026, "cuRAND seed", 0);
     const bool no_video = args.flag("no-video", "skip the AVI/GIF output");
     const int n_movers = args.get_int("movers", 0, "moving spherical obstacles beyond the wall (max 8)", 0);
-    const int mode_arg = args.get_int("mode", MODE_PREDICT, "with movers: 0 static map, 1 rebuild ESDF, 2 predict, 3 predict with bounces, 4 local ESDF update", 0);
+    const int mode_arg = args.get_int("mode", MODE_PREDICT, "0 static, 1 rebuild, 2 oracle predict, 3 oracle bounce, 4 local update, 5 stale observations, 6 latency compensation, 7 uncertainty envelope", 0);
     const int trials = args.get_int("trials", 0, "with movers: run N episodes per mode and print a table", 0);
     const float mover_speed = args.get_float("mover-speed", 1.0f, "with movers: speed multiplier (base 0.8-1.5 m/s)");
+    const int observation_delay = args.get_int("observation-delay", 2, "observation delay in 100 ms steps (modes 5-7)", 0);
+    const int observation_period = args.get_int("observation-period", 2, "sensor interval in 100 ms steps (modes 5-7)", 1);
+    const float observation_noise = args.get_float("observation-noise", 0.02f, "position noise standard deviation in metres (modes 5-7)");
+    const int turn_period = args.get_int("turn-period", 0, "rotate mover velocities every N steps, zero disables", 0);
+    const bool observed_trials = args.flag("observed-trials", "compare only observed modes 5-7 with --trials");
     args.finish();
-    if (n_movers > MAX_MOVERS || mode_arg > MODE_REBUILD_LOCAL) { std::fprintf(stderr, "--movers <= 8, --mode 0..4\n"); return 2; }
+    if (n_movers > MAX_MOVERS || mode_arg > MODE_RISK || observation_noise < 0 || !std::isfinite(observation_noise) ||
+        !std::isfinite(mover_speed) || mover_speed <= 0) { std::fprintf(stderr, "--movers <= 8, --mode 0..7; noise >= 0; speed > 0\n"); return 2; }
     const bool write_video = !no_video && trials == 0;
 
     // 1. Scene and 3D ESDF
@@ -568,19 +637,26 @@ int main(int argc, char** argv) {
         for (const auto& w : prev_windows) launch(w, false);
     };
 
-    struct Episode { bool reached = false; int steps = 0; float path_len = 0, min_clearance = FLT_MAX; double ms = 0; };
+    struct Episode { bool reached = false; int steps = 0, stopped = 0; float path_len = 0, min_clearance = FLT_MAX; double ms = 0; std::vector<double> times; };
     auto run_episode = [&](int mode, int episode_seed, bool video_on) {
         Episode ep;
         float st[6];
         std::copy(start_state, start_state + 6, st);
         Movers mv = init_movers(episode_seed);
+        std::vector<Movers> history;
+        Movers measured; measured.n = mv.n;
+        for (int a = 0; a < 3; a++) { measured.lo[a] = mv.lo[a]; measured.hi[a] = mv.hi[a]; }
+        std::mt19937 sensor_rng(static_cast<unsigned>(episode_seed) ^ 0x713ac5u);
+        std::normal_distribution<float> sensor_noise(0.0f, 1.0f);
+        int last_observation = -1;
         if (n_movers > 0 && mode == MODE_REBUILD_LOCAL) {
             CUDA_CHECK(cudaMemcpy(d_esdf_dyn, d_esdf, cells * sizeof(float), cudaMemcpyDeviceToDevice));
             prev_windows.clear();
         }
         init_rng<<<blocks, threads>>>(d_rng, K, static_cast<unsigned long long>(episode_seed));
         CUDA_CHECK(cudaMemset(d_nominal, 0, U * sizeof(float)));
-        const std::string tag = n_movers > 0 ? "gpu_esdf_mppi_3d_dynamic" : "gpu_esdf_mppi_3d";
+        const std::string tag = mode >= MODE_STALE ? std::string("gpu_esdf_mppi_3d_") + MODE_NAMES[mode] :
+                                n_movers > 0 ? "gpu_esdf_mppi_3d_dynamic" : "gpu_esdf_mppi_3d";
         const std::string avi = "gif/" + tag + ".avi", gif = "gif/" + tag + ".gif";
         cv::VideoWriter video;
         if (video_on) {
@@ -591,22 +667,57 @@ int main(int argc, char** argv) {
         std::vector<cv::Point3f> path = {cv::Point3f(st[0], st[1], st[2])};
         const int SHOW = std::min(K, 48);
         std::vector<float> h_samples(static_cast<size_t>(SHOW) * U);
-        const int predict = n_movers == 0 ? 0 : mode == MODE_PREDICT ? 1 : mode == MODE_PREDICT_BOUNCE ? 2 : 0;
+        const int predict = n_movers == 0 ? 0 : mode == MODE_RISK ? 3 : mode >= MODE_STALE || mode == MODE_PREDICT ? 1 : mode == MODE_PREDICT_BOUNCE ? 2 : 0;
 
         for (int step = 0; step < max_steps; step++) {
-            CUDA_CHECK(cudaMemcpy(d_start, st, sizeof(st), cudaMemcpyHostToDevice));
             auto t0 = std::chrono::high_resolution_clock::now();
+            history.push_back(mv);
+            Movers view = mv;
+            if (mode >= MODE_STALE) {
+                const int available = step - observation_delay;
+                const int stamp = available < 0 ? -1 : available / observation_period * observation_period;
+                if (stamp > last_observation) {
+                    const float dt_obs = (stamp - last_observation) * DT;
+                    for (int i = 0; i < mv.n; i++) {
+                        float innovation2 = 0.0f;
+                        for (int a = 0; a < 3; a++) {
+                            const float p = history[stamp].p[i][a] + observation_noise * sensor_noise(sensor_rng);
+                            const float vel = last_observation < 0 ? 0.0f : (p - measured.p[i][a]) / dt_obs;
+                            innovation2 += (vel - measured.v[i][a]) * (vel - measured.v[i][a]);
+                            measured.v[i][a] = vel;
+                            measured.p[i][a] = p;
+                        }
+                        measured.uncertainty[i] = fminf(0.5f, 0.05f + 0.15f * std::sqrt(innovation2));
+                    }
+                    last_observation = stamp;
+                }
+                view = measured; view.n = last_observation < 0 ? 0 : measured.n;
+                view.age = (step - last_observation) * DT;
+                if (mode >= MODE_LATENCY)
+                    for (int i = 0; i < view.n; i++)
+                        for (int a = 0; a < 3; a++) {
+                            const float old = view.p[i][a], v = view.v[i][a];
+                            view.p[i][a] = predict_coord(old, v, view.age, view.lo[a], view.hi[a], mode == MODE_RISK);
+                            if (mode == MODE_RISK) {
+                                const float future = predict_coord(old, v, view.age + 0.001f, view.lo[a], view.hi[a], true);
+                                view.v[i][a] = std::copysign(std::fabs(v), future - view.p[i][a]);
+                            }
+                        }
+            }
+            CUDA_CHECK(cudaMemcpy(d_start, st, sizeof(st), cudaMemcpyHostToDevice));
             const float* esdf_now = d_esdf;
             if (n_movers > 0 && mode == MODE_REBUILD) { rebuild_esdf(mv); esdf_now = d_esdf_dyn; }
             if (n_movers > 0 && mode == MODE_REBUILD_LOCAL) { local_update_esdf(mv); esdf_now = d_esdf_dyn; }
             for (int it = 0; it < ITERS_PER_STEP; it++) {
-                rollout_kernel<<<blocks, threads>>>(d_start, d_ctg, d_nominal, esdf_now, d_costs, d_perturbed, d_rng, K, mv, predict);
+                rollout_kernel<<<blocks, threads>>>(d_start, d_ctg, d_nominal, esdf_now, d_costs, d_perturbed, d_rng, K, view, predict);
                 cudabot::launch_softmin_weights(d_costs, d_weights, K, LAMBDA);
                 cudabot::launch_weighted_control_update(d_perturbed, d_weights, d_nominal, K, U);
             }
+            if (mode == MODE_RISK) shield_control<<<1, 256>>>(d_start, esdf_now, view, d_perturbed, d_costs, d_nominal, K);
             CUDA_CHECK(cudaDeviceSynchronize());
-            ep.ms += std::chrono::duration<double, std::milli>(std::chrono::high_resolution_clock::now() - t0).count();
             CUDA_CHECK(cudaMemcpy(h_nominal.data(), d_nominal, U * sizeof(float), cudaMemcpyDeviceToHost));
+            const double solve_ms = std::chrono::duration<double, std::milli>(std::chrono::high_resolution_clock::now() - t0).count();
+            ep.ms += solve_ms; ep.times.push_back(solve_ms);
             if (video_on)
                 CUDA_CHECK(cudaMemcpy(h_samples.data(), d_perturbed, h_samples.size() * sizeof(float), cudaMemcpyDeviceToHost));
 
@@ -636,12 +747,13 @@ int main(int argc, char** argv) {
                 for (int i = 0; i < mv.n; i++) {
                     cv::circle(top, top_px(mv.p[i][0], mv.p[i][1]), mr, cv::Scalar(60, 60, 255), cv::FILLED, cv::LINE_AA);
                     cv::circle(side, side_px(mv.p[i][0], mv.p[i][2]), mr, cv::Scalar(60, 60, 255), cv::FILLED, cv::LINE_AA);
-                    if (predict) {   // where the planner expects it over the horizon
-                        cv::Point prev_pt = top_px(mv.p[i][0], mv.p[i][1]);
+                    if (predict && i < view.n) {   // planner estimates, not hidden mover truth
+                        cv::Point prev_pt = top_px(view.p[i][0], view.p[i][1]);
+                        cv::circle(top, prev_pt, 4, cv::Scalar(255, 210, 70), cv::FILLED);
                         for (int t = 1; t <= T_HORIZON; t++) {
                             float tau = t * DT;
-                            cv::Point pt = top_px(predict_coord(mv.p[i][0], mv.v[i][0], tau, mv.lo[0], mv.hi[0], predict == 2),
-                                                  predict_coord(mv.p[i][1], mv.v[i][1], tau, mv.lo[1], mv.hi[1], predict == 2));
+                            cv::Point pt = top_px(predict_coord(view.p[i][0], view.v[i][0], tau, view.lo[0], view.hi[0], predict == 2),
+                                                  predict_coord(view.p[i][1], view.v[i][1], tau, view.lo[1], view.hi[1], predict == 2));
                             cv::line(top, prev_pt, pt, cv::Scalar(60, 60, 255), 1, cv::LINE_AA);
                             prev_pt = pt;
                         }
@@ -672,8 +784,24 @@ int main(int argc, char** argv) {
             }
 
             float prev[3] = {st[0], st[1], st[2]};
+            Movers previous_movers = mv;
             step_dynamics(st, h_nominal.data());
             step_movers(mv);
+            if (turn_period > 0 && (step + 1) % turn_period == 0)
+                for (int i = 0; i < mv.n; i++) {
+                    const float a = (i % 2 ? -1.0f : 1.0f) * 0.65f, vx = mv.v[i][0], vy = mv.v[i][1];
+                    mv.v[i][0] = vx * std::cos(a) - vy * std::sin(a);
+                    mv.v[i][1] = vx * std::sin(a) + vy * std::cos(a);
+                }
+            // Validate swept segments as well as endpoints at high mover speeds.
+            for (int sub = 1; sub <= 8; sub++) {
+                const float f = sub / 8.0f; float p[3]; Movers interpolated = mv;
+                for (int a = 0; a < 3; a++) p[a] = prev[a] + f * (st[a] - prev[a]);
+                for (int i = 0; i < mv.n; i++)
+                    for (int a = 0; a < 3; a++) interpolated.p[i][a] = previous_movers.p[i][a] + f * (mv.p[i][a] - previous_movers.p[i][a]);
+                ep.min_clearance = std::min(ep.min_clearance, clearance(p, interpolated));
+            }
+            ep.stopped += std::sqrt(st[3]*st[3] + st[4]*st[4] + st[5]*st[5]) < 0.15f;
             path.push_back(cv::Point3f(st[0], st[1], st[2]));
             ep.path_len += std::sqrt((st[0]-prev[0])*(st[0]-prev[0]) + (st[1]-prev[1])*(st[1]-prev[1]) + (st[2]-prev[2])*(st[2]-prev[2]));
             ep.min_clearance = std::min(ep.min_clearance, clearance(st, mv));
@@ -702,6 +830,11 @@ int main(int argc, char** argv) {
             cudabot::avi_to_gif(avi, gif, 20, 900);
             std::printf("GIF saved to %s\n", gif.c_str());
         }
+        std::sort(ep.times.begin(), ep.times.end());
+        const double p95 = ep.times.empty() ? 0.0 : ep.times[(ep.times.size() - 1) * 95 / 100];
+        std::printf("RESULT dynamic mode=%s seed=%d success=%d collision=%d steps=%d stopped=%d clearance=%.4f mean_ms=%.4f p95_ms=%.4f\n",
+                    MODE_NAMES[mode], episode_seed, (int)(ep.reached && ep.min_clearance >= 0), (int)(ep.min_clearance < 0),
+                    ep.steps, ep.stopped, ep.min_clearance, ep.ms / std::max(1, ep.steps), p95);
         return ep;
     };
 
@@ -736,7 +869,7 @@ int main(int argc, char** argv) {
         std::printf("\n%d movers at %.1fx speed, %d episodes per mode (episode seeds %d..%d)\n",
                     n_movers, mover_speed, trials, seed, seed + trials - 1);
         std::printf("| mode | success | collisions | timeouts | mean steps | mean min clearance (m) | ms per step |\n|---|---:|---:|---:|---:|---:|---:|\n");
-        for (int mode = MODE_STATIC; mode <= MODE_REBUILD_LOCAL; mode++) {
+        for (int mode = observed_trials ? MODE_STALE : MODE_STATIC; mode <= (observed_trials ? MODE_RISK : MODE_REBUILD_LOCAL); mode++) {
             int success = 0, collisions = 0, timeouts = 0;
             double steps_sum = 0, clear_sum = 0, ms_sum = 0;
             for (int t = 0; t < trials; t++) {

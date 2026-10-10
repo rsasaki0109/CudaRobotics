@@ -86,6 +86,8 @@ Useful signals from the checked-in run:
 
 | Family | Paper / idea | Implementation | Best signal | Limit | Doc |
 |---|---|---|---|---|---|
+| Delayed-observation MPPI | Age compensation, uncertainty envelopes and feasible sequence selection | `gpu_esdf_mppi_3d` modes 5-7 | 9 to 0 collisions in 60 paired trials; 58 goals | Synthetic position observations, known motion bounds; two timeouts remain | [`performance_tracks.md`](performance_tracks.md) |
+| Friction-aware MPPI | Friction-limited dynamics and feasible proposals | `gpu_mppi_racing --grip-plant --grip-aware` | 0/10 to 10/10 clean two-lap runs | Known grip map and a combined controller change, not isolated model gains | [`performance_tracks.md`](performance_tracks.md) |
 | LP-MPPI | Low-pass filtered control noise | `lp_mppi`, `lp_mppi_smooth` | Strong dynamic-crossing success where vanilla MPPI fails | Reproduction scaffold, not the full paper system | [`lp_mppi_reproduction.md`](lp_mppi_reproduction.md) |
 | Step-MPPI | State-conditioned or step-wise proposal shaping | `step_mppi_fast`, `step_mppi_smooth`, adaptive variants | Preferred lightweight default in dynamic crossing; smooth variant keeps success with lower roughness | Uses EMA/table-like proposal logic instead of a trained proposal network | [`step_mppi_reproduction.md`](step_mppi_reproduction.md) |
 | Tsallis-MPPI | q-exponential / Tsallis weighting | `tsallis_mppi_q07`, `tsallis_mppi_smooth`, `tsallis_mppi_q13` | Strong cheap fix for dynamic bottlenecks and open crossings | Sensitive to q shape; harder scenes still need more structure | [`tsallis_mppi_reproduction.md`](tsallis_mppi_reproduction.md) |
