@@ -94,6 +94,7 @@ CONTRACT_SOURCES = (
     "include/cudarobotics/esdf_2d_gpu.hpp",
     "include/cuda_mppi_controller/mppi_gpu.hpp",
     "src/gpu_kiss_icp.cu",
+    "include/kiss_icp_spatial.cuh",
     "src/voxel_mapping_gpu.cu",
     "src/esdf_2d_gpu.cu",
     "src/mppi_gpu.cu",

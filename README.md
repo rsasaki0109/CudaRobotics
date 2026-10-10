@@ -125,6 +125,7 @@ can track improvements using the privacy-preserving
 | Latest real-rosbag evaluation | [`docs/results/mppi_real_rosbag_erl_prueba2_2026-07-28.md`](docs/results/mppi_real_rosbag_erl_prueba2_2026-07-28.md) |
 | Latest fixed-seed MPPI result | [`docs/results/mppi_zoo_suite_2026-06-10.md`](docs/results/mppi_zoo_suite_2026-06-10.md) |
 | **Four measured performance improvements: delayed-observation avoidance, staged NDT, fleet reservations, friction-aware racing** | [`docs/performance_tracks.md`](docs/performance_tracks.md) |
+| Exact spatial-query acceleration for streaming real LiDAR odometry | [`docs/kiss_icp_spatial_performance.md`](docs/kiss_icp_spatial_performance.md) |
 | Quick MPPI smoke result | [`docs/results/mppi_zoo_smoke_2026-06-05.md`](docs/results/mppi_zoo_smoke_2026-06-05.md) |
 | MPPI paper reproduction zoo | [`docs/mppi_reproduction_zoo.md`](docs/mppi_reproduction_zoo.md) |
 | Reproducibility suites | [`docs/reproducibility.md`](docs/reproducibility.md) |

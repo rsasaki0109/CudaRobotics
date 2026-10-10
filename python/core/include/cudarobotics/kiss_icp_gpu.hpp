@@ -21,6 +21,12 @@ struct KissIcpPose {
 enum class KissIcpNnBackend {
     Voxel,
     BruteForce,
+    VoxelLinked,  // Retained pre-optimization correspondence reference.
+};
+
+enum class KissIcpNormalBackend {
+    Voxel,
+    BruteForce,
 };
 
 struct KissIcpConfig {
@@ -35,6 +41,7 @@ struct KissIcpConfig {
     std::size_t max_map_points = 200000;
     std::size_t hash_capacity = 1u << 19;
     KissIcpNnBackend nn_backend = KissIcpNnBackend::Voxel;
+    KissIcpNormalBackend normal_backend = KissIcpNormalBackend::Voxel;
 };
 
 struct KissIcpAlignmentStats {

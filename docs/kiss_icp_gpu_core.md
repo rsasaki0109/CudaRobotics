@@ -51,6 +51,14 @@ point-to-plane ICP against the local map, and inserts the registered scan.
   diagnostics. `timing()` exposes accumulated map upload, normal estimation,
   and index-build time.
 
+The default voxel backend now uses contiguous cell buckets and conservative
+distance bounds for exact queries. Map normals use exact global kNN through
+fine/coarse spatial indices, with exhaustive fallback for sparse queries.
+`KissIcpNormalBackend::BruteForce` and `KissIcpNnBackend::VoxelLinked` retain the
+previous algorithms for paired comparison. Hash capacity must cover map
+capacity whenever voxel normals or voxel correspondences are selected.
+See [measured spatial-query improvements](kiss_icp_spatial_performance.md).
+
 Configuration can be checked before CUDA allocation with
 `validate_kiss_icp_config()`.
 

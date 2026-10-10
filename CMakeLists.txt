@@ -526,6 +526,7 @@ set_target_properties(cudarobotics_kiss_icp_gpu PROPERTIES
 cudabot_demo(gpu_kiss_icp src/gpu_kiss_icp.cu OPENCV RELAXED_CONSTEXPR)
 
 add_executable(kiss_icp_gpu_streaming_smoke tests/kiss_icp_gpu_streaming_smoke.cu)
+add_executable(kiss_icp_spatial_exact tests/kiss_icp_spatial_exact.cu)
 target_link_libraries(kiss_icp_gpu_streaming_smoke cudarobotics_kiss_icp_gpu)
 target_compile_options(kiss_icp_gpu_streaming_smoke PRIVATE
   $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
@@ -718,6 +719,8 @@ add_test(NAME kiss_icp_gpu_streaming_smoke
 set_tests_properties(kiss_icp_gpu_streaming_smoke PROPERTIES
   TIMEOUT 60
   LABELS "gpu;odometry;api")
+add_test(NAME kiss_icp_spatial_exact COMMAND $<TARGET_FILE:kiss_icp_spatial_exact>)
+set_tests_properties(kiss_icp_spatial_exact PROPERTIES TIMEOUT 60 LABELS "gpu;odometry;correctness")
 
 add_test(NAME voxel_mapping_gpu_smoke
   COMMAND $<TARGET_FILE:voxel_mapping_gpu_smoke>)
@@ -819,6 +822,9 @@ add_test(NAME validate_design_workflow
 add_test(NAME check_design_regressions
   COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/check_design_regressions.py
   WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+add_test(NAME check_kiss_icp_spatial_report
+  COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/test_kiss_icp_spatial_report.py)
+set_tests_properties(check_kiss_icp_spatial_report PROPERTIES TIMEOUT 30 LABELS "python;odometry")
 add_test(NAME check_scaffold
   COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/check_scaffold_design_problem.py
   WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})

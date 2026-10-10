@@ -29,6 +29,7 @@ struct Options {
     std::string json;
     std::string csv;
     int control_stride = 10;
+    int maximum_frames = 0;
     int minimum_inliers = 30;
     int minimum_observed_voxels = 500;
     int minimum_occupied_cells = 10;
@@ -42,6 +43,8 @@ struct Options {
     float kiss_scan_voxel_size = 0.22f;
     float kiss_map_radius = 40.0f;
     int kiss_normal_neighbors = 12;
+    std::string kiss_normal_backend = "voxel";
+    std::string kiss_nn_backend = "voxel";
     bool check = false;
 };
 
@@ -268,7 +271,7 @@ void usage(const char* executable) {
     std::fprintf(
         stderr,
         "Usage: %s --sequence FILE --json FILE --csv FILE [--check] "
-        "[--control-stride N] [--minimum-inliers N] "
+        "[--control-stride N] [--maximum-frames N] [--minimum-inliers N] "
         "[--minimum-observed-voxels N] [--minimum-occupied-cells N] "
         "[--minimum-control-evaluations N] "
         "[--maximum-all-colliding-evaluations N] "
@@ -276,7 +279,8 @@ void usage(const char* executable) {
         "[--maximum-final-drift-percent X] "
         "[--maximum-safety-stop-speed X] [--kiss-map-voxel-size X] "
         "[--kiss-scan-voxel-size X] [--kiss-map-radius X] "
-        "[--kiss-normal-neighbors N]\n",
+        "[--kiss-normal-neighbors N] [--kiss-normal-backend voxel|brute] "
+        "[--kiss-nn-backend voxel|linked|brute]\n",
         executable);
 }
 
@@ -291,6 +295,7 @@ Options parse_options(int argc, char** argv) {
         if (argument == "--sequence") options.sequence = next();
         else if (argument == "--json") options.json = next();
         else if (argument == "--csv") options.csv = next();
+        else if (argument == "--maximum-frames") options.maximum_frames = std::stoi(next());
         else if (argument == "--control-stride") {
             options.control_stride = std::stoi(next());
         } else if (argument == "--minimum-inliers") {
@@ -319,6 +324,10 @@ Options parse_options(int argc, char** argv) {
             options.kiss_map_radius = std::stof(next());
         } else if (argument == "--kiss-normal-neighbors") {
             options.kiss_normal_neighbors = std::stoi(next());
+        } else if (argument == "--kiss-normal-backend") {
+            options.kiss_normal_backend = next();
+        } else if (argument == "--kiss-nn-backend") {
+            options.kiss_nn_backend = next();
         } else if (argument == "--check") {
             options.check = true;
         } else if (argument == "--help" || argument == "-h") {
@@ -331,7 +340,10 @@ Options parse_options(int argc, char** argv) {
     if (options.sequence.empty() || options.json.empty() || options.csv.empty()) {
         throw std::invalid_argument("--sequence, --json, and --csv are required");
     }
-    if (options.control_stride < 1 || options.minimum_inliers < 1 ||
+    if ((options.kiss_normal_backend != "voxel" && options.kiss_normal_backend != "brute") ||
+        (options.kiss_nn_backend != "voxel" && options.kiss_nn_backend != "linked" && options.kiss_nn_backend != "brute"))
+        throw std::invalid_argument("invalid KISS-ICP backend");
+    if (options.maximum_frames < 0 || options.control_stride < 1 || options.minimum_inliers < 1 ||
         options.minimum_observed_voxels < 1 || options.minimum_occupied_cells < 1 ||
         options.minimum_control_evaluations < 1 ||
         options.maximum_all_colliding_evaluations < 0 ||
@@ -356,8 +368,10 @@ int main(int argc, char** argv) {
     try {
         const Options options = parse_options(argc, argv);
         std::uint32_t sequence_version = 0;
-        const std::vector<Frame> frames =
+        std::vector<Frame> frames =
             read_sequence(options.sequence, sequence_version);
+        if(options.maximum_frames > 0 && frames.size() > static_cast<std::size_t>(options.maximum_frames))
+            frames.resize(options.maximum_frames);
 
         int device = 0;
         int driver_version = 0;
@@ -373,6 +387,10 @@ int main(int argc, char** argv) {
         kiss_config.scan_voxel_size = options.kiss_scan_voxel_size;
         kiss_config.map_radius = options.kiss_map_radius;
         kiss_config.normal_neighbors = options.kiss_normal_neighbors;
+        kiss_config.normal_backend = options.kiss_normal_backend == "voxel"
+            ? cudarobotics::KissIcpNormalBackend::Voxel : cudarobotics::KissIcpNormalBackend::BruteForce;
+        kiss_config.nn_backend = options.kiss_nn_backend == "voxel" ? cudarobotics::KissIcpNnBackend::Voxel :
+            options.kiss_nn_backend == "linked" ? cudarobotics::KissIcpNnBackend::VoxelLinked : cudarobotics::KissIcpNnBackend::BruteForce;
         kiss_config.max_scan_points = 200000;
         kiss_config.max_map_points = 200000;
         kiss_config.hash_capacity = 1u << 19;
@@ -418,7 +436,7 @@ int main(int argc, char** argv) {
                "xy_error_m,inliers,observed_voxels,integrated_rays,occupied_cells,"
                "unknown_cells,projection_gpu_ms,esdf_gpu_ms,mppi_ms,"
                "robot_cost,robot_clearance_m,valid_rollout_ratio,all_colliding,"
-               "retreating,command_v,command_w\n";
+               "retreating,command_v,command_w,frame_ms,odometry_ms,normal_ms,index_ms,nn_ms,map_points\n";
 
         std::vector<double> xy_errors;
         std::vector<double> yaw_errors;
@@ -455,6 +473,7 @@ int main(int argc, char** argv) {
         const auto wall_start = std::chrono::steady_clock::now();
         for (std::size_t frame_index = 0; frame_index < frames.size(); ++frame_index) {
             const auto frame_start = std::chrono::steady_clock::now();
+            const auto previous_timing = odometry.timing();
             const Frame& frame = frames[frame_index];
             const auto odometry_result = frame.point_times.empty()
                 ? odometry.register_scan(frame.xyz)
@@ -464,6 +483,9 @@ int main(int argc, char** argv) {
                       frame.point_times.data(),
                       frame.scan_start_time_s,
                       frame.scan_end_time_s);
+            const double odometry_ms = std::chrono::duration<double,std::milli>(
+                std::chrono::steady_clock::now()-frame_start).count();
+            const auto current_timing = odometry.timing();
             if (odometry_result.deskewed) {
                 ++deskewed_frames;
                 point_time_spans.push_back(
@@ -618,7 +640,10 @@ int main(int argc, char** argv) {
                 << robot_cost << ',' << robot_clearance << ','
                 << valid_ratio << ',' << all_colliding << ','
                 << retreating << ','
-                << command_v << ',' << command_w << '\n';
+                << command_v << ',' << command_w << ',' << frame_ms.back() << ',' << odometry_ms << ','
+                << current_timing.map_normal_ms-previous_timing.map_normal_ms << ','
+                << current_timing.index_build_ms-previous_timing.index_build_ms << ','
+                << odometry_result.alignment.nn_ms << ',' << odometry_result.map_points << '\n';
         }
 
         const double wall_ms = std::chrono::duration<double, std::milli>(
@@ -706,6 +731,10 @@ int main(int argc, char** argv) {
              << "  \"yaw_error_p95_rad\": " << percentile(yaw_errors, 0.95) << ",\n"
              << "  \"inliers_min\": " << minimum_observed_inliers << ",\n"
              << "  \"nn_ms_p95\": " << percentile(nn_ms, 0.95) << ",\n"
+             << "  \"normal_backend\": " << json_string(options.kiss_normal_backend) << ",\n"
+             << "  \"nn_backend\": " << json_string(options.kiss_nn_backend) << ",\n"
+             << "  \"normal_gpu_ms_total\": " << odometry.timing().map_normal_ms << ",\n"
+             << "  \"index_gpu_ms_total\": " << odometry.timing().index_build_ms << ",\n"
              << "  \"mapping\": {\n"
              << "    \"height_frame\": \"estimated_sensor_relative\",\n"
              << "    \"maximum_abs_estimated_sensor_height_m\": "

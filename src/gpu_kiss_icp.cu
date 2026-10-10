@@ -77,6 +77,7 @@
     } while (0)
 #endif
 #include "cudarobotics/kiss_icp_gpu.hpp"
+#include "kiss_icp_spatial.cuh"
 #ifndef CUDAROBOTICS_KISS_ICP_CORE_ONLY
 #include "cuda_video.h"
 #endif
@@ -210,18 +211,28 @@ __device__ static void sym3_smallest_evec(const float C[6], float n[3]){
     float n0=x0[0]*x0[0]+x0[1]*x0[1]+x0[2]*x0[2],n1=x1[0]*x1[0]+x1[1]*x1[1]+x1[2]*x1[2],n2=x2[0]*x2[0]+x2[1]*x2[1]+x2[2]*x2[2];
     const float* best=x0; float bn=n0; if(n1>bn){best=x1;bn=n1;} if(n2>bn){best=x2;bn=n2;}
     float inv=rsqrtf(bn+1e-20f); n[0]=best[0]*inv;n[1]=best[1]*inv;n[2]=best[2]*inv; }
-__global__ void map_normal_kernel(const float* __restrict__ Map,int m,int K,float* __restrict__ NMap){
-    int i=blockIdx.x*blockDim.x+threadIdx.x; if(i>=m)return;
+__device__ void normal_from_neighbors(const float* Map,int i,int kk,const int* ik,float* NMap){
     float xi=Map[i*3],yi=Map[i*3+1],zi=Map[i*3+2];
-    const int KMAX=20; float dk[KMAX]; int ik[KMAX]; int kk=K<KMAX?K:KMAX;
-    for(int a=0;a<kk;++a){dk[a]=1e30f;ik[a]=-1;}
-    for(int j=0;j<m;++j){ if(j==i)continue; float dx=Map[j*3]-xi,dy=Map[j*3+1]-yi,dz=Map[j*3+2]-zi; float d=dx*dx+dy*dy+dz*dz;
-        if(d<dk[kk-1]){int p=kk-1; while(p>0&&dk[p-1]>d){dk[p]=dk[p-1];ik[p]=ik[p-1];--p;} dk[p]=d;ik[p]=j;} }
     float mx=xi,my=yi,mz=zi; int cnt=1; for(int a=0;a<kk;++a){int j=ik[a];if(j<0)continue;mx+=Map[j*3];my+=Map[j*3+1];mz+=Map[j*3+2];++cnt;}
     float inv=1.f/cnt; mx*=inv;my*=inv;mz*=inv; float C[6]={0,0,0,0,0,0};
     auto acc=[&](float px,float py,float pz){float ex=px-mx,ey=py-my,ez=pz-mz;C[0]+=ex*ex;C[1]+=ex*ey;C[2]+=ex*ez;C[3]+=ey*ey;C[4]+=ey*ez;C[5]+=ez*ez;};
     acc(xi,yi,zi); for(int a=0;a<kk;++a){int j=ik[a];if(j<0)continue;acc(Map[j*3],Map[j*3+1],Map[j*3+2]);}
     float n[3]; sym3_smallest_evec(C,n); NMap[i*3]=n[0];NMap[i*3+1]=n[1];NMap[i*3+2]=n[2]; }
+
+__global__ void map_normal_kernel(const float* Map,int m,int K,float* NMap){
+    int i=blockIdx.x*blockDim.x+threadIdx.x; if(i>=m)return;
+    float xi=Map[i*3],yi=Map[i*3+1],zi=Map[i*3+2];
+    float dk[20]; int ik[20]; int kk=K<20?K:20;
+    for(int a=0;a<kk;++a){dk[a]=1e30f;ik[a]=-1;}
+    for(int j=0;j<m;++j){ if(j==i)continue; float dx=Map[j*3]-xi,dy=Map[j*3+1]-yi,dz=Map[j*3+2]-zi; float d=dx*dx+dy*dy+dz*dz;
+        if(d<dk[kk-1]){int p=kk-1; while(p>0&&dk[p-1]>d){dk[p]=dk[p-1];ik[p]=ik[p-1];--p;} dk[p]=d;ik[p]=j;} }
+    normal_from_neighbors(Map,i,kk,ik,NMap);
+}
+__global__ void map_normal_spatial_kernel(const float* Map,int m,int K,float* NMap,kiss_spatial::View index,kiss_spatial::View coarse){
+    const int i=blockIdx.x*blockDim.x+threadIdx.x; if(i>=m)return;
+    int ik[20]; kiss_spatial::knn(index,Map,m,i,K,ik,coarse);
+    normal_from_neighbors(Map,i,K,ik,NMap);
+}
 
 __global__ void transform_kernel(const float* __restrict__ S,int n,const float* __restrict__ R,const float* __restrict__ t,float* __restrict__ W){
     int i=blockIdx.x*blockDim.x+threadIdx.x; if(i>=n)return;
@@ -388,6 +399,16 @@ __global__ void nn_voxel_kernel(
     }
 }
 
+__global__ void nn_spatial_kernel(const float* Pw,int n,const float* Map,const float* NMap,
+                                  kiss_spatial::View index,float tau2,float* Q,float* NQ,float* D2) {
+    const int i=blockIdx.x*blockDim.x+threadIdx.x; if(i>=n)return;
+    float best;
+    const int j=kiss_spatial::nearest(index,Map,Pw[3*i],Pw[3*i+1],Pw[3*i+2],tau2,best);
+    if(j<0) { D2[i]=1e30f; return; }
+    for(int a=0;a<3;++a) { Q[3*i+a]=Map[3*j+a]; NQ[3*i+a]=NMap[3*j+a]; }
+    D2[i]=best;
+}
+
 // robust point-to-PLANE twist GN.  Residual is the signed distance to the map
 // tangent plane, rs = n . (p - q); on the flat ground this fully constrains z and
 // removes the voxel-grid horizontal mismatch that starves point-to-point (the same
@@ -423,7 +444,8 @@ using NnBackend = KissIcpNnBackend;
 using AlignmentStats = KissIcpAlignmentStats;
 
 const char* kiss_icp_backend_name(NnBackend backend) {
-    return backend == NnBackend::Voxel ? "voxel" : "brute";
+    return backend == NnBackend::Voxel ? "voxel" :
+           backend == NnBackend::VoxelLinked ? "linked" : "brute";
 }
 
 #ifndef CUDAROBOTICS_KISS_ICP_CORE_ONLY
@@ -443,7 +465,7 @@ struct OdomOut {
 static Pose icp_to_map(const std::vector<float>& scan, float* dMap,float* dMapN,int mapN,
                        const unsigned long long* dHashKeys,const int* dHashHeads,
                        const int* dPointNext,int hashCapacity,float invCell,NnBackend backend,
-                       Pose Tinit, float tau, int max_it,
+                       kiss_spatial::View spatial, Pose Tinit, float tau, int max_it,
                        float* dS,float* dPw,float* dQ,float* dNQ,float* dD2,float* dR,float* dt,float* dHg,
                        AlignmentStats* stats){
     int n=scan.size()/3;
@@ -459,6 +481,8 @@ static Pose icp_to_map(const std::vector<float>& scan, float* dMap,float* dMapN,
         transform_kernel<<<(n+255)/256,256>>>(dS,n,dR,dt,dPw);
         CUDA_CHECK(cudaEventRecord(nn_start));
         if (backend == NnBackend::Voxel) {
+            nn_spatial_kernel<<<(n+255)/256,256>>>(dPw,n,dMap,dMapN,spatial,tau2,dQ,dNQ,dD2);
+        } else if (backend == NnBackend::VoxelLinked) {
             nn_voxel_kernel<<<(n+255)/256,256>>>(
                 dPw,n,dMap,dMapN,dHashKeys,dHashHeads,dPointNext,
                 hashCapacity,invCell,tau2,dQ,dNQ,dD2);
@@ -506,7 +530,8 @@ std::string validate_kiss_icp_config(const KissIcpConfig& c) {
         return "hash_capacity must be a power of two";
     if (c.hash_capacity > static_cast<std::size_t>(INT_MAX))
         return "hash_capacity exceeds the CUDA kernel index range";
-    if (c.nn_backend == NnBackend::Voxel && c.hash_capacity < c.max_map_points)
+    if ((c.nn_backend != NnBackend::BruteForce || c.normal_backend == KissIcpNormalBackend::Voxel) &&
+        c.hash_capacity < c.max_map_points)
         return "hash_capacity must be at least max_map_points for voxel NN";
     return {};
 }
@@ -533,6 +558,10 @@ struct KissIcpOdometry::Impl {
             CUDA_CHECK(cudaMalloc(&dHashKeys,config.hash_capacity*sizeof(unsigned long long)));
             CUDA_CHECK(cudaMalloc(&dHashHeads,config.hash_capacity*sizeof(int)));
             CUDA_CHECK(cudaMalloc(&dPointNext,config.max_map_points*sizeof(int)));
+            if(config.nn_backend==NnBackend::Voxel || config.normal_backend==KissIcpNormalBackend::Voxel)
+                spatial.reset(new kiss_spatial::Index(static_cast<int>(config.max_map_points),static_cast<int>(config.hash_capacity)));
+            if(config.normal_backend==KissIcpNormalBackend::Voxel)
+                coarse_spatial.reset(new kiss_spatial::Index(static_cast<int>(config.max_map_points),static_cast<int>(config.hash_capacity)));
             CUDA_CHECK(cudaEventCreate(&normal_start));
             CUDA_CHECK(cudaEventCreate(&normal_stop));
             CUDA_CHECK(cudaEventCreate(&hash_start));
@@ -699,16 +728,31 @@ struct KissIcpOdometry::Impl {
             auto upload_stop=std::chrono::high_resolution_clock::now();
             accumulated_timing.map_upload_ms+=
                 std::chrono::duration<double,std::milli>(upload_stop-upload_start).count();
+            const float inv_cell=1.0f/config.threshold_max;
+            kiss_spatial::View spatial_view{};
+            kiss_spatial::View coarse_view{};
+            if(spatial) {
+                CUDA_CHECK(cudaEventRecord(hash_start));
+                spatial_view=spatial->build(dMap,map_count,std::max(0.5f,3.f*config.map_voxel_size));
+                if(coarse_spatial) coarse_view=coarse_spatial->build(dMap,map_count,8.f*spatial_view.cell);
+                CUDA_CHECK(cudaEventRecord(hash_stop));
+                CUDA_CHECK(cudaEventSynchronize(hash_stop));
+                float elapsed=0.f;
+                CUDA_CHECK(cudaEventElapsedTime(&elapsed,hash_start,hash_stop));
+                accumulated_timing.index_build_ms+=elapsed;
+            }
             CUDA_CHECK(cudaEventRecord(normal_start));
-            map_normal_kernel<<<(map_count+127)/128,128>>>(
+            if(config.normal_backend==KissIcpNormalBackend::Voxel)
+                map_normal_spatial_kernel<<<(map_count+127)/128,128>>>(
+                    dMap,map_count,config.normal_neighbors,dMapN,spatial_view,coarse_view);
+            else map_normal_kernel<<<(map_count+127)/128,128>>>(
                 dMap,map_count,config.normal_neighbors,dMapN);
             CUDA_CHECK(cudaEventRecord(normal_stop));
             CUDA_CHECK(cudaEventSynchronize(normal_stop));
             float normal_ms=0.0f;
             CUDA_CHECK(cudaEventElapsedTime(&normal_ms,normal_start,normal_stop));
             accumulated_timing.map_normal_ms+=normal_ms;
-            const float inv_cell=1.0f/config.threshold_max;
-            if(config.nn_backend==NnBackend::Voxel){
+            if(config.nn_backend==NnBackend::VoxelLinked){
                 CUDA_CHECK(cudaEventRecord(hash_start));
                 CUDA_CHECK(cudaMemset(dHashKeys,0xff,config.hash_capacity*sizeof(unsigned long long)));
                 CUDA_CHECK(cudaMemset(dHashHeads,0xff,config.hash_capacity*sizeof(int)));
@@ -725,7 +769,7 @@ struct KissIcpOdometry::Impl {
             estimate=icp_to_map(
                 scan,dMap,dMapN,map_count,dHashKeys,dHashHeads,dPointNext,
                 static_cast<int>(config.hash_capacity),inv_cell,config.nn_backend,
-                predicted,tau,config.max_icp_iterations,
+                spatial_view,predicted,tau,config.max_icp_iterations,
                 dS,dPw,dQ,dNQ,dD2,dR,dt,dHg,&alignment);
             float translation_delta,rotation_delta;
             pose_delta_mag(predicted,estimate,translation_delta,rotation_delta);
@@ -759,6 +803,8 @@ struct KissIcpOdometry::Impl {
     std::unordered_map<int64_t,std::array<float,3>> vmap;
     std::vector<float> localmap;
     KissIcpTiming accumulated_timing;
+    std::unique_ptr<kiss_spatial::Index> spatial;
+    std::unique_ptr<kiss_spatial::Index> coarse_spatial;
     float *dS=nullptr,*dPw=nullptr,*dQ=nullptr,*dNQ=nullptr,*dD2=nullptr;
     float *dTimes=nullptr,*dDeskew=nullptr,*dMotionTwist=nullptr;
     float *dMap=nullptr,*dMapN=nullptr,*dR=nullptr,*dt=nullptr,*dHg=nullptr;
