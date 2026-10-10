@@ -40,7 +40,7 @@ atomic per block.
 ## Modes and counters
 
 `KissIcpConfig::normal_update` defaults to `Incremental`. It enables the cache
-for the dense map and voxel normal backend; other map/normal backends fall
+for Dense, Pooled and Validate host maps with the voxel normal backend; other map/normal backends fall
 back to full recomputation. Select `Full` to disable cache storage and
 maintenance. `Validate` requires dense/voxel execution
 and recomputes every normal into a separate buffer, comparing all float bits
@@ -55,6 +55,9 @@ subsequently reduced CPU allocation cost. The new comparison with pooled
 centroids passed all three paired p95/equivalence checks at normal process
 priority, including the 40 ms target; the separate default replay also passed.
 These results support the new incremental default.
+The host map now also defaults to [pooled nodes and compact exact-order links](kiss_icp_pooled_host_map.md).
+This normal benchmark pins the original `dense` host-map backend so its earlier
+normal-stage comparison remains reproducible.
 Its JSON records the requested mode; unsupported incremental combinations
 still execute the full path. The CSV appends cache preparation duration,
 reused-point count and recomputed-point count. Initial map creation computes no

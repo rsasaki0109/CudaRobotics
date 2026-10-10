@@ -46,7 +46,7 @@ struct Options {
     std::string kiss_normal_backend = "voxel";
     std::string kiss_nn_backend = "voxel";
     std::string kiss_reduction_backend = "block";
-    std::string kiss_map_backend = "dense";
+    std::string kiss_map_backend = "pooled";
     std::string kiss_downsample_backend = "pooled";
     std::string kiss_normal_query_order = "cell";
     std::string kiss_normal_update = "incremental";
@@ -286,7 +286,7 @@ void usage(const char* executable) {
         "[--kiss-scan-voxel-size X] [--kiss-map-radius X] "
         "[--kiss-normal-neighbors N] [--kiss-normal-backend voxel|brute] "
         "[--kiss-nn-backend voxel|linked|brute] [--kiss-reduction-backend block|atomic] "
-        "[--kiss-map-backend dense|unordered] [--kiss-downsample-backend pooled|cached|unordered|validate] "
+        "[--kiss-map-backend pooled|dense|unordered|validate] [--kiss-downsample-backend pooled|cached|unordered|validate] "
         "[--kiss-normal-query-order cell|input] [--kiss-normal-update full|incremental|validate]\n",
         executable);
 }
@@ -362,7 +362,8 @@ Options parse_options(int argc, char** argv) {
         throw std::invalid_argument("invalid KISS-ICP backend");
     if(options.kiss_reduction_backend!="block" && options.kiss_reduction_backend!="atomic")
         throw std::invalid_argument("invalid KISS-ICP reduction backend");
-    if(options.kiss_map_backend!="dense" && options.kiss_map_backend!="unordered")
+    if(options.kiss_map_backend!="dense" && options.kiss_map_backend!="pooled" &&
+       options.kiss_map_backend!="validate" && options.kiss_map_backend!="unordered")
         throw std::invalid_argument("invalid KISS-ICP map backend");
     if(options.kiss_downsample_backend!="cached" && options.kiss_downsample_backend!="unordered" &&
        options.kiss_downsample_backend!="pooled" && options.kiss_downsample_backend!="validate")
@@ -422,8 +423,10 @@ int main(int argc, char** argv) {
         kiss_config.max_scan_points = 200000;
         kiss_config.reduction_backend = options.kiss_reduction_backend == "block"
             ? cudarobotics::KissIcpReductionBackend::Block : cudarobotics::KissIcpReductionBackend::Atomic;
-        kiss_config.map_backend = options.kiss_map_backend == "dense"
-            ? cudarobotics::KissIcpMapBackend::Dense : cudarobotics::KissIcpMapBackend::Unordered;
+        kiss_config.map_backend = options.kiss_map_backend == "dense" ? cudarobotics::KissIcpMapBackend::Dense
+            : options.kiss_map_backend == "pooled" ? cudarobotics::KissIcpMapBackend::Pooled
+            : options.kiss_map_backend == "validate" ? cudarobotics::KissIcpMapBackend::Validate
+            : cudarobotics::KissIcpMapBackend::Unordered;
         kiss_config.downsample_backend = options.kiss_downsample_backend == "pooled" ? cudarobotics::KissIcpDownsampleBackend::Pooled :
             options.kiss_downsample_backend == "validate" ? cudarobotics::KissIcpDownsampleBackend::Validate :
             options.kiss_downsample_backend == "cached" ? cudarobotics::KissIcpDownsampleBackend::Cached : cudarobotics::KissIcpDownsampleBackend::Unordered;
@@ -477,7 +480,7 @@ int main(int argc, char** argv) {
                "retreating,command_v,command_w,frame_ms,odometry_ms,normal_ms,index_ms,nn_ms,map_points,"
                "validation_ms,deskew_wall_ms,downsample_ms,map_upload_ms,icp_ms,normal_equation_ms,"
                "map_update_ms,map_prune_ms,map_insert_ms,map_pack_ms,map_reorder_ms,"
-               "normal_cache_prepare_ms,normal_reused_points,normal_recomputed_points,downsample_new_slabs,downsample_arena_bytes\n";
+               "normal_cache_prepare_ms,normal_reused_points,normal_recomputed_points,downsample_new_slabs,downsample_arena_bytes,host_map_new_slabs,host_map_pool_bytes,host_map_order_bytes\n";
 
         std::vector<double> xy_errors;
         std::vector<double> yaw_errors;
@@ -700,7 +703,10 @@ int main(int argc, char** argv) {
                 << current_timing.normal_reused_points-previous_timing.normal_reused_points << ','
                 << current_timing.normal_recomputed_points-previous_timing.normal_recomputed_points << ','
                 << current_timing.downsample_upstream_allocations-previous_timing.downsample_upstream_allocations << ','
-                << current_timing.downsample_arena_bytes << '\n';
+                << current_timing.downsample_arena_bytes << ','
+                << current_timing.host_map_upstream_allocations-previous_timing.host_map_upstream_allocations << ','
+                << current_timing.host_map_pool_bytes << ','
+                << current_timing.host_map_order_bytes << '\n';
         }
 
         const double wall_ms = std::chrono::duration<double, std::milli>(
@@ -797,6 +803,9 @@ int main(int argc, char** argv) {
              << ", \"arena_bytes\": " << odometry.timing().downsample_arena_bytes << "},\n"
              << "  \"normal_query_order\": " << json_string(options.kiss_normal_query_order) << ",\n"
              << "  \"normal_update\": " << json_string(options.kiss_normal_update) << ",\n"
+             << "  \"host_map_memory\": {\"new_slabs\": " << odometry.timing().host_map_upstream_allocations
+             << ", \"node_pool_bytes\": " << odometry.timing().host_map_pool_bytes
+             << ", \"order_link_bytes\": " << odometry.timing().host_map_order_bytes << "},\n"
              << "  \"normal_cache\": {\"reused_points\": " << odometry.timing().normal_reused_points
              << ", \"recomputed_points\": " << odometry.timing().normal_recomputed_points
              << ", \"prepare_ms_total\": " << odometry.timing().normal_cache_prepare_ms << "},\n"

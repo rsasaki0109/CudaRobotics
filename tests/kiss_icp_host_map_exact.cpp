@@ -2,6 +2,7 @@
 #include <algorithm>
 #include <array>
 #include <cstdio>
+#include <cstring>
 #include <random>
 
 using Point=std::array<float,3>;
@@ -27,7 +28,60 @@ static void reference(std::unordered_map<int64_t,Point>& map,const std::vector<f
     }
 }
 
+static bool pooled_exact() {
+    std::vector<float> a,b;
+    std::vector<int> ta,tb,oa,ob;
+    kiss_host_map::Dense standard(20000,.35f,a,&ta),pooled(20000,.35f,b,&tb,true);
+    std::mt19937 random(5891);
+    std::uniform_real_distribution<float> offset(-4.f,4.f);
+    size_t retained=0;
+    for(int frame=0;frame<240;++frame) {
+        if(frame==120) { standard.clear(); pooled.clear(); retained=pooled.pool_allocations(); }
+        float center[3]={-.8f+.07f*(frame%120),std::sin(.1f*frame),0};
+        std::vector<float> world;
+        for(int i=0;i<400;++i) {
+            const float x=center[0]+offset(random),y=center[1]+offset(random),z=offset(random);
+            world.insert(world.end(),{x,y,z,x,y,z});  // Existing representatives stay unchanged.
+        }
+        world.insert(world.end(),{center[0]+4.f,center[1],0.f,center[0]-4.f,center[1],-0.f});
+        standard.prune(center,4.f); pooled.prune(center,4.f);
+        standard.insert(world,center,4.f); pooled.insert(world,center,4.f);
+        standard.export_order(oa); pooled.export_order(ob);
+        if(a.size()!=b.size() || std::memcmp(a.data(),b.data(),a.size()*sizeof(float)) ||
+           ta!=tb || oa!=ob || standard.pool_bytes()!=0 || pooled.pool_bytes()==0) {
+            std::fprintf(stderr,"pooled map point bits/order/tags differ at frame %d\n",frame); return false;
+        }
+        // Simulate committed cache ranks, then check they survive swap deletion.
+        for(size_t i=0;i<oa.size();++i) ta[oa[i]]=tb[ob[i]]=static_cast<int>(i);
+        if(frame==121 && pooled.pool_allocations()!=retained) return false;
+    }
+    // Repeated fills/evictions/reset must recycle nodes instead of accumulating
+    // storage for every historical insertion. Also preserve partial capacity errors.
+    std::vector<float> s,p;
+    kiss_host_map::Dense small(4,1.f,s),small_pool(4,1.f,p,nullptr,true);
+    float center[3]={0,0,0};
+    size_t high_water=0;
+    for(int cycle=0;cycle<100;++cycle) {
+        small.clear(); small_pool.clear();
+        for(auto* map:{&small,&small_pool}) {
+            bool rejected=false;
+            try { map->insert({-1,0,0,0,0,0,1,0,0,2,0,0,3,0,0},center,4.f); }
+            catch(const std::runtime_error&) { rejected=true; }
+            if(!rejected) return false;
+        }
+        small.export_order(oa); small_pool.export_order(ob);
+        if(s!=p || oa!=ob) return false;
+        if(!cycle) high_water=small_pool.pool_allocations();
+        else if(high_water!=small_pool.pool_allocations()) return false;
+        center[0]=20; small.prune(center,1.f); small_pool.prune(center,1.f);
+        if(!s.empty() || !p.empty()) return false;
+        center[0]=0;
+    }
+    return true;
+}
+
 int main() {
+    if(!pooled_exact()) return 13;
     std::vector<float> tagged_points;
     std::vector<int> tags;
     kiss_host_map::Dense tagged(4,1.f,tagged_points,&tags);

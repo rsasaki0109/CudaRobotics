@@ -179,15 +179,20 @@ int main() {
     reference_config.normal_query_cell_order=false;
     reference_config.downsample_backend=KissIcpDownsampleBackend::Cached;
     reference_config.normal_update=KissIcpNormalUpdate::Full;
-    KissIcpOdometry dense_ordered(config), unordered(reference_config);
+    KissIcpConfig dense_config=config;
+    dense_config.map_backend=KissIcpMapBackend::Dense;
+    KissIcpConfig validation_config=config;
+    validation_config.map_backend=KissIcpMapBackend::Validate;
+    KissIcpOdometry dense_ordered(validation_config), dense(dense_config), unordered(reference_config);
     for(int frame=0;frame<20;++frame) {
-        if(frame==10) { dense_ordered.reset(); unordered.reset(); }
+        if(frame==10) { dense_ordered.reset(); dense.reset(); unordered.reset(); }
         std::vector<float> sequence_scan=scan;
         for(std::size_t i=0;i<sequence_scan.size();i+=3) {
             sequence_scan[i]-=.025f*frame;
             sequence_scan[i+1]-=.01f*std::sin(.2f*frame);
         }
         const auto dense_result=dense_ordered.register_scan(sequence_scan,point_times);
+        const auto old_dense_result=dense.register_scan(sequence_scan,point_times);
         const auto reference_result=unordered.register_scan(sequence_scan,point_times);
         if(std::memcmp(&dense_result.pose,&reference_result.pose,sizeof(KissIcpPose)) ||
            dense_result.map_points!=reference_result.map_points ||
@@ -196,6 +201,16 @@ int main() {
            dense_result.alignment.threshold!=reference_result.alignment.threshold) {
             std::fprintf(stderr,"dense/reference GPU point order differs at frame %d\n",frame);
             return 10;
+        }
+        if(std::memcmp(&dense_result.pose,&old_dense_result.pose,sizeof(KissIcpPose)) ||
+           dense_result.map_points!=old_dense_result.map_points ||
+           dense_result.alignment.inliers!=old_dense_result.alignment.inliers ||
+           dense_result.alignment.rmse!=old_dense_result.alignment.rmse ||
+           dense_result.alignment.threshold!=old_dense_result.alignment.threshold ||
+           dense_ordered.timing().normal_reused_points!=dense.timing().normal_reused_points ||
+           dense_ordered.timing().normal_recomputed_points!=dense.timing().normal_recomputed_points ||
+           dense_ordered.timing().host_map_pool_bytes==0 || dense.timing().host_map_pool_bytes!=0) {
+            std::fprintf(stderr,"pooled/dense streaming state differs at frame %d\n",frame); return 11;
         }
     }
     std::printf("KISS-ICP reusable GPU streaming API: PASS\n");
