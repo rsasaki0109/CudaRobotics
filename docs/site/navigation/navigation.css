@@ -1,0 +1,17 @@
+@import url('../particles/particles.css');
+h1 { font-size: clamp(40px, 6vw, 76px); }
+.lab { grid-template-columns: minmax(0, 1fr) 320px; }
+#map { image-rendering: pixelated; }
+#world { cursor: crosshair; touch-action: none; }
+.legend span:nth-child(1) { color: #91a5b1; } .legend span:nth-child(2) { color: #e29068; } .legend span:nth-child(3) { color: #8ff3b8; } .legend span:nth-child(4) { color: #9bc7ff; }
+.coordinates { display: grid; grid-template-columns: 1fr 1fr; gap: 0 12px; }
+.coordinates label { margin-top: 10px; }
+.coordinates input { padding: 7px; }
+#targets { width: 100%; margin-top: 12px; padding: 8px; font-size: 13px; }
+.toggle { display: flex; align-items: center; gap: 8px; }
+.toggle input { accent-color: #73e4c0; }
+aside h3 { margin-top: 24px; font-size: 15px; color: #e2edf1; }
+fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
+input[type=file] { width: 100%; margin-top: 8px; font-size: 12px; color: #c1d1d8; }
+#run { color: #082b20; background: #8ff3b8; border-color: #8ff3b8; }
+@media (max-width: 1000px) { .lab { grid-template-columns: 1fr; } }

@@ -12,6 +12,47 @@ python3 -m http.server 8080 --directory docs/site
 
 Then open `http://localhost:8080/`.
 
+## Navigation Workbench: map → clearance → route
+
+Open `/navigation/` to test a warehouse layout or doorway against a circular
+robot footprint. Draw/erase obstacles, place the robot and goal, set radius
+and clearance margin, and simulate a route. Map edits stop motion immediately;
+asynchronous field rebuilds discard stale results and replan from the current
+robot position. The page never starts a mission automatically.
+
+Two WebGPU passes compute exact separable squared distances to occupied cell
+centres, then subtract a half-cell diagonal and cap by boundary clearance.
+This produces a conservative obstacle-distance lower bound. The fixed map is
+128 × 96 cells at 0.125 m/cell. CPU A* uses clearance-aware edge costs and
+checked shortcuts; segment checks include a half-sampling-interval allowance.
+The kinematic disk follower revalidates each complete planned segment against
+the current field, avoiding inconsistent subsegment sampling near grid edges.
+It is not a native CUDA/Nav2 controller or a physics/safety-certified system.
+
+Save Map writes `cudarobotics.costmap.v1` JSON: binary occupancy rows from bottom
+to top, origin `[0,0]`, metre coordinates, radius, margin and endpoints. Load
+Map validates this exact format and grid; arbitrary ROS/PGM maps are not
+accepted. Radius increments are 0.05 m and margin increments are 0.02 m,
+matching the controls. Save Plan writes `cudarobotics.route.v1` with the complete input map,
+waypoints, length, clearance lower bound, classified planning status, backend
+and a separate simulation execution summary. Blocked plans can also be
+exported. No file leaves the browser. These routes are experiment data, not
+commands for a real robot.
+
+```bash
+node --test scripts/test_browser_navigation.mjs
+node scripts/test_browser_navigation_webgpu.mjs --compile-only
+node scripts/test_browser_navigation_webgpu.mjs
+```
+
+The latter two use the development-only Dawn setup described below. CI checks
+shader compilation without a physical GPU. The full test compares all 12,288
+GPU field values with the CPU reference across preset, sparse and fully
+occupied maps, then checks routes. CPU tests independently check geometric
+footprint clearance during full missions, narrow-doorway failures, blocked
+routes, map round trips, import rejection, editing pauses and report export.
+Browser visual/touch smoke checks remain separate from these DOM-stub tests.
+
 ## Particle Storm: GPU localization
 
 Open `/particles/` for a GPU-heavy companion to the MPPI lab. Up to 65,536

@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CudaRobotics · Navigation Workbench</title>
+  <meta name="description" content="Edit an occupancy map, inspect GPU obstacle distances, test robot clearance, plan a route and export a reproducible navigation scenario.">
+  <link rel="stylesheet" href="navigation.css">
+</head>
+<body>
+  <header><a href="../index.html">CudaRobotics</a><span>APPLIED ROBOTICS / 03</span><a href="../particles/">Particle Storm ↗</a></header>
+  <main>
+    <p class="eyebrow">OCCUPANCY → GPU DISTANCE FIELD → ROUTE → MOTION</p>
+    <h1>Will the robot fit?</h1>
+    <p class="intro">Draw a pallet into the aisle. Change the robot footprint. Check the remaining clearance, replan from the robot's current position, and export the map and route — not just an animation.</p>
+    <div class="telemetry"><div><strong id="length">—</strong><span>REMAINING ROUTE</span></div><div><strong id="clearance">—</strong><span>ROUTE CLEARANCE LOWER BOUND</span></div><div><strong id="field-time">—</strong><span>DISTANCE FIELD + TRANSFER</span></div><div><strong id="plan-time">—</strong><span>CPU A* + SHORTCUTTING</span></div></div>
+    <div class="lab">
+      <section class="arena" aria-label="Editable navigation map">
+        <div class="arena-heading"><span>16 × 12 m / 0.125 m CELLS</span><span id="backend" role="status">Initializing…</span></div>
+        <div class="canvases"><canvas id="map" width="128" height="96" aria-label="Occupancy and clearance field"></canvas><canvas id="world" width="1280" height="960" tabindex="0" aria-label="Map editor: select a tool, then click or drag. Keyboard: arrow keys move the cursor, Shift moves eight cells, Space applies the tool."></canvas></div>
+        <div class="legend"><span>■ Obstacle</span><span>■ Insufficient clearance</span><span>─ Planned route</span><span>● Robot / ✚ Goal</span></div>
+        <p class="hint">Editing pauses motion immediately. Replanning uses the current robot position. Click or drag with Draw / Erase; arrow keys + Space also work.</p>
+      </section>
+      <aside>
+        <fieldset id="controls" disabled>
+        <h2>Mission setup</h2>
+        <label for="preset">Scenario</label><select id="preset"><option value="warehouse">Warehouse aisles</option><option value="doorway">Doorway clearance test</option><option value="empty">Empty floor</option></select>
+        <label for="tool">Map tool</label><select id="tool"><option value="draw">Draw obstacle</option><option value="erase">Erase obstacle</option><option value="goal">Place goal</option><option value="robot">Place robot</option></select>
+        <label for="radius">Robot radius <output id="radius-value">0.30 m</output></label><input id="radius" type="range" min="0.15" max="0.75" step="0.05" value="0.3">
+        <label for="margin">Safety margin <output id="margin-value">0.12 m</output></label><input id="margin" type="range" min="0" max="0.4" step="0.02" value="0.12">
+        <div class="coordinates"><label>Robot x<input id="start-x" type="number" min="0.1" max="15.9" step="0.1" value="1.5"></label><label>Robot y<input id="start-y" type="number" min="0.1" max="11.9" step="0.1" value="1.5"></label><label>Goal x<input id="goal-x" type="number" min="0.1" max="15.9" step="0.1" value="14"></label><label>Goal y<input id="goal-y" type="number" min="0.1" max="11.9" step="0.1" value="10.5"></label></div>
+        <button id="targets" class="secondary">Apply positions</button>
+        <div class="buttons"><button id="run" disabled>Run mission</button><button id="replan" class="secondary" disabled>Replan</button></div>
+        <p id="status" role="status">Building the obstacle distance field…</p>
+        <label class="toggle"><input id="show-field" type="checkbox" checked> Show clearance field</label>
+        <dl><div><dt>Required clearance</dt><dd id="required">0.42 m</dd></div><div><dt>Search cells expanded</dt><dd id="expanded">—</dd></div><div><dt>Simulation time</dt><dd id="time">0.0 s</dd></div></dl>
+        <h3>Take it with you</h3><div class="buttons"><button id="export-map" class="secondary">Save map</button><button id="export-plan" class="secondary" disabled>Save plan</button></div>
+        <label for="import-map">Load saved map JSON</label><input id="import-map" type="file" accept=".json,application/json">
+        <p class="hint">Exports use metres, origin [0,0], bottom-to-top occupancy rows. Files stay on your device.</p>
+        </fieldset>
+      </aside>
+    </div>
+    <section class="pipeline"><div><b>01 / DESIGN THE AISLE</b><p>Add or remove obstacles, relocate the robot and set a destination. The doorway preset makes footprint limits easy to test.</p></div><div><b>02 / COMPUTE CLEARANCE</b><p>Two GPU passes compute squared Euclidean distances, one invocation per grid cell. Obstacle cells are conservatively expanded to their full area.</p></div><div><b>03 / FIND A ROUTE</b><p>CPU A* respects robot radius + safety margin. Collision-checked shortcuts reduce unnecessary corners; blocked routes stop the mission.</p></div><div><b>04 / REPRODUCE</b><p>Export the occupancy map, footprint, route coordinates and clearance report. Import the same map to compare footprint choices.</p></div></section>
+    <section class="about"><h2>A useful planning experiment, not a robot safety system.</h2><p>The robot is a kinematic disk following a geometric route at 0.8 m/s, with a 0.05 s simulation step. This is not the native CUDA/Nav2 controller, a physics simulation, SLAM, or a guarantee of safe physical deployment. GPU acceleration covers the distance field; A*, motion checks and Canvas drawing run on the CPU. Unsupported devices use the identical CPU distance-field reference.</p><p>The fixed grid is 128 × 96 cells at 0.125 m/cell. Distance values are conservative lower bounds: distance to occupied cell centres minus a half-cell diagonal, capped by map boundaries. Cell lookup also accounts for subcell position. Narrow passages can therefore be rejected conservatively. JSON import accepts this documented grid format, not arbitrary ROS maps. Exported routes are experiment data, not executable robot commands.</p><p><a href="../nav2.html">Native CUDA / Nav2 deployment ↗</a> · <a href="../demo/">MPPI control lab ↗</a> · <a href="../particles/">GPU localization ↗</a></p></section>
+  </main>
+  <footer>CudaRobotics / Navigation Workbench <span>Edit. Check. Plan. Export.</span></footer>
+  <noscript>JavaScript is required for the planning workbench.</noscript>
+  <script type="module" src="app.mjs"></script>
+</body>
+</html>
