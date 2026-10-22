@@ -28,8 +28,8 @@ jobs:
         with:
           node-version: '22'
 
-      - name: Test browser MPPI reference
-        run: node --test scripts/test_browser_mppi.mjs
+      - name: Test browser robotics references
+        run: node --test scripts/test_browser_mppi.mjs scripts/test_browser_particles.mjs
 
       - name: Validate WebGPU shader without a physical GPU
         env:
@@ -37,3 +37,4 @@ jobs:
         run: |
           npm install --prefix "$RUNNER_TEMP/browser-mppi" --no-audit --no-fund webgpu@0.6.2
           node scripts/test_browser_mppi_webgpu.mjs --compile-only
+          node scripts/test_browser_particles_webgpu.mjs --compile-only

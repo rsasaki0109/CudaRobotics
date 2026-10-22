@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CudaRobotics · Particle Storm</title>
+  <meta name="description" content="65,536 robot hypotheses. GPU-parallel LiDAR localization with compute shaders, parallel prefix scans, resampling and GPU particle rendering.">
+  <link rel="stylesheet" href="particles.css">
+</head>
+<body>
+  <header><a href="../index.html">CudaRobotics</a><span>GPU LAB / 02</span><a href="../demo/">MPPI Lab ↗</a></header>
+  <main>
+    <p class="eyebrow">MASSIVELY PARALLEL / MONTE CARLO LOCALIZATION</p>
+    <h1>Particle Storm<span>65,536 guesses.<br>One robot.</span></h1>
+    <p class="intro">Every green spark is a possible robot pose. Watch a cloud of hypotheses lock onto a moving LiDAR scan — then teleport the robot and make the GPU find it again.</p>
+    <div class="telemetry" aria-label="Live compute metrics">
+      <div><strong id="population">65,536</strong><span>POSE HYPOTHESES</span></div>
+      <div><strong id="checks">2,097,152</strong><span>MAX. BEAM TESTS / UPDATE</span></div>
+      <div><strong id="latency">—</strong><span>UPDATE + DRAW + READBACK</span></div>
+      <div><strong id="error">—</strong><span>POSTERIOR MEAN ERROR</span></div>
+    </div>
+    <div class="lab">
+      <section class="arena" aria-label="Localization visualization">
+        <div class="arena-heading"><span>WAREHOUSE / 16 × 12 m</span><span id="backend" role="status">Initializing WebGPU…</span></div>
+        <div class="canvases">
+          <canvas id="map" width="1280" height="960" aria-label="Known warehouse map"></canvas>
+          <canvas id="particles" width="1280" height="960" aria-label="GPU-rendered pose hypotheses"></canvas>
+          <canvas id="fallback" width="1280" height="960" aria-label="CPU preview pose hypotheses" hidden></canvas>
+          <canvas id="overlay" width="1280" height="960" aria-label="Robot ground truth, live LiDAR beams, and posterior mean"></canvas>
+        </div>
+        <div class="legend"><span>● Pose particles</span><span>✦ LiDAR / actual robot</span><span>⊕ Posterior mean</span></div>
+      </section>
+      <aside>
+        <p class="eyebrow">LIVE EXPERIMENT</p><h2>Lose it. Find it.</h2>
+        <button id="kidnap" disabled>Teleport robot ↗</button>
+        <p class="hint">Particles are not told the new location. Random global proposals allow recovery.</p>
+        <div class="buttons"><button id="run" class="secondary" disabled>Pause</button><button id="reset" class="secondary" disabled>Scatter particles</button></div>
+        <label for="count">Parallel hypotheses</label>
+        <select id="count"><option value="4096">4,096</option><option value="16384">16,384</option><option value="65536" selected>65,536</option></select>
+        <label for="engine">Compute backend</label>
+        <select id="engine"><option value="auto">WebGPU · automatic fallback</option><option value="cpu">CPU · 512-particle preview</option></select>
+        <label for="sigma">Sensor tolerance <output id="sigma-value">0.30 m</output></label>
+        <input id="sigma" type="range" min="0.15" max="0.8" step="0.05" value="0.3">
+        <p id="status" role="status">Compiling compute and render pipelines…</p>
+        <dl><div><dt>Effective sample size</dt><dd id="ess">—</dd></div><div><dt>Workgroups / dispatch</dt><dd id="groups">256 × 256 lanes</dd></div><div><dt>GPU → CPU / update</dt><dd id="transfer">32 bytes</dd></div><div><dt>Simulation time</dt><dd id="time">0.0 s</dd></div></dl>
+        <p class="hint">32 LiDAR beams. Known map. No camera or uploads. On mobile, start with 4,096 particles if updates are slow.</p>
+      </aside>
+    </div>
+    <section class="pipeline" aria-label="Compute pipeline">
+      <div><b>01 / PREDICT + SCORE</b><p>One invocation per pose. Transform 32 scan endpoints and evaluate their distance to mapped surfaces.</p></div>
+      <div><b>02 / PREFIX SCANS</b><p>256-lane workgroups build a weight CDF. A second scan combines group totals and posterior moments.</p></div>
+      <div><b>03 / RESAMPLE</b><p>Each invocation independently searches the CDF. Good hypotheses survive; 3% global proposals keep exploration alive.</p></div>
+      <div><b>04 / DRAW</b><p>Instanced particle sprites read the GPU state directly. Only 32 bytes of summary statistics return to the CPU.</p></div>
+    </section>
+    <section class="about"><h2>This is the parallel part.</h2><p>On WebGPU, all four compute passes and particle drawing run on the GPU. The CPU only generates the synthetic LiDAR scan, moves the ground-truth robot and draws the map/scan overlay. The beam counter is an upper bound of 32 tests per particle; invalid poses skip scoring. It is not measured hardware occupancy or ray-tracing throughput. Updates advance 0.1 simulation seconds, independent of wall-clock speed.</p><p>This is a browser-native WGSL demonstration of the CUDA-style particle-per-thread pattern, <strong>not CUDA executing in a browser</strong> or a native CUDA benchmark. It is likelihood-field Monte Carlo localization on a known 2D map, not SLAM. The posterior mean can lie between competing modes before convergence. Unsupported devices get a clearly labeled 512-particle CPU preview.</p><p><a href="../demo/">Interactive MPPI control ↗</a> · <a href="../nav2.html">Native CUDA / Nav2 ↗</a> · <a href="https://github.com/rsasaki0109/CudaRobotics">Source ↗</a></p></section>
+  </main>
+  <footer>CudaRobotics / Particle Storm <span>GPU compute, not a prerecorded animation.</span></footer>
+  <noscript>Enable JavaScript to run the localization experiment.</noscript>
+  <script type="module" src="app.mjs"></script>
+</body>
+</html>

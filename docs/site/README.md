@@ -12,6 +12,43 @@ python3 -m http.server 8080 --directory docs/site
 
 Then open `http://localhost:8080/`.
 
+## Particle Storm: GPU localization
+
+Open `/particles/` for a GPU-heavy companion to the MPPI lab. Up to 65,536
+pose hypotheses each transform up to 32 LiDAR endpoints (2,097,152 endpoint
+tests per update; invalid poses skip scoring). Four compute passes perform prediction/likelihood scoring,
+workgroup prefix scans, a group-level CDF/moment reduction, and stratified
+resampling. Instanced sprites render the resulting GPU storage buffer
+directly. Only a 32-byte posterior summary is read back each update.
+
+The map and ground-truth LiDAR scan are generated on the CPU. The filter
+receives scan ranges and odometry increments, never the ground-truth pose.
+Teleporting the robot changes only the simulated ground truth; 3% global
+proposals allow recovery. Scatter resets the filter's prior. The known-map
+likelihood-field model is MCL, not SLAM or a direct CUDA build. A 512-particle
+CPU preview is explicitly labeled when WebGPU is unavailable or fails.
+Autoplay respects `prefers-reduced-motion`; paused users can start manually.
+
+```bash
+node --test scripts/test_browser_particles.mjs
+```
+
+With the development-only Dawn module configured as described below:
+
+```bash
+node scripts/test_browser_particles_webgpu.mjs --compile-only
+node scripts/test_browser_particles_webgpu.mjs
+```
+
+The first command validates all compute and render pipelines without a GPU
+and runs in CI. The second checks GPU/CPU likelihood parity (0.1% tolerance
+with a 0.0001 absolute floor), posterior reductions, CDF resampling, rendered
+pixels, 65,536-particle convergence and recovery after teleporting. It covers
+partial workgroups as well as full-size dispatches. Browser smoke checks:
+pause/resume, scatter, teleport, particle count and tolerance changes, CPU
+preview, a narrow viewport, and a reduced-motion preference. Live update
+latency includes compute, drawing and summary readback, not just kernel time.
+
 ## Interactive browser MPPI lab
 
 Open `http://localhost:8080/demo/` or the deployed

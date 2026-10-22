@@ -12,6 +12,7 @@ on:
       - ".github/workflows/docs-deploy.yml"
       - "scripts/test_browser_mppi.mjs"
       - "scripts/test_browser_mppi_webgpu.mjs"
+      - "scripts/test_browser_particles*.mjs"
 
 permissions:
   contents: read
@@ -51,16 +52,17 @@ jobs:
           WEBGPU_MODULE: ${{ runner.temp }}/browser-mppi/node_modules/webgpu/index.js
         run: |
           python3 source/scripts/validate_v1_support_matrix.py
-          node --test source/scripts/test_browser_mppi.mjs
+          node --test source/scripts/test_browser_mppi.mjs source/scripts/test_browser_particles.mjs
           npm install --prefix "$RUNNER_TEMP/browser-mppi" --no-audit --no-fund webgpu@0.6.2
           node source/scripts/test_browser_mppi_webgpu.mjs --compile-only
+          node source/scripts/test_browser_particles_webgpu.mjs --compile-only
           test -f pages/index.html
           test -d pages/gif
           rsync -a --delete source/docs/site/ pages/docs/
           rsync -a \
             --include='*.gif' --exclude='*' \
             source/gif/ pages/
-          for page in index.html install.html nav2.html results.html demo/index.html demo/app.mjs demo/planner.mjs demo/gpu.mjs demo/rollout.wgsl demo/demo.css; do
+          for page in index.html install.html nav2.html results.html demo/index.html demo/app.mjs demo/planner.mjs demo/gpu.mjs demo/rollout.wgsl demo/demo.css particles/index.html particles/app.mjs particles/model.mjs particles/gpu.mjs particles/filter.wgsl particles/draw.wgsl particles/particles.css; do
             cmp "source/docs/site/$page" "pages/docs/$page"
           done
           while IFS= read -r -d '' asset; do
@@ -86,7 +88,7 @@ jobs:
         run: |
           for attempt in $(seq 1 12); do
             MATCHED=true
-            for page in index.html install.html nav2.html results.html demo/index.html demo/app.mjs demo/planner.mjs demo/gpu.mjs demo/rollout.wgsl demo/demo.css; do
+            for page in index.html install.html nav2.html results.html demo/index.html demo/app.mjs demo/planner.mjs demo/gpu.mjs demo/rollout.wgsl demo/demo.css particles/index.html particles/app.mjs particles/model.mjs particles/gpu.mjs particles/filter.wgsl particles/draw.wgsl particles/particles.css; do
               mkdir -p "/tmp/$(dirname "$page")"
               curl --fail --silent --show-error \
                 "${PAGE_URL}docs/${page}?source_commit=${SOURCE_COMMIT}" \

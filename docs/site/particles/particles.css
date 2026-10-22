@@ -1,0 +1,34 @@
+@import url('../demo/demo.css');
+:root { --bg: #080e12; }
+body { background: #080e12; }
+header, footer { max-width: 1440px; }
+main { max-width: 1440px; padding-top: 36px; }
+h1 { max-width: none; font-size: clamp(42px, 6vw, 86px); letter-spacing: -.055em; }
+h1 span { display: inline-block; vertical-align: middle; margin-left: 36px; font-size: clamp(20px, 2.6vw, 34px); letter-spacing: -.035em; color: #8ea4ad; line-height: 1.1; }
+.intro { max-width: 780px; }
+.telemetry { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px; background: #263b40; border: 1px solid #263b40; border-radius: 10px; overflow: hidden; margin-top: 28px; }
+.telemetry div { background: #101c21; padding: 20px 24px; }
+.telemetry strong { display: block; font: 600 clamp(23px, 2.8vw, 38px) ui-monospace, monospace; color: #8ff3b8; letter-spacing: -.06em; }
+.telemetry span { font-size: 10px; letter-spacing: .08em; color: #9fb5bc; }
+.lab { margin-top: 20px; grid-template-columns: minmax(0, 1fr) 300px; }
+.arena { min-width: 0; background: #0b151a; padding: 18px; }
+.arena-heading { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px; font: 11px ui-monospace, monospace; color: #a0b6bb; margin-bottom: 16px; }
+.canvases { position: relative; aspect-ratio: 4 / 3; width: 100%; overflow: hidden; border-radius: 8px; border: 1px solid #283b40; }
+.canvases canvas { position: absolute; inset: 0; width: 100%; height: 100%; cursor: default; border-radius: 0; }
+.canvases canvas[hidden] { display: none; }
+.legend span:first-child { color: #73e4a1; } .legend span:nth-child(2) { color: #ffb66b; } .legend span:nth-child(3) { color: #9bc7ff; }
+aside { padding: 22px; background: #132128; }
+aside .eyebrow { margin-top: 0; font-size: 10px; }
+aside h2 { font-size: 25px; margin-bottom: 20px; }
+#kidnap { width: 100%; background: #ffb66b; border-color: #ffb66b; color: #271b0f; }
+.hint { font-size: 12px; color: #9fb6bf; line-height: 1.6; }
+.buttons { margin-top: 16px; gap: 8px; }
+.buttons button { font-size: 12px; padding: 10px 6px; }
+#status { margin-top: 20px; min-height: 45px; }
+dl { margin-bottom: 0; }
+.pipeline { display: grid; grid-template-columns: repeat(4, 1fr); gap: 24px; padding: 30px 0; border-bottom: 1px solid #293940; }
+.pipeline b { color: #8ff3b8; font: 12px ui-monospace, monospace; }
+.pipeline p { font-size: 13px; color: #9fb6bf; line-height: 1.7; margin-bottom: 0; }
+.about { margin-top: 30px; }
+@media (max-width: 1000px) { .telemetry div { padding: 16px; } .lab { grid-template-columns: 1fr; } aside { display: block; } .pipeline { grid-template-columns: 1fr 1fr; } }
+@media (max-width: 600px) { h1 span { display: block; margin: 18px 0 0; } .telemetry { grid-template-columns: 1fr 1fr; } .telemetry strong { font-size: 28px; } .pipeline { gap: 18px; } .arena { padding: 12px; } .legend { font-size: 10px; gap: 10px; } }
