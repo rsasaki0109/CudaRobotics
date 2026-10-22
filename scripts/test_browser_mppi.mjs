@@ -61,9 +61,10 @@ for (const [name, scene] of Object.entries(scenes)) {
 test('app initializes CPU fallback and supports start, pause, goal validation and reset', async () => {
   const identifiers = ['world', 'backend', 'scene', 'engine', 'count', 'temperature',
     'temperature-value', 'goal-x', 'goal-y', 'set-goal', 'run', 'reset', 'status',
-    'latency', 'valid', 'distance', 'time'];
+    'latency', 'valid', 'distance', 'time', 'compare', 'export-comparison', 'comparison-status',
+    'cpu-median', 'gpu-median', 'cpu-range', 'gpu-range', 'cpu-bar', 'gpu-bar', 'speedup', 'accuracy'];
   const elements = Object.fromEntries(identifiers.map(id => [id, {
-    id, value: '', textContent: '', listeners: {},
+    id, value: '', textContent: '', listeners: {}, style: {},
     addEventListener(name, listener) { this.listeners[name] = listener; },
   }]));
   Object.assign(elements.scene, {value: 'gap'});
@@ -80,6 +81,11 @@ test('app initializes CPU fallback and supports start, pause, goal validation an
     assert.equal(elements.backend.textContent, 'CPU / JavaScript');
     assert.equal(elements.run.disabled, false);
     assert.match(elements.status.textContent, /CPU fallback/);
+    await elements.compare.listeners.click();
+    assert.match(elements['cpu-median'].textContent, /ms$/);
+    assert.equal(elements['gpu-median'].textContent, 'Unavailable');
+    assert.equal(elements.speedup.textContent, '—');
+    assert.equal(elements['export-comparison'].disabled, false);
     elements.run.listeners.click();
     await frame();
     assert.equal(elements.time.textContent, '0.1 s');
@@ -95,6 +101,7 @@ test('app initializes CPU fallback and supports start, pause, goal validation an
     elements['set-goal'].listeners.click();
     assert.match(elements.status.textContent, /New goal set/);
     elements.reset.listeners.click();
+    assert.equal(elements['export-comparison'].disabled, true);
     assert.equal(elements.time.textContent, '0.0 s');
     assert.equal(elements.run.textContent, 'Start');
     elements.scene.value = 'slalom';

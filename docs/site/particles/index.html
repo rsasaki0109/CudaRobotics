@@ -6,6 +6,7 @@
   <title>CudaRobotics · Particle Storm</title>
   <meta name="description" content="65,536 robot hypotheses. GPU-parallel LiDAR localization with compute shaders, parallel prefix scans, resampling and GPU particle rendering.">
   <link rel="stylesheet" href="particles.css">
+  <link rel="stylesheet" href="../assets/comparison.css">
 </head>
 <body>
   <header><a href="../index.html">CudaRobotics</a><span>GPU LAB / 02</span><a href="../navigation/">Navigation Workbench ↗</a></header>
@@ -46,6 +47,13 @@
         <p class="hint">32 LiDAR beams. Known map. No camera or uploads. On mobile, start with 4,096 particles if updates are slow.</p>
       </aside>
     </div>
+    <section class="comparison" aria-labelledby="comparison-title">
+      <div class="comparison-heading"><div><p class="eyebrow">SAME FLOAT32 POSES / SAME 32-BEAM SCAN</p><h2 id="comparison-title">GPU vs CPU · LiDAR likelihood scoring</h2></div><div class="buttons"><button id="compare" disabled>Compare GPU / CPU</button><button id="export-comparison" class="secondary" disabled>Save comparison</button></div></div>
+      <label for="comparison-count">Matched particles per backend (independent of live preview)</label><select id="comparison-count"><option value="512">512</option><option value="4096" selected>4,096</option><option value="16384">16,384</option><option value="65536">65,536</option></select>
+      <p id="comparison-status" role="status">Preparing comparison…</p>
+      <div class="comparison-results"><div><span>CPU / JAVASCRIPT</span><strong id="cpu-median">—</strong><div class="timing-track"><div id="cpu-bar"></div></div><p id="cpu-range">—</p></div><div><span>GPU / WEBGPU + TRANSFERS</span><strong id="gpu-median">—</strong><div class="timing-track"><div id="gpu-bar"></div></div><p id="gpu-range">—</p></div><div><span>CPU MEDIAN / GPU MEDIAN</span><strong id="speedup">—</strong><p id="accuracy">—</p></div></div>
+      <p class="hint">Both backends score exactly the same seeded Float32 poses, particle count, sensor tolerance and live scan. This compares likelihood scoring only, not random prediction, CDF reduction, resampling or rendering. It never compares a 512-particle CPU preview against 65,536 GPU particles. GPU time includes uploads and all N weight readbacks (N × 4 bytes, unlike the live filter's 32-byte summary). CPU time includes worker messages when supported, or a labeled main-thread fallback. Input generation, compilation and setup are excluded. Three warmups, 15 alternating pairs; tolerance max(0.0001 absolute, 0.1% relative). Larger counts may take several seconds. WebGPU versus JavaScript, not native CUDA/C++; no GPU means CPU-only timings.</p>
+    </section>
     <section class="pipeline" aria-label="Compute pipeline">
       <div><b>01 / PREDICT + SCORE</b><p>One invocation per pose. Transform 32 scan endpoints and evaluate their distance to mapped surfaces.</p></div>
       <div><b>02 / PREFIX SCANS</b><p>256-lane workgroups build a weight CDF. A second scan combines group totals and posterior moments.</p></div>
@@ -56,6 +64,6 @@
   </main>
   <footer>CudaRobotics / Particle Storm <span>GPU compute, not a prerecorded animation.</span></footer>
   <noscript>Enable JavaScript to run the localization experiment.</noscript>
-  <script type="module" src="app.mjs"></script>
+  <script type="module" src="app.mjs?v=all-comparisons-1"></script>
 </body>
 </html>

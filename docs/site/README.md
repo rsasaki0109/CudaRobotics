@@ -12,6 +12,58 @@ python3 -m http.server 8080 --directory docs/site
 
 Then open `http://localhost:8080/`.
 
+## Comparison coverage: every executable browser demo
+
+The inventory in `demos.json` covers all three pages that execute algorithms:
+MPPI (`/demo/`), Particle Storm (`/particles/`) and Navigation Workbench
+(`/navigation/`). Each has a GPU/CPU comparison panel. Repository checks discover
+module-script demo pages and fail if one is missing from the inventory or lacks
+comparison controls. The docs homepage links all panels in one place.
+
+The legacy gallery's GIFs/research figures are recorded native runs, not live
+browser computations. They cannot honestly be timed by measuring playback.
+They remain preserved and are explicitly excluded from the live inventory;
+native measurements remain in Results. This does not port all native CUDA
+examples into the browser.
+
+All live comparisons share `assets/benchmark.mjs`: three warmups, 15 measured
+pairs with alternating order, yielding between calls, median/P10/P90, raw
+samples, and full-output agreement. No GPU or failed setup means CPU-only
+timings with a reason; output mismatch/zero-resolution timings suppress speedup.
+Changing inputs or hiding the page cancels and invalidates comparison results.
+The CPU baseline is JavaScript, not optimized native C++; GPU is WebGPU, not
+CUDA. Sampling/input creation, compilation and allocation setup are excluded.
+
+- MPPI: seed-311 trajectories at the selected count/state/local target.
+  Compare costs only; RNG, softmin and rendering are excluded. Both backends
+  receive identical Float32 controls. Tolerance is max(0.001 absolute, 0.1%
+  relative), plus identical collision classification.
+- Particle Storm: fixed seed-311 Float32 poses and the current 32-beam scan,
+  at a separately selected equal count (512–65,536) on both backends. Compare
+  likelihood only, using the live filter's shared WGSL likelihood function.
+  Prediction, reduction, resampling and drawing are excluded. Tolerance is
+  max(0.0001 absolute, 0.1% relative). It never compares different live-view
+  populations. All N weights return (N × 4 bytes), unlike the live filter's
+  32-byte summary.
+- Navigation: the same fixed occupancy distance transform, as detailed below.
+
+MPPI/particle CPU kernels run in a single module worker when available, with
+an explicitly labeled main-thread fallback. Worker creation/input setup are
+excluded; request/result-message overhead is timed. GPU calls include input
+upload, synchronization and all-output readback. GPU resources are reused
+within the comparison and released afterwards. Dedicated benchmark devices
+do not overwrite live planner/filter state. The exported JSON contains input
+parameters/seeds, exact scope, tolerances, raw timings and execution mode;
+there are no device identities, external assets or uploads.
+
+```bash
+node --test scripts/test_browser_comparisons.mjs scripts/test_browser_demo_inventory.mjs
+```
+
+CPU tests include the actual worker message protocol via a Node worker bridge.
+The full WebGPU test scripts also run matched comparisons with real compute
+pipelines; `--compile-only` validates the new scoring entry point in CI.
+
 ## Navigation Workbench: map → clearance → route
 
 Open `/navigation/` to test a warehouse layout or doorway against a circular

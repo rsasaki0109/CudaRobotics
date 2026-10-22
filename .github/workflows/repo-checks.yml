@@ -29,7 +29,7 @@ jobs:
           node-version: '22'
 
       - name: Test browser robotics references
-        run: node --test scripts/test_browser_mppi.mjs scripts/test_browser_particles.mjs scripts/test_browser_navigation.mjs scripts/test_browser_navigation_benchmark.mjs
+        run: node --test scripts/test_browser_mppi.mjs scripts/test_browser_particles.mjs scripts/test_browser_navigation.mjs scripts/test_browser_navigation_benchmark.mjs scripts/test_browser_comparisons.mjs scripts/test_browser_demo_inventory.mjs
 
       - name: Validate WebGPU shader without a physical GPU
         env:

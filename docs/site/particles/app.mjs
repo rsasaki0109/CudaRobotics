@@ -1,5 +1,8 @@
 import {WIDTH, HEIGHT, BEAMS, BOXES, TAU, CpuFilter, free, move, scan} from './model.mjs';
-import {GpuFilter} from './gpu.mjs';
+import {GpuFilter, createGpuScorer} from './gpu.mjs?v=all-comparisons-1';
+import {ComparisonPanel} from '../assets/comparison-panel.mjs';
+import {prepareComparison} from '../assets/comparison-job.mjs';
+import {particleSnapshot, compareParticles} from './benchmark.mjs';
 
 const elements = Object.fromEntries([...document.querySelectorAll('[id]')].map(element => [element.id, element]));
 const mapContext = elements.map.getContext('2d');
@@ -20,6 +23,16 @@ let simulationTime = 0;
 let estimate = null;
 let lastRanges = scan(truth);
 let history = [];
+let configuring = false;
+const comparison = new ComparisonPanel(elements, {
+  pause() { running = false; revision++; elements.run.textContent = 'Start'; elements.run.disabled = true; },
+  idle: () => !busy,
+  finished() { elements.run.disabled = configuring || !filter; },
+  prepare: () => {
+    const input = particleSnapshot(Number(elements['comparison-count'].value), scan(truth), Number(elements.sigma.value));
+    return prepareComparison(input, () => createGpuScorer(input.count), compareParticles);
+  },
+});
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
 if (matchMedia('(max-width: 760px)').matches) elements.count.value = '16384';
 
@@ -86,6 +99,7 @@ function drawCpu() {
 }
 
 async function configure() {
+  configuring = true; comparison.invalidate(); comparison.setReady(false);
   const ticket = ++configuration;
   revision++;
   running = false;
@@ -118,6 +132,7 @@ async function configure() {
   estimate = null;
   running = !reducedMotion;
   elements.run.textContent = running ? 'Pause' : 'Start';
+  configuring = false; elements.run.disabled = comparison.busy; comparison.setReady(true);
 }
 
 function robotMotion() {
@@ -135,7 +150,7 @@ function robotMotion() {
 }
 
 async function tick() {
-  if (!filter || busy || document.hidden || (!running && !resetPending)) { requestAnimationFrame(tick); return; }
+  if (!filter || busy || comparison.busy || document.hidden || (!running && !resetPending)) { requestAnimationFrame(tick); return; }
   busy = true;
   const version = revision;
   try {
@@ -172,11 +187,13 @@ async function tick() {
 }
 
 elements.run.addEventListener('click', () => {
+  if (comparison.busy) return;
   running = !running;
   elements.run.textContent = running ? 'Pause' : 'Start';
 });
-elements.reset.addEventListener('click', () => { revision++; resetPending = true; estimate = null; });
+elements.reset.addEventListener('click', () => { comparison.invalidate(); revision++; resetPending = true; estimate = null; });
 elements.kidnap.addEventListener('click', () => {
+  comparison.invalidate();
   revision++;
   if (truth[1] < 6) { truth = [13.8, 10.7, Math.PI]; waypoint = 2; }
   else { truth = [2, 1.5, 0]; waypoint = 0; }
@@ -187,7 +204,8 @@ elements.kidnap.addEventListener('click', () => {
 });
 elements.count.addEventListener('change', configure);
 elements.engine.addEventListener('change', configure);
-elements.sigma.addEventListener('input', () => { elements['sigma-value'].value = `${Number(elements.sigma.value).toFixed(2)} m`; });
+elements.sigma.addEventListener('input', () => { comparison.invalidate(); elements['sigma-value'].value = `${Number(elements.sigma.value).toFixed(2)} m`; });
+elements['comparison-count'].addEventListener('change', () => comparison.invalidate());
 drawMap(); drawOverlay();
 configure();
 requestAnimationFrame(tick);

@@ -43,6 +43,21 @@ fn surface_distance(point: vec2f) -> f32 {
   return distance;
 }
 
+fn pose_weight(pose: vec3f) -> f32 {
+  var weight = 0.00000001;
+  if (is_free(pose.xy)) {
+    var error = 0.0;
+    for (var beam = 0u; beam < 32u; beam++) {
+      let angle = pose.z + f32(beam) / 32.0 * 6.283185307;
+      let endpoint = pose.xy + vec2f(cos(angle), sin(angle)) * ranges[beam];
+      let distance = surface_distance(endpoint);
+      error += min(4.0, distance * distance);
+    }
+    weight += exp(-error / 32.0 / (2.0 * params.motion.z * params.motion.z));
+  }
+  return weight;
+}
+
 @compute @workgroup_size(256)
 fn predict_score(@builtin(global_invocation_id) invocation: vec3u) {
   let index = invocation.x;
@@ -57,18 +72,13 @@ fn predict_score(@builtin(global_invocation_id) invocation: vec3u) {
     let heading = pose.z + rotation * 0.5;
     pose = vec3f(pose.xy + translation * vec2f(cos(heading), sin(heading)), pose.z + rotation);
   }
-  var weight = 0.00000001;
-  if (is_free(pose.xy)) {
-    var error = 0.0;
-    for (var beam = 0u; beam < 32u; beam++) {
-      let angle = pose.z + f32(beam) / 32.0 * 6.283185307;
-      let endpoint = pose.xy + vec2f(cos(angle), sin(angle)) * ranges[beam];
-      let distance = surface_distance(endpoint);
-      error += min(4.0, distance * distance);
-    }
-    weight += exp(-error / 32.0 / (2.0 * params.motion.z * params.motion.z));
-  }
-  scored[index] = vec4f(pose, weight);
+  scored[index] = vec4f(pose, pose_weight(pose));
+}
+
+@compute @workgroup_size(256)
+fn score_snapshot(@builtin(global_invocation_id) invocation: vec3u) {
+  let index = invocation.x;
+  if (index < params.settings.x) { cdf[index] = pose_weight(source[index].xyz); }
 }
 
 fn inclusive_scan(local: u32) {

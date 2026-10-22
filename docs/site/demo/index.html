@@ -6,6 +6,7 @@
   <meta name="description" content="Run interactive MPPI robot navigation locally in your browser with WebGPU or a CPU fallback.">
   <title>CudaRobotics · Browser MPPI Lab</title>
   <link rel="stylesheet" href="demo.css">
+  <link rel="stylesheet" href="../assets/comparison.css">
 </head>
 <body>
   <header><a href="../index.html">CudaRobotics</a><span>INTERACTIVE LAB / 01</span><a href="../particles/">GPU Particle Storm ↗</a></header>
@@ -37,10 +38,16 @@
         <p class="fine">32-step horizon · 0.1 s model step · differential drive · 0.22 m robot radius. Simulation advances one step per plan, not in real time. Latency includes sampling, GPU transfer and CPU reduction, excludes drawing.</p>
       </aside>
     </div>
+    <section class="comparison" aria-labelledby="comparison-title">
+      <div class="comparison-heading"><div><p class="eyebrow">SAME SEEDED TRAJECTORIES / SAME HORIZON</p><h2 id="comparison-title">GPU vs CPU · MPPI rollout costs</h2></div><div class="buttons"><button id="compare" disabled>Compare GPU / CPU</button><button id="export-comparison" class="secondary" disabled>Save comparison</button></div></div>
+      <p id="comparison-status" role="status">Preparing comparison…</p>
+      <div class="comparison-results"><div><span>CPU / JAVASCRIPT</span><strong id="cpu-median">—</strong><div class="timing-track"><div id="cpu-bar"></div></div><p id="cpu-range">—</p></div><div><span>GPU / WEBGPU + TRANSFERS</span><strong id="gpu-median">—</strong><div class="timing-track"><div id="gpu-bar"></div></div><p id="gpu-range">—</p></div><div><span>CPU MEDIAN / GPU MEDIAN</span><strong id="speedup">—</strong><p id="accuracy">—</p></div></div>
+      <p class="fine">Uses the selected trajectory count, current state and local target with seed 311. Both backends receive identical controls. Only rollout costs are timed: sampling, softmin, motion and drawing are excluded. GPU time includes uploads and all-cost readback; CPU time includes worker messages when supported (main-thread fallback otherwise). Three warmups, 15 alternating pairs, median/P10/P90. Costs must match within max(0.001 absolute, 0.1% relative), with identical collision classifications. GPU setup is excluded. This is WebGPU versus JavaScript, not CUDA versus native C++. CPU wins are shown; no GPU means CPU-only timing. Changes or hiding the tab cancel measurement.</p>
+    </section>
     <section class="about"><h2>Same parallel idea. A browser-native backend.</h2><p>Like the native CUDA controller, one GPU invocation evaluates one candidate trajectory. A softmin weights the sampled control sequences; the first command moves the robot, then the horizon shifts. Guide waypoints in the slalom scene provide a global route; MPPI is a local controller.</p><p>This is a simplified JavaScript / WGSL port, <strong>not CUDA running in a browser</strong>, not the full Nav2 controller and not a native performance benchmark. Sampling, weight reduction and drawing run on the CPU. WebGPU evaluates rollout costs; unsupported devices automatically use the JavaScript reference. No installs, external assets, telemetry, camera permissions or backend server.</p><p><a href="../nav2.html">Run the native CUDA / Nav2 controller ↗</a> · <a href="../python.html">Python GPU API ↗</a></p></section>
   </main>
   <footer>CudaRobotics / Browser MPPI Lab <span>Built for exploration, not robot deployment.</span></footer>
   <noscript>This interactive demo requires JavaScript. The documentation links remain available.</noscript>
-  <script type="module" src="app.mjs"></script>
+  <script type="module" src="app.mjs?v=all-comparisons-1"></script>
 </body>
 </html>

@@ -53,13 +53,15 @@ test('CPU posterior remains finite, resamples and converges from a global prior'
 test('particle app supports CPU fallback, pause, teleport and scatter', async () => {
   const identifiers = ['map', 'particles', 'fallback', 'overlay', 'population', 'checks', 'latency',
     'error', 'backend', 'kidnap', 'run', 'reset', 'count', 'engine', 'sigma', 'sigma-value',
-    'status', 'ess', 'groups', 'transfer', 'time'];
+    'status', 'ess', 'groups', 'transfer', 'time', 'compare', 'export-comparison', 'comparison-status',
+    'cpu-median', 'gpu-median', 'cpu-range', 'gpu-range', 'cpu-bar', 'gpu-bar', 'speedup', 'accuracy', 'comparison-count'];
   const elements = Object.fromEntries(identifiers.map(id => [id, {
-    id, value: '', textContent: '', listeners: {},
+    id, value: '', textContent: '', listeners: {}, style: {},
     addEventListener(name, listener) { this.listeners[name] = listener; },
     getContext() { return new Proxy({}, {get: () => () => {}}); },
   }]));
   elements.count.value = '65536'; elements.engine.value = 'auto'; elements.sigma.value = '.3';
+  elements['comparison-count'].value = '512';
   let frame;
   globalThis.document = {hidden: false, querySelectorAll: () => Object.values(elements)};
   globalThis.matchMedia = () => ({matches: false});
@@ -80,7 +82,12 @@ test('particle app supports CPU fallback, pause, teleport and scatter', async ()
     assert.equal(elements.time.textContent, '0.1 s');
     elements.kidnap.listeners.click();
     assert.match(elements.status.textContent, /no ground-truth pose/);
+    await elements.compare.listeners.click();
+    assert.match(elements['cpu-median'].textContent, /ms$/);
+    assert.equal(elements['gpu-median'].textContent, 'Unavailable');
+    assert.equal(elements.speedup.textContent, '—');
     elements.reset.listeners.click();
+    assert.equal(elements['export-comparison'].disabled, true);
     await frame();
     assert.equal(elements.time.textContent, '0.1 s');
     assert.match(elements.error.textContent, /m$/);

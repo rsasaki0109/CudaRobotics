@@ -3,6 +3,7 @@ import {readFile} from 'node:fs/promises';
 import {pathToFileURL} from 'node:url';
 import {createPipelines, GpuFilter} from '../docs/site/particles/gpu.mjs';
 import {likelihood, move, scan} from '../docs/site/particles/model.mjs';
+import {particleSnapshot, compareParticles} from '../docs/site/particles/benchmark.mjs';
 
 const {create, globals} = await import(process.env.WEBGPU_MODULE
   ? pathToFileURL(process.env.WEBGPU_MODULE).href : 'webgpu');
@@ -84,6 +85,11 @@ for (const count of compileOnly ? [1] : [1, 257, 4096, 65536]) {
           `Global acquisition while moving: ${estimate}`);
       }
     }
-    console.log(`${count} particles: likelihood parity, reductions, resampling and draw PASS`);
+    const input = particleSnapshot(count, ranges, .3);
+    const comparison = await compareParticles(input, {warmups: 0, repetitions: 1, yieldControl: async () => {},
+      gpuEvaluate: () => filter.scoreSnapshot(input.poses, input.ranges, input.sigma)});
+    assert.equal(comparison.accuracy.matches, true, JSON.stringify(comparison.accuracy));
+    assert.equal(comparison.accuracy.checkedCellComparisons, count);
+    console.log(`${count} particles: likelihood parity, reductions, resampling, draw and matched comparison PASS`);
   } finally { texture?.destroy(); filter?.destroy(); device.destroy(); }
 }

@@ -3,6 +3,7 @@ import {readFile} from 'node:fs/promises';
 import {pathToFileURL} from 'node:url';
 import {GpuCosts} from '../docs/site/demo/gpu.mjs';
 import {Planner, scenes, cpuCosts, safeAdvance, COLLISION} from '../docs/site/demo/planner.mjs';
+import {mppiSnapshot, compareMppi} from '../docs/site/demo/benchmark.mjs';
 
 const {create, globals} = await import(process.env.WEBGPU_MODULE
   ? pathToFileURL(process.env.WEBGPU_MODULE).href : 'webgpu');
@@ -24,6 +25,11 @@ try {
   if (!compileOnly) {
     evaluator = new GpuCosts(device, pipeline);
     await evaluator.checkReference();
+    const input = mppiSnapshot(scenes.gap.start, scenes.gap.goal, scenes.gap.obstacles, 512);
+    const comparison = await compareMppi(input, {warmups: 1, repetitions: 3, yieldControl: async () => {},
+      gpuEvaluate: () => evaluator.evaluate(input.state, input.goal, input.obstacles, input.controls, input.count)});
+    assert.equal(comparison.accuracy.matches, true);
+    console.log('Matched MPPI comparison and collision classification: PASS');
     for (const count of [1, 65, 128, 512, 2048, 128]) {
       for (const scene of Object.values(scenes)) {
         const controls = new Planner().sample(scene.start, scene.goal, count);

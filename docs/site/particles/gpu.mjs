@@ -22,7 +22,8 @@ export async function createPipelines(device, computeCode, drawCode, format) {
         alpha: {srcFactor: 'one', dstFactor: 'one', operation: 'add'}}}]},
     primitive: {topology: 'triangle-list'},
   });
-  return {passes, computeLayout, render};
+  const score = await device.createComputePipelineAsync({layout, compute: {module: compute, entryPoint: 'score_snapshot'}});
+  return {passes, computeLayout, render, score};
 }
 
 export class GpuFilter {
@@ -33,7 +34,7 @@ export class GpuFilter {
     const device = await adapter.requestDevice();
     try {
       const codes = await Promise.all(['filter.wgsl', 'draw.wgsl'].map(async name => {
-        const response = await fetch(new URL(name, import.meta.url));
+        const response = await fetch(new URL(`${name}?v=all-comparisons-1`, import.meta.url));
         if (!response.ok) throw new Error(`Shader HTTP ${response.status}`);
         return response.text();
       }));
@@ -138,5 +139,48 @@ export class GpuFilter {
     } finally { readback.destroy(); }
   }
 
+  async scoreSnapshot(poses, ranges, sigma) {
+    if (this.failure) throw this.failure;
+    if (poses.length !== this.count * 4 || ranges.length !== BEAMS) throw new Error('Invalid scoring snapshot');
+    if (!this.scoreReadback) {
+      this.scoreReadback = this.device.createBuffer({size: this.count * 4, usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST});
+      this.buffers.push(this.scoreReadback);
+    }
+    const data = new ArrayBuffer(48);
+    new Float32Array(data).set([0, 0, sigma, 0]);
+    new Uint32Array(data).set([this.count, BEAMS, 0, 0], 4);
+    this.device.queue.writeBuffer(this.params, 0, data);
+    this.device.queue.writeBuffer(this.states[0], 0, poses);
+    this.device.queue.writeBuffer(this.ranges, 0, ranges);
+    const encoder = this.device.createCommandEncoder();
+    const pass = encoder.beginComputePass();
+    pass.setPipeline(this.pipelines.score); pass.setBindGroup(0, this.computeGroups[0]);
+    pass.dispatchWorkgroups(Math.ceil(this.count / 256)); pass.end();
+    encoder.copyBufferToBuffer(this.cdf, 0, this.scoreReadback, 0, this.count * 4);
+    this.device.queue.submit([encoder.finish()]);
+    await this.scoreReadback.mapAsync(GPUMapMode.READ);
+    let output;
+    try { output = new Float32Array(this.scoreReadback.getMappedRange()).slice(); }
+    finally { this.scoreReadback.unmap(); }
+    if (this.failure) throw this.failure;
+    return output;
+  }
+
   destroy() { this.buffers.forEach(buffer => buffer.destroy()); this.device.destroy(); }
+}
+
+export async function createGpuScorer(count) {
+  if (!navigator.gpu) throw new Error('WebGPU is unavailable');
+  const adapter = await navigator.gpu.requestAdapter();
+  if (!adapter) throw new Error('No WebGPU adapter');
+  const device = await adapter.requestDevice();
+  try {
+    const codes = await Promise.all(['filter.wgsl', 'draw.wgsl'].map(async name => {
+      const response = await fetch(new URL(`${name}?v=all-comparisons-1`, import.meta.url));
+      if (!response.ok) throw new Error(`Shader HTTP ${response.status}`);
+      return response.text();
+    }));
+    const filter = new GpuFilter(device, await createPipelines(device, ...codes, 'rgba8unorm'), count);
+    return {evaluate: input => filter.scoreSnapshot(input.poses, input.ranges, input.sigma), destroy: () => filter.destroy()};
+  } catch (error) { device.destroy(); throw error; }
 }

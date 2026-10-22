@@ -1,5 +1,8 @@
 import {Planner, scenes, HORIZON, DT, RADIUS, clearance, safeAdvance, rollout, cpuCosts} from './planner.mjs';
 import {GpuCosts} from './gpu.mjs';
+import {ComparisonPanel} from '../assets/comparison-panel.mjs';
+import {prepareComparison} from '../assets/comparison-job.mjs';
+import {mppiSnapshot, compareMppi} from './benchmark.mjs';
 
 const elements = Object.fromEntries([...document.querySelectorAll('[id]')].map(element => [element.id, element]));
 const canvas = elements.world;
@@ -10,8 +13,23 @@ let busy = false;
 let revision = 0;
 let gpu = null;
 let backendRevision = 0;
+let configuring = false;
+const comparison = new ComparisonPanel(elements, {
+  pause() { running = false; revision++; elements.run.textContent = 'Start'; elements.run.disabled = true; },
+  idle: () => !busy,
+  finished() { elements.run.disabled = configuring; },
+  prepare: () => {
+    const input = mppiSnapshot(state, waypoints[0] ?? goal, scene.obstacles, Number(elements.count.value));
+    return prepareComparison(input, async () => {
+      const evaluator = await GpuCosts.create();
+      return {evaluate: snapshot => evaluator.evaluate(snapshot.state, snapshot.goal, snapshot.obstacles, snapshot.controls, snapshot.count),
+        destroy: () => evaluator.destroy()};
+    }, compareMppi);
+  },
+});
 
 function reset() {
+  comparison.invalidate();
   revision++;
   running = false;
   scene = scenes[elements.scene.value];
@@ -32,6 +50,7 @@ function reset() {
 }
 
 async function configureBackend() {
+  configuring = true; comparison.invalidate(); comparison.setReady(false);
   const request = ++backendRevision;
   revision++;
   running = false;
@@ -54,6 +73,7 @@ async function configureBackend() {
   elements.backend.textContent = gpu ? 'WebGPU / rollout compute' : 'CPU / JavaScript';
   elements.status.textContent = reason ? `${reason}. Using CPU fallback.` : 'Ready. All computation stays on this device.';
   elements.run.disabled = false;
+  configuring = false; elements.run.disabled = comparison.busy; comparison.setReady(true);
 }
 
 function setGoal(x, y) {
@@ -63,6 +83,7 @@ function setGoal(x, y) {
   }
   revision++;
   goal = [x, y];
+  comparison.invalidate();
   waypoints = [];
   planner = new Planner();
   traces = [];
@@ -120,7 +141,7 @@ function draw() {
 }
 
 async function tick() {
-  if (running && !busy && !document.hidden) {
+  if (running && !busy && !comparison.busy && !document.hidden) {
     busy = true;
     const version = revision;
     try {
@@ -180,6 +201,7 @@ async function tick() {
 }
 
 elements.run.addEventListener('click', () => {
+  if (comparison.busy) return;
   running = !running;
   if (!running) revision++;
   elements.run.textContent = running ? 'Pause' : 'Start';
@@ -188,7 +210,9 @@ elements.run.addEventListener('click', () => {
 elements.reset.addEventListener('click', reset);
 elements.scene.addEventListener('change', reset);
 elements.engine.addEventListener('change', configureBackend);
+elements.count.addEventListener('change', () => comparison.invalidate());
 elements.temperature.addEventListener('input', () => {
+  comparison.invalidate();
   elements['temperature-value'].value = Number(elements.temperature.value).toFixed(1);
 });
 elements['set-goal'].addEventListener('click', () => setGoal(

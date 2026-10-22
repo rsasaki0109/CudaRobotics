@@ -1,6 +1,6 @@
 import {WIDTH, HEIGHT, RESOLUTION, WORLD_HEIGHT, preset, distanceField, plan, follow, mapDocument, parseMap} from './model.mjs';
 import {GpuField} from './gpu.mjs';
-import {compareDistanceFields} from './benchmark.mjs';
+import {compareDistanceFields} from './benchmark.mjs?v=all-comparisons-1';
 
 const elements = Object.fromEntries([...document.querySelectorAll('[id]')].map(element => [element.id, element]));
 const base = elements.map.getContext('2d');
