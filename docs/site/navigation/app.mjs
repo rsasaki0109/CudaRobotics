@@ -1,5 +1,6 @@
 import {WIDTH, HEIGHT, RESOLUTION, WORLD_HEIGHT, preset, distanceField, plan, follow, mapDocument, parseMap} from './model.mjs';
 import {GpuField} from './gpu.mjs';
+import {compareDistanceFields} from './benchmark.mjs';
 
 const elements = Object.fromEntries([...document.querySelectorAll('[id]')].map(element => [element.id, element]));
 const base = elements.map.getContext('2d');
@@ -11,6 +12,8 @@ let plannedStart = null;
 let gpu = null;
 let running = false;
 let computing = false;
+let benchmarking = false;
+let comparison = null;
 let pending = false;
 let revision = 0;
 let timer;
@@ -22,6 +25,7 @@ let cursor = [12, 12];
 let track = [];
 
 const required = () => Number(elements.radius.value) + Number(elements.margin.value);
+const useGpu = () => gpu && elements.engine.value !== 'cpu';
 const messages = {ready: 'Route ready. Run the mission or edit the map.', no_path: 'No route fits this footprint. Widen the aisle, erase an obstacle or reduce the radius.',
   start_unsafe: 'Robot footprint overlaps an obstacle, safety band or map boundary. Move the robot or edit the map.',
   goal_unsafe: 'Goal has insufficient clearance. Move the goal or edit the map.',
@@ -82,10 +86,12 @@ function draw() {
 function schedule() {
   if (!occupancy) return;
   revision++;
+  clearComparison();
   running = false;
   result = null;
   elements.run.disabled = true; elements.run.textContent = 'Run mission';
   elements['export-plan'].disabled = true;
+  elements.compare.disabled = true;
   elements.status.textContent = 'Motion paused. Rebuilding clearance and route from the current position…';
   elements['radius-value'].value = `${Number(elements.radius.value).toFixed(2)} m`;
   elements['margin-value'].value = `${Number(elements.margin.value).toFixed(2)} m`;
@@ -98,7 +104,7 @@ function schedule() {
 }
 
 async function rebuild() {
-  if (computing) return;
+  if (computing || benchmarking) return;
   computing = true;
   pending = false;
   const version = revision;
@@ -106,7 +112,7 @@ async function rebuild() {
   try {
     const start = performance.now();
     let nextField;
-    try { nextField = gpu ? await gpu.evaluate(snapshot) : distanceField(snapshot); }
+    try { nextField = useGpu() ? await gpu.evaluate(snapshot) : distanceField(snapshot); }
     catch (error) {
       gpu?.destroy(); gpu = null;
       elements.backend.textContent = `CPU REFERENCE / GPU unavailable`;
@@ -126,10 +132,69 @@ async function rebuild() {
     elements.run.disabled = result.status !== 'ready';
     elements['export-plan'].disabled = false;
     elements.replan.disabled = false;
+    elements.compare.disabled = false;
+    elements.backend.textContent = useGpu() ? 'WEBGPU DISTANCE FIELD / CPU A*' : 'CPU DISTANCE FIELD / CPU A*';
     waypoint = 1;
     paintField(); draw();
   } catch (error) { elements.status.textContent = `Planning failed: ${error.message}`; }
   finally { computing = false; if (pending) { clearTimeout(timer); timer = setTimeout(rebuild, 0); } }
+}
+
+function clearComparison() {
+  comparison = null;
+  elements['export-comparison'].disabled = true;
+  for (const id of ['cpu-median', 'gpu-median', 'speedup']) elements[id].textContent = '—';
+  for (const id of ['cpu-range', 'gpu-range']) elements[id].textContent = 'P10–P90: —';
+  for (const id of ['cpu-bar', 'gpu-bar']) elements[id].style.width = '0%';
+  elements.accuracy.textContent = 'Result agreement: —';
+  elements['comparison-status'].textContent = 'Comparison pauses the mission. Three warmups, then 15 paired measurements of the current map.';
+}
+
+async function compare() {
+  if (computing || benchmarking || !occupancy || pending) return;
+  clearComparison();
+  if (running) elements.status.textContent = 'Mission paused for GPU / CPU comparison. Resume it after measurement.';
+  benchmarking = true; running = false;
+  elements.run.textContent = 'Run mission'; elements.run.disabled = true; elements.compare.disabled = true;
+  const version = revision;
+  const input = mapDocument(occupancy, position, goal, Number(elements.radius.value), Number(elements.margin.value));
+  try {
+    const report = await compareDistanceFields(occupancy, {
+      gpuEvaluate: gpu && !gpu.failure ? snapshot => gpu.evaluate(snapshot) : null,
+      shouldCancel: () => version !== revision || document.hidden,
+      onProgress: progress => {
+        elements['comparison-status'].textContent = `${progress.phase === 'warmup' ? 'Warming up' : 'Measuring'} ${progress.backend.toUpperCase()}: ${progress.iteration} / ${progress.total}…`;
+      },
+    });
+    if (version !== revision) return;
+    comparison = {...report, input};
+    const showTiming = (backend, data) => {
+      elements[`${backend}-median`].textContent = data ? `${data.medianMs.toFixed(2)} ms` : 'Unavailable';
+      elements[`${backend}-range`].textContent = data ? `P10–P90: ${data.p10Ms.toFixed(2)}–${data.p90Ms.toFixed(2)} ms` : 'WebGPU adapter required';
+    };
+    showTiming('cpu', report.cpu); showTiming('gpu', report.gpu);
+    const largest = Math.max(report.cpu.medianMs, report.gpu?.medianMs ?? 0);
+    elements['cpu-bar'].style.width = `${largest > 0 ? report.cpu.medianMs / largest * 100 : 0}%`;
+    elements['gpu-bar'].style.width = `${largest > 0 && report.gpu ? report.gpu.medianMs / largest * 100 : 0}%`;
+    elements.speedup.textContent = report.speedup === null ? '—' : `${report.speedup.toFixed(2)}×`;
+    elements.accuracy.textContent = report.accuracy
+      ? `${report.accuracy.matches ? 'Match' : 'MISMATCH'} · max error ${report.accuracy.maxAbsoluteError.toExponential(2)} m (tolerance 1e-6 m)`
+      : 'Result agreement: GPU unavailable';
+    elements['comparison-status'].textContent = !report.gpu ? 'CPU timing complete. GPU comparison is unavailable on this device.'
+      : !report.accuracy.matches ? 'Results differ beyond tolerance. No speedup claim is shown.'
+        : report.speedup === null ? 'Results match, but timings are below usable timer precision.'
+          : report.speedup >= 1 ? `Results match. GPU is ${report.speedup.toFixed(2)}× faster by median end-to-end field time.`
+            : `Results match. CPU is ${(1 / report.speedup).toFixed(2)}× faster on this map; GPU overhead is included.`;
+    elements['export-comparison'].disabled = false;
+  } catch (error) {
+    elements['comparison-status'].textContent = error.name === 'AbortError' ? 'Comparison cancelled: the map/settings changed or the page was hidden. Run it again.'
+      : `Comparison failed: ${error.message}. No result was saved.`;
+  } finally {
+    benchmarking = false;
+    elements.compare.disabled = computing || pending;
+    elements.run.disabled = pending || result?.status !== 'ready' || waypoint >= (result?.path.length ?? 0);
+    if (pending) { clearTimeout(timer); timer = setTimeout(rebuild, 0); }
+  }
 }
 
 function applyPreset() {
@@ -204,6 +269,9 @@ elements.world.addEventListener('keydown', event => {
 });
 elements.world.addEventListener('focus', draw); elements.world.addEventListener('blur', draw);
 elements.preset.addEventListener('change', applyPreset);
+elements.engine.addEventListener('change', schedule);
+elements.compare.addEventListener('click', compare);
+elements['export-comparison'].addEventListener('click', () => { if (comparison) save('cudarobotics-comparison.json', comparison); });
 elements.radius.addEventListener('input', schedule); elements.margin.addEventListener('input', schedule);
 elements['show-field'].addEventListener('change', paintField);
 elements.replan.addEventListener('click', schedule);
@@ -223,7 +291,7 @@ for (const id of ['start-x', 'start-y', 'goal-x', 'goal-y']) {
   });
 }
 elements.run.addEventListener('click', () => {
-  if (!result || result.status !== 'ready') return;
+  if (benchmarking || !result || result.status !== 'ready') return;
   running = !running;
   elements.run.textContent = running ? 'Pause' : 'Run mission';
   elements.status.textContent = running ? 'Following the route. Editing will stop motion and replan.' : 'Paused.';
@@ -233,7 +301,7 @@ elements['export-map'].addEventListener('click', () => save('cudarobotics-map.js
 elements['export-plan'].addEventListener('click', () => {
   if (!result) return;
   save('cudarobotics-plan.json', {schema: 'cudarobotics.route.v1', units: 'metres',
-    backend: gpu ? 'webgpu-distance-field/cpu-astar' : 'cpu-reference/cpu-astar',
+    backend: useGpu() ? 'webgpu-distance-field/cpu-astar' : 'cpu-reference/cpu-astar',
     map: mapDocument(occupancy, plannedStart, goal, Number(elements.radius.value), Number(elements.margin.value)),
     ...result, simulationOnly: true,
     execution: {running, robotPosition: [...position], simulationSeconds: elapsed,

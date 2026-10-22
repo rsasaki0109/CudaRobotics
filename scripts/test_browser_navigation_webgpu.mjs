@@ -3,6 +3,7 @@ import {readFile} from 'node:fs/promises';
 import {pathToFileURL} from 'node:url';
 import {GpuField, createPipelines} from '../docs/site/navigation/gpu.mjs';
 import {WIDTH, HEIGHT, preset, distanceField, plan} from '../docs/site/navigation/model.mjs';
+import {compareDistanceFields} from '../docs/site/navigation/benchmark.mjs';
 
 const {create, globals} = await import(process.env.WEBGPU_MODULE
   ? pathToFileURL(process.env.WEBGPU_MODULE).href : 'webgpu');
@@ -33,6 +34,16 @@ try {
         assert.ok(route.minimumClearance >= route.required - 1e-6);
       }
       console.log(`${data.name}: all 12,288 GPU cells match CPU, route checks PASS`);
+      if (data.name === 'warehouse') {
+        const comparison = await compareDistanceFields(data.occupancy, {
+          gpuEvaluate: snapshot => evaluator.evaluate(snapshot), warmups: 1, repetitions: 3,
+          yieldControl: async () => {},
+        });
+        assert.equal(comparison.accuracy.matches, true);
+        assert.equal(comparison.cpu.samplesMs.length, 3);
+        assert.equal(comparison.gpu.samplesMs.length, 3);
+        console.log('Real WebGPU / CPU comparison, warmups and output agreement: PASS');
+      }
     }
   }
 } finally { evaluator?.destroy(); device.destroy(); }

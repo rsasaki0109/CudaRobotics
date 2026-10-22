@@ -53,6 +53,38 @@ footprint clearance during full missions, narrow-doorway failures, blocked
 routes, map round trips, import rejection, editing pauses and report export.
 Browser visual/touch smoke checks remain separate from these DOM-stub tests.
 
+### GPU / CPU comparison
+
+The workbench's **Compare GPU / CPU** panel pauses motion and snapshots the
+current map. It runs the same separable distance-field algorithm in the
+JavaScript reference and WebGPU implementation, with three warmups per backend
+and 15 measured pairs. CPU-first and GPU-first order alternates; the page yields
+before every backend call. Median and interpolated P10/P90 wall times, raw
+samples, and all-cell output agreement (absolute tolerance 1e-6 m) are retained.
+The ratio is CPU median / GPU median, not a predetermined GPU speedup. A result
+mismatch or zero-duration median suppresses the ratio. Unsupported devices get
+CPU-only timings, never synthetic GPU measurements.
+
+GPU timing includes upload, command submission, synchronization, field readback,
+output copy and normal evaluator validation. GPU buffers are reused, while the
+CPU reference allocates its temporary/output arrays per call. Compilation,
+initialization, warmups, A* and drawing are excluded. This is a browser
+end-to-end comparison with a single-threaded JavaScript CPU baseline, not a
+CUDA-vs-optimized-native-CPU benchmark or a GPU kernel timer. The small fixed
+grid can favour CPU execution; JIT, timer precision, power and other tabs can
+affect results. The mission backend selector does not restrict the comparison:
+it uses both backends if a WebGPU adapter is available.
+
+Map/settings changes cancel an in-flight comparison, invalidate old results and
+serialize replanning after outstanding GPU work finishes. Hiding the page also
+cancels measurement. Save Comparison exports the full input map, methodology,
+raw timings, percentiles, ratio and error statistics as
+`cudarobotics.distance-benchmark.v1` JSON, with no device identity or uploads.
+
+```bash
+node --test scripts/test_browser_navigation_benchmark.mjs
+```
+
 ## Particle Storm: GPU localization
 
 Open `/particles/` for a GPU-heavy companion to the MPPI lab. Up to 65,536

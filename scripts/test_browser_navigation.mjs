@@ -70,9 +70,11 @@ test('maps round-trip with units and reject malformed or ambiguous occupancy', (
 test('workbench completes a mission, pauses on editing and round-trips exported maps', async () => {
   const identifiers = ['map', 'world', 'controls', 'length', 'clearance', 'field-time', 'plan-time', 'backend',
     'preset', 'tool', 'radius', 'radius-value', 'margin', 'margin-value', 'start-x', 'start-y', 'goal-x', 'goal-y',
-    'targets', 'run', 'replan', 'status', 'show-field', 'required', 'expanded', 'time', 'export-map', 'export-plan', 'import-map'];
+    'targets', 'run', 'replan', 'status', 'show-field', 'required', 'expanded', 'time', 'export-map', 'export-plan', 'import-map',
+    'engine', 'compare', 'export-comparison', 'comparison-status', 'cpu-median', 'gpu-median', 'cpu-range', 'gpu-range',
+    'cpu-bar', 'gpu-bar', 'speedup', 'accuracy'];
   const elements = Object.fromEntries(identifiers.map(id => [id, {
-    id, value: '', textContent: '', listeners: {},
+    id, value: '', textContent: '', listeners: {}, style: {},
     get valueAsNumber() { return this.value === '' ? NaN : Number(this.value); },
     addEventListener(name, listener) { this.listeners[name] = listener; },
     getContext() { return new Proxy({}, {get: (_, name) => name === 'createImageData'
@@ -80,7 +82,7 @@ test('workbench completes a mission, pauses on editing and round-trips exported 
     getBoundingClientRect() { return {left: 0, top: 0, width: 1280, height: 960}; },
     focus() {}, setPointerCapture() {},
   }]));
-  elements.preset.value = 'warehouse'; elements.tool.value = 'draw'; elements['show-field'].checked = true;
+  elements.preset.value = 'warehouse'; elements.tool.value = 'draw'; elements['show-field'].checked = true; elements.engine.value = 'auto';
   let frame;
   let exported;
   const originalUrl = URL.createObjectURL;
@@ -100,6 +102,16 @@ test('workbench completes a mission, pauses on editing and round-trips exported 
     assert.equal(elements.backend.textContent, 'CPU DISTANCE FIELD / CPU A*');
     assert.equal(elements.controls.disabled, false);
     assert.equal(elements.run.disabled, false);
+    await elements.compare.listeners.click();
+    assert.match(elements['cpu-median'].textContent, /ms$/);
+    assert.equal(elements['gpu-median'].textContent, 'Unavailable');
+    assert.equal(elements.speedup.textContent, '—');
+    elements['export-comparison'].listeners.click();
+    const comparison = JSON.parse(await exported.text());
+    assert.equal(comparison.schema, 'cudarobotics.distance-benchmark.v1');
+    assert.equal(comparison.cpu.samplesMs.length, 15);
+    assert.equal(comparison.gpu, null);
+    assert.ok(parseMap(comparison.input));
     elements.run.listeners.click();
     for (let step = 1; step < 1500 && !elements.run.disabled; step++) frame(step * 50);
     assert.match(elements.status.textContent, /Mission complete/);
@@ -111,10 +123,16 @@ test('workbench completes a mission, pauses on editing and round-trips exported 
     elements.preset.value = 'doorway'; elements.preset.listeners.change();
     await ready();
     elements.run.listeners.click(); frame(100000);
+    const cancelledComparison = elements.compare.listeners.click();
     elements.world.listeners.pointerdown({pointerId: 1, clientX: 160, clientY: 480});
     elements.world.listeners.pointerup();
     assert.equal(elements.run.disabled, true);
+    assert.equal(elements['export-comparison'].disabled, true);
+    assert.equal(elements['cpu-median'].textContent, '—');
     assert.match(elements.status.textContent, /Motion paused/);
+    await cancelledComparison;
+    assert.match(elements['comparison-status'].textContent, /Comparison cancelled/);
+    assert.equal(elements['export-comparison'].disabled, true);
     await ready();
     assert.match(elements.status.textContent, /Robot footprint overlaps/);
     elements['export-map'].listeners.click();

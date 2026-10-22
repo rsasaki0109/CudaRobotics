@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>CudaRobotics · Navigation Workbench</title>
   <meta name="description" content="Edit an occupancy map, inspect GPU obstacle distances, test robot clearance, plan a route and export a reproducible navigation scenario.">
-  <link rel="stylesheet" href="navigation.css">
+  <link rel="stylesheet" href="navigation.css?v=cpu-gpu-compare-1">
 </head>
 <body>
   <header><a href="../index.html">CudaRobotics</a><span>APPLIED ROBOTICS / 03</span><a href="../particles/">Particle Storm ↗</a></header>
@@ -25,6 +25,7 @@
         <fieldset id="controls" disabled>
         <h2>Mission setup</h2>
         <label for="preset">Scenario</label><select id="preset"><option value="warehouse">Warehouse aisles</option><option value="doorway">Doorway clearance test</option><option value="empty">Empty floor</option></select>
+        <label for="engine">Distance-field backend</label><select id="engine"><option value="auto">Auto · prefer WebGPU</option><option value="cpu">CPU · JavaScript reference</option></select>
         <label for="tool">Map tool</label><select id="tool"><option value="draw">Draw obstacle</option><option value="erase">Erase obstacle</option><option value="goal">Place goal</option><option value="robot">Place robot</option></select>
         <label for="radius">Robot radius <output id="radius-value">0.30 m</output></label><input id="radius" type="range" min="0.15" max="0.75" step="0.05" value="0.3">
         <label for="margin">Safety margin <output id="margin-value">0.12 m</output></label><input id="margin" type="range" min="0" max="0.4" step="0.02" value="0.12">
@@ -40,11 +41,21 @@
         </fieldset>
       </aside>
     </div>
+    <section class="comparison" aria-labelledby="comparison-title">
+      <div class="comparison-heading"><div><p class="eyebrow">SAME MAP / SAME DISTANCE ALGORITHM</p><h2 id="comparison-title">GPU vs CPU, on your device.</h2></div><div class="buttons"><button id="compare" disabled>Compare GPU / CPU</button><button id="export-comparison" class="secondary" disabled>Save comparison</button></div></div>
+      <p id="comparison-status" role="status">Comparison pauses the mission. Three warmups, then 15 paired measurements of the current map.</p>
+      <div class="comparison-results">
+        <div><span>CPU / JAVASCRIPT REFERENCE</span><strong id="cpu-median">—</strong><div class="timing-track"><div id="cpu-bar"></div></div><p id="cpu-range">P10–P90: —</p></div>
+        <div><span>GPU / WEBGPU + TRANSFERS</span><strong id="gpu-median">—</strong><div class="timing-track"><div id="gpu-bar"></div></div><p id="gpu-range">P10–P90: —</p></div>
+        <div><span>CPU MEDIAN / GPU MEDIAN</span><strong id="speedup">—</strong><p id="accuracy">Result agreement: —</p></div>
+      </div>
+      <p class="hint">Shorter bars are faster. Comparison uses both available backends regardless of mission backend selection. Median wall-clock times include output allocation; GPU time includes uploads, queue submission, synchronization and readback, not just kernels. GPU buffers are reused; the CPU reference allocates temporary/output arrays per call. Compilation, warmups, A* and drawing are excluded. CPU is single-threaded JavaScript, not optimized native C++; GPU is WebGPU, not CUDA. This small grid may favour the CPU. No GPU means CPU timing only — never a simulated GPU score. Timer resolution, JIT, power settings and other tabs affect results.</p>
+    </section>
     <section class="pipeline"><div><b>01 / DESIGN THE AISLE</b><p>Add or remove obstacles, relocate the robot and set a destination. The doorway preset makes footprint limits easy to test.</p></div><div><b>02 / COMPUTE CLEARANCE</b><p>Two GPU passes compute squared Euclidean distances, one invocation per grid cell. Obstacle cells are conservatively expanded to their full area.</p></div><div><b>03 / FIND A ROUTE</b><p>CPU A* respects robot radius + safety margin. Collision-checked shortcuts reduce unnecessary corners; blocked routes stop the mission.</p></div><div><b>04 / REPRODUCE</b><p>Export the occupancy map, footprint, route coordinates and clearance report. Import the same map to compare footprint choices.</p></div></section>
     <section class="about"><h2>A useful planning experiment, not a robot safety system.</h2><p>The robot is a kinematic disk following a geometric route at 0.8 m/s, with a 0.05 s simulation step. This is not the native CUDA/Nav2 controller, a physics simulation, SLAM, or a guarantee of safe physical deployment. GPU acceleration covers the distance field; A*, motion checks and Canvas drawing run on the CPU. Unsupported devices use the identical CPU distance-field reference.</p><p>The fixed grid is 128 × 96 cells at 0.125 m/cell. Distance values are conservative lower bounds: distance to occupied cell centres minus a half-cell diagonal, capped by map boundaries. Cell lookup also accounts for subcell position. Narrow passages can therefore be rejected conservatively. JSON import accepts this documented grid format, not arbitrary ROS maps. Exported routes are experiment data, not executable robot commands.</p><p><a href="../nav2.html">Native CUDA / Nav2 deployment ↗</a> · <a href="../demo/">MPPI control lab ↗</a> · <a href="../particles/">GPU localization ↗</a></p></section>
   </main>
   <footer>CudaRobotics / Navigation Workbench <span>Edit. Check. Plan. Export.</span></footer>
   <noscript>JavaScript is required for the planning workbench.</noscript>
-  <script type="module" src="app.mjs"></script>
+  <script type="module" src="app.mjs?v=cpu-gpu-compare-1"></script>
 </body>
 </html>

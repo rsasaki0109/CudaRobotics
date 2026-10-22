@@ -65,7 +65,7 @@ Choose the shortest path for what you want to do:
 
 | I want to... | Start here | What success looks like | Typical time |
 |---|---|---|---|
-| **Check whether a robot fits a warehouse route** | [Navigation Workbench](https://rsasaki0109.github.io/CudaRobotics/docs/navigation/) | Edit obstacles, inspect a GPU distance field, plan with footprint clearance and export map/route JSON (browser simulation) | Seconds |
+| **Check whether a robot fits a warehouse route** | [Navigation Workbench](https://rsasaki0109.github.io/CudaRobotics/docs/navigation/) | Edit obstacles, compare GPU/CPU distance-field timings, plan with footprint clearance and export map/route JSON (browser simulation) | Seconds |
 | **Watch massively parallel GPU localization** | [Particle Storm](https://rsasaki0109.github.io/CudaRobotics/docs/particles/) | 65,536 pose hypotheses, GPU scan matching/resampling/rendering and teleport recovery (WebGPU, not native CUDA) | Seconds |
 | **Run an interactive demo directly on GitHub Pages** | [Browser MPPI lab](https://rsasaki0109.github.io/CudaRobotics/docs/demo/) | Live navigation, editable goals, WebGPU rollouts or CPU fallback (simplified port, not native CUDA) | Seconds |
 | **Try it without setting up CUDA locally** | [Run the latest Colab onboarding](https://colab.research.google.com/github/rsasaki0109/CudaRobotics/blob/master/examples/colab/cudarobotics_quickstart.ipynb) (builds published v0.3.0) | An MPPI navigation GIF and a checked result JSON | 5–10 min |

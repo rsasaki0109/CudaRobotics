@@ -13,5 +13,18 @@ h1 { font-size: clamp(40px, 6vw, 76px); }
 aside h3 { margin-top: 24px; font-size: 15px; color: #e2edf1; }
 fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
 input[type=file] { width: 100%; margin-top: 8px; font-size: 12px; color: #c1d1d8; }
+.comparison { margin: 30px 0 0; padding: 26px; border: 1px solid #30434c; border-radius: 12px; background: #101c21; }
+.comparison-heading { display: flex; align-items: center; justify-content: space-between; gap: 20px; flex-wrap: wrap; }
+.comparison-heading h2 { margin-bottom: 0; }
+.comparison-heading .eyebrow { font-size: 10px; margin-top: 0; }
+.comparison-heading .buttons { margin: 0; }
+.comparison-results { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 26px; margin: 24px 0; }
+.comparison-results span { color: #a7bdc5; font-size: 11px; letter-spacing: .05em; }
+.comparison-results strong { display: block; color: #8ff3b8; font: 600 32px ui-monospace, monospace; margin: 10px 0; }
+.comparison-results p, #comparison-status { font-size: 13px; color: #c2d2d8; }
+.timing-track { height: 7px; background: #24373e; border-radius: 4px; overflow: hidden; }
+.timing-track div { width: 0; height: 100%; background: #9bc7ff; }
+#gpu-bar { background: #8ff3b8; }
+@media (max-width: 760px) { .comparison { padding: 20px; } .comparison-results { grid-template-columns: 1fr; gap: 12px; } }
 #run { color: #082b20; background: #8ff3b8; border-color: #8ff3b8; }
 @media (max-width: 1000px) { .lab { grid-template-columns: 1fr; } }
