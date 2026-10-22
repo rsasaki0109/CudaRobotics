@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>CudaRobotics · Navigation Workbench</title>
   <meta name="description" content="Edit an occupancy map, inspect GPU obstacle distances, test robot clearance, plan a route and export a reproducible navigation scenario.">
-  <link rel="stylesheet" href="navigation.css?v=pallet-replan-1">
+  <link rel="stylesheet" href="navigation.css?v=scale-comparison-1">
 </head>
 <body>
   <header><a href="../index.html">CudaRobotics</a><span>APPLIED ROBOTICS / 03</span><a href="../particles/">Particle Storm ↗</a></header>
@@ -48,6 +48,26 @@
       <p id="pallet-status" role="status">Put a 1 × 1 m pallet on the route. Motion pauses while a new route is checked from the same robot position.</p>
       <div class="comparison-results"><div><span>REPLAN: FIELD + ROUTE</span><strong id="replan-total">—</strong><p>Single wall-clock measurement, including GPU transfers when used.</p></div><div><span>ROUTE LENGTH CHANGE</span><strong id="route-change">—</strong><p>Before <span id="before-length">—</span> → after <span id="after-length">—</span></p></div><div><span>SPARE CLEARANCE</span><strong id="replan-clearance">—</strong><p>New route's minimum clearance minus (robot radius + safety margin).</p></div></div>
       <p class="hint">Dashed amber is the previous route; green is the newly checked route. Both plans use the same start, goal and footprint. The old route may cross the pallet and must not be followed. Restore rewinds to the captured robot position and map. Editing the map, positions, footprint or backend clears this experiment. Timing excludes the input debounce, baseline plan and drawing; this is not a GPU/CPU speedup claim. A* is clearance-weighted, so route-length change is not an optimal-detour guarantee. Save plan includes both routes and the pallet result.</p>
+      <div class="replan-benchmark" aria-labelledby="replan-benchmark-title">
+        <div class="comparison-heading"><h3 id="replan-benchmark-title">Does a faster field mean a faster replan?</h3><div class="buttons"><button id="compare-replan" disabled>Compare full replan</button><button id="export-replan-comparison" class="secondary" disabled>Save replan comparison</button></div></div>
+        <p id="replan-comparison-status" role="status">Add a pallet first, then compare both pipelines from the captured start. The mission pauses during measurement.</p>
+        <table class="replan-table"><caption>Median call times in milliseconds; P10–P90 in parentheses.</caption><thead><tr><th scope="col">Stage</th><th scope="col">CPU-only</th><th scope="col">GPU field + CPU A*</th></tr></thead><tbody>
+          <tr><th scope="row">Distance field</th><td id="replan-cpu-field">—</td><td id="replan-gpu-field">—</td></tr>
+          <tr><th scope="row">CPU A* + shortcuts</th><td id="replan-cpu-route">—</td><td id="replan-gpu-route">—</td></tr>
+          <tr class="replan-total-row"><th scope="row">Total call</th><td id="replan-cpu-total">—</td><td id="replan-gpu-total">—</td></tr>
+          <tr><th scope="row">Route result</th><td id="replan-cpu-path">—</td><td id="replan-gpu-path">—</td></tr>
+        </tbody></table>
+        <p class="replan-ratio">CPU total / GPU-field total: <strong id="replan-speedup">—</strong></p><p id="replan-agreement">Route agreement: —</p>
+        <p class="hint">Same changed map, captured robot start, goal and footprint, even if the live robot has since moved. Three warmups, 15 alternating pairs. Each timed call builds a field and runs the identical main-thread CPU A*; the GPU does not plan the route. GPU transfers/readback and CPU allocations are included. Initialization, warmups, agreement checks, drawing and input debounce are excluded. Stages are measured within each call; their medians need not sum to the total median. Every measured pair checks all field cells plus route status, waypoint count/coordinates, length and minimum clearance (1e-6 m tolerance). A mismatch suppresses speedup. Blocked routes are valid results, not successful missions. WebGPU/JavaScript, not native CUDA/C++. JSON includes all paired routes, stage samples and the replayable map.</p>
+      </div>
+    </section>
+    <section class="comparison scale-section" aria-labelledby="scale-title">
+      <div class="comparison-heading"><div><p class="eyebrow">SAME WAREHOUSE / THREE GRID RESOLUTIONS</p><h2 id="scale-title">When does the GPU pay off?</h2></div><div class="buttons"><button id="compare-sizes" disabled>Compare map sizes</button><button id="cancel-sizes" class="secondary" disabled>Cancel</button><button id="export-sizes" class="secondary" disabled>Save size comparison</button></div></div>
+      <p id="scale-status" role="status">Ready: same 16 × 12 m world at three grid resolutions. Motion pauses during measurement.</p>
+      <div class="scale-charts"><section aria-labelledby="scale-field-title"><h3 id="scale-field-title">Distance field only</h3><p class="hint">Median milliseconds · shorter is faster</p><div id="scale-field-chart"></div></section><section aria-labelledby="scale-total-title"><h3 id="scale-total-title">Total: field + CPU routing</h3><p class="hint">Median milliseconds · independent horizontal scale</p><div id="scale-total-chart"></div></section></div>
+      <table class="replan-table scale-table"><caption>CPU routing cost and per-size output agreement</caption><thead><tr><th scope="col">Grid / cell size</th><th scope="col">CPU-only A*</th><th scope="col">GPU pipeline A*</th><th scope="col">Agreement / total ratio</th></tr></thead><tbody id="scale-detail-rows"></tbody></table>
+      <p id="scale-summary" role="status">No measurements yet. A faster distance field does not necessarily mean a faster total replan.</p>
+      <p class="hint">64×48 (3,072 cells), 128×96 (12,288) and 256×192 (49,152); same 16×12 m area, start, goal and footprint. Existing occupied cells are conservatively resampled; coarser cells can widen obstacles and change clearance, route geometry or reachability. Agreement is checked CPU versus GPU within each size, not across sizes. If a pallet exists, its captured start is reused. Each size gets 3 warmups and 15 alternating pairs, with field, CPU A* and total time recorded. GPU allocation/compilation, resampling, drawing and agreement checks are untimed; uploads/readback and CPU allocations are timed. Both backends use the same brute-force separable field algorithm, not an optimized linear-time EDT. Independent chart axes; hover values for P10–P90, or export raw samples and all routes. Small-to-large observations on this browser are not a universal crossover threshold. GPU-unavailable devices show CPU-only data. The editor remains 128×96; scaled map exports are benchmark inputs, not editor-import files. WebGPU/JavaScript, not native CUDA or GPU A*.</p>
     </section>
     <section class="comparison" aria-labelledby="comparison-title">
       <div class="comparison-heading"><div><p class="eyebrow">SAME MAP / SAME DISTANCE ALGORITHM</p><h2 id="comparison-title">GPU vs CPU, on your device.</h2></div><div class="buttons"><button id="compare" disabled>Compare GPU / CPU</button><button id="export-comparison" class="secondary" disabled>Save comparison</button></div></div>
@@ -64,6 +84,6 @@
   </main>
   <footer>CudaRobotics / Navigation Workbench <span>Edit. Check. Plan. Export.</span></footer>
   <noscript>JavaScript is required for the planning workbench.</noscript>
-  <script type="module" src="app.mjs?v=pallet-replan-1"></script>
+  <script type="module" src="app.mjs?v=scale-comparison-1"></script>
 </body>
 </html>

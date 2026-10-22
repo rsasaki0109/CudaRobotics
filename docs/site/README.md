@@ -28,6 +28,37 @@ routes and the pallet bounds. Timing excludes debounce, baseline preparation and
 drawing; it is one selected-backend measurement, not a GPU/CPU benchmark. The
 clearance-weighted planner does not promise an optimal geometric detour.
 
+After placing a pallet, **Compare full replan** compares the captured changed
+map/start/goal/footprint through CPU distance field + CPU A* versus WebGPU distance
+field + the same CPU A*. It reports per-call field, CPU routing and total timings,
+with three warmups and 15 alternating pairs. Stage medians need not sum to the
+total median. GPU upload/readback and CPU allocations are included; setup,
+debounce, agreement checks and drawing are not. Every measured pair checks all
+field cells and route status, waypoint count/coordinates, length and clearance
+at 1e-6 m tolerance; a mismatch suppresses speedup. Blocked routes remain classified
+failures, not successful missions. The replayable map, pallet bounds, paired
+routes and raw stage timings can be saved as JSON. Map/settings changes cancel
+and invalidate the report. Devices without WebGPU show CPU-only measurements,
+never synthetic GPU results. This is a main-thread browser benchmark, not native
+CUDA/C++ or GPU A*.
+
+**Compare map sizes** runs the current scenario at 64×48, 128×96 and 256×192
+cells while keeping the physical world at 16×12 m. Obstacles are conservatively
+resampled (coarse cells are occupied if any source cell overlaps); positions,
+radius and margin stay in metres. Resolution can change route geometry or even
+reachability, so output agreement is checked only between CPU/GPU at each size.
+The two charts show distance-field and total-call medians on independent axes;
+hover labels give P10–P90. A table retains CPU routing cost, result classification
+and agreement. The summary reports observed GPU wins and where CPU routing is
+the larger GPU-pipeline stage, not a universal crossover threshold. Each size
+uses three warmups and 15 alternating pairs with dedicated, untimed GPU setup;
+all resources are disposed on completion/failure/cancellation. Cancel or editing
+invalidates the whole run, with no partial export. JSON includes each scaled
+map, all route results and raw timing samples; scaled maps are benchmark inputs,
+not files accepted by the fixed-size editor importer. The field algorithm is
+the same brute-force separable reference on both backends, not an optimized
+linear-time EDT. The live editor stays 128×96 and its mission is not resized.
+
 The inventory in `demos.json` covers all three pages that execute algorithms:
 MPPI (`/demo/`), Particle Storm (`/particles/`) and Navigation Workbench
 (`/navigation/`). Each has a GPU/CPU comparison panel. Repository checks discover

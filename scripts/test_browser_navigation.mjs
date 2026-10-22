@@ -116,7 +116,10 @@ test('workbench completes a mission, pauses on editing and round-trips exported 
     'targets', 'run', 'replan', 'status', 'show-field', 'required', 'expanded', 'time', 'export-map', 'export-plan', 'import-map',
     'engine', 'compare', 'export-comparison', 'comparison-status', 'cpu-median', 'gpu-median', 'cpu-range', 'gpu-range',
     'cpu-bar', 'gpu-bar', 'speedup', 'accuracy', 'add-pallet', 'restore-pallet', 'pallet-status', 'replan-total',
-    'route-change', 'replan-clearance', 'before-length', 'after-length'];
+    'route-change', 'replan-clearance', 'before-length', 'after-length', 'compare-replan', 'export-replan-comparison',
+    'replan-speedup', 'replan-agreement', 'replan-comparison-status', 'replan-cpu-field', 'replan-cpu-route',
+    'replan-cpu-total', 'replan-cpu-path', 'replan-gpu-field', 'replan-gpu-route', 'replan-gpu-total', 'replan-gpu-path',
+    'compare-sizes', 'cancel-sizes', 'export-sizes', 'scale-field-chart', 'scale-total-chart', 'scale-detail-rows', 'scale-summary', 'scale-status'];
   const elements = Object.fromEntries(identifiers.map(id => [id, {
     id, value: '', textContent: '', listeners: {}, style: {},
     get valueAsNumber() { return this.value === '' ? NaN : Number(this.value); },
@@ -146,6 +149,14 @@ test('workbench completes a mission, pauses on editing and round-trips exported 
     assert.equal(elements.backend.textContent, 'CPU DISTANCE FIELD / CPU A*');
     assert.equal(elements.controls.disabled, false);
     assert.equal(elements.run.disabled, false);
+    const sizeComparison = elements['compare-sizes'].listeners.click();
+    assert.equal(elements['cancel-sizes'].disabled, false);
+    assert.equal(elements.compare.disabled, true);
+    elements['cancel-sizes'].listeners.click();
+    await sizeComparison;
+    assert.match(elements['scale-status'].textContent, /cancelled/);
+    assert.equal(elements['export-sizes'].disabled, true);
+    assert.equal(elements.run.disabled, false);
     elements['export-map'].listeners.click();
     const beforePalletMap = JSON.parse(await exported.text());
     elements.run.listeners.click(); frame(50);
@@ -163,12 +174,28 @@ test('workbench completes a mission, pauses on editing and round-trips exported 
     assert.ok(Math.hypot(palletReport.palletExperiment.start[0] - capturedStart[0], palletReport.palletExperiment.start[1] - capturedStart[1]) < .01);
     assert.notDeepEqual(palletReport.palletExperiment.before.path, palletReport.palletExperiment.after.path);
     assert.ok(palletReport.palletExperiment.replanningMs >= 0);
+    await elements['compare-replan'].listeners.click();
+    assert.match(elements['replan-cpu-total'].textContent, /ms/);
+    assert.equal(elements['replan-gpu-total'].textContent, 'Unavailable');
+    assert.equal(elements['replan-speedup'].textContent, '—');
+    elements['export-replan-comparison'].listeners.click();
+    const replanReport = JSON.parse(await exported.text());
+    assert.equal(replanReport.schema, 'cudarobotics.replanning-benchmark.v1');
+    assert.equal(replanReport.stages.cpu.route.samplesMs.length, 15);
+    assert.equal(replanReport.routes.cpu.length, 15);
+    assert.equal(replanReport.routes.gpu, null);
+    assert.deepEqual(replanReport.input.start, palletReport.palletExperiment.start);
+    assert.deepEqual(replanReport.palletBoundsMetres, palletReport.palletExperiment.palletBoundsMetres);
+    assert.deepEqual(replanReport.input.occupancy, palletReport.map.occupancy);
     elements['restore-pallet'].listeners.click();
     await ready();
     elements['export-map'].listeners.click();
     assert.deepEqual(JSON.parse(await exported.text()).occupancy, beforePalletMap.occupancy);
     assert.equal(elements['restore-pallet'].disabled, true);
     assert.equal(elements['replan-total'].textContent, '—');
+    assert.equal(elements['compare-replan'].disabled, true);
+    assert.equal(elements['export-replan-comparison'].disabled, true);
+    assert.equal(elements['replan-cpu-total'].textContent, '—');
     await elements.compare.listeners.click();
     assert.match(elements['cpu-median'].textContent, /ms$/);
     assert.equal(elements['gpu-median'].textContent, 'Unavailable');
@@ -194,7 +221,15 @@ test('workbench completes a mission, pauses on editing and round-trips exported 
     assert.equal(elements['after-length'].textContent, 'Blocked');
     assert.equal(elements['route-change'].textContent, 'No route');
     assert.match(elements['pallet-status'].textContent, /no safe route/);
-    elements['restore-pallet'].listeners.click(); await ready();
+    await elements['compare-replan'].listeners.click();
+    assert.match(elements['replan-cpu-path'].textContent, /Blocked/);
+    const cancelledReplan = elements['compare-replan'].listeners.click();
+    elements.margin.listeners.input();
+    await cancelledReplan;
+    assert.match(elements['replan-comparison-status'].textContent, /cancelled/);
+    assert.equal(elements['export-replan-comparison'].disabled, true);
+    await ready();
+    elements.preset.listeners.change(); await ready();
     elements.run.listeners.click(); frame(100000);
     const cancelledComparison = elements.compare.listeners.click();
     elements.world.listeners.pointerdown({pointerId: 1, clientX: 160, clientY: 480});

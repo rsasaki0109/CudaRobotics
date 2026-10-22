@@ -3,7 +3,7 @@ export const HEIGHT = 96;
 export const RESOLUTION = 0.125;
 export const WORLD_WIDTH = WIDTH * RESOLUTION;
 export const WORLD_HEIGHT = HEIGHT * RESOLUTION;
-const HALF_DIAGONAL = Math.SQRT2 * RESOLUTION / 2;
+export const DEFAULT_GRID = Object.freeze({width: WIDTH, height: HEIGHT, resolution: RESOLUTION});
 
 export function preset(name) {
   const occupancy = new Uint8Array(WIDTH * HEIGHT);
@@ -21,7 +21,9 @@ export function preset(name) {
     goal: name === 'doorway' ? [14, 6] : [14, 10.5], radius: .3, margin: .12};
 }
 
-export function distanceField(occupancy) {
+export function distanceField(occupancy, grid = DEFAULT_GRID) {
+  const {width: WIDTH, height: HEIGHT, resolution: RESOLUTION} = grid;
+  const HALF_DIAGONAL = Math.SQRT2 * RESOLUTION / 2;
   const horizontal = new Float32Array(WIDTH * HEIGHT);
   const result = new Float32Array(WIDTH * HEIGHT);
   for (let row = 0; row < HEIGHT; row++) {
@@ -46,7 +48,8 @@ export function distanceField(occupancy) {
   return result;
 }
 
-export function clearance(field, point) {
+export function clearance(field, point, grid = DEFAULT_GRID) {
+  const {width: WIDTH, resolution: RESOLUTION} = grid;
   const [positionX, positionY] = point;
   if (!Number.isFinite(positionX) || !Number.isFinite(positionY)
     || positionX <= 0 || positionY <= 0 || positionX >= WORLD_WIDTH || positionY >= WORLD_HEIGHT) return 0;
@@ -56,14 +59,15 @@ export function clearance(field, point) {
   return Math.max(0, field[row * WIDTH + column] - offset);
 }
 
-export function segmentClear(field, first, second, required) {
+export function segmentClear(field, first, second, required, grid = DEFAULT_GRID) {
+  const {resolution: RESOLUTION} = grid;
   const length = Math.hypot(first[0] - second[0], first[1] - second[1]);
   const steps = Math.max(1, Math.ceil(length / (RESOLUTION / 4)));
   const samplingAllowance = length / steps / 2;
   for (let step = 0; step <= steps; step++) {
     const fraction = step / steps;
     const point = [first[0] + (second[0] - first[0]) * fraction, first[1] + (second[1] - first[1]) * fraction];
-    if (clearance(field, point) < required + samplingAllowance) return false;
+    if (clearance(field, point, grid) < required + samplingAllowance) return false;
   }
   return true;
 }
@@ -98,16 +102,17 @@ class MinHeap {
   }
 }
 
-export function plan(field, start, goal, radius, margin) {
+export function plan(field, start, goal, radius, margin, grid = DEFAULT_GRID) {
+  const {width: WIDTH, height: HEIGHT, resolution: RESOLUTION} = grid;
   const required = radius + margin;
   const base = {path: [], length: 0, minimumClearance: null, expanded: 0, required};
-  if (clearance(field, start) < required) return {...base, status: 'start_unsafe'};
-  if (clearance(field, goal) < required) return {...base, status: 'goal_unsafe'};
+  if (clearance(field, start, grid) < required) return {...base, status: 'start_unsafe'};
+  if (clearance(field, goal, grid) < required) return {...base, status: 'goal_unsafe'};
   const indexOf = point => Math.floor(point[1] / RESOLUTION) * WIDTH + Math.floor(point[0] / RESOLUTION);
   const pointOf = index => [(index % WIDTH + .5) * RESOLUTION, (Math.floor(index / WIDTH) + .5) * RESOLUTION];
   const first = indexOf(start);
   const last = indexOf(goal);
-  if (!segmentClear(field, start, pointOf(first), required) || !segmentClear(field, pointOf(last), goal, required)) {
+  if (!segmentClear(field, start, pointOf(first), required, grid) || !segmentClear(field, pointOf(last), goal, required, grid)) {
     return {...base, status: 'endpoint_grid_clearance'};
   }
   const costs = new Float64Array(WIDTH * HEIGHT).fill(Infinity);
@@ -135,7 +140,7 @@ export function plan(field, start, goal, radius, margin) {
         if (deltaColumn && deltaRow && (field[row * WIDTH + column + deltaColumn] < required
           || field[(row + deltaRow) * WIDTH + column] < required)) continue;
         const next = pointOf(neighbor);
-        if (!segmentClear(field, point, next, required)) continue;
+        if (!segmentClear(field, point, next, required, grid)) continue;
         const edge = Math.hypot(deltaColumn, deltaRow) * RESOLUTION;
         const score = costs[current] + edge * (1 + .08 / Math.max(.1, field[neighbor] - required));
         if (score >= costs[neighbor]) continue;
@@ -153,7 +158,7 @@ export function plan(field, start, goal, radius, margin) {
   let anchor = 0;
   while (anchor < raw.length - 1) {
     let next = raw.length - 1;
-    while (next > anchor + 1 && !segmentClear(field, raw[anchor], raw[next], required)) next--;
+    while (next > anchor + 1 && !segmentClear(field, raw[anchor], raw[next], required, grid)) next--;
     path.push(raw[next]); anchor = next;
   }
   let length = 0;
@@ -166,7 +171,7 @@ export function plan(field, start, goal, radius, margin) {
     const steps = Math.max(1, Math.ceil(distance / (RESOLUTION / 4)));
     for (let step = 0; step <= steps; step++) {
       minimumClearance = Math.min(minimumClearance, clearance(field, [firstPoint[0] + (secondPoint[0] - firstPoint[0]) * step / steps,
-        firstPoint[1] + (secondPoint[1] - firstPoint[1]) * step / steps]) - distance / steps / 2);
+        firstPoint[1] + (secondPoint[1] - firstPoint[1]) * step / steps], grid) - distance / steps / 2);
     }
   }
   return {status: 'ready', path, length, minimumClearance, required, expanded};
@@ -191,18 +196,20 @@ export function follow(field, position, path, waypoint, travel, required) {
   return {position: next, waypoint, blocked: false, reached: waypoint >= path.length};
 }
 
-export function mapDocument(occupancy, start, goal, radius, margin) {
+export function mapDocument(occupancy, start, goal, radius, margin, grid = DEFAULT_GRID) {
+  const {width: WIDTH, height: HEIGHT, resolution: RESOLUTION} = grid;
   return {schema: 'cudarobotics.costmap.v1', width: WIDTH, height: HEIGHT, resolution: RESOLUTION,
     origin: [0, 0], rowOrder: 'bottom-to-top', occupancy: Array.from(occupancy), start: [...start], goal: [...goal], radius, margin};
 }
 
-export function parseMap(document) {
+export function parseMap(document, grid = DEFAULT_GRID) {
+  const {width: WIDTH, height: HEIGHT, resolution: RESOLUTION} = grid;
   if (!document || document.schema !== 'cudarobotics.costmap.v1' || document.width !== WIDTH
     || document.height !== HEIGHT || document.resolution !== RESOLUTION
     || document.rowOrder !== 'bottom-to-top' || !Array.isArray(document.origin)
-    || document.origin.length !== 2 || document.origin.some(value => value !== 0)) throw new Error('Expected a 128 × 96 map at 0.125 m/cell, origin [0,0], bottom-to-top rows');
+    || document.origin.length !== 2 || document.origin.some(value => value !== 0)) throw new Error(`Expected a ${WIDTH} × ${HEIGHT} map at ${RESOLUTION} m/cell, origin [0,0], bottom-to-top rows`);
   if (!Array.isArray(document.occupancy) || document.occupancy.length !== WIDTH * HEIGHT
-    || !document.occupancy.every(value => value === 0 || value === 1)) throw new Error('Occupancy must contain exactly 12,288 binary cells');
+    || !document.occupancy.every(value => value === 0 || value === 1)) throw new Error(`Occupancy must contain exactly ${WIDTH * HEIGHT} binary cells`);
   for (const point of [document.start, document.goal]) {
     if (!Array.isArray(point) || point.length !== 2 || !point.every(Number.isFinite)
       || point[0] <= 0 || point[0] >= WORLD_WIDTH || point[1] <= 0 || point[1] >= WORLD_HEIGHT) throw new Error('Start and goal must be finite world coordinates inside the map');

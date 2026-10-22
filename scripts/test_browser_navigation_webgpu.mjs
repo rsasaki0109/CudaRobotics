@@ -2,8 +2,10 @@ import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import {pathToFileURL} from 'node:url';
 import {GpuField, createPipelines} from '../docs/site/navigation/gpu.mjs';
-import {WIDTH, HEIGHT, preset, distanceField, plan} from '../docs/site/navigation/model.mjs';
+import {WIDTH, HEIGHT, preset, distanceField, plan, mapDocument} from '../docs/site/navigation/model.mjs';
 import {compareDistanceFields} from '../docs/site/navigation/benchmark.mjs';
+import {SCALE_GRIDS, resampleMap} from '../docs/site/navigation/scaling.mjs';
+import {compareReplanning} from '../docs/site/navigation/replanning.mjs';
 
 const {create, globals} = await import(process.env.WEBGPU_MODULE
   ? pathToFileURL(process.env.WEBGPU_MODULE).href : 'webgpu');
@@ -15,7 +17,8 @@ assert.ok(adapter, 'A WebGPU adapter is required');
 const device = await adapter.requestDevice();
 let evaluator;
 try {
-  const pipelines = await createPipelines(device, await readFile(new URL('../docs/site/navigation/field.wgsl', import.meta.url), 'utf8'));
+  const code = await readFile(new URL('../docs/site/navigation/field.wgsl', import.meta.url), 'utf8');
+  const pipelines = await createPipelines(device, code);
   console.log('Navigation distance-field compute pipelines: PASS');
   if (!compileOnly) {
     evaluator = new GpuField(device, pipelines);
@@ -45,5 +48,24 @@ try {
         console.log('Real WebGPU / CPU comparison, warmups and output agreement: PASS');
       }
     }
+  }
+  const source = preset('warehouse');
+  const document = mapDocument(source.occupancy, source.start, source.goal, source.radius, source.margin);
+  for (const grid of SCALE_GRIDS) {
+    await createPipelines(device, code, grid);
+    console.log(`${grid.width}×${grid.height}: specialized compute pipelines PASS`);
+    if (compileOnly) continue;
+    const scaledAdapter = await gpu.requestAdapter();
+    const scaledDevice = await scaledAdapter.requestDevice();
+    let scaledEvaluator;
+    try {
+      scaledEvaluator = new GpuField(scaledDevice, await createPipelines(scaledDevice, code, grid), grid);
+      const comparison = await compareReplanning(resampleMap(document, grid), {grid,
+        gpuEvaluate: snapshot => scaledEvaluator.evaluate(snapshot), warmups: 0, repetitions: 1, yieldControl: async () => {}});
+      assert.equal(comparison.accuracy.matches, true);
+      assert.equal(comparison.routeAccuracy.matches, true);
+      assert.equal(comparison.accuracy.checkedCellComparisons, grid.width * grid.height);
+      console.log(`${grid.width}×${grid.height}: all GPU cells and full route agreement PASS`);
+    } finally { scaledEvaluator?.destroy(); scaledDevice.destroy(); }
   }
 } finally { evaluator?.destroy(); device.destroy(); }

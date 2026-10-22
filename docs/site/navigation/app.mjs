@@ -1,7 +1,9 @@
-import {WIDTH, HEIGHT, RESOLUTION, WORLD_HEIGHT, preset, distanceField, plan, follow, mapDocument, parseMap} from './model.mjs';
-import {GpuField} from './gpu.mjs';
+import {WIDTH, HEIGHT, RESOLUTION, WORLD_HEIGHT, preset, distanceField, plan, follow, mapDocument, parseMap} from './model.mjs?v=scale-comparison-1';
+import {GpuField} from './gpu.mjs?v=scale-comparison-1';
 import {compareDistanceFields} from './benchmark.mjs?v=all-comparisons-1';
 import {placePallet} from './pallet.mjs';
+import {compareReplanning} from './replanning.mjs?v=scale-comparison-1';
+import {ScalingPanel} from './scaling-panel.mjs';
 
 const elements = Object.fromEntries([...document.querySelectorAll('[id]')].map(element => [element.id, element]));
 const base = elements.map.getContext('2d');
@@ -25,9 +27,23 @@ let lastPaint = null;
 let cursor = [12, 12];
 let track = [];
 let palletExperiment = null;
+let replanComparison = null;
 
 const required = () => Number(elements.radius.value) + Number(elements.margin.value);
 const useGpu = () => gpu && elements.engine.value !== 'cpu';
+const scales = new ScalingPanel(elements, {
+  canStart: () => !computing && !pending && !benchmarking && !!result,
+  snapshot: () => mapDocument(occupancy, palletExperiment?.start ?? position, palletExperiment?.goal ?? goal, Number(elements.radius.value), Number(elements.margin.value)),
+  pause() { running = false; elements.run.textContent = 'Run mission'; },
+  setBusy(busy) {
+    benchmarking = busy; updatePalletControls();
+    elements.compare.disabled = busy || computing || pending;
+    elements.run.disabled = busy || pending || result?.status !== 'ready' || waypoint >= (result?.path.length ?? 0);
+    if (!busy && pending) { clearTimeout(timer); timer = setTimeout(rebuild, 0); }
+  },
+  createGpu: grid => GpuField.create(grid),
+  download: report => save('cudarobotics-map-size-comparison.json', report),
+});
 const messages = {ready: 'Route ready. Run the mission or edit the map.', no_path: 'No route fits this footprint. Widen the aisle, erase an obstacle or reduce the radius.',
   start_unsafe: 'Robot footprint overlaps an obstacle, safety band or map boundary. Move the robot or edit the map.',
   goal_unsafe: 'Goal has insufficient clearance. Move the goal or edit the map.',
@@ -97,6 +113,19 @@ function draw() {
 function updatePalletControls() {
   elements['add-pallet'].disabled = computing || pending || benchmarking || result?.status !== 'ready' || !!palletExperiment;
   elements['restore-pallet'].disabled = computing || pending || benchmarking || !palletExperiment;
+  elements['compare-replan'].disabled = computing || pending || benchmarking || !palletExperiment?.after;
+  elements['compare-sizes'].disabled = computing || pending || benchmarking || !result;
+}
+
+function clearReplanComparison() {
+  replanComparison = null;
+  elements['export-replan-comparison'].disabled = true;
+  for (const backend of ['cpu', 'gpu']) {
+    for (const stage of ['field', 'route', 'total', 'path']) elements[`replan-${backend}-${stage}`].textContent = '—';
+  }
+  elements['replan-speedup'].textContent = '—';
+  elements['replan-agreement'].textContent = 'Route agreement: —';
+  elements['replan-comparison-status'].textContent = 'Add a pallet first, then compare both pipelines from the captured start. The mission pauses during measurement.';
 }
 
 function clearPallet() {
@@ -109,6 +138,8 @@ function schedule({retainPallet = false} = {}) {
   if (!occupancy) return;
   if (!retainPallet) clearPallet();
   revision++;
+  clearReplanComparison();
+  scales.invalidate();
   clearComparison();
   running = false;
   result = null;
@@ -241,6 +272,55 @@ async function compare() {
   }
 }
 
+async function comparePalletReplanning() {
+  if (computing || pending || benchmarking || !palletExperiment?.after) return;
+  clearReplanComparison();
+  benchmarking = true; running = false;
+  elements.run.textContent = 'Run mission'; elements.run.disabled = true; elements.compare.disabled = true;
+  updatePalletControls();
+  const version = revision;
+  const input = mapDocument(occupancy, palletExperiment.start, palletExperiment.goal, Number(elements.radius.value), Number(elements.margin.value));
+  const palletBoundsMetres = [...palletExperiment.pallet.bounds];
+  try {
+    const report = await compareReplanning(input, {
+      gpuEvaluate: gpu && !gpu.failure ? snapshot => gpu.evaluate(snapshot) : null,
+      shouldCancel: () => version !== revision || document.hidden,
+      onProgress: progress => {
+        elements['replan-comparison-status'].textContent = `${progress.phase} ${progress.backend.toUpperCase()}: ${progress.iteration}/${progress.total}`;
+      },
+    });
+    if (version !== revision) return;
+    replanComparison = {...report, palletBoundsMetres};
+    const timing = data => `${data.medianMs.toFixed(2)} ms (P10–P90 ${data.p10Ms.toFixed(2)}–${data.p90Ms.toFixed(2)})`;
+    for (const backend of ['cpu', 'gpu']) {
+      elements[`replan-${backend}-total`].textContent = report[backend] ? timing(report[backend]) : 'Unavailable';
+      for (const stage of ['field', 'route']) elements[`replan-${backend}-${stage}`].textContent = report.stages[backend] ? timing(report.stages[backend][stage]) : '—';
+      const route = report.routes[backend]?.[0];
+      elements[`replan-${backend}-path`].textContent = !route ? 'No GPU result' : route.status === 'ready'
+        ? `Ready · ${route.length.toFixed(2)} m · clearance ${route.minimumClearance.toFixed(2)} m` : `Blocked · ${route.status}`;
+    }
+    const matches = report.accuracy?.matches && report.routeAccuracy?.matches;
+    elements['replan-agreement'].textContent = !report.gpu ? 'GPU unavailable; CPU-only measurements'
+      : matches ? `Fields and routes match · ${report.routeAccuracy.checkedPairs} pairs checked (1e-6 m tolerance)`
+        : 'MISMATCH: distance field, route status, waypoints, length or clearance differs. Speedup suppressed.';
+    elements['replan-speedup'].textContent = report.speedup === null ? '—' : `${report.speedup.toFixed(2)}×`;
+    elements['replan-comparison-status'].textContent = !report.gpu ? 'CPU pipeline complete. No GPU timings or speedup are invented.'
+      : !matches ? 'Results disagree. Inspect the exported routes; no speedup claim is shown.'
+        : report.speedup === null ? 'Results match; timer precision is insufficient for a total-time ratio.'
+          : `Total: ${report.speedup >= 1 ? 'GPU-field pipeline' : 'CPU-only pipeline'} ${(report.speedup >= 1 ? report.speedup : 1 / report.speedup).toFixed(2)}× faster. Field-stage CPU/GPU ratio: ${report.fieldSpeedup === null ? '—' : `${report.fieldSpeedup.toFixed(2)}×`}. Both pipelines still run A* on the CPU.`;
+    elements['export-replan-comparison'].disabled = false;
+  } catch (error) {
+    elements['replan-comparison-status'].textContent = error.name === 'AbortError'
+      ? 'Comparison cancelled: map/settings changed or page hidden. Add a pallet again if needed.'
+      : `Comparison failed: ${error.message}. No result saved.`;
+  } finally {
+    benchmarking = false; updatePalletControls();
+    elements.compare.disabled = computing || pending;
+    elements.run.disabled = pending || result?.status !== 'ready' || waypoint >= (result?.path.length ?? 0);
+    if (pending) { clearTimeout(timer); timer = setTimeout(rebuild, 0); }
+  }
+}
+
 function applyPreset() {
   const data = preset(elements.preset.value);
   occupancy = data.occupancy; position = data.start; goal = data.goal;
@@ -319,6 +399,10 @@ elements['export-comparison'].addEventListener('click', () => { if (comparison) 
 elements.radius.addEventListener('input', schedule); elements.margin.addEventListener('input', schedule);
 elements['show-field'].addEventListener('change', paintField);
 elements.replan.addEventListener('click', schedule);
+elements['compare-replan'].addEventListener('click', comparePalletReplanning);
+elements['export-replan-comparison'].addEventListener('click', () => {
+  if (replanComparison) save('cudarobotics-replanning-comparison.json', replanComparison);
+});
 elements['add-pallet'].addEventListener('click', () => {
   if (computing || pending || benchmarking || palletExperiment || result?.status !== 'ready') return;
   const before = plan(field, position, goal, Number(elements.radius.value), Number(elements.margin.value));

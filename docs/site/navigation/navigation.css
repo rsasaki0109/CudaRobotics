@@ -32,4 +32,32 @@ input[type=file] { width: 100%; margin-top: 8px; font-size: 12px; color: #c1d1d8
 .legend .old-route, .legend .pallet-key { color: #ffcc7c; }
 .replanning .eyebrow { margin-top: 0; }
 #pallet-status { color: #c2d2d8; font-size: 14px; }
+.replan-benchmark { margin-top: 24px; padding-top: 22px; border-top: 1px solid #30434c; }
+.replan-benchmark h3 { font-size: 18px; margin: 0; }
+.replan-table { width: 100%; border-collapse: collapse; table-layout: fixed; margin-top: 20px; font-size: 13px; text-align: left; }
+.replan-table caption { text-align: left; color: #a7bdc5; font-size: 12px; margin-bottom: 12px; }
+.replan-table th, .replan-table td { padding: 14px 10px; border-bottom: 1px solid #30434c; overflow-wrap: anywhere; }
+.replan-table th { color: #c2d2d8; }
+.replan-table thead th { background: #1a3038; }
+.replan-table tbody th { background: #14252c; }
+.replan-total-row td { color: #8ff3b8; font-weight: 700; }
+.replan-ratio strong { color: #8ff3b8; font: 600 24px ui-monospace, monospace; }
+#replan-comparison-status, #replan-agreement { font-size: 13px; color: #c2d2d8; }
+@media (max-width: 760px) { .replan-table { font-size: 11px; } .replan-table th, .replan-table td { padding: 10px 4px; } }
+.scale-charts { display: grid; grid-template-columns: 1fr 1fr; gap: 28px; margin: 24px 0; }
+.scale-charts section { min-width: 0; }
+.scale-charts h3 { font-size: 17px; margin-bottom: 6px; }
+.scale-groups { list-style: none; padding: 0; margin: 0; }
+.scale-groups li { margin: 20px 0; }
+.scale-groups h4 { font-size: 13px; margin: 0 0 10px; color: #e2edf1; }
+.scale-groups h4 span { font-size: 11px; color: #a7bdc5; font-weight: 400; }
+.scale-bar-row { display: grid; grid-template-columns: 32px minmax(0, 1fr) 86px; align-items: center; gap: 10px; margin: 8px 0; color: #c2d2d8; font-size: 11px; }
+.scale-track { height: 10px; background: #24373e; border-radius: 3px; overflow: hidden; }
+.scale-fill { height: 100%; background: #9bc7ff; }
+.scale-fill.gpu { background: #8ff3b8; }
+#scale-status, #scale-summary { color: #c2d2d8; font-size: 13px; }
+.scale-table thead th:first-child { width: 22%; }
+.scale-table thead th:nth-child(2), .scale-table thead th:nth-child(3) { width: 20%; }
+.scale-table thead th:last-child { width: 38%; }
+@media (max-width: 900px) { .scale-charts { grid-template-columns: 1fr; gap: 8px; } }
 @media (max-width: 1000px) { .lab { grid-template-columns: 1fr; } }
