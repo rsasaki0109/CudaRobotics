@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Run interactive MPPI robot navigation locally in your browser with WebGPU or a CPU fallback.">
+  <title>CudaRobotics · Browser MPPI Lab</title>
+  <link rel="stylesheet" href="demo.css">
+</head>
+<body>
+  <header><a href="../index.html">CudaRobotics</a><span>INTERACTIVE LAB / 01</span><a href="https://github.com/rsasaki0109/CudaRobotics">Source ↗</a></header>
+  <main>
+    <p class="eyebrow">PLAN. SAMPLE. MOVE.</p>
+    <h1>Thousands of futures.<br>One next move.</h1>
+    <p class="intro">Drive a robot with model predictive path integral control. Real rollouts, computed on your device — not a recording.</p>
+    <div class="lab">
+      <section class="viewport" aria-label="Navigation simulation">
+        <div class="canvas-heading"><span>LIVE / 10 × 10 m</span><span id="backend" role="status">Initializing…</span></div>
+        <canvas id="world" width="800" height="800" tabindex="0" aria-label="Robot navigation arena. Click or tap free space to set a goal. Use goal coordinate inputs for keyboard control."></canvas>
+        <div class="legend"><span class="robot">● Robot</span><span class="goal">✚ Goal</span><span class="samples">╱ Sampled futures</span><span>Click / tap to set goal</span></div>
+      </section>
+      <aside>
+        <h2>Control room</h2>
+        <label for="scene">Environment</label>
+        <select id="scene"><option value="gap">01 — Wall gap</option><option value="slalom">02 — Slalom + guide waypoints</option><option value="open">03 — Open arena</option></select>
+        <label for="engine">Compute backend</label>
+        <select id="engine"><option value="auto">Auto · prefer WebGPU</option><option value="cpu">CPU · JavaScript reference</option></select>
+        <label for="count">Sampled trajectories</label>
+        <select id="count"><option>128</option><option selected>512</option><option>1024</option><option>2048</option></select>
+        <label for="temperature">Temperature <output id="temperature-value">3.0</output></label>
+        <input id="temperature" type="range" min="0.5" max="10" step="0.5" value="3">
+        <div class="goal-inputs"><label>Goal x (m)<input id="goal-x" type="number" min="0.3" max="9.7" step="0.1" value="9"></label><label>Goal y (m)<input id="goal-y" type="number" min="0.3" max="9.7" step="0.1" value="5"></label></div>
+        <button id="set-goal" class="secondary">Set goal</button>
+        <div class="buttons"><button id="run" disabled>Start</button><button id="reset" class="secondary">Reset</button></div>
+        <p id="status" role="status">Preparing the planner…</p>
+        <dl><div><dt>Plan latency</dt><dd id="latency">—</dd></div><div><dt>Collision-free samples</dt><dd id="valid">—</dd></div><div><dt>Goal distance</dt><dd id="distance">—</dd></div><div><dt>Simulation time</dt><dd id="time">0.0 s</dd></div></dl>
+        <p class="fine">32-step horizon · 0.1 s model step · differential drive · 0.22 m robot radius. Simulation advances one step per plan, not in real time. Latency includes sampling, GPU transfer and CPU reduction, excludes drawing.</p>
+      </aside>
+    </div>
+    <section class="about"><h2>Same parallel idea. A browser-native backend.</h2><p>Like the native CUDA controller, one GPU invocation evaluates one candidate trajectory. A softmin weights the sampled control sequences; the first command moves the robot, then the horizon shifts. Guide waypoints in the slalom scene provide a global route; MPPI is a local controller.</p><p>This is a simplified JavaScript / WGSL port, <strong>not CUDA running in a browser</strong>, not the full Nav2 controller and not a native performance benchmark. Sampling, weight reduction and drawing run on the CPU. WebGPU evaluates rollout costs; unsupported devices automatically use the JavaScript reference. No installs, external assets, telemetry, camera permissions or backend server.</p><p><a href="../nav2.html">Run the native CUDA / Nav2 controller ↗</a> · <a href="../python.html">Python GPU API ↗</a></p></section>
+  </main>
+  <footer>CudaRobotics / Browser MPPI Lab <span>Built for exploration, not robot deployment.</span></footer>
+  <noscript>This interactive demo requires JavaScript. The documentation links remain available.</noscript>
+  <script type="module" src="app.mjs"></script>
+</body>
+</html>

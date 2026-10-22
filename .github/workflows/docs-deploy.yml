@@ -10,6 +10,8 @@ on:
       - "gif/*.gif"
       - "scripts/v1_support_matrix.py"
       - ".github/workflows/docs-deploy.yml"
+      - "scripts/test_browser_mppi.mjs"
+      - "scripts/test_browser_mppi_webgpu.mjs"
 
 permissions:
   contents: read
@@ -40,16 +42,25 @@ jobs:
           path: pages
           fetch-depth: 1
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
       - name: Validate and stage docs without replacing gallery
+        env:
+          WEBGPU_MODULE: ${{ runner.temp }}/browser-mppi/node_modules/webgpu/index.js
         run: |
           python3 source/scripts/validate_v1_support_matrix.py
+          node --test source/scripts/test_browser_mppi.mjs
+          npm install --prefix "$RUNNER_TEMP/browser-mppi" --no-audit --no-fund webgpu@0.6.2
+          node source/scripts/test_browser_mppi_webgpu.mjs --compile-only
           test -f pages/index.html
           test -d pages/gif
           rsync -a --delete source/docs/site/ pages/docs/
           rsync -a \
             --include='*.gif' --exclude='*' \
             source/gif/ pages/
-          for page in index.html install.html nav2.html results.html; do
+          for page in index.html install.html nav2.html results.html demo/index.html demo/app.mjs demo/planner.mjs demo/gpu.mjs demo/rollout.wgsl demo/demo.css; do
             cmp "source/docs/site/$page" "pages/docs/$page"
           done
           while IFS= read -r -d '' asset; do
@@ -75,7 +86,8 @@ jobs:
         run: |
           for attempt in $(seq 1 12); do
             MATCHED=true
-            for page in index.html install.html nav2.html results.html; do
+            for page in index.html install.html nav2.html results.html demo/index.html demo/app.mjs demo/planner.mjs demo/gpu.mjs demo/rollout.wgsl demo/demo.css; do
+              mkdir -p "/tmp/$(dirname "$page")"
               curl --fail --silent --show-error \
                 "${PAGE_URL}docs/${page}?source_commit=${SOURCE_COMMIT}" \
                 --output "/tmp/${page}" || MATCHED=false

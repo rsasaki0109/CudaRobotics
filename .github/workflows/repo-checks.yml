@@ -23,3 +23,17 @@ jobs:
         run: |
           python3 scripts/redact_gpu_identity.py --check
           python3 scripts/test_redact_gpu_identity.py
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Test browser MPPI reference
+        run: node --test scripts/test_browser_mppi.mjs
+
+      - name: Validate WebGPU shader without a physical GPU
+        env:
+          WEBGPU_MODULE: ${{ runner.temp }}/browser-mppi/node_modules/webgpu/index.js
+        run: |
+          npm install --prefix "$RUNNER_TEMP/browser-mppi" --no-audit --no-fund webgpu@0.6.2
+          node scripts/test_browser_mppi_webgpu.mjs --compile-only

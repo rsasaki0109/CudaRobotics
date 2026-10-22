@@ -65,6 +65,7 @@ Choose the shortest path for what you want to do:
 
 | I want to... | Start here | What success looks like | Typical time |
 |---|---|---|---|
+| **Run an interactive demo directly on GitHub Pages** | [Browser MPPI lab](https://rsasaki0109.github.io/CudaRobotics/docs/demo/) | Live navigation, editable goals, WebGPU rollouts or CPU fallback (simplified port, not native CUDA) | Seconds |
 | **Try it without setting up CUDA locally** | [Run the latest Colab onboarding](https://colab.research.google.com/github/rsasaki0109/CudaRobotics/blob/master/examples/colab/cudarobotics_quickstart.ipynb) (builds published v0.3.0) | An MPPI navigation GIF and a checked result JSON | 5–10 min |
 | **Use the Python API on my NVIDIA GPU** | Follow the commands below, then open the [Python guide](python/README.md) | A planner command plus registration metrics | 10–15 min |
 | **Integrate with ROS 2 / Nav2** | Follow the [Level 3 CudaNav recipe](docs/onboarding_recipes.md#level-3-move-to-ros-2-and-nav2) and [CudaNav architecture](docs/cudanav_architecture.md) | A deterministic closed-loop GPU navigation run | 15+ min |
