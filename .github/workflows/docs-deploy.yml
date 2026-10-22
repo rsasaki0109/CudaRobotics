@@ -6,6 +6,7 @@ on:
     branches: [master]
     paths:
       - "docs/site/**"
+      - "docs/landing/**"
       - "docs/v1_support_matrix.json"
       - "gif/*.gif"
       - "scripts/v1_support_matrix.py"
@@ -62,6 +63,13 @@ jobs:
           node source/scripts/test_browser_navigation_webgpu.mjs --compile-only
           test -f pages/index.html
           test -d pages/gif
+          if [ ! -f pages/research.html ]; then
+            cp pages/index.html pages/research.html
+          fi
+          cp source/docs/landing/index.html pages/index.html
+          cp source/docs/landing/landing.css pages/landing.css
+          cmp source/docs/landing/index.html pages/index.html
+          cmp source/docs/landing/landing.css pages/landing.css
           rsync -a --delete source/docs/site/ pages/docs/
           rsync -a \
             --include='*.gif' --exclude='*' \
@@ -93,6 +101,14 @@ jobs:
         run: |
           for attempt in $(seq 1 12); do
             MATCHED=true
+            for page in index.html landing.css; do
+              curl --fail --silent --show-error \
+                "${PAGE_URL}${page}?source_commit=${SOURCE_COMMIT}" \
+                --output "/tmp/root-${page}" || MATCHED=false
+              cmp "source/docs/landing/${page}" "/tmp/root-${page}" || MATCHED=false
+            done
+            curl --fail --silent --show-error "${PAGE_URL}research.html?source_commit=${SOURCE_COMMIT}" --output /tmp/research.html || MATCHED=false
+            cmp pages/research.html /tmp/research.html || MATCHED=false
             while IFS= read -r page; do
               mkdir -p "/tmp/$(dirname "$page")"
               curl --fail --silent --show-error \

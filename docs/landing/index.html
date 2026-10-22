@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="ロボットの経路計画・自己位置推定・制御をブラウザで体験。3つのデモでGPUとCPUの計算時間を比較できます。">
+  <title>CudaRobotics — ブラウザで試すGPUロボティクス</title>
+  <link rel="stylesheet" href="landing.css">
+</head>
+<body>
+  <a class="skip-link" href="#demos">デモを選ぶ</a>
+  <header class="header">
+    <a class="brand" href="./" aria-label="CudaRobotics ホーム"><span class="brand-mark" aria-hidden="true">C</span>CudaRobotics</a>
+    <nav aria-label="メインナビゲーション"><a href="docs/">使い方</a><a href="https://github.com/rsasaki0109/CudaRobotics">GitHub <span aria-hidden="true">↗</span></a></nav>
+  </header>
+  <main>
+    <section class="intro" aria-labelledby="title">
+      <p class="eyebrow"><span aria-hidden="true"></span> GPU ROBOTICS / INTERACTIVE DEMOS</p>
+      <h1 id="title">ロボットのGPU計算を、<br>ブラウザで。</h1>
+      <p class="lead">道を探す。位置を知る。動きを決める。<br>3つのデモを動かして、GPUとCPUの違いを確かめよう。</p>
+      <p class="setup">インストール不要 <span aria-hidden="true">·</span> 無料で試せる <span aria-hidden="true">·</span> この端末で計算</p>
+    </section>
+    <section id="demos" aria-labelledby="demos-title">
+      <div class="section-heading"><h2 id="demos-title">まずは、ひとつ試してみる</h2><span>01 — 03</span></div>
+      <div class="demos">
+        <a class="demo recommended" href="docs/navigation/">
+          <div class="card-top"><span>01 / 経路計画</span><span class="badge">はじめてなら、これ</span></div>
+          <svg viewBox="0 0 320 150" aria-hidden="true"><path class="grid" d="M0 30H320M0 60H320M0 90H320M0 120H320M40 0V150M80 0V150M120 0V150M160 0V150M200 0V150M240 0V150M280 0V150"/><rect class="obstacle" x="90" y="48" width="40" height="90" rx="3"/><rect class="obstacle" x="190" y="12" width="40" height="86" rx="3"/><path class="route" d="M30 120L60 30H155L165 120H255L290 36"/><circle class="robot" cx="30" cy="120" r="8"/><circle class="goal" cx="290" cy="36" r="9"/><path class="goal" d="M290 21V51M275 36H305"/></svg>
+          <h3>障害物をよけて、ゴールへ。</h3>
+          <p>地図に障害物を描いて、ロボットが通れる道を探す。機体の大きさも変更できます。</p>
+          <div class="card-bottom"><span>Navigation Workbench</span><strong>試す <span aria-hidden="true">→</span></strong></div>
+        </a>
+        <a class="demo" href="docs/particles/">
+          <div class="card-top"><span>02 / 自己位置推定</span></div>
+          <svg viewBox="0 0 320 150" aria-hidden="true"><path class="grid" d="M0 30H320M0 60H320M0 90H320M0 120H320M40 0V150M80 0V150M120 0V150M160 0V150M200 0V150M240 0V150M280 0V150"/><rect class="obstacle" x="80" y="20" width="30" height="72" rx="3"/><rect class="obstacle" x="220" y="58" width="35" height="74" rx="3"/><path class="scan" d="M159 91L110 25M159 91L110 69M159 91L78 120M159 91L200 18M159 91L220 64M159 91L220 120M159 91L165 140"/><g class="particles"><circle cx="152" cy="88" r="3"/><circle cx="164" cy="95" r="3"/><circle cx="153" cy="98" r="2"/><circle cx="166" cy="85" r="2"/><circle cx="146" cy="95" r="2"/><circle cx="175" cy="98" r="2"/><circle cx="159" cy="78" r="2"/><circle cx="142" cy="83" r="2"/><circle cx="180" cy="76" r="2"/><circle cx="136" cy="109" r="2"/><circle cx="191" cy="107" r="2"/><circle cx="48" cy="42" r="2"/><circle cx="275" cy="32" r="2"/><circle cx="60" cy="121" r="2"/></g><circle class="robot" cx="159" cy="91" r="7"/></svg>
+          <h3>たくさんの候補から、現在地を。</h3>
+          <p>センサーの情報からロボットの位置を推定。瞬間移動させると、もう一度探し始めます。</p>
+          <div class="card-bottom"><span>Particle Storm</span><strong>試す <span aria-hidden="true">→</span></strong></div>
+        </a>
+        <a class="demo" href="docs/demo/">
+          <div class="card-top"><span>03 / 動作制御</span></div>
+          <svg viewBox="0 0 320 150" aria-hidden="true"><path class="grid" d="M0 30H320M0 60H320M0 90H320M0 120H320M40 0V150M80 0V150M120 0V150M160 0V150M200 0V150M240 0V150M280 0V150"/><rect class="obstacle" x="151" y="0" width="18" height="48" rx="3"/><rect class="obstacle" x="151" y="105" width="18" height="45" rx="3"/><g class="samples"><path d="M36 90Q88 15 143 68T285 76"/><path d="M36 90Q83 138 145 86T285 76"/><path d="M36 90Q95 58 154 73T285 76"/><path d="M36 90Q92 109 153 83T285 76"/><path d="M36 90Q80 38 144 78T285 76"/></g><path class="route" d="M36 90Q95 74 160 77T285 76"/><circle class="robot" cx="36" cy="90" r="8"/><circle class="goal" cx="285" cy="76" r="9"/><path class="goal" d="M285 61V91M270 76H300"/></svg>
+          <h3>いくつもの未来から、次の一歩を。</h3>
+          <p>多数の動きを同時にシミュレーション。障害物を避ける動きを選ぶMPPI制御を体験します。</p>
+          <div class="card-bottom"><span>MPPI Control</span><strong>試す <span aria-hidden="true">→</span></strong></div>
+        </a>
+      </div>
+    </section>
+    <aside class="comparison-note" aria-labelledby="compare-title"><span class="note-icon" aria-hidden="true">⇄</span><div><h2 id="compare-title">GPUとCPU、どれくらい違う？</h2><p>各デモの「Compare GPU / CPU」で、同じ入力・計算量の処理時間を比較できます。GPU非対応の端末ではCPUで動作します。</p><p class="fine-print">ブラウザ版はWebGPUとJavaScriptの比較です。ネイティブCUDAの性能測定ではありません。</p></div></aside>
+    <section class="more" aria-labelledby="more-title"><div><h2 id="more-title">もっと詳しく</h2><p>CUDA版の導入方法や、研究・ベンチマークの結果はこちら。</p></div><div class="more-links"><a href="docs/install.html">CUDA版を使う <span aria-hidden="true">↗</span></a><a href="research.html">研究結果・録画ギャラリー <span aria-hidden="true">↗</span></a></div></section>
+  </main>
+  <footer><span>CudaRobotics · GPU robotics toolkit</span><a href="https://github.com/rsasaki0109/CudaRobotics">Source on GitHub ↗</a></footer>
+</body>
+</html>

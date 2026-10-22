@@ -1,6 +1,6 @@
 {
   "schema": "cudarobotics.browser-demos.v1",
-  "recordedGallery": {"url": "https://rsasaki0109.github.io/CudaRobotics/", "liveBenchmark": false, "reason": "Recorded native results and GIFs do not execute algorithms in the browser."},
+  "recordedGallery": {"url": "https://rsasaki0109.github.io/CudaRobotics/research.html", "liveBenchmark": false, "reason": "Recorded native results and GIFs do not execute algorithms in the browser."},
   "demos": [
     {"id": "mppi", "page": "demo/index.html", "comparison": "demo/benchmark.mjs", "scope": "Identical seeded rollout cost evaluation; sampling, softmin and rendering excluded."},
     {"id": "particles", "page": "particles/index.html", "comparison": "particles/benchmark.mjs", "scope": "Identical Float32 pose/scan likelihood scoring at the same particle count; full filter and rendering excluded."},

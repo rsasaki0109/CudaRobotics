@@ -1,8 +1,11 @@
 # CudaRobotics docs site source
 
 This directory contains a static documentation site that can be copied into the
-existing `gh-pages` branch under `/docs/` without replacing the animated demo
-gallery at the site root.
+existing `gh-pages` tree under `/docs/`. The public homepage is maintained in
+`docs/landing/`: a lightweight Japanese entry point to the three live demos.
+Deployment preserves the previous research homepage as `/research.html` before
+installing the new root page. Existing gallery images and other assets stay in
+place; the recorded gallery remains separate from the live demos.
 
 Preview locally:
 
@@ -233,11 +236,13 @@ support-matrix inputs change on `master`. It can also be dispatched manually:
 gh workflow run docs-deploy.yml --ref master
 ```
 
-The workflow checks out the complete `gh-pages` gallery tree, replaces only
-its `/docs/` subtree in the Pages artifact, and synchronizes repository-owned
+The workflow checks out the complete `gh-pages` gallery tree, preserves its
+research homepage, installs `docs/landing/` at the root, replaces the `/docs/`
+subtree in the Pages artifact, and synchronizes repository-owned
 `gif/*.gif` files into the gallery root without deleting other gallery assets.
 It then deploys and re-fetches and byte-compares the public documentation
-pages and all browser lab runtime files against the source commit.
+pages, root landing assets, preserved research page and all browser lab runtime
+files against the source commit or staged archive.
 
 For emergency manual deployment to the legacy Pages branch:
 

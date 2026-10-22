@@ -24,3 +24,20 @@ test('every executable browser demo is inventoried and offers a real comparison'
   }
   assert.equal(inventory.recordedGallery.liveBenchmark, false);
 });
+
+test('the landing page has three direct demo entries and preserves access to research', async () => {
+  const html = await readFile(new URL('../docs/landing/index.html', import.meta.url), 'utf8');
+  const inventory = JSON.parse(await readFile(new URL('../docs/site/demos.json', import.meta.url), 'utf8'));
+  const cards = [...html.matchAll(/<a class="demo[^\"]*" href="([^"]+)"/g)].map(match => match[1]);
+  assert.equal(cards.length, 3);
+  assert.deepEqual(cards.sort(), inventory.demos.map(demo => `docs/${path.posix.dirname(demo.page)}/`).sort());
+  assert.ok(html.includes('href="research.html"'));
+  assert.ok(html.includes('href="docs/install.html"'));
+  assert.ok(html.includes('lang="ja"'));
+  assert.ok(html.includes('ネイティブCUDAの性能測定ではありません'));
+  assert.ok(!html.includes('<script'));
+  assert.ok(inventory.recordedGallery.url.endsWith('/research.html'));
+  const stylesheet = await readFile(new URL('../docs/landing/landing.css', import.meta.url), 'utf8');
+  assert.ok(stylesheet.includes('prefers-reduced-motion'));
+  assert.ok(stylesheet.includes(':focus-visible'));
+});
