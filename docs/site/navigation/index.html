@@ -5,25 +5,26 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>CudaRobotics · Navigation Workbench</title>
   <meta name="description" content="Edit an occupancy map, inspect GPU obstacle distances, test robot clearance, plan a route and export a reproducible navigation scenario.">
-  <link rel="stylesheet" href="navigation.css?v=cpu-gpu-compare-1">
+  <link rel="stylesheet" href="navigation.css?v=pallet-replan-1">
 </head>
 <body>
   <header><a href="../index.html">CudaRobotics</a><span>APPLIED ROBOTICS / 03</span><a href="../particles/">Particle Storm ↗</a></header>
   <main>
     <p class="eyebrow">OCCUPANCY → GPU DISTANCE FIELD → ROUTE → MOTION</p>
     <h1>Will the robot fit?</h1>
-    <p class="intro">Draw a pallet into the aisle. Change the robot footprint. Check the remaining clearance, replan from the robot's current position, and export the map and route — not just an animation.</p>
+    <p class="intro">Click “Put a pallet on the route” to block the current path. Compare the old and new routes, check clearance, then run the mission. Or draw your own obstacles and change the robot footprint.</p>
     <div class="telemetry"><div><strong id="length">—</strong><span>REMAINING ROUTE</span></div><div><strong id="clearance">—</strong><span>ROUTE CLEARANCE LOWER BOUND</span></div><div><strong id="field-time">—</strong><span>DISTANCE FIELD + TRANSFER</span></div><div><strong id="plan-time">—</strong><span>CPU A* + SHORTCUTTING</span></div></div>
     <div class="lab">
       <section class="arena" aria-label="Editable navigation map">
         <div class="arena-heading"><span>16 × 12 m / 0.125 m CELLS</span><span id="backend" role="status">Initializing…</span></div>
         <div class="canvases"><canvas id="map" width="128" height="96" aria-label="Occupancy and clearance field"></canvas><canvas id="world" width="1280" height="960" tabindex="0" aria-label="Map editor: select a tool, then click or drag. Keyboard: arrow keys move the cursor, Shift moves eight cells, Space applies the tool."></canvas></div>
-        <div class="legend"><span>■ Obstacle</span><span>■ Insufficient clearance</span><span>─ Planned route</span><span>● Robot / ✚ Goal</span></div>
+        <div class="legend"><span>■ Obstacle</span><span>■ Insufficient clearance</span><span>─ Planned route</span><span>● Robot / ✚ Goal</span><span class="old-route">┄ Before pallet</span><span class="pallet-key">■ Added pallet</span></div>
         <p class="hint">Editing pauses motion immediately. Replanning uses the current robot position. Click or drag with Draw / Erase; arrow keys + Space also work.</p>
       </section>
       <aside>
         <fieldset id="controls" disabled>
         <h2>Mission setup</h2>
+        <div class="pallet-actions"><button id="add-pallet" disabled>Put a pallet on the route</button><button id="restore-pallet" class="secondary" disabled>Restore before pallet</button></div>
         <label for="preset">Scenario</label><select id="preset"><option value="warehouse">Warehouse aisles</option><option value="doorway">Doorway clearance test</option><option value="empty">Empty floor</option></select>
         <label for="engine">Distance-field backend</label><select id="engine"><option value="auto">Auto · prefer WebGPU</option><option value="cpu">CPU · JavaScript reference</option></select>
         <label for="tool">Map tool</label><select id="tool"><option value="draw">Draw obstacle</option><option value="erase">Erase obstacle</option><option value="goal">Place goal</option><option value="robot">Place robot</option></select>
@@ -41,6 +42,13 @@
         </fieldset>
       </aside>
     </div>
+    <section class="comparison replanning" aria-labelledby="replan-title">
+      <p class="eyebrow">ONE CLICK / SAME START / CHANGED MAP</p>
+      <h2 id="replan-title">A pallet appeared. What changes?</h2>
+      <p id="pallet-status" role="status">Put a 1 × 1 m pallet on the route. Motion pauses while a new route is checked from the same robot position.</p>
+      <div class="comparison-results"><div><span>REPLAN: FIELD + ROUTE</span><strong id="replan-total">—</strong><p>Single wall-clock measurement, including GPU transfers when used.</p></div><div><span>ROUTE LENGTH CHANGE</span><strong id="route-change">—</strong><p>Before <span id="before-length">—</span> → after <span id="after-length">—</span></p></div><div><span>SPARE CLEARANCE</span><strong id="replan-clearance">—</strong><p>New route's minimum clearance minus (robot radius + safety margin).</p></div></div>
+      <p class="hint">Dashed amber is the previous route; green is the newly checked route. Both plans use the same start, goal and footprint. The old route may cross the pallet and must not be followed. Restore rewinds to the captured robot position and map. Editing the map, positions, footprint or backend clears this experiment. Timing excludes the input debounce, baseline plan and drawing; this is not a GPU/CPU speedup claim. A* is clearance-weighted, so route-length change is not an optimal-detour guarantee. Save plan includes both routes and the pallet result.</p>
+    </section>
     <section class="comparison" aria-labelledby="comparison-title">
       <div class="comparison-heading"><div><p class="eyebrow">SAME MAP / SAME DISTANCE ALGORITHM</p><h2 id="comparison-title">GPU vs CPU, on your device.</h2></div><div class="buttons"><button id="compare" disabled>Compare GPU / CPU</button><button id="export-comparison" class="secondary" disabled>Save comparison</button></div></div>
       <p id="comparison-status" role="status">Comparison pauses the mission. Three warmups, then 15 paired measurements of the current map.</p>
@@ -56,6 +64,6 @@
   </main>
   <footer>CudaRobotics / Navigation Workbench <span>Edit. Check. Plan. Export.</span></footer>
   <noscript>JavaScript is required for the planning workbench.</noscript>
-  <script type="module" src="app.mjs?v=all-comparisons-1"></script>
+  <script type="module" src="app.mjs?v=pallet-replan-1"></script>
 </body>
 </html>

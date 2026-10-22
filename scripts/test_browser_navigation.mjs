@@ -1,6 +1,49 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {WIDTH, HEIGHT, RESOLUTION, preset, distanceField, clearance, segmentClear, plan, follow, mapDocument, parseMap} from '../docs/site/navigation/model.mjs';
+import {placePallet} from '../docs/site/navigation/pallet.mjs';
+
+for (const name of ['warehouse', 'empty', 'doorway']) {
+  test(`${name}: a pallet blocks the former route without mutating the original map`, () => {
+    const data = preset(name);
+    const original = data.occupancy.slice();
+    const before = plan(distanceField(original), data.start, data.goal, data.radius, data.margin);
+    const pallet = placePallet(original, before.path, data.start, data.goal, before.required);
+    assert.ok(pallet);
+    assert.deepEqual(original, data.occupancy);
+    assert.equal(pallet.cells.length, 64);
+    assert.ok(pallet.cells.every(index => original[index] === 0 && pallet.occupancy[index] === 1));
+    const field = distanceField(pallet.occupancy);
+    assert.ok(clearance(field, data.start) >= before.required);
+    assert.ok(clearance(field, data.goal) >= before.required);
+    assert.ok(before.path.slice(1).some((point, index) => !segmentClear(field, before.path[index], point, before.required)));
+    const after = plan(field, data.start, data.goal, data.radius, data.margin);
+    assert.equal(after.status, name === 'doorway' ? 'no_path' : 'ready');
+    if (after.status === 'ready') {
+      assert.notDeepEqual(after.path, before.path);
+      assert.ok(after.minimumClearance >= before.required);
+      let position = [...data.start];
+      let waypoint = 1;
+      let reached = false;
+      for (let step = 0; step < 1500; step++) {
+        const next = follow(field, position, after.path, waypoint, .04, after.required);
+        assert.equal(next.blocked, false);
+        position = next.position; waypoint = next.waypoint;
+        if (next.reached) { reached = true; break; }
+      }
+      assert.equal(reached, true);
+      assert.deepEqual(position, data.goal);
+    }
+  });
+}
+
+test('pallet placement rejects occupied or endpoint-only routes without mutation', () => {
+  const occupied = new Uint8Array(WIDTH * HEIGHT).fill(1);
+  assert.equal(placePallet(occupied, [[2, 6], [14, 6]], [2, 6], [14, 6], .42), null);
+  assert.ok(occupied.every(value => value === 1));
+  assert.equal(placePallet(new Uint8Array(WIDTH * HEIGHT), [[2, 6], [2.1, 6]], [2, 6], [2.1, 6], .42), null);
+  assert.equal(placePallet(new Uint8Array(WIDTH * HEIGHT), [], [2, 6], [14, 6], .42), null);
+});
 
 test('separable distance field has conservative obstacle and boundary distances', () => {
   const occupancy = new Uint8Array(WIDTH * HEIGHT);
@@ -72,7 +115,8 @@ test('workbench completes a mission, pauses on editing and round-trips exported 
     'preset', 'tool', 'radius', 'radius-value', 'margin', 'margin-value', 'start-x', 'start-y', 'goal-x', 'goal-y',
     'targets', 'run', 'replan', 'status', 'show-field', 'required', 'expanded', 'time', 'export-map', 'export-plan', 'import-map',
     'engine', 'compare', 'export-comparison', 'comparison-status', 'cpu-median', 'gpu-median', 'cpu-range', 'gpu-range',
-    'cpu-bar', 'gpu-bar', 'speedup', 'accuracy'];
+    'cpu-bar', 'gpu-bar', 'speedup', 'accuracy', 'add-pallet', 'restore-pallet', 'pallet-status', 'replan-total',
+    'route-change', 'replan-clearance', 'before-length', 'after-length'];
   const elements = Object.fromEntries(identifiers.map(id => [id, {
     id, value: '', textContent: '', listeners: {}, style: {},
     get valueAsNumber() { return this.value === '' ? NaN : Number(this.value); },
@@ -102,6 +146,29 @@ test('workbench completes a mission, pauses on editing and round-trips exported 
     assert.equal(elements.backend.textContent, 'CPU DISTANCE FIELD / CPU A*');
     assert.equal(elements.controls.disabled, false);
     assert.equal(elements.run.disabled, false);
+    elements['export-map'].listeners.click();
+    const beforePalletMap = JSON.parse(await exported.text());
+    elements.run.listeners.click(); frame(50);
+    const capturedStart = [Number(elements['start-x'].value), Number(elements['start-y'].value)];
+    elements['add-pallet'].listeners.click();
+    assert.equal(elements.run.disabled, true);
+    assert.equal(elements['add-pallet'].disabled, true);
+    await ready();
+    assert.equal(elements['restore-pallet'].disabled, false);
+    assert.match(elements['pallet-status'].textContent, /New route ready/);
+    assert.match(elements['replan-total'].textContent, /ms$/);
+    elements['export-plan'].listeners.click();
+    const palletReport = JSON.parse(await exported.text());
+    assert.deepEqual(palletReport.palletExperiment.before.path[0], palletReport.palletExperiment.after.path[0]);
+    assert.ok(Math.hypot(palletReport.palletExperiment.start[0] - capturedStart[0], palletReport.palletExperiment.start[1] - capturedStart[1]) < .01);
+    assert.notDeepEqual(palletReport.palletExperiment.before.path, palletReport.palletExperiment.after.path);
+    assert.ok(palletReport.palletExperiment.replanningMs >= 0);
+    elements['restore-pallet'].listeners.click();
+    await ready();
+    elements['export-map'].listeners.click();
+    assert.deepEqual(JSON.parse(await exported.text()).occupancy, beforePalletMap.occupancy);
+    assert.equal(elements['restore-pallet'].disabled, true);
+    assert.equal(elements['replan-total'].textContent, '—');
     await elements.compare.listeners.click();
     assert.match(elements['cpu-median'].textContent, /ms$/);
     assert.equal(elements['gpu-median'].textContent, 'Unavailable');
@@ -122,6 +189,12 @@ test('workbench completes a mission, pauses on editing and round-trips exported 
     assert.ok(report.minimumClearance >= report.required);
     elements.preset.value = 'doorway'; elements.preset.listeners.change();
     await ready();
+    elements['add-pallet'].listeners.click(); await ready();
+    assert.equal(elements.run.disabled, true);
+    assert.equal(elements['after-length'].textContent, 'Blocked');
+    assert.equal(elements['route-change'].textContent, 'No route');
+    assert.match(elements['pallet-status'].textContent, /no safe route/);
+    elements['restore-pallet'].listeners.click(); await ready();
     elements.run.listeners.click(); frame(100000);
     const cancelledComparison = elements.compare.listeners.click();
     elements.world.listeners.pointerdown({pointerId: 1, clientX: 160, clientY: 480});

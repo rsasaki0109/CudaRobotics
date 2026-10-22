@@ -27,4 +27,9 @@ input[type=file] { width: 100%; margin-top: 8px; font-size: 12px; color: #c1d1d8
 #gpu-bar { background: #8ff3b8; }
 @media (max-width: 760px) { .comparison { padding: 20px; } .comparison-results { grid-template-columns: 1fr; gap: 12px; } }
 #run { color: #082b20; background: #8ff3b8; border-color: #8ff3b8; }
+.pallet-actions { display: grid; gap: 8px; margin: 16px 0 22px; }
+#add-pallet { background: #ffbe7b; border-color: #ffbe7b; color: #302012; }
+.legend .old-route, .legend .pallet-key { color: #ffcc7c; }
+.replanning .eyebrow { margin-top: 0; }
+#pallet-status { color: #c2d2d8; font-size: 14px; }
 @media (max-width: 1000px) { .lab { grid-template-columns: 1fr; } }

@@ -17,6 +17,17 @@ Then open `http://localhost:8080/`.
 
 ## Comparison coverage: every executable browser demo
 
+Navigation Workbench also offers a one-click pallet experiment: place a 1 × 1 m
+obstacle on the remaining route, pause motion, and replan from the captured robot
+position. Dashed amber shows the old plan (which may now collide); green shows the
+new checked plan. The panel reports field + route wall time, before/after route
+length, and spare clearance above radius + margin. Blocked routes stay stopped.
+Restore returns to the captured map, position and simulation time. Map, endpoint,
+footprint and backend changes clear the experiment. Plan JSON includes both
+routes and the pallet bounds. Timing excludes debounce, baseline preparation and
+drawing; it is one selected-backend measurement, not a GPU/CPU benchmark. The
+clearance-weighted planner does not promise an optimal geometric detour.
+
 The inventory in `demos.json` covers all three pages that execute algorithms:
 MPPI (`/demo/`), Particle Storm (`/particles/`) and Navigation Workbench
 (`/navigation/`). Each has a GPU/CPU comparison panel. Repository checks discover

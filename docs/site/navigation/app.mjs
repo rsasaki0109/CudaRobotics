@@ -1,6 +1,7 @@
 import {WIDTH, HEIGHT, RESOLUTION, WORLD_HEIGHT, preset, distanceField, plan, follow, mapDocument, parseMap} from './model.mjs';
 import {GpuField} from './gpu.mjs';
 import {compareDistanceFields} from './benchmark.mjs?v=all-comparisons-1';
+import {placePallet} from './pallet.mjs';
 
 const elements = Object.fromEntries([...document.querySelectorAll('[id]')].map(element => [element.id, element]));
 const base = elements.map.getContext('2d');
@@ -23,6 +24,7 @@ let dragging = false;
 let lastPaint = null;
 let cursor = [12, 12];
 let track = [];
+let palletExperiment = null;
 
 const required = () => Number(elements.radius.value) + Number(elements.margin.value);
 const useGpu = () => gpu && elements.engine.value !== 'cpu';
@@ -67,6 +69,15 @@ function line(points, color, width) {
 function draw() {
   if (!position) return;
   context.clearRect(0, 0, 1280, 960);
+  if (palletExperiment) {
+    context.setLineDash([12, 9]);
+    line(palletExperiment.before.path, '#ffcc7c', 4);
+    context.setLineDash([]);
+    const [left, bottom, right, top] = palletExperiment.pallet.bounds;
+    context.fillStyle = '#ffae6355'; context.strokeStyle = '#ffb76d'; context.lineWidth = 3;
+    context.fillRect(left * 80, (WORLD_HEIGHT - top) * 80, (right - left) * 80, (top - bottom) * 80);
+    context.strokeRect(left * 80, (WORLD_HEIGHT - top) * 80, (right - left) * 80, (top - bottom) * 80);
+  }
   if (result?.status === 'ready') line(result.path.slice(Math.max(0, waypoint - 1)), '#8ff3b8', 5);
   line(track, '#9bc7ff88', 3);
   context.strokeStyle = '#ffcc7c'; context.lineWidth = 3;
@@ -83,8 +94,20 @@ function draw() {
   }
 }
 
-function schedule() {
+function updatePalletControls() {
+  elements['add-pallet'].disabled = computing || pending || benchmarking || result?.status !== 'ready' || !!palletExperiment;
+  elements['restore-pallet'].disabled = computing || pending || benchmarking || !palletExperiment;
+}
+
+function clearPallet() {
+  palletExperiment = null;
+  for (const id of ['replan-total', 'route-change', 'replan-clearance', 'before-length', 'after-length']) elements[id].textContent = '—';
+  elements['pallet-status'].textContent = 'Put a 1 × 1 m pallet on the route. Motion pauses while a new route is checked from the same robot position.';
+}
+
+function schedule({retainPallet = false} = {}) {
   if (!occupancy) return;
+  if (!retainPallet) clearPallet();
   revision++;
   clearComparison();
   running = false;
@@ -98,6 +121,7 @@ function schedule() {
   elements.required.textContent = `${required().toFixed(2)} m`;
   elements.length.textContent = '—'; elements.clearance.textContent = '—';
   pending = true;
+  updatePalletControls();
   clearTimeout(timer);
   timer = setTimeout(rebuild, 100);
   paintField(); draw();
@@ -124,7 +148,22 @@ async function rebuild() {
     plannedStart = [...position];
     const planningStart = performance.now();
     result = plan(field, position, goal, Number(elements.radius.value), Number(elements.margin.value));
-    elements['plan-time'].textContent = `${(performance.now() - planningStart).toFixed(1)} ms`;
+    const planningMs = performance.now() - planningStart;
+    const replanningMs = performance.now() - start;
+    elements['plan-time'].textContent = `${planningMs.toFixed(1)} ms`;
+    if (palletExperiment) {
+      palletExperiment.after = result;
+      palletExperiment.replanningMs = replanningMs;
+      elements['replan-total'].textContent = `${replanningMs.toFixed(1)} ms`;
+      elements['before-length'].textContent = `${palletExperiment.before.length.toFixed(2)} m`;
+      elements['after-length'].textContent = result.status === 'ready' ? `${result.length.toFixed(2)} m` : 'Blocked';
+      const difference = result.length - palletExperiment.before.length;
+      elements['route-change'].textContent = result.status === 'ready' ? `${difference >= 0 ? '+' : ''}${difference.toFixed(2)} m` : 'No route';
+      elements['replan-clearance'].textContent = result.minimumClearance === null ? '—' : `${(result.minimumClearance - result.required).toFixed(2)} m`;
+      elements['pallet-status'].textContent = result.status === 'ready'
+        ? 'New route ready. Dashed amber = before; green = after. Motion stays paused until you run the mission.'
+        : `Pallet added, but no safe route is available. ${messages[result.status]} The dashed route is the old plan, not safe to follow.`;
+    }
     elements.length.textContent = result.path.length ? `${result.length.toFixed(2)} m` : 'Blocked';
     elements.clearance.textContent = result.minimumClearance === null ? '—' : `${result.minimumClearance.toFixed(2)} m`;
     elements.expanded.textContent = result.expanded.toLocaleString('en-US');
@@ -136,8 +175,11 @@ async function rebuild() {
     elements.backend.textContent = useGpu() ? 'WEBGPU DISTANCE FIELD / CPU A*' : 'CPU DISTANCE FIELD / CPU A*';
     waypoint = 1;
     paintField(); draw();
-  } catch (error) { elements.status.textContent = `Planning failed: ${error.message}`; }
-  finally { computing = false; if (pending) { clearTimeout(timer); timer = setTimeout(rebuild, 0); } }
+  } catch (error) {
+    elements.status.textContent = `Planning failed: ${error.message}`;
+    if (palletExperiment) elements['pallet-status'].textContent = 'Replanning failed. No new route was measured; restore the map to try again.';
+  }
+  finally { computing = false; updatePalletControls(); if (pending) { clearTimeout(timer); timer = setTimeout(rebuild, 0); } }
 }
 
 function clearComparison() {
@@ -155,6 +197,7 @@ async function compare() {
   clearComparison();
   if (running) elements.status.textContent = 'Mission paused for GPU / CPU comparison. Resume it after measurement.';
   benchmarking = true; running = false;
+  updatePalletControls();
   elements.run.textContent = 'Run mission'; elements.run.disabled = true; elements.compare.disabled = true;
   const version = revision;
   const input = mapDocument(occupancy, position, goal, Number(elements.radius.value), Number(elements.margin.value));
@@ -191,6 +234,7 @@ async function compare() {
       : `Comparison failed: ${error.message}. No result was saved.`;
   } finally {
     benchmarking = false;
+    updatePalletControls();
     elements.compare.disabled = computing || pending;
     elements.run.disabled = pending || result?.status !== 'ready' || waypoint >= (result?.path.length ?? 0);
     if (pending) { clearTimeout(timer); timer = setTimeout(rebuild, 0); }
@@ -275,6 +319,28 @@ elements['export-comparison'].addEventListener('click', () => { if (comparison) 
 elements.radius.addEventListener('input', schedule); elements.margin.addEventListener('input', schedule);
 elements['show-field'].addEventListener('change', paintField);
 elements.replan.addEventListener('click', schedule);
+elements['add-pallet'].addEventListener('click', () => {
+  if (computing || pending || benchmarking || palletExperiment || result?.status !== 'ready') return;
+  const before = plan(field, position, goal, Number(elements.radius.value), Number(elements.margin.value));
+  if (before.status !== 'ready') return;
+  const pallet = placePallet(occupancy, before.path, position, goal, required());
+  if (!pallet) {
+    elements['pallet-status'].textContent = 'No free 1 × 1 m spot fits this route without covering the robot or goal. Try Warehouse aisles or Empty floor.';
+    return;
+  }
+  palletExperiment = {before, pallet, start: [...position], goal: [...goal], occupancy: occupancy.slice(),
+    elapsed, track: track.map(point => [...point]), after: null};
+  occupancy = pallet.occupancy; field = null;
+  elements['pallet-status'].textContent = 'Pallet placed. Rebuilding the distance field and finding a route from the same start…';
+  schedule({retainPallet: true});
+});
+elements['restore-pallet'].addEventListener('click', () => {
+  if (!palletExperiment || computing || pending || benchmarking) return;
+  occupancy = palletExperiment.occupancy; position = palletExperiment.start; goal = palletExperiment.goal;
+  elapsed = palletExperiment.elapsed; track = palletExperiment.track;
+  elements.time.textContent = `${elapsed.toFixed(1)} s`;
+  field = null; syncPositions(); schedule();
+});
 elements.targets.addEventListener('click', () => {
   const points = [elements['start-x'].valueAsNumber, elements['start-y'].valueAsNumber,
     elements['goal-x'].valueAsNumber, elements['goal-y'].valueAsNumber];
@@ -304,6 +370,10 @@ elements['export-plan'].addEventListener('click', () => {
     backend: useGpu() ? 'webgpu-distance-field/cpu-astar' : 'cpu-reference/cpu-astar',
     map: mapDocument(occupancy, plannedStart, goal, Number(elements.radius.value), Number(elements.margin.value)),
     ...result, simulationOnly: true,
+    palletExperiment: palletExperiment?.after ? {start: palletExperiment.start, goal: palletExperiment.goal,
+      palletBoundsMetres: palletExperiment.pallet.bounds, before: palletExperiment.before, after: palletExperiment.after,
+      replanningMs: palletExperiment.replanningMs,
+      timing: 'single distance-field + CPU route call; GPU transfers included; debounce, baseline setup and drawing excluded'} : null,
     execution: {running, robotPosition: [...position], simulationSeconds: elapsed,
       reached: result.status === 'ready' && waypoint >= result.path.length}});
 });
