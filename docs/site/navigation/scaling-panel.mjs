@@ -1,13 +1,14 @@
-import {compareMapSizes} from './scaling.mjs';
+import {compareMapSizes} from './scaling.mjs?v=edt-baseline-1';
+import {cpuBaseline} from './cpu-baseline.mjs';
 
 const label = entry => `${entry.grid.width}×${entry.grid.height}`;
 const matched = entry => entry.report.accuracy?.matches && entry.report.routeAccuracy?.matches;
 const milliseconds = timing => timing ? `${timing.medianMs.toFixed(2)} ms` : 'Unavailable';
 
 export class ScalingPanel {
-  constructor(elements, {canStart, snapshot, pause, setBusy, createGpu, download}) {
+  constructor(elements, {canStart, snapshot, pause, setBusy, createGpu, download, baseline = () => 'matched'}) {
     this.elements = elements;
-    Object.assign(this, {canStart, snapshot, pause, setBusy, createGpu, download});
+    Object.assign(this, {canStart, snapshot, pause, setBusy, createGpu, download, baseline});
     this.generation = 0; this.busy = false;
     elements['compare-sizes'].addEventListener('click', () => this.run());
     elements['cancel-sizes'].addEventListener('click', () => this.invalidate());
@@ -20,6 +21,8 @@ export class ScalingPanel {
     for (const id of ['scale-field-chart', 'scale-total-chart', 'scale-detail-rows']) this.elements[id].innerHTML = '';
     this.elements['scale-summary'].textContent = 'No measurements yet. A faster distance field does not necessarily mean a faster total replan.';
     this.elements['scale-status'].textContent = this.busy ? 'Cancelling after outstanding work finishes…' : 'Ready: same 16 × 12 m world at three grid resolutions. Motion pauses during measurement.';
+    const description = cpuBaseline(this.baseline()).description;
+    this.elements['scale-baseline'].textContent = `${description.name}. ${description.note}`;
   }
   chart(report, stage) {
     const timing = (entry, backend) => stage === 'field' ? entry.report.stages[backend]?.field : entry.report[backend];
@@ -32,6 +35,7 @@ export class ScalingPanel {
     }).join('')}</li>`).join('')}</ol>`;
   }
   render(report) {
+    this.elements['scale-baseline'].textContent = `${report.cpuBaseline.name}. ${report.cpuBaseline.note}`;
     this.elements['scale-field-chart'].innerHTML = this.chart(report, 'field');
     this.elements['scale-total-chart'].innerHTML = this.chart(report, 'total');
     this.elements['scale-detail-rows'].innerHTML = report.results.map(entry => {
@@ -52,7 +56,7 @@ export class ScalingPanel {
     this.elements['cancel-sizes'].disabled = false;
     const generation = this.generation;
     try {
-      const report = await compareMapSizes(this.snapshot(), {createGpu: this.createGpu,
+      const report = await compareMapSizes(this.snapshot(), {createGpu: this.createGpu, cpuBaseline: this.baseline(),
         shouldCancel: () => generation !== this.generation || document.hidden,
         onProgress: progress => {
           this.elements['scale-status'].textContent = `${progress.grid.width}×${progress.grid.height} (${progress.sizeIndex}/${progress.sizeCount}): ${progress.phase === 'setup' ? 'preparing GPU resources (not timed)' : `${progress.phase} ${progress.backend.toUpperCase()} ${progress.iteration}/${progress.total}`}`;

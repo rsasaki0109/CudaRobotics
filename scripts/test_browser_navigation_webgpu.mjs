@@ -60,12 +60,15 @@ try {
     let scaledEvaluator;
     try {
       scaledEvaluator = new GpuField(scaledDevice, await createPipelines(scaledDevice, code, grid), grid);
-      const comparison = await compareReplanning(resampleMap(document, grid), {grid,
-        gpuEvaluate: snapshot => scaledEvaluator.evaluate(snapshot), warmups: 0, repetitions: 1, yieldControl: async () => {}});
-      assert.equal(comparison.accuracy.matches, true);
-      assert.equal(comparison.routeAccuracy.matches, true);
-      assert.equal(comparison.accuracy.checkedCellComparisons, grid.width * grid.height);
-      console.log(`${grid.width}×${grid.height}: all GPU cells and full route agreement PASS`);
+      for (const cpuBaseline of ['matched', 'optimized']) {
+        const comparison = await compareReplanning(resampleMap(document, grid), {grid, cpuBaseline,
+          gpuEvaluate: snapshot => scaledEvaluator.evaluate(snapshot), warmups: 0, repetitions: 1, yieldControl: async () => {}});
+        assert.equal(comparison.accuracy.matches, true);
+        assert.equal(comparison.routeAccuracy.matches, true);
+        assert.equal(comparison.accuracy.checkedCellComparisons, grid.width * grid.height);
+        assert.equal(comparison.cpuBaseline.id, cpuBaseline);
+        console.log(`${grid.width}×${grid.height} / ${cpuBaseline}: all GPU cells and full route agreement PASS`);
+      }
     } finally { scaledEvaluator?.destroy(); scaledDevice.destroy(); }
   }
 } finally { evaluator?.destroy(); device.destroy(); }

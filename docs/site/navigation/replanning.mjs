@@ -1,14 +1,17 @@
-import {DEFAULT_GRID, distanceField, plan, parseMap, mapDocument} from './model.mjs?v=scale-comparison-1';
+import {DEFAULT_GRID, plan, parseMap, mapDocument} from './model.mjs?v=scale-comparison-1';
+import {cpuBaseline as selectCpuBaseline} from './cpu-baseline.mjs';
 import {runComparison, summarize} from '../assets/benchmark.mjs';
 
-export async function compareReplanning(document, {grid = DEFAULT_GRID, gpuEvaluate = null, cpuEvaluate = distanceField, planRoute = plan,
+export async function compareReplanning(document, {grid = DEFAULT_GRID, gpuEvaluate = null, cpuEvaluate = null, cpuBaseline = 'matched', planRoute = plan,
   now = () => performance.now(), onProgress = () => {}, ...options} = {}) {
   const input = parseMap(document, grid);
+  const baseline = selectCpuBaseline(cpuBaseline);
+  const evaluateCpu = cpuEvaluate ?? baseline.evaluate;
   const latest = {};
   const samples = {cpu: {field: [], route: [], routes: []}, gpu: {field: [], route: [], routes: []}};
   const evaluate = backend => async () => {
     const start = now();
-    const field = await (backend === 'cpu' ? cpuEvaluate : gpuEvaluate)(input.occupancy, grid);
+    const field = await (backend === 'cpu' ? evaluateCpu : gpuEvaluate)(input.occupancy, grid);
     const fieldEnd = now();
     const route = planRoute(field, input.start, input.goal, input.radius, input.margin, grid);
     const routeEnd = now();
@@ -67,6 +70,7 @@ export async function compareReplanning(document, {grid = DEFAULT_GRID, gpuEvalu
     ? {field: summarize(samples[backend].field), route: summarize(samples[backend].route)} : null]));
   const matches = report.accuracy?.matches && routeAccuracy?.matches;
   return {...report, schema: 'cudarobotics.replanning-benchmark.v1',
+    cpuBaseline: baseline.description,
     input: mapDocument(input.occupancy, input.start, input.goal, input.radius, input.margin, grid),
     stages, routes: {cpu: samples.cpu.routes, gpu: gpuEvaluate ? samples.gpu.routes : null}, routeAccuracy,
     speedup: matches ? report.speedup : null,

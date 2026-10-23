@@ -119,7 +119,8 @@ test('workbench completes a mission, pauses on editing and round-trips exported 
     'route-change', 'replan-clearance', 'before-length', 'after-length', 'compare-replan', 'export-replan-comparison',
     'replan-speedup', 'replan-agreement', 'replan-comparison-status', 'replan-cpu-field', 'replan-cpu-route',
     'replan-cpu-total', 'replan-cpu-path', 'replan-gpu-field', 'replan-gpu-route', 'replan-gpu-total', 'replan-gpu-path',
-    'compare-sizes', 'cancel-sizes', 'export-sizes', 'scale-field-chart', 'scale-total-chart', 'scale-detail-rows', 'scale-summary', 'scale-status'];
+    'compare-sizes', 'cancel-sizes', 'export-sizes', 'scale-field-chart', 'scale-total-chart', 'scale-detail-rows', 'scale-summary', 'scale-status',
+    'cpu-baseline', 'cpu-baseline-label', 'replan-cpu-label', 'field-baseline', 'replan-baseline', 'scale-baseline'];
   const elements = Object.fromEntries(identifiers.map(id => [id, {
     id, value: '', textContent: '', listeners: {}, style: {},
     get valueAsNumber() { return this.value === '' ? NaN : Number(this.value); },
@@ -187,6 +188,25 @@ test('workbench completes a mission, pauses on editing and round-trips exported 
     assert.deepEqual(replanReport.input.start, palletReport.palletExperiment.start);
     assert.deepEqual(replanReport.palletBoundsMetres, palletReport.palletExperiment.palletBoundsMetres);
     assert.deepEqual(replanReport.input.occupancy, palletReport.map.occupancy);
+    assert.equal(replanReport.cpuBaseline.id, 'matched');
+    elements['cpu-baseline'].value = 'optimized'; elements['cpu-baseline'].listeners.change();
+    assert.equal(elements['export-replan-comparison'].disabled, true);
+    assert.equal(elements['compare-replan'].disabled, false);
+    assert.equal(elements['restore-pallet'].disabled, false);
+    assert.match(elements['replan-cpu-label'].textContent, /EDT/);
+    assert.match(elements['scale-baseline'].textContent, /Different algorithms/);
+    await elements['compare-replan'].listeners.click();
+    elements['export-replan-comparison'].listeners.click();
+    const optimizedReport = JSON.parse(await exported.text());
+    assert.equal(optimizedReport.cpuBaseline.id, 'optimized');
+    assert.deepEqual(optimizedReport.input, replanReport.input);
+    assert.deepEqual(optimizedReport.routes.cpu[0], replanReport.routes.cpu[0]);
+    const cancelledBaseline = elements['compare-replan'].listeners.click();
+    elements['cpu-baseline'].value = 'matched'; elements['cpu-baseline'].listeners.change();
+    await cancelledBaseline;
+    assert.equal(elements['export-replan-comparison'].disabled, true);
+    assert.match(elements['replan-comparison-status'].textContent, /cancelled/);
+    assert.equal(elements['compare-replan'].disabled, false);
     elements['restore-pallet'].listeners.click();
     await ready();
     elements['export-map'].listeners.click();

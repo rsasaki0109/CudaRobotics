@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>CudaRobotics · Navigation Workbench</title>
   <meta name="description" content="Edit an occupancy map, inspect GPU obstacle distances, test robot clearance, plan a route and export a reproducible navigation scenario.">
-  <link rel="stylesheet" href="navigation.css?v=scale-comparison-1">
+  <link rel="stylesheet" href="navigation.css?v=edt-baseline-1">
 </head>
 <body>
   <header><a href="../index.html">CudaRobotics</a><span>APPLIED ROBOTICS / 03</span><a href="../particles/">Particle Storm ↗</a></header>
@@ -27,6 +27,8 @@
         <div class="pallet-actions"><button id="add-pallet" disabled>Put a pallet on the route</button><button id="restore-pallet" class="secondary" disabled>Restore before pallet</button></div>
         <label for="preset">Scenario</label><select id="preset"><option value="warehouse">Warehouse aisles</option><option value="doorway">Doorway clearance test</option><option value="empty">Empty floor</option></select>
         <label for="engine">Distance-field backend</label><select id="engine"><option value="auto">Auto · prefer WebGPU</option><option value="cpu">CPU · JavaScript reference</option></select>
+        <label for="cpu-baseline">CPU baseline · comparisons only</label><select id="cpu-baseline"><option value="matched">Same algorithm · brute force</option><option value="optimized">Optimized CPU · linear-time EDT</option></select>
+        <p class="hint">Applies to all three comparison panels, not the live mission. Switching invalidates old timings but keeps the pallet. The GPU field algorithm remains brute force in both modes.</p>
         <label for="tool">Map tool</label><select id="tool"><option value="draw">Draw obstacle</option><option value="erase">Erase obstacle</option><option value="goal">Place goal</option><option value="robot">Place robot</option></select>
         <label for="radius">Robot radius <output id="radius-value">0.30 m</output></label><input id="radius" type="range" min="0.15" max="0.75" step="0.05" value="0.3">
         <label for="margin">Safety margin <output id="margin-value">0.12 m</output></label><input id="margin" type="range" min="0" max="0.4" step="0.02" value="0.12">
@@ -51,7 +53,8 @@
       <div class="replan-benchmark" aria-labelledby="replan-benchmark-title">
         <div class="comparison-heading"><h3 id="replan-benchmark-title">Does a faster field mean a faster replan?</h3><div class="buttons"><button id="compare-replan" disabled>Compare full replan</button><button id="export-replan-comparison" class="secondary" disabled>Save replan comparison</button></div></div>
         <p id="replan-comparison-status" role="status">Add a pallet first, then compare both pipelines from the captured start. The mission pauses during measurement.</p>
-        <table class="replan-table"><caption>Median call times in milliseconds; P10–P90 in parentheses.</caption><thead><tr><th scope="col">Stage</th><th scope="col">CPU-only</th><th scope="col">GPU field + CPU A*</th></tr></thead><tbody>
+        <p id="replan-baseline" class="baseline-summary"></p>
+        <table class="replan-table"><caption>Median call times in milliseconds; P10–P90 in parentheses.</caption><thead><tr><th scope="col">Stage</th><th id="replan-cpu-label" scope="col">CPU brute force + CPU A*</th><th scope="col">GPU field + CPU A*</th></tr></thead><tbody>
           <tr><th scope="row">Distance field</th><td id="replan-cpu-field">—</td><td id="replan-gpu-field">—</td></tr>
           <tr><th scope="row">CPU A* + shortcuts</th><td id="replan-cpu-route">—</td><td id="replan-gpu-route">—</td></tr>
           <tr class="replan-total-row"><th scope="row">Total call</th><td id="replan-cpu-total">—</td><td id="replan-gpu-total">—</td></tr>
@@ -64,16 +67,18 @@
     <section class="comparison scale-section" aria-labelledby="scale-title">
       <div class="comparison-heading"><div><p class="eyebrow">SAME WAREHOUSE / THREE GRID RESOLUTIONS</p><h2 id="scale-title">When does the GPU pay off?</h2></div><div class="buttons"><button id="compare-sizes" disabled>Compare map sizes</button><button id="cancel-sizes" class="secondary" disabled>Cancel</button><button id="export-sizes" class="secondary" disabled>Save size comparison</button></div></div>
       <p id="scale-status" role="status">Ready: same 16 × 12 m world at three grid resolutions. Motion pauses during measurement.</p>
+      <p id="scale-baseline" class="baseline-summary"></p>
       <div class="scale-charts"><section aria-labelledby="scale-field-title"><h3 id="scale-field-title">Distance field only</h3><p class="hint">Median milliseconds · shorter is faster</p><div id="scale-field-chart"></div></section><section aria-labelledby="scale-total-title"><h3 id="scale-total-title">Total: field + CPU routing</h3><p class="hint">Median milliseconds · independent horizontal scale</p><div id="scale-total-chart"></div></section></div>
       <table class="replan-table scale-table"><caption>CPU routing cost and per-size output agreement</caption><thead><tr><th scope="col">Grid / cell size</th><th scope="col">CPU-only A*</th><th scope="col">GPU pipeline A*</th><th scope="col">Agreement / total ratio</th></tr></thead><tbody id="scale-detail-rows"></tbody></table>
       <p id="scale-summary" role="status">No measurements yet. A faster distance field does not necessarily mean a faster total replan.</p>
-      <p class="hint">64×48 (3,072 cells), 128×96 (12,288) and 256×192 (49,152); same 16×12 m area, start, goal and footprint. Existing occupied cells are conservatively resampled; coarser cells can widen obstacles and change clearance, route geometry or reachability. Agreement is checked CPU versus GPU within each size, not across sizes. If a pallet exists, its captured start is reused. Each size gets 3 warmups and 15 alternating pairs, with field, CPU A* and total time recorded. GPU allocation/compilation, resampling, drawing and agreement checks are untimed; uploads/readback and CPU allocations are timed. Both backends use the same brute-force separable field algorithm, not an optimized linear-time EDT. Independent chart axes; hover values for P10–P90, or export raw samples and all routes. Small-to-large observations on this browser are not a universal crossover threshold. GPU-unavailable devices show CPU-only data. The editor remains 128×96; scaled map exports are benchmark inputs, not editor-import files. WebGPU/JavaScript, not native CUDA or GPU A*.</p>
+      <p class="hint">64×48 (3,072 cells), 128×96 (12,288) and 256×192 (49,152); same 16×12 m area, start, goal and footprint. Existing occupied cells are conservatively resampled; coarser cells can widen obstacles and change clearance, route geometry or reachability. Agreement is checked CPU versus GPU within each size, not across sizes. If a pallet exists, its captured start is reused. Each size gets 3 warmups and 15 alternating pairs, with field, CPU A* and total time recorded. GPU allocation/compilation, resampling, drawing and agreement checks are untimed; uploads/readback and CPU allocations are timed. Same-algorithm mode uses brute force on both backends; optimized mode uses a linear-time EDT only on the CPU, so it is not a pure hardware comparison. Independent chart axes; hover values for P10–P90, or export raw samples and all routes. Small-to-large observations on this browser are not a universal crossover threshold. GPU-unavailable devices show CPU-only data. The editor remains 128×96; scaled map exports are benchmark inputs, not editor-import files. WebGPU/JavaScript, not native CUDA or GPU A*.</p>
     </section>
     <section class="comparison" aria-labelledby="comparison-title">
-      <div class="comparison-heading"><div><p class="eyebrow">SAME MAP / SAME DISTANCE ALGORITHM</p><h2 id="comparison-title">GPU vs CPU, on your device.</h2></div><div class="buttons"><button id="compare" disabled>Compare GPU / CPU</button><button id="export-comparison" class="secondary" disabled>Save comparison</button></div></div>
+      <div class="comparison-heading"><div><p class="eyebrow">SAME MAP / VERIFIED DISTANCE OUTPUTS</p><h2 id="comparison-title">GPU vs CPU, on your device.</h2></div><div class="buttons"><button id="compare" disabled>Compare GPU / CPU</button><button id="export-comparison" class="secondary" disabled>Save comparison</button></div></div>
       <p id="comparison-status" role="status">Comparison pauses the mission. Three warmups, then 15 paired measurements of the current map.</p>
+      <p id="field-baseline" class="baseline-summary"></p>
       <div class="comparison-results">
-        <div><span>CPU / JAVASCRIPT REFERENCE</span><strong id="cpu-median">—</strong><div class="timing-track"><div id="cpu-bar"></div></div><p id="cpu-range">P10–P90: —</p></div>
+        <div><span id="cpu-baseline-label">CPU brute force</span><strong id="cpu-median">—</strong><div class="timing-track"><div id="cpu-bar"></div></div><p id="cpu-range">P10–P90: —</p></div>
         <div><span>GPU / WEBGPU + TRANSFERS</span><strong id="gpu-median">—</strong><div class="timing-track"><div id="gpu-bar"></div></div><p id="gpu-range">P10–P90: —</p></div>
         <div><span>CPU MEDIAN / GPU MEDIAN</span><strong id="speedup">—</strong><p id="accuracy">Result agreement: —</p></div>
       </div>
@@ -84,6 +89,6 @@
   </main>
   <footer>CudaRobotics / Navigation Workbench <span>Edit. Check. Plan. Export.</span></footer>
   <noscript>JavaScript is required for the planning workbench.</noscript>
-  <script type="module" src="app.mjs?v=scale-comparison-1"></script>
+  <script type="module" src="app.mjs?v=edt-baseline-1"></script>
 </body>
 </html>

@@ -56,8 +56,27 @@ all resources are disposed on completion/failure/cancellation. Cancel or editing
 invalidates the whole run, with no partial export. JSON includes each scaled
 map, all route results and raw timing samples; scaled maps are benchmark inputs,
 not files accepted by the fixed-size editor importer. The field algorithm is
-the same brute-force separable reference on both backends, not an optimized
-linear-time EDT. The live editor stays 128×96 and its mission is not resized.
+the same brute-force separable reference on both backends in the default mode.
+The live editor stays 128×96 and its mission is not resized.
+
+The **CPU baseline · comparisons only** selector applies to all three Navigation
+comparison panels. **Same algorithm · brute force** retains the original CPU/GPU
+algorithm pair to study parallelism. **Optimized CPU · linear-time EDT** uses a
+two-pass squared Euclidean distance transform with one-dimensional lower
+envelopes on the CPU; the GPU deliberately keeps its brute-force algorithm.
+This separates algorithm choice from a pure hardware speedup claim. The EDT
+uses the same occupied-cell-centre distances, half-diagonal subtraction, map
+boundary cap and Float32 output as the reference. Temporary allocations remain
+inside each timed call. This is optimized JavaScript, not a claim about the
+fastest native C++/SIMD implementation. The implementation follows the method in
+[Felzenszwalb and Huttenlocher, Distance Transforms of Sampled Functions](https://theoryofcomputing.org/articles/v008a019/).
+The default remains matched brute force; the live mission backend is unchanged.
+Changing the selector cancels active measurements and invalidates saved timings
+without losing the pallet or altering the mission map. Exports identify both
+algorithms, comparison kind and CPU field-work complexity in `cpuBaseline`,
+including each grid's report. Output and
+route agreement are still checked in either mode, and CPU wins are shown without
+inventing GPU results on unsupported devices.
 
 The inventory in `demos.json` covers all three pages that execute algorithms:
 MPPI (`/demo/`), Particle Storm (`/particles/`) and Navigation Workbench

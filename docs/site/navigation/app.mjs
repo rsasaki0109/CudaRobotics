@@ -1,9 +1,10 @@
 import {WIDTH, HEIGHT, RESOLUTION, WORLD_HEIGHT, preset, distanceField, plan, follow, mapDocument, parseMap} from './model.mjs?v=scale-comparison-1';
 import {GpuField} from './gpu.mjs?v=scale-comparison-1';
-import {compareDistanceFields} from './benchmark.mjs?v=all-comparisons-1';
+import {compareDistanceFields} from './benchmark.mjs?v=edt-baseline-1';
 import {placePallet} from './pallet.mjs';
-import {compareReplanning} from './replanning.mjs?v=scale-comparison-1';
-import {ScalingPanel} from './scaling-panel.mjs';
+import {compareReplanning} from './replanning.mjs?v=edt-baseline-1';
+import {ScalingPanel} from './scaling-panel.mjs?v=edt-baseline-1';
+import {cpuBaseline} from './cpu-baseline.mjs';
 
 const elements = Object.fromEntries([...document.querySelectorAll('[id]')].map(element => [element.id, element]));
 const base = elements.map.getContext('2d');
@@ -31,6 +32,7 @@ let replanComparison = null;
 
 const required = () => Number(elements.radius.value) + Number(elements.margin.value);
 const useGpu = () => gpu && elements.engine.value !== 'cpu';
+const comparisonBaseline = () => elements['cpu-baseline'].value || 'matched';
 const scales = new ScalingPanel(elements, {
   canStart: () => !computing && !pending && !benchmarking && !!result,
   snapshot: () => mapDocument(occupancy, palletExperiment?.start ?? position, palletExperiment?.goal ?? goal, Number(elements.radius.value), Number(elements.margin.value)),
@@ -42,6 +44,7 @@ const scales = new ScalingPanel(elements, {
     if (!busy && pending) { clearTimeout(timer); timer = setTimeout(rebuild, 0); }
   },
   createGpu: grid => GpuField.create(grid),
+  baseline: comparisonBaseline,
   download: report => save('cudarobotics-map-size-comparison.json', report),
 });
 const messages = {ready: 'Route ready. Run the mission or edit the map.', no_path: 'No route fits this footprint. Widen the aisle, erase an obstacle or reduce the radius.',
@@ -126,6 +129,13 @@ function clearReplanComparison() {
   elements['replan-speedup'].textContent = '—';
   elements['replan-agreement'].textContent = 'Route agreement: —';
   elements['replan-comparison-status'].textContent = 'Add a pallet first, then compare both pipelines from the captured start. The mission pauses during measurement.';
+}
+
+function syncBaselineLabels() {
+  const description = cpuBaseline(comparisonBaseline()).description;
+  elements['cpu-baseline-label'].textContent = description.name;
+  elements['replan-cpu-label'].textContent = `${description.name} + CPU A*`;
+  for (const id of ['field-baseline', 'replan-baseline']) elements[id].textContent = description.note;
 }
 
 function clearPallet() {
@@ -234,6 +244,7 @@ async function compare() {
   const input = mapDocument(occupancy, position, goal, Number(elements.radius.value), Number(elements.margin.value));
   try {
     const report = await compareDistanceFields(occupancy, {
+      cpuBaseline: comparisonBaseline(),
       gpuEvaluate: gpu && !gpu.failure ? snapshot => gpu.evaluate(snapshot) : null,
       shouldCancel: () => version !== revision || document.hidden,
       onProgress: progress => {
@@ -283,6 +294,7 @@ async function comparePalletReplanning() {
   const palletBoundsMetres = [...palletExperiment.pallet.bounds];
   try {
     const report = await compareReplanning(input, {
+      cpuBaseline: comparisonBaseline(),
       gpuEvaluate: gpu && !gpu.failure ? snapshot => gpu.evaluate(snapshot) : null,
       shouldCancel: () => version !== revision || document.hidden,
       onProgress: progress => {
@@ -394,6 +406,12 @@ elements.world.addEventListener('keydown', event => {
 elements.world.addEventListener('focus', draw); elements.world.addEventListener('blur', draw);
 elements.preset.addEventListener('change', applyPreset);
 elements.engine.addEventListener('change', schedule);
+elements['cpu-baseline'].addEventListener('change', () => {
+  revision++;
+  clearComparison(); clearReplanComparison(); scales.invalidate(); syncBaselineLabels();
+  if (computing) pending = true;
+  updatePalletControls();
+});
 elements.compare.addEventListener('click', compare);
 elements['export-comparison'].addEventListener('click', () => { if (comparison) save('cudarobotics-comparison.json', comparison); });
 elements.radius.addEventListener('input', schedule); elements.margin.addEventListener('input', schedule);
@@ -507,4 +525,4 @@ async function initialize() {
   applyPreset();
   elements.controls.disabled = false;
 }
-initialize(); requestAnimationFrame(tick);
+syncBaselineLabels(); initialize(); requestAnimationFrame(tick);

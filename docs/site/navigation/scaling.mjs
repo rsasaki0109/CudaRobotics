@@ -1,5 +1,6 @@
 import {WIDTH, HEIGHT, parseMap, mapDocument} from './model.mjs?v=scale-comparison-1';
-import {compareReplanning} from './replanning.mjs?v=scale-comparison-1';
+import {compareReplanning} from './replanning.mjs?v=edt-baseline-1';
+import {cpuBaseline as selectCpuBaseline} from './cpu-baseline.mjs';
 
 export const SCALE_GRIDS = Object.freeze([64, 128, 256].map(width => Object.freeze({width, height: width * 3 / 4, resolution: 16 / width})));
 
@@ -23,11 +24,12 @@ export function resampleMap(document, grid) {
   return mapDocument(occupancy, source.start, source.goal, source.radius, source.margin, grid);
 }
 
-export async function compareMapSizes(document, {grids = SCALE_GRIDS, createGpu = null,
+export async function compareMapSizes(document, {grids = SCALE_GRIDS, createGpu = null, cpuBaseline = 'matched',
   shouldCancel = () => false, onProgress = () => {}, ...options} = {}) {
   if (!grids.length || grids.length > 3 || grids.some(grid => !supportedGrid(grid))
     || new Set(grids.map(grid => grid.width)).size !== grids.length) throw new Error('Invalid comparison sizes');
   const source = parseMap(document);
+  const baseline = selectCpuBaseline(cpuBaseline);
   const snapshot = mapDocument(source.occupancy, source.start, source.goal, source.radius, source.margin);
   const results = [];
   const check = () => { if (shouldCancel()) throw new DOMException('Scale comparison cancelled', 'AbortError'); };
@@ -42,7 +44,7 @@ export async function compareMapSizes(document, {grids = SCALE_GRIDS, createGpu 
         catch (error) { reason = error.message; }
       }
       check();
-      const report = await compareReplanning(resampleMap(snapshot, grid), {...options, grid, shouldCancel,
+      const report = await compareReplanning(resampleMap(snapshot, grid), {...options, grid, shouldCancel, cpuBaseline,
         gpuEvaluate: gpu ? occupancy => gpu.evaluate(occupancy) : null,
         onProgress: progress => onProgress({...progress, grid, sizeIndex: results.length + 1, sizeCount: grids.length})});
       check();
@@ -51,6 +53,7 @@ export async function compareMapSizes(document, {grids = SCALE_GRIDS, createGpu 
   }
   check();
   return {schema: 'cudarobotics.scale-benchmark.v1', source: snapshot, results,
+    cpuBaseline: baseline.description,
     method: 'fixed 16×12 m world; conservative occupied-cell resampling; same start, goal and footprint; CPU/GPU compared within each grid, not route equality across grids',
     timing: 'small-to-large sequential run; per-size GPU allocation/compilation excluded; per-call field, CPU route and total timing included; not a universal crossover threshold',
     limitations: 'resolution changes discretization, clearance conservatism, route geometry and possibly reachability; editor import stays fixed at 128×96; GPU A* and native CUDA are not measured'};
