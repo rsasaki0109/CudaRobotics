@@ -1,4 +1,4 @@
-import {WORKLOAD_COUNTS, compareWorkloads, compareMissions} from './workloads.mjs';
+import {WORKLOAD_COUNTS, workloadMatches, compareWorkloads, compareMissions} from './workloads.mjs?v=workload-insights-1';
 
 export class WorkloadPanel {
   constructor(elements, {snapshot, createJob, createGpu, pause, idle, finished}) {
@@ -15,6 +15,7 @@ export class WorkloadPanel {
     }
     elements['cancel-workloads'].addEventListener('click', () => this.invalidate());
     elements['mission-count'].addEventListener('change', () => this.invalidate());
+    elements['workload-scope'].addEventListener('change', () => this.invalidate());
     this.invalidate();
   }
   setReady(ready) {
@@ -25,18 +26,33 @@ export class WorkloadPanel {
     delete this.reports[kind]; this.elements[`export-${kind}`].disabled = true;
     if (kind === 'workloads') {
       for (const count of WORKLOAD_COUNTS) {
-        for (const field of ['cpu', 'gpu', 'ratio', 'accuracy']) this.elements[`workload-${count}-${field}`].textContent = '—';
+        for (const field of ['cpu', 'gpu', 'ratio', 'accuracy', 'stages', 'verdict', 'effect', 'share']) this.elements[`workload-${count}-${field}`].textContent = '—';
         for (const backend of ['cpu', 'gpu']) this.elements[`workload-${count}-${backend}-bar`].style.width = '0%';
+        for (const stage of ['sampling', 'rollout', 'reduction']) this.elements[`workload-${count}-${stage}-share`].style.width = '0%';
       }
+      this.elements['workload-takeaway'].textContent = 'Run the sweep to see the measured trade-off. No result yet.';
       this.elements['workload-crossover'].textContent = 'No measured crossover yet.';
     } else for (const backend of ['cpu', 'gpu']) this.elements[`mission-${backend}`].textContent = '—';
   }
   invalidate() {
     this.generation++;
     this.clear('workloads'); this.clear('missions');
+    this.elements['workload-method'].textContent = this.elements['workload-scope'].value === 'plan'
+      ? 'Complete cold-start plan: CPU sampling + CPU/GPU costs + CPU softmin/update. CPU costs run on the main thread, not in a worker. Motion, safety guard and drawing excluded.'
+      : 'Rollout costs only: CPU worker round trip versus GPU upload/readback. Sampling, softmin, motion and drawing excluded.';
     this.elements['workload-status'].textContent = this.busy ? 'Cancelling after outstanding work finishes…' : 'Ready. Speed sweep and mission validation are separate experiments.';
   }
   renderWorkloads(report) {
+    this.elements['workload-takeaway'].textContent = report.insights.conclusion;
+    for (const insight of report.insights.workloads) {
+      this.elements[`workload-${insight.count}-verdict`].textContent = insight.verdict;
+      this.elements[`workload-${insight.count}-effect`].textContent = insight.effect;
+      const shares = insight.gpuPathShares;
+      this.elements[`workload-${insight.count}-share`].textContent = shares
+        ? `GPU-path wall time: sampling ${(shares.sampling * 100).toFixed(1)}% · rollouts + transfers ${(shares.rollout * 100).toFixed(1)}% · softmin ${(shares.reduction * 100).toFixed(1)}%.`
+        : 'No GPU-path stage share available. Complete-plan mode and positive, consistent samples are required.';
+      for (const stage of ['sampling', 'rollout', 'reduction']) this.elements[`workload-${insight.count}-${stage}-share`].style.width = `${shares ? shares[stage] * 100 : 0}%`;
+    }
     const maximum = Math.max(...report.results.flatMap(entry => [entry.report.cpu.medianMs, entry.report.gpu?.medianMs ?? 0]));
     const timing = value => value ? `${value.medianMs.toFixed(2)} ms · P10–P90 ${value.p10Ms.toFixed(2)}–${value.p90Ms.toFixed(2)}` : 'Unavailable';
     for (const {count, report: measured} of report.results) {
@@ -45,10 +61,15 @@ export class WorkloadPanel {
         this.elements[`workload-${count}-${backend}-bar`].style.width = `${maximum > 0 && measured[backend] ? measured[backend].medianMs / maximum * 100 : 0}%`;
       }
       this.elements[`workload-${count}-ratio`].textContent = measured.speedup === null ? '—' : `${measured.speedup.toFixed(2)}×`;
-      this.elements[`workload-${count}-accuracy`].textContent = !measured.gpu ? 'CPU only' : measured.accuracy.matches ? 'Costs + collision classes match' : 'MISMATCH · ratio suppressed';
+      this.elements[`workload-${count}-accuracy`].textContent = !measured.gpu ? 'CPU only' : workloadMatches(measured)
+        ? measured.commandAccuracy ? 'Costs + collision classes + controls match' : 'Costs + collision classes match' : 'MISMATCH · ratio suppressed';
+      this.elements[`workload-${count}-stages`].textContent = measured.stages ? ['cpu', 'gpu'].map(backend => {
+        const stage = measured.stages[backend];
+        return stage ? `${backend.toUpperCase()}: sample ${stage.sampling.medianMs.toFixed(2)} / rollouts ${stage.rollout.medianMs.toFixed(2)} / softmin ${stage.reduction.medianMs.toFixed(2)} ms` : 'GPU unavailable';
+      }).join(' · ') : 'Rollout-only timing; no planning-stage measurements.';
     }
     this.elements['workload-crossover'].textContent = report.firstTestedGpuWin ? `First tested GPU median win: ${report.firstTestedGpuWin.toLocaleString()} trajectories. This is not an interpolated crossover or a guarantee.`
-      : report.results.every(entry => entry.report.accuracy?.matches) ? 'No GPU median win among these tested counts.' : 'No crossover claim: GPU unavailable or output mismatch.';
+      : report.results.every(entry => workloadMatches(entry.report)) ? 'No GPU median win among these tested counts.' : 'No crossover claim: GPU unavailable or output mismatch.';
   }
   renderMissions(report) {
     for (const backend of ['cpu', 'gpu']) {

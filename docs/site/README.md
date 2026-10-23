@@ -27,6 +27,35 @@ sampling, weighting and motion. The first tested GPU median win is not an
 interpolated crossover, and is suppressed if any count lacks output agreement.
 CPU wins and GPU absence remain explicit. JSON preserves all raw measurements.
 
+The sweep also offers **Complete cold-start plan**. Each timed call creates a
+new seed-311 planner with zero nominal controls and measures sampling, cost
+evaluation and CPU softmin/update, including allocations and GPU transfers.
+The CPU implementation runs on the main thread, not through a worker. Stage
+medians/P10/P90 and raw samples are exported alongside total call times; stage
+medians need not sum to the total median. GPU setup, checking, motion, the command
+safety guard and drawing remain excluded. This is a repeatable fixed-input
+cold-start plan, not live warm-start latency or mission timing. Besides cost and
+collision agreement, all 64 weighted controls and valid-rollout counts must
+match; control tolerance is 0.001 m/s or rad/s. Command disagreement suppresses
+that count's ratio and the sweep's crossover claim even if costs meet tolerance.
+JSON records all measured weighted sequences. All-invalid outputs remain zero
+commands, not successful missions. Changing measurement scope cancels any active
+experiment and invalidates saved results.
+
+**What do these results mean?** summarizes descriptive CPU/GPU median wins at
+each count, with equal medians, unavailable GPUs, insufficient timer precision
+and mismatches explicitly classified. Overlapping P10–P90 ranges get a warning;
+neither overlap nor separation is treated as a significance test. Complete-plan
+results compare the rollout-stage ratio with the total-plan ratio from the same
+run, not with the worker-based rollout-only experiment. Stacked bars show CPU
+sampling, rollout call including GPU transfers, and CPU softmin as fractions of
+summed raw GPU-path wall times. They do not show isolated GPU kernel time or GPU
+utilization, and are not computed by dividing stage medians by total medians.
+Missing, zero or inconsistent stage samples produce no share. Mismatches suppress
+the affected verdict and share interpretation, while unaffected counts remain
+separate. Sweep JSON includes the conclusions, fractions and methodological
+caveats in `insights`; edits and cancellation clear stale conclusions and bars.
+
 **Validate 3 seeds** is a separate, untimed mission-quality experiment at a
 selected candidate count. It restarts the selected built-in environment, not an
 edited live goal, using seeds 311/312/313, current temperature and 600 steps per

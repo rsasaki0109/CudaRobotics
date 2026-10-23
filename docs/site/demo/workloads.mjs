@@ -1,19 +1,24 @@
 import {mppiSnapshot} from './benchmark.mjs';
+import {summarizeWorkloads} from './workload-insights.mjs';
 import {Planner, scenes, cpuCosts, safeAdvance, advance, clearance, HORIZON, DT, COLLISION} from './planner.mjs';
 
 export const WORKLOAD_COUNTS = Object.freeze([128, 512, 2048, 8192]);
 export const MISSION_SEEDS = Object.freeze([311, 312, 313]);
+export const workloadMatches = report => report.accuracy?.matches && (report.commandAccuracy?.matches ?? true);
 const yieldFrame = () => new Promise(resolve => setTimeout(resolve, 0));
 const checkCancellation = shouldCancel => {if (shouldCancel()) throw new DOMException('Cancelled', 'AbortError');};
 
 export async function compareWorkloads(source, {createJob, shouldCancel = () => false, onProgress = () => {}}) {
   const snapshot = structuredClone(source);
+  snapshot.measurement ??= 'kernel';
+  if (!['kernel', 'plan'].includes(snapshot.measurement)) throw new Error('Unknown workload measurement');
   const results = [];
   for (const count of WORKLOAD_COUNTS) {
     checkCancellation(shouldCancel);
     let job;
     try {
       const input = mppiSnapshot(snapshot.state, snapshot.goal, snapshot.obstacles, count);
+      input.measurement = snapshot.measurement; input.temperature = snapshot.temperature ?? 3;
       job = await createJob(input);
       checkCancellation(shouldCancel);
       const report = await job.run({shouldCancel, onProgress: progress => onProgress({count, ...progress})});
@@ -22,11 +27,13 @@ export async function compareWorkloads(source, {createJob, shouldCancel = () => 
     } finally {job?.destroy();}
   }
   checkCancellation(shouldCancel);
-  const completeAgreement = results.every(entry => entry.report.accuracy?.matches);
-  return {schema: 'cudarobotics.mppi-workloads.v1', source: snapshot, counts: [...WORKLOAD_COUNTS], results,
+  const completeAgreement = results.every(entry => workloadMatches(entry.report));
+  const report = {schema: 'cudarobotics.mppi-workloads.v1', source: snapshot, counts: [...WORKLOAD_COUNTS], results,
     firstTestedGpuWin: completeAgreement ? results.find(entry => entry.report.speedup > 1)?.count ?? null : null,
     interpretation: 'first tested count with a GPU median win, not an interpolated crossover or a guarantee; suppressed if any workload lacks agreement',
-    scope: 'fixed current state and local target; fresh seed 311 at each count; matched controls within each CPU/GPU pair, not nested samples across counts; rollout costs only, not closed-loop success or complete planning latency'};
+    measurement: snapshot.measurement,
+    scope: `fixed current state and local target; fresh seed 311 at each count; matched controls within each CPU/GPU pair, not nested samples across counts; ${snapshot.measurement === 'plan' ? 'cold-start sampling + costs + CPU softmin/update' : 'rollout costs only'}; not closed-loop mission success`};
+  return {...report, insights: summarizeWorkloads(report)};
 }
 
 export async function runMission({scene, count, seed, temperature = 3, maxSteps = 600},

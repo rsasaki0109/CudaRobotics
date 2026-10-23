@@ -3,7 +3,8 @@ import {GpuCosts} from './gpu.mjs';
 import {ComparisonPanel} from '../assets/comparison-panel.mjs';
 import {prepareComparison} from '../assets/comparison-job.mjs';
 import {mppiSnapshot, compareMppi} from './benchmark.mjs';
-import {WorkloadPanel} from './workload-panel.mjs';
+import {WorkloadPanel} from './workload-panel.mjs?v=workload-insights-1';
+import {compareMppiPlans} from './plan-benchmark.mjs';
 
 const elements = Object.fromEntries([...document.querySelectorAll('[id]')].map(element => [element.id, element]));
 const canvas = elements.world;
@@ -30,12 +31,23 @@ const comparison = new ComparisonPanel(elements, {
 });
 const workloads = new WorkloadPanel(elements, {
   snapshot: () => ({state: [...state], goal: [...(waypoints[0] ?? goal)], obstacles: scene.obstacles.map(box => [...box]),
-    sceneId: elements.scene.value, count: Number(elements['mission-count'].value), temperature: Number(elements.temperature.value)}),
-  createJob: input => prepareComparison(input, async () => {
-    const evaluator = await GpuCosts.create();
-    return {evaluate: snapshot => evaluator.evaluate(snapshot.state, snapshot.goal, snapshot.obstacles, snapshot.controls, snapshot.count),
-      destroy: () => evaluator.destroy()};
-  }, compareMppi),
+    sceneId: elements.scene.value, count: Number(elements['mission-count'].value), temperature: Number(elements.temperature.value),
+    measurement: elements['workload-scope'].value || 'kernel'}),
+  createJob: async input => {
+    if (input.measurement === 'plan') {
+      let evaluator;
+      let reason = '';
+      try { evaluator = await GpuCosts.create(); } catch (error) { reason = error.message; }
+      return {run: async options => ({...await compareMppiPlans(input, {...options,
+        gpuEvaluate: evaluator ? (...args) => evaluator.evaluate(...args) : null}), gpuUnavailableReason: reason}),
+        destroy: () => evaluator?.destroy()};
+    }
+    return prepareComparison(input, async () => {
+      const evaluator = await GpuCosts.create();
+      return {evaluate: snapshot => evaluator.evaluate(snapshot.state, snapshot.goal, snapshot.obstacles, snapshot.controls, snapshot.count),
+        destroy: () => evaluator.destroy()};
+    }, compareMppi);
+  },
   createGpu: () => GpuCosts.create(),
   pause() { running = false; revision++; elements.run.textContent = 'Start'; syncReady(); },
   idle: () => !busy,

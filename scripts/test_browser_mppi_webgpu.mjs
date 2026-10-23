@@ -5,6 +5,7 @@ import {GpuCosts} from '../docs/site/demo/gpu.mjs';
 import {Planner, scenes, cpuCosts, safeAdvance, COLLISION} from '../docs/site/demo/planner.mjs';
 import {mppiSnapshot, compareMppi} from '../docs/site/demo/benchmark.mjs';
 import {compareMissions} from '../docs/site/demo/workloads.mjs';
+import {compareMppiPlans} from '../docs/site/demo/plan-benchmark.mjs';
 
 const {create, globals} = await import(process.env.WEBGPU_MODULE
   ? pathToFileURL(process.env.WEBGPU_MODULE).href : 'webgpu');
@@ -44,6 +45,16 @@ try {
       }
     }
     console.log('GPU / CPU cost parity, collision classification and buffer resizing: PASS');
+    for (const count of [128, 512, 2048, 8192]) {
+      for (const scene of Object.values(scenes)) {
+        const report = await compareMppiPlans({state: scene.start, goal: scene.goal, obstacles: scene.obstacles, count, temperature: 3},
+          {warmups: 1, repetitions: 2, yieldControl: async () => {}, gpuEvaluate: (...args) => evaluator.evaluate(...args)});
+        assert.equal(report.accuracy.matches, true);
+        assert.equal(report.commandAccuracy.matches, true);
+        assert.equal(report.plans.gpu.length, 2);
+      }
+    }
+    console.log('Complete cold-start CPU / GPU plans, stage samples and weighted-control agreement at four counts: PASS');
     const missions = await compareMissions({sceneId: 'gap', count: 128, temperature: 3}, {
       gpuEvaluate: (...args) => evaluator.evaluate(...args), yieldControl: async () => {},
     });

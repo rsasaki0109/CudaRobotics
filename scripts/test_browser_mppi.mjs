@@ -3,6 +3,9 @@ import assert from 'node:assert/strict';
 import {Planner, scenes, HORIZON, COLLISION, clearance, safeAdvance, cpuCosts, randomGenerator} from '../docs/site/demo/planner.mjs';
 import {WORKLOAD_COUNTS, MISSION_SEEDS, compareWorkloads, runMission, compareMissions} from '../docs/site/demo/workloads.mjs';
 import {compareMppi} from '../docs/site/demo/benchmark.mjs';
+import {compareMppiPlans} from '../docs/site/demo/plan-benchmark.mjs';
+import {workloadInsight, summarizeWorkloads} from '../docs/site/demo/workload-insights.mjs';
+import {summarize} from '../docs/site/assets/benchmark.mjs';
 
 test('seeded sampling is deterministic and respects command limits', () => {
   const first = new Planner().sample(scenes.gap.start, scenes.gap.goal, 128);
@@ -66,8 +69,9 @@ test('app initializes CPU fallback and supports start, pause, goal validation an
     'latency', 'valid', 'distance', 'time', 'compare', 'export-comparison', 'comparison-status',
     'cpu-median', 'gpu-median', 'cpu-range', 'gpu-range', 'cpu-bar', 'gpu-bar', 'speedup', 'accuracy',
     'compare-workloads', 'compare-missions', 'export-workloads', 'export-missions', 'cancel-workloads', 'mission-count',
-    'workload-status', 'workload-crossover', 'mission-cpu', 'mission-gpu',
-    ...WORKLOAD_COUNTS.flatMap(count => ['cpu', 'gpu', 'ratio', 'accuracy', 'cpu-bar', 'gpu-bar'].map(field => `workload-${count}-${field}`))];
+    'workload-status', 'workload-crossover', 'workload-scope', 'workload-method', 'workload-takeaway', 'mission-cpu', 'mission-gpu',
+    ...WORKLOAD_COUNTS.flatMap(count => ['cpu', 'gpu', 'ratio', 'accuracy', 'stages', 'cpu-bar', 'gpu-bar',
+      'verdict', 'effect', 'share', 'sampling-share', 'rollout-share', 'reduction-share'].map(field => `workload-${count}-${field}`))];
   const elements = Object.fromEntries(identifiers.map(id => [id, {
     id, value: '', textContent: '', listeners: {}, style: {},
     addEventListener(name, listener) { this.listeners[name] = listener; },
@@ -77,6 +81,7 @@ test('app initializes CPU fallback and supports start, pause, goal validation an
   Object.assign(elements.count, {value: '128'});
   Object.assign(elements.temperature, {value: '3'});
   elements['mission-count'].value = '128';
+  elements['workload-scope'].value = 'kernel';
   elements.world.getContext = () => new Proxy({}, {get: () => () => {}});
   let frame;
   globalThis.document = {hidden: false, querySelectorAll: () => Object.values(elements)};
@@ -207,4 +212,171 @@ test('mission safe stops, timeouts, bad costs and cancellation cannot masquerade
   await assert.rejects(runMission(settings, {shouldCancel: () => true}), {name: 'AbortError'});
   await assert.rejects(runMission({...settings, count: 999}), /Invalid mission settings/);
   await assert.rejects(compareMissions({sceneId: 'unknown', count: 128, temperature: 3}), /Unknown mission scene/);
+});
+
+test('complete plan timing includes fresh sampling and softmin with identical seeded inputs', async () => {
+  const input = {state: [1, 8, 0], goal: [9, 2], obstacles: [], count: 128, temperature: 3};
+  const before = structuredClone(input);
+  const controlsSeen = [];
+  let clock = 0;
+  const report = await compareMppiPlans(input, {warmups: 1, repetitions: 3, now: () => clock++, yieldControl: async () => {},
+    cpuEvaluate: (...args) => {controlsSeen.push([...args[3]]); return cpuCosts(...args);}, gpuEvaluate: cpuCosts});
+  assert.equal(report.schema, 'cudarobotics.mppi-plan-benchmark.v1');
+  assert.deepEqual(input, before);
+  assert.equal(report.cpu.medianMs, 3);
+  assert.equal(report.gpu.medianMs, 3);
+  assert.equal(report.speedup, 1);
+  for (const backend of ['cpu', 'gpu']) {
+    for (const stage of ['sampling', 'rollout', 'reduction']) assert.equal(report.stages[backend][stage].medianMs, 1);
+    assert.equal(report.plans[backend].length, 3);
+    assert.equal(report.plans[backend][0].average.length, 64);
+  }
+  assert.ok(report.plans.cpu[0].average.some(value => value < 0));
+  for (const controls of controlsSeen) assert.deepEqual(controls, controlsSeen[0]);
+  assert.deepEqual(report.plans.cpu, report.plans.gpu);
+  assert.equal(report.accuracy.matches, true);
+  assert.equal(report.commandAccuracy.matches, true);
+  assert.equal(report.commandAccuracy.checkedPairs, 3);
+});
+
+test('matching costs within tolerance can still change weighted controls and suppress a plan ratio', async () => {
+  const input = {state: scenes.gap.start, goal: scenes.gap.goal, obstacles: scenes.gap.obstacles, count: 128, temperature: .5};
+  let clock = 0;
+  const report = await compareMppiPlans(input, {warmups: 0, repetitions: 1, now: () => clock++, yieldControl: async () => {},
+    cpuEvaluate: () => new Float32Array(128).fill(100),
+    gpuEvaluate: () => {const costs = new Float32Array(128).fill(100); costs.fill(99.9, 0, 64); return costs;}});
+  assert.equal(report.accuracy.matches, true);
+  assert.equal(report.commandAccuracy.matches, false);
+  assert.ok(report.commandAccuracy.maxControlError > .001);
+  assert.equal(report.speedup, null);
+});
+
+test('complete plans classify invalid rollouts and do not invent GPU timings or timer ratios', async () => {
+  const input = {state: scenes.open.start, goal: scenes.open.goal, obstacles: [], count: 128};
+  const options = {warmups: 0, repetitions: 1, now: () => 0, yieldControl: async () => {}};
+  const cpuOnly = await compareMppiPlans(input, options);
+  assert.equal(cpuOnly.gpu, null);
+  assert.equal(cpuOnly.stages.gpu, null);
+  assert.equal(cpuOnly.plans.gpu, null);
+  assert.equal(cpuOnly.commandAccuracy, null);
+  assert.equal(cpuOnly.speedup, null);
+  const blocked = await compareMppiPlans(input, {...options,
+    cpuEvaluate: () => new Float32Array(128).fill(COLLISION), gpuEvaluate: () => new Float32Array(128).fill(COLLISION)});
+  assert.equal(blocked.commandAccuracy.matches, true);
+  assert.equal(blocked.plans.cpu[0].valid, 0);
+  assert.equal(blocked.plans.cpu[0].velocity, 0);
+  assert.equal(blocked.speedup, null);
+  const mismatch = await compareMppiPlans(input, {...options,
+    cpuEvaluate: () => new Float32Array(128).fill(COLLISION), gpuEvaluate: () => new Float32Array(128).fill(COLLISION - .125)});
+  assert.equal(mismatch.accuracy.matches, false);
+  assert.equal(mismatch.commandAccuracy.validCountMismatches, 1);
+  assert.equal(mismatch.speedup, null);
+});
+
+test('plan cancellation, invalid output and settings discard the entire report', async () => {
+  const input = {state: scenes.open.start, goal: scenes.open.goal, obstacles: [], count: 128};
+  const options = {warmups: 0, repetitions: 1, yieldControl: async () => {}};
+  await assert.rejects(compareMppiPlans(input, {...options, shouldCancel: () => true}), {name: 'AbortError'});
+  await assert.rejects(compareMppiPlans(input, {...options, cpuEvaluate: () => new Float32Array(128).fill(NaN)}), /Invalid plan benchmark output/);
+  await assert.rejects(compareMppiPlans({...input, temperature: 0}, options), /Invalid plan benchmark settings/);
+  let clock = 5;
+  await assert.rejects(compareMppiPlans(input, {...options, now: () => clock--}), /Invalid plan benchmark clock/);
+});
+
+test('plan sweeps export scope and suppress crossover when only the commands disagree', async () => {
+  const source = {state: scenes.open.start, goal: scenes.open.goal, obstacles: [], measurement: 'plan', temperature: 4};
+  const report = await compareWorkloads(source, {createJob: async input => {
+    assert.equal(input.measurement, 'plan'); assert.equal(input.temperature, 4);
+    return {run: async () => ({accuracy: {matches: true}, commandAccuracy: {matches: input.count !== 512}, speedup: input.count === 512 ? null : 2}), destroy() {}};
+  }});
+  assert.equal(report.measurement, 'plan');
+  assert.equal(report.firstTestedGpuWin, null);
+  assert.match(report.scope, /cold-start/);
+  await assert.rejects(compareWorkloads({...source, measurement: 'unknown'}, {}), /Unknown workload measurement/);
+});
+
+function insightMeasurement() {
+  const gpu = summarize([10, 20, 100]);
+  return {cpu: summarize([40, 60, 200]), gpu, accuracy: {matches: true}, commandAccuracy: {matches: true}, stages: {
+    cpu: {rollout: summarize([36, 54, 180])},
+    gpu: {total: gpu, sampling: summarize([8, 1, 20]), rollout: summarize([1, 18, 79]), reduction: summarize([1, 1, 1])},
+  }};
+}
+
+test('insights explain total versus rollout ratios and use summed raw stage shares, not median ratios', () => {
+  const measured = insightMeasurement();
+  const before = structuredClone(measured);
+  const result = workloadInsight(measured, 512, 'plan');
+  assert.equal(result.winner, 'gpu');
+  assert.equal(result.ratio, 3);
+  assert.equal(result.rolloutRatio, 3);
+  assert.equal(result.gpuPathShares.rollout, 98 / 130);
+  assert.notEqual(result.gpuPathShares.rollout, measured.stages.gpu.rollout.medianMs / measured.gpu.medianMs);
+  assert.ok(Math.abs(Object.values(result.gpuPathShares).reduce((total, share) => total + share, 0) - 1) < 1e-12);
+  assert.match(result.verdict, /GPU 3.00× faster by measured median/);
+  assert.match(result.effect, /CPU sampling \+ softmin/);
+  assert.deepEqual(measured, before);
+});
+
+test('insights retain CPU wins, exact ties and descriptive overlap warnings', () => {
+  const measured = insightMeasurement();
+  measured.cpu = summarize([5, 5, 5]); measured.gpu = summarize([10, 10, 10]);
+  let result = workloadInsight(measured, 128, 'kernel');
+  assert.equal(result.winner, 'cpu');
+  assert.match(result.verdict, /CPU 2.00× faster/);
+  assert.equal(result.gpuPathShares, null);
+  assert.equal(result.rolloutRatio, null);
+  assert.match(result.effect, /does not establish whole-plan speed/);
+  measured.cpu = summarize([10, 10, 10]);
+  result = workloadInsight(measured, 128, 'plan');
+  assert.equal(result.winner, 'tie'); assert.match(result.verdict, /equal measured medians/);
+  measured.cpu = summarize([4, 10, 16]); measured.gpu = summarize([3, 9, 17]);
+  result = workloadInsight(measured, 128, 'plan');
+  assert.equal(result.rangesOverlap, true);
+  assert.match(result.effect, /not a statistically established winner/);
+});
+
+test('insights never infer a winner or GPU share from missing GPUs, mismatches or unresolved timers', () => {
+  for (const variation of [
+    measured => {measured.gpu = null;},
+    measured => {measured.accuracy.matches = false;},
+    measured => {measured.commandAccuracy.matches = false;},
+    measured => {delete measured.commandAccuracy;},
+    measured => {measured.gpu.medianMs = 0;},
+    measured => {measured.cpu.medianMs = NaN;},
+    measured => {measured.cpu.medianMs = 1e-310;},
+  ]) {
+    const measured = insightMeasurement(); variation(measured);
+    const result = workloadInsight(measured, 512, 'plan');
+    assert.notEqual(result.status, 'measured');
+    assert.equal(result.winner, null); assert.equal(result.ratio, null); assert.equal(result.gpuPathShares, null);
+  }
+});
+
+test('stage shares reject inconsistent, absent, non-finite and zero-time raw samples', () => {
+  for (const variation of [
+    measured => {measured.stages.gpu.sampling.samplesMs[0] = 999;},
+    measured => {measured.stages.gpu.rollout.samplesMs.pop();},
+    measured => {measured.stages.gpu.reduction.samplesMs[0] = NaN;},
+    measured => {delete measured.stages;},
+    measured => {for (const stage of Object.values(measured.stages.gpu)) stage.samplesMs = [0, 0, 0];},
+  ]) {
+    const measured = insightMeasurement(); variation(measured);
+    assert.equal(workloadInsight(measured, 512, 'plan').gpuPathShares, null);
+  }
+});
+
+test('sweep conclusions count only supported per-count winners and preserve exportable caveats', () => {
+  const gpuWin = insightMeasurement();
+  const cpuWin = insightMeasurement(); cpuWin.cpu = summarize([1, 1, 1]);
+  const mismatch = insightMeasurement(); mismatch.commandAccuracy.matches = false;
+  const insights = summarizeWorkloads({measurement: 'plan', results: [
+    {count: 128, report: cpuWin}, {count: 512, report: gpuWin}, {count: 2048, report: mismatch},
+  ]});
+  assert.deepEqual(insights.gpuWins, [512]); assert.deepEqual(insights.cpuWins, [128]);
+  assert.match(insights.conclusion, /Some workloads cannot support a conclusion/);
+  assert.match(insights.shareMethod, /not isolated GPU kernel time or utilization/);
+  assert.deepEqual(JSON.parse(JSON.stringify(insights)), insights);
+  const absent = summarizeWorkloads({measurement: 'kernel', results: [{count: 128, report: {...cpuWin, gpu: null}}]});
+  assert.equal(absent.conclusion, 'CPU measurements only. No GPU/CPU conclusion.');
 });

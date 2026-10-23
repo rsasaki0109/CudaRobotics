@@ -43,8 +43,19 @@ footer { border-top: 1px solid #293940; border-bottom: 0; color: #a7bdc5; }
 .workload-track { height: 8px; background: #253b44; border-radius: 4px; overflow: hidden; }
 .workload-track div { height: 100%; width: 0%; }
 .workload-cpu { background: #99c8ff; } .workload-gpu { background: #73e4c0; }
-#mission-count { max-width: 360px; }
-.mission-results div { display: block; }
-.mission-results dd { margin-top: 8px; line-height: 1.7; overflow-wrap: anywhere; }
+.workload-insights { margin: 24px 0; padding: 20px; border: 1px solid #405660; border-radius: 10px; background: #16252d; }
+.workload-insights h3 { margin-top: 0; }
+#workload-takeaway { color: #eef6f8; line-height: 1.7; }
+.insight-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; }
+.insight-grid article { padding-top: 10px; border-top: 1px solid #405660; min-width: 0; }
+.insight-grid h4 { color: #ffcc7c; margin: 10px 0; }
+.insight-grid p { overflow-wrap: anywhere; }
+.stage-share-track { display: flex; height: 10px; overflow: hidden; border-radius: 5px; background: #253b44; }
+.stage-share-track span { display: block; width: 0; height: 100%; }
+.sampling-share { background: #99c8ff; } .rollout-share { background: #73e4c0; } .reduction-share { background: #ffcc7c; }
+@media (max-width: 760px) { .insight-grid { grid-template-columns: 1fr; } }
+#mission-count, #workload-scope { max-width: 360px; }
+.mission-results div, .planning-stages dl div { display: block; }
+.mission-results dd, .planning-stages dd { margin-top: 8px; line-height: 1.7; overflow-wrap: anywhere; }
 @media (max-width: 760px) { .workload-grid { grid-template-columns: 1fr; } }
 @media (max-width: 760px) { .lab { grid-template-columns: 1fr; } aside { border-left: 0; border-top: 1px solid #30434c; } main { padding: 24px 16px; } header, footer { padding: 20px 16px; } header span { display: none; } footer { flex-wrap: wrap; } }
