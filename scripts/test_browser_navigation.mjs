@@ -120,7 +120,10 @@ test('workbench completes a mission, pauses on editing and round-trips exported 
     'replan-speedup', 'replan-agreement', 'replan-comparison-status', 'replan-cpu-field', 'replan-cpu-route',
     'replan-cpu-total', 'replan-cpu-path', 'replan-gpu-field', 'replan-gpu-route', 'replan-gpu-total', 'replan-gpu-path',
     'compare-sizes', 'cancel-sizes', 'export-sizes', 'scale-field-chart', 'scale-total-chart', 'scale-detail-rows', 'scale-summary', 'scale-status',
-    'cpu-baseline', 'cpu-baseline-label', 'replan-cpu-label', 'field-baseline', 'replan-baseline', 'scale-baseline'];
+    'cpu-baseline', 'cpu-baseline-label', 'replan-cpu-label', 'field-baseline', 'replan-baseline', 'scale-baseline',
+    'compare-implementations', 'cancel-implementations', 'export-implementations', 'implementation-grid', 'implementation-status',
+    'impl-cpuEdt-gpuReference', 'impl-cpuEdt-gpuEdt', 'impl-gpuReference-gpuEdt',
+    ...['cpuEdt', 'gpuReference', 'gpuEdt'].flatMap(backend => ['total', 'range', 'field', 'route', 'path', 'bar'].map(stage => `impl-${backend}-${stage}`))];
   const elements = Object.fromEntries(identifiers.map(id => [id, {
     id, value: '', textContent: '', listeners: {}, style: {},
     get valueAsNumber() { return this.value === '' ? NaN : Number(this.value); },
@@ -150,6 +153,24 @@ test('workbench completes a mission, pauses on editing and round-trips exported 
     assert.equal(elements.backend.textContent, 'CPU DISTANCE FIELD / CPU A*');
     assert.equal(elements.controls.disabled, false);
     assert.equal(elements.run.disabled, false);
+    elements['implementation-grid'].value = '64'; elements['implementation-grid'].listeners.change();
+    await elements['compare-implementations'].listeners.click();
+    elements['export-implementations'].listeners.click();
+    const implementationReport = JSON.parse(await exported.text());
+    assert.equal(implementationReport.schema, 'cudarobotics.implementation-benchmark.v1');
+    assert.equal(implementationReport.source.width, 128);
+    assert.equal(implementationReport.input.width, 64);
+    assert.equal(implementationReport.backends.cpuEdt.total.samplesMs.length, 15);
+    assert.equal(implementationReport.backends.gpuReference, null);
+    assert.equal(implementationReport.backends.gpuEdt, null);
+    assert.match(elements['impl-cpuEdt-total'].textContent, /ms$/);
+    assert.equal(elements['impl-gpuEdt-total'].textContent, 'Unavailable');
+    const cancelledImplementation = elements['compare-implementations'].listeners.click();
+    elements['cancel-implementations'].listeners.click();
+    await cancelledImplementation;
+    assert.match(elements['implementation-status'].textContent, /cancelled/);
+    assert.equal(elements['export-implementations'].disabled, true);
+    assert.equal(elements['compare-implementations'].disabled, false);
     const sizeComparison = elements['compare-sizes'].listeners.click();
     assert.equal(elements['cancel-sizes'].disabled, false);
     assert.equal(elements.compare.disabled, true);

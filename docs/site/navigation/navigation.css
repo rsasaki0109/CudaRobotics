@@ -61,4 +61,23 @@ input[type=file] { width: 100%; margin-top: 8px; font-size: 12px; color: #c1d1d8
 .scale-table thead th:nth-child(2), .scale-table thead th:nth-child(3) { width: 20%; }
 .scale-table thead th:last-child { width: 38%; }
 @media (max-width: 900px) { .scale-charts { grid-template-columns: 1fr; gap: 8px; } }
+.implementation-section > label { display: block; margin-top: 20px; color: #c2d2d8; font-size: 13px; }
+#implementation-grid { max-width: 360px; }
+.implementation-cards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px; margin: 24px 0; }
+.implementation-cards article { min-width: 0; border: 1px solid #30434c; border-radius: 9px; padding: 18px; background: #0b181e; }
+.implementation-cards h3 { font-size: 18px; margin: 0; }
+.implementation-cards article > strong { display: block; font: 600 30px ui-monospace, monospace; color: #9bc7ff; margin: 20px 0 12px; }
+.implementation-cards article:nth-child(2) > strong { color: #8ff3b8; }
+.implementation-cards article:nth-child(3) > strong { color: #ffcc7c; }
+.implementation-cards p { font-size: 12px; color: #c2d2d8; overflow-wrap: anywhere; }
+.implementation-track { height: 8px; background: #24373e; border-radius: 4px; overflow: hidden; }
+.implementation-track div { width: 0; height: 100%; background: #9bc7ff; }
+#impl-gpuReference-bar { background: #8ff3b8; }
+#impl-gpuEdt-bar { background: #ffcc7c; }
+.implementation-ratios { font-size: 13px; color: #c2d2d8; }
+.implementation-ratios div { display: block; padding: 14px 0; border-bottom: 1px solid #30434c; }
+.implementation-ratios dt { font-weight: 700; margin-bottom: 7px; }
+.implementation-ratios dd { margin: 0; }
+#implementation-status { font-size: 13px; color: #c2d2d8; }
+@media (max-width: 900px) { .implementation-cards { grid-template-columns: 1fr; } }
 @media (max-width: 1000px) { .lab { grid-template-columns: 1fr; } }

@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>CudaRobotics · Navigation Workbench</title>
   <meta name="description" content="Edit an occupancy map, inspect GPU obstacle distances, test robot clearance, plan a route and export a reproducible navigation scenario.">
-  <link rel="stylesheet" href="navigation.css?v=edt-baseline-1">
+  <link rel="stylesheet" href="navigation.css?v=gpu-edt-1">
 </head>
 <body>
   <header><a href="../index.html">CudaRobotics</a><span>APPLIED ROBOTICS / 03</span><a href="../particles/">Particle Storm ↗</a></header>
@@ -28,7 +28,7 @@
         <label for="preset">Scenario</label><select id="preset"><option value="warehouse">Warehouse aisles</option><option value="doorway">Doorway clearance test</option><option value="empty">Empty floor</option></select>
         <label for="engine">Distance-field backend</label><select id="engine"><option value="auto">Auto · prefer WebGPU</option><option value="cpu">CPU · JavaScript reference</option></select>
         <label for="cpu-baseline">CPU baseline · comparisons only</label><select id="cpu-baseline"><option value="matched">Same algorithm · brute force</option><option value="optimized">Optimized CPU · linear-time EDT</option></select>
-        <p class="hint">Applies to all three comparison panels, not the live mission. Switching invalidates old timings but keeps the pallet. The GPU field algorithm remains brute force in both modes.</p>
+        <p class="hint">Applies to the field, full-replan and map-size paired panels, not the three-way comparison or live mission. Switching invalidates old timings but keeps the pallet. Paired panels keep the reference GPU algorithm.</p>
         <label for="tool">Map tool</label><select id="tool"><option value="draw">Draw obstacle</option><option value="erase">Erase obstacle</option><option value="goal">Place goal</option><option value="robot">Place robot</option></select>
         <label for="radius">Robot radius <output id="radius-value">0.30 m</output></label><input id="radius" type="range" min="0.15" max="0.75" step="0.05" value="0.3">
         <label for="margin">Safety margin <output id="margin-value">0.12 m</output></label><input id="margin" type="range" min="0" max="0.4" step="0.02" value="0.12">
@@ -73,6 +73,20 @@
       <p id="scale-summary" role="status">No measurements yet. A faster distance field does not necessarily mean a faster total replan.</p>
       <p class="hint">64×48 (3,072 cells), 128×96 (12,288) and 256×192 (49,152); same 16×12 m area, start, goal and footprint. Existing occupied cells are conservatively resampled; coarser cells can widen obstacles and change clearance, route geometry or reachability. Agreement is checked CPU versus GPU within each size, not across sizes. If a pallet exists, its captured start is reused. Each size gets 3 warmups and 15 alternating pairs, with field, CPU A* and total time recorded. GPU allocation/compilation, resampling, drawing and agreement checks are untimed; uploads/readback and CPU allocations are timed. Same-algorithm mode uses brute force on both backends; optimized mode uses a linear-time EDT only on the CPU, so it is not a pure hardware comparison. Independent chart axes; hover values for P10–P90, or export raw samples and all routes. Small-to-large observations on this browser are not a universal crossover threshold. GPU-unavailable devices show CPU-only data. The editor remains 128×96; scaled map exports are benchmark inputs, not editor-import files. WebGPU/JavaScript, not native CUDA or GPU A*.</p>
     </section>
+    <section class="comparison implementation-section" aria-labelledby="implementation-title">
+      <div class="comparison-heading"><div><p class="eyebrow">THREE IMPLEMENTATIONS / SAME VERIFIED OUTPUT</p><h2 id="implementation-title">Does optimizing the GPU help?</h2></div><div class="buttons"><button id="compare-implementations" disabled>Compare all three</button><button id="cancel-implementations" class="secondary" disabled>Cancel</button><button id="export-implementations" class="secondary" disabled>Save three-way</button></div></div>
+      <label for="implementation-grid">Comparison grid · same 16 × 12 m world</label><select id="implementation-grid"><option value="64">64 × 48 · 3,072 cells</option><option value="128" selected>128 × 96 · 12,288 cells</option><option value="256">256 × 192 · 49,152 cells</option></select>
+      <p id="implementation-status" role="status">Ready: CPU EDT, reference GPU and exact GPU EDT on the same input.</p>
+      <p class="baseline-summary">This panel always compares optimized CPU EDT, reference GPU brute force and the new GPU EDT, independently of the paired-panel CPU selector. Each pipeline still runs the same CPU A*. GPU EDT uses exact grid distances, not an approximate jump-flood field.</p>
+      <div class="implementation-cards">
+        <article><h3>CPU EDT</h3><p class="hint">Lower-envelope transform · JavaScript</p><strong id="impl-cpuEdt-total">—</strong><div class="implementation-track"><div id="impl-cpuEdt-bar"></div></div><p id="impl-cpuEdt-range">—</p><p>Distance field<br><span id="impl-cpuEdt-field">—</span></p><p>CPU A* + shortcuts<br><span id="impl-cpuEdt-route">—</span></p><p id="impl-cpuEdt-path">—</p></article>
+        <article><h3>GPU reference</h3><p class="hint">Brute-force separable transform · WebGPU</p><strong id="impl-gpuReference-total">—</strong><div class="implementation-track"><div id="impl-gpuReference-bar"></div></div><p id="impl-gpuReference-range">—</p><p>Distance field<br><span id="impl-gpuReference-field">—</span></p><p>CPU A* + shortcuts<br><span id="impl-gpuReference-route">—</span></p><p id="impl-gpuReference-path">—</p></article>
+        <article><h3>GPU EDT</h3><p class="hint">Binary row sweeps + column envelope · WebGPU</p><strong id="impl-gpuEdt-total">—</strong><div class="implementation-track"><div id="impl-gpuEdt-bar"></div></div><p id="impl-gpuEdt-range">—</p><p>Distance field<br><span id="impl-gpuEdt-field">—</span></p><p>CPU A* + shortcuts<br><span id="impl-gpuEdt-route">—</span></p><p id="impl-gpuEdt-path">—</p></article>
+      </div>
+      <p class="hint">Large figures and bars are total call medians; shorter is faster. Ratios below are first / second: above 1 means the second implementation is faster, below 1 means the first is faster.</p>
+      <dl class="implementation-ratios"><div><dt>CPU EDT / GPU reference</dt><dd id="impl-cpuEdt-gpuReference">—</dd></div><div><dt>CPU EDT / GPU EDT</dt><dd id="impl-cpuEdt-gpuEdt">—</dd></div><div><dt>GPU reference / GPU EDT</dt><dd id="impl-gpuReference-gpuEdt">—</dd></div></dl>
+      <p class="hint">Three warmups, 15 measured calls per available implementation. Six rotating permutations balance execution positions; two available implementations alternate. All three pairings verify every field cell plus route status, waypoints, length and clearance at 1e-6 m tolerance. Mismatches suppress that pairing's ratios; blocked results are not successful missions. Setup, compilation, resampling, checks and drawing are untimed. Upload/readback, GPU scratch initialization and CPU allocations are timed. This is not a timestamp-query kernel timer or native CUDA comparison. GPU EDT performs linear total work with sequential work per row/column; limited parallelism and transfer overhead can make it slower. It is an exact implementation experiment, not a claim of the fastest GPU EDT. Coarser resampling can change reachability; the live editor and its backend remain unchanged. JSON records the source/scaled maps, algorithm identities, raw stage samples, all routes and actual call orders.</p>
+    </section>
     <section class="comparison" aria-labelledby="comparison-title">
       <div class="comparison-heading"><div><p class="eyebrow">SAME MAP / VERIFIED DISTANCE OUTPUTS</p><h2 id="comparison-title">GPU vs CPU, on your device.</h2></div><div class="buttons"><button id="compare" disabled>Compare GPU / CPU</button><button id="export-comparison" class="secondary" disabled>Save comparison</button></div></div>
       <p id="comparison-status" role="status">Comparison pauses the mission. Three warmups, then 15 paired measurements of the current map.</p>
@@ -89,6 +103,6 @@
   </main>
   <footer>CudaRobotics / Navigation Workbench <span>Edit. Check. Plan. Export.</span></footer>
   <noscript>JavaScript is required for the planning workbench.</noscript>
-  <script type="module" src="app.mjs?v=edt-baseline-1"></script>
+  <script type="module" src="app.mjs?v=gpu-edt-1"></script>
 </body>
 </html>

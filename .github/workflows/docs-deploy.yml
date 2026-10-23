@@ -56,7 +56,7 @@ jobs:
           WEBGPU_MODULE: ${{ runner.temp }}/browser-mppi/node_modules/webgpu/index.js
         run: |
           python3 source/scripts/validate_v1_support_matrix.py
-          node --test source/scripts/test_browser_mppi.mjs source/scripts/test_browser_particles.mjs source/scripts/test_browser_navigation.mjs source/scripts/test_browser_navigation_benchmark.mjs source/scripts/test_browser_navigation_edt.mjs source/scripts/test_browser_comparisons.mjs source/scripts/test_browser_demo_inventory.mjs
+          node --test source/scripts/test_browser_mppi.mjs source/scripts/test_browser_particles.mjs source/scripts/test_browser_navigation.mjs source/scripts/test_browser_navigation_benchmark.mjs source/scripts/test_browser_navigation_edt.mjs source/scripts/test_browser_navigation_implementations.mjs source/scripts/test_browser_comparisons.mjs source/scripts/test_browser_demo_inventory.mjs
           npm install --prefix "$RUNNER_TEMP/browser-mppi" --no-audit --no-fund webgpu@0.6.2
           node source/scripts/test_browser_mppi_webgpu.mjs --compile-only
           node source/scripts/test_browser_particles_webgpu.mjs --compile-only

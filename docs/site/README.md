@@ -78,6 +78,32 @@ including each grid's report. Output and
 route agreement are still checked in either mode, and CPU wins are shown without
 inventing GPU results on unsupported devices.
 
+**Compare all three** adds a separate experiment at a selectable 64×48, 128×96
+or 256×192 grid: CPU EDT, the reference GPU field and a GPU exact EDT. Its fixed
+three implementations do not depend on the paired panels' CPU baseline selector.
+The new WGSL shader uses binary forward/backward row sweeps followed by a
+one-dimensional lower envelope per column. It computes the same squared grid
+distances, half-cell diagonal correction and boundary cap, not a jump-flood
+approximation. Supported axes are bounded to 256 cells for its private scratch
+arrays. Total field work is linear in cell count, but each line is sequential;
+low parallelism, scratch initialization and transfers may prevent a speedup.
+It is not presented as a fastest-GPU EDT or native CUDA implementation. The live
+mission and existing paired benchmarks continue using the reference GPU shader.
+
+Dedicated GPU resources/compilation and map resampling are outside timing;
+uploads, readback, GPU scratch initialization and CPU allocations are inside.
+Three warmups and 15 measurements per available implementation rotate through
+six permutations (alternating when only two backends exist). Each trial runs the
+same CPU A* after each field evaluation. All three pairings verify every field
+cell and route outputs at 1e-6 m tolerance; mismatches suppress only affected
+ratios. Blocked results remain classified failures, not successful missions.
+JSON stores both source and resampled maps, algorithm identities, raw stage
+samples, all routes and actual execution orders. Cancel, map/settings changes
+or hiding the page invalidate the run; missing GPU implementations remain
+unavailable rather than receiving synthetic timings. Native WebGPU tests compile
+both shaders for each size and check adversarial fields, preset routes and all
+three real pipeline pairings.
+
 The inventory in `demos.json` covers all three pages that execute algorithms:
 MPPI (`/demo/`), Particle Storm (`/particles/`) and Navigation Workbench
 (`/navigation/`). Each has a GPU/CPU comparison panel. Repository checks discover

@@ -1,6 +1,9 @@
 import {DEFAULT_GRID} from './model.mjs?v=scale-comparison-1';
 
-export async function createPipelines(device, code, grid = DEFAULT_GRID) {
+export async function createPipelines(device, code, grid = DEFAULT_GRID, algorithm = 'reference') {
+  if (!['reference', 'edt'].includes(algorithm)) throw new Error('Unknown GPU distance algorithm');
+  if (algorithm === 'edt' && (!Number.isInteger(grid.width) || !Number.isInteger(grid.height)
+    || grid.width < 1 || grid.height < 1 || grid.width > 256 || grid.height > 256)) throw new Error('GPU EDT supports axes from 1 to 256 cells');
   const module = device.createShaderModule({code});
   const diagnostics = await module.getCompilationInfo();
   const errors = diagnostics.messages.filter(message => message.type === 'error');
@@ -9,22 +12,26 @@ export async function createPipelines(device, code, grid = DEFAULT_GRID) {
     binding, visibility: GPUShaderStage.COMPUTE, buffer: {type: binding ? 'storage' : 'read-only-storage'},
   }))});
   const layout = device.createPipelineLayout({bindGroupLayouts: [bindLayout]});
-  const pipelines = await Promise.all(['row_distance', 'column_distance'].map(entryPoint =>
+  const entries = algorithm === 'edt' ? ['row_edt', 'column_edt'] : ['row_distance', 'column_distance'];
+  const pipelines = await Promise.all(entries.map(entryPoint =>
     device.createComputePipelineAsync({layout, compute: {module, entryPoint,
       constants: {GRID_WIDTH: grid.width, GRID_HEIGHT: grid.height, CELL_SIZE: grid.resolution}}})));
-  return {bindLayout, pipelines};
+  const dispatchCounts = algorithm === 'edt' ? [Math.ceil(grid.height / 32), Math.ceil(grid.width / 32)]
+    : [Math.ceil(grid.width * grid.height / 64), Math.ceil(grid.width * grid.height / 64)];
+  return {bindLayout, pipelines, dispatchCounts, algorithm};
 }
 
 export class GpuField {
-  static async create(grid = DEFAULT_GRID) {
+  static async create(grid = DEFAULT_GRID, algorithm = 'reference') {
+    if (!['reference', 'edt'].includes(algorithm)) throw new Error('Unknown GPU distance algorithm');
     if (!navigator.gpu) throw new Error('WebGPU is unavailable');
     const adapter = await navigator.gpu.requestAdapter();
     if (!adapter) throw new Error('No WebGPU adapter');
     const device = await adapter.requestDevice();
     try {
-      const response = await fetch(new URL('./field.wgsl?v=scale-comparison-1', import.meta.url));
+      const response = await fetch(new URL(`./${algorithm === 'edt' ? 'field-edt.wgsl' : 'field.wgsl'}?v=gpu-edt-1`, import.meta.url));
       if (!response.ok) throw new Error(`Shader HTTP ${response.status}`);
-      return new GpuField(device, await createPipelines(device, await response.text(), grid), grid);
+      return new GpuField(device, await createPipelines(device, await response.text(), grid, algorithm), grid);
     } catch (error) { device.destroy(); throw error; }
   }
 
@@ -33,6 +40,8 @@ export class GpuField {
     this.pipelines = pipelines.pipelines;
     this.failure = null;
     this.count = grid.width * grid.height;
+    this.dispatchCounts = pipelines.dispatchCounts ?? this.pipelines.map(() => Math.ceil(this.count / 64));
+    this.algorithm = pipelines.algorithm ?? 'reference';
     const size = this.count * 4;
     const usage = GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST;
     this.buffers = [0, 1, 2].map(() => device.createBuffer({size, usage}));
@@ -48,10 +57,10 @@ export class GpuField {
     if (occupancy.length !== this.count) throw new Error('Invalid occupancy dimensions');
     this.device.queue.writeBuffer(this.buffers[0], 0, new Uint32Array(occupancy));
     const encoder = this.device.createCommandEncoder();
-    for (const pipeline of this.pipelines) {
+    for (let index = 0; index < this.pipelines.length; index++) {
       const pass = encoder.beginComputePass();
-      pass.setPipeline(pipeline); pass.setBindGroup(0, this.group);
-      pass.dispatchWorkgroups(Math.ceil(this.count / 64)); pass.end();
+      pass.setPipeline(this.pipelines[index]); pass.setBindGroup(0, this.group);
+      pass.dispatchWorkgroups(this.dispatchCounts[index]); pass.end();
     }
     encoder.copyBufferToBuffer(this.buffers[2], 0, this.readback, 0, this.count * 4);
     this.device.queue.submit([encoder.finish()]);

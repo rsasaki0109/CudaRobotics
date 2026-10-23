@@ -1,10 +1,11 @@
 import {WIDTH, HEIGHT, RESOLUTION, WORLD_HEIGHT, preset, distanceField, plan, follow, mapDocument, parseMap} from './model.mjs?v=scale-comparison-1';
-import {GpuField} from './gpu.mjs?v=scale-comparison-1';
+import {GpuField} from './gpu.mjs?v=gpu-edt-1';
 import {compareDistanceFields} from './benchmark.mjs?v=edt-baseline-1';
 import {placePallet} from './pallet.mjs';
 import {compareReplanning} from './replanning.mjs?v=edt-baseline-1';
 import {ScalingPanel} from './scaling-panel.mjs?v=edt-baseline-1';
 import {cpuBaseline} from './cpu-baseline.mjs';
+import {ImplementationPanel} from './implementation-panel.mjs';
 
 const elements = Object.fromEntries([...document.querySelectorAll('[id]')].map(element => [element.id, element]));
 const base = elements.map.getContext('2d');
@@ -33,19 +34,29 @@ let replanComparison = null;
 const required = () => Number(elements.radius.value) + Number(elements.margin.value);
 const useGpu = () => gpu && elements.engine.value !== 'cpu';
 const comparisonBaseline = () => elements['cpu-baseline'].value || 'matched';
+const comparisonSnapshot = () => mapDocument(occupancy, palletExperiment?.start ?? position, palletExperiment?.goal ?? goal, Number(elements.radius.value), Number(elements.margin.value));
+function setBenchmarkBusy(busy) {
+  benchmarking = busy; updatePalletControls();
+  elements.compare.disabled = busy || computing || pending;
+  elements.run.disabled = busy || pending || result?.status !== 'ready' || waypoint >= (result?.path.length ?? 0);
+  if (!busy && pending) { clearTimeout(timer); timer = setTimeout(rebuild, 0); }
+}
 const scales = new ScalingPanel(elements, {
   canStart: () => !computing && !pending && !benchmarking && !!result,
-  snapshot: () => mapDocument(occupancy, palletExperiment?.start ?? position, palletExperiment?.goal ?? goal, Number(elements.radius.value), Number(elements.margin.value)),
+  snapshot: comparisonSnapshot,
   pause() { running = false; elements.run.textContent = 'Run mission'; },
-  setBusy(busy) {
-    benchmarking = busy; updatePalletControls();
-    elements.compare.disabled = busy || computing || pending;
-    elements.run.disabled = busy || pending || result?.status !== 'ready' || waypoint >= (result?.path.length ?? 0);
-    if (!busy && pending) { clearTimeout(timer); timer = setTimeout(rebuild, 0); }
-  },
+  setBusy: setBenchmarkBusy,
   createGpu: grid => GpuField.create(grid),
   baseline: comparisonBaseline,
   download: report => save('cudarobotics-map-size-comparison.json', report),
+});
+const implementations = new ImplementationPanel(elements, {
+  canStart: () => !computing && !pending && !benchmarking && !!result,
+  snapshot: comparisonSnapshot,
+  pause() { running = false; elements.run.textContent = 'Run mission'; },
+  setBusy: setBenchmarkBusy,
+  createGpu: (grid, algorithm) => GpuField.create(grid, algorithm),
+  download: report => save('cudarobotics-implementation-comparison.json', report),
 });
 const messages = {ready: 'Route ready. Run the mission or edit the map.', no_path: 'No route fits this footprint. Widen the aisle, erase an obstacle or reduce the radius.',
   start_unsafe: 'Robot footprint overlaps an obstacle, safety band or map boundary. Move the robot or edit the map.',
@@ -118,6 +129,7 @@ function updatePalletControls() {
   elements['restore-pallet'].disabled = computing || pending || benchmarking || !palletExperiment;
   elements['compare-replan'].disabled = computing || pending || benchmarking || !palletExperiment?.after;
   elements['compare-sizes'].disabled = computing || pending || benchmarking || !result;
+  elements['compare-implementations'].disabled = computing || pending || benchmarking || !result;
 }
 
 function clearReplanComparison() {
@@ -150,6 +162,7 @@ function schedule({retainPallet = false} = {}) {
   revision++;
   clearReplanComparison();
   scales.invalidate();
+  implementations.invalidate();
   clearComparison();
   running = false;
   result = null;
@@ -408,7 +421,7 @@ elements.preset.addEventListener('change', applyPreset);
 elements.engine.addEventListener('change', schedule);
 elements['cpu-baseline'].addEventListener('change', () => {
   revision++;
-  clearComparison(); clearReplanComparison(); scales.invalidate(); syncBaselineLabels();
+  clearComparison(); clearReplanComparison(); scales.invalidate(); implementations.invalidate(); syncBaselineLabels();
   if (computing) pending = true;
   updatePalletControls();
 });
