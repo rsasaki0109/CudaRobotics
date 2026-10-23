@@ -17,6 +17,32 @@ Then open `http://localhost:8080/`.
 
 ## Comparison coverage: every executable browser demo
 
+MPPI adds **Compare 4 workloads**: 128, 512, 2,048 and 8,192 candidates at the
+same captured pose/local target and 32-step horizon. Each count generates fresh
+seed-311 controls; controls match within CPU/GPU pairs but are not nested across
+counts. Three warmups and 15 alternating pairs retain the existing per-cost and
+collision-class agreement checks. Shared-scale bars show median/P10/P90 call
+times, including CPU worker messages and GPU upload/readback, excluding setup,
+sampling, weighting and motion. The first tested GPU median win is not an
+interpolated crossover, and is suppressed if any count lacks output agreement.
+CPU wins and GPU absence remain explicit. JSON preserves all raw measurements.
+
+**Validate 3 seeds** is a separate, untimed mission-quality experiment at a
+selected candidate count. It restarts the selected built-in environment, not an
+edited live goal, using seeds 311/312/313, current temperature and 600 steps per
+trial. CPU and available GPU runs have independent planners with the same policy;
+rounding may make their later states and controls diverge. Arrival (<0.30 m),
+guarded safe stop and timeout are classified separately. The displayed arrival
+fraction is only three deterministic trials, not a reliability estimate. Minimum
+surface clearance includes the initial pose and both checked motion substeps;
+this is not continuous collision certification. CPU mission costs use the main
+thread with yields between steps. No mission speed ratio is inferred. JSON
+includes the scene, seeds, settings, outcomes and full paths. Mission count is
+independent of the live count and speed sweep. Both experiments pause animation,
+exclude concurrent benchmarks, dispose dedicated resources and discard partial
+reports on cancellation, edits or tab hiding. Starting live motion invalidates
+reports. These remain WebGPU/JavaScript experiments, not native CUDA benchmarks.
+
 Navigation Workbench also offers a one-click pallet experiment: place a 1 × 1 m
 obstacle on the remaining route, pause motion, and replan from the captured robot
 position. Dashed amber shows the old plan (which may now collide); green shows the

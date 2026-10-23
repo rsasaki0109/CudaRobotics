@@ -4,6 +4,7 @@ import {pathToFileURL} from 'node:url';
 import {GpuCosts} from '../docs/site/demo/gpu.mjs';
 import {Planner, scenes, cpuCosts, safeAdvance, COLLISION} from '../docs/site/demo/planner.mjs';
 import {mppiSnapshot, compareMppi} from '../docs/site/demo/benchmark.mjs';
+import {compareMissions} from '../docs/site/demo/workloads.mjs';
 
 const {create, globals} = await import(process.env.WEBGPU_MODULE
   ? pathToFileURL(process.env.WEBGPU_MODULE).href : 'webgpu');
@@ -30,7 +31,7 @@ try {
       gpuEvaluate: () => evaluator.evaluate(input.state, input.goal, input.obstacles, input.controls, input.count)});
     assert.equal(comparison.accuracy.matches, true);
     console.log('Matched MPPI comparison and collision classification: PASS');
-    for (const count of [1, 65, 128, 512, 2048, 128]) {
+    for (const count of [1, 65, 128, 512, 2048, 8192, 128]) {
       for (const scene of Object.values(scenes)) {
         const controls = new Planner().sample(scene.start, scene.goal, count);
         const expected = cpuCosts(scene.start, scene.goal, scene.obstacles, controls, count);
@@ -43,6 +44,13 @@ try {
       }
     }
     console.log('GPU / CPU cost parity, collision classification and buffer resizing: PASS');
+    const missions = await compareMissions({sceneId: 'gap', count: 128, temperature: 3}, {
+      gpuEvaluate: (...args) => evaluator.evaluate(...args), yieldControl: async () => {},
+    });
+    assert.equal(missions.summaries.cpu.reached, 3);
+    assert.equal(missions.summaries.gpu.reached, 3);
+    assert.ok(missions.summaries.gpu.minimumClearance > 0);
+    console.log('Independent three-seed CPU / GPU guarded mission outcomes: PASS');
     for (const [name, scene] of Object.entries(scenes)) {
       const planner = new Planner();
       let state = [...scene.start];

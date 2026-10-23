@@ -3,6 +3,7 @@ import {GpuCosts} from './gpu.mjs';
 import {ComparisonPanel} from '../assets/comparison-panel.mjs';
 import {prepareComparison} from '../assets/comparison-job.mjs';
 import {mppiSnapshot, compareMppi} from './benchmark.mjs';
+import {WorkloadPanel} from './workload-panel.mjs';
 
 const elements = Object.fromEntries([...document.querySelectorAll('[id]')].map(element => [element.id, element]));
 const canvas = elements.world;
@@ -15,9 +16,9 @@ let gpu = null;
 let backendRevision = 0;
 let configuring = false;
 const comparison = new ComparisonPanel(elements, {
-  pause() { running = false; revision++; elements.run.textContent = 'Start'; elements.run.disabled = true; },
+  pause() { running = false; revision++; elements.run.textContent = 'Start'; syncReady(); },
   idle: () => !busy,
-  finished() { elements.run.disabled = configuring; },
+  finished: syncReady,
   prepare: () => {
     const input = mppiSnapshot(state, waypoints[0] ?? goal, scene.obstacles, Number(elements.count.value));
     return prepareComparison(input, async () => {
@@ -27,9 +28,28 @@ const comparison = new ComparisonPanel(elements, {
     }, compareMppi);
   },
 });
+const workloads = new WorkloadPanel(elements, {
+  snapshot: () => ({state: [...state], goal: [...(waypoints[0] ?? goal)], obstacles: scene.obstacles.map(box => [...box]),
+    sceneId: elements.scene.value, count: Number(elements['mission-count'].value), temperature: Number(elements.temperature.value)}),
+  createJob: input => prepareComparison(input, async () => {
+    const evaluator = await GpuCosts.create();
+    return {evaluate: snapshot => evaluator.evaluate(snapshot.state, snapshot.goal, snapshot.obstacles, snapshot.controls, snapshot.count),
+      destroy: () => evaluator.destroy()};
+  }, compareMppi),
+  createGpu: () => GpuCosts.create(),
+  pause() { running = false; revision++; elements.run.textContent = 'Start'; syncReady(); },
+  idle: () => !busy,
+  finished: syncReady,
+});
+function syncReady() {
+  comparison.setReady(!configuring && !workloads.busy);
+  workloads.setReady(!configuring && !comparison.busy);
+  elements.run.disabled = configuring || comparison.busy || workloads.busy;
+}
+function invalidateExperiments() { comparison.invalidate(); workloads.invalidate(); }
 
 function reset() {
-  comparison.invalidate();
+  invalidateExperiments();
   revision++;
   running = false;
   scene = scenes[elements.scene.value];
@@ -50,7 +70,7 @@ function reset() {
 }
 
 async function configureBackend() {
-  configuring = true; comparison.invalidate(); comparison.setReady(false);
+  configuring = true; invalidateExperiments(); syncReady();
   const request = ++backendRevision;
   revision++;
   running = false;
@@ -73,7 +93,7 @@ async function configureBackend() {
   elements.backend.textContent = gpu ? 'WebGPU / rollout compute' : 'CPU / JavaScript';
   elements.status.textContent = reason ? `${reason}. Using CPU fallback.` : 'Ready. All computation stays on this device.';
   elements.run.disabled = false;
-  configuring = false; elements.run.disabled = comparison.busy; comparison.setReady(true);
+  configuring = false; syncReady();
 }
 
 function setGoal(x, y) {
@@ -83,7 +103,7 @@ function setGoal(x, y) {
   }
   revision++;
   goal = [x, y];
-  comparison.invalidate();
+  invalidateExperiments();
   waypoints = [];
   planner = new Planner();
   traces = [];
@@ -141,7 +161,7 @@ function draw() {
 }
 
 async function tick() {
-  if (running && !busy && !comparison.busy && !document.hidden) {
+  if (running && !busy && !comparison.busy && !workloads.busy && !document.hidden) {
     busy = true;
     const version = revision;
     try {
@@ -201,7 +221,8 @@ async function tick() {
 }
 
 elements.run.addEventListener('click', () => {
-  if (comparison.busy) return;
+  if (comparison.busy || workloads.busy) return;
+  invalidateExperiments();
   running = !running;
   if (!running) revision++;
   elements.run.textContent = running ? 'Pause' : 'Start';
@@ -210,9 +231,9 @@ elements.run.addEventListener('click', () => {
 elements.reset.addEventListener('click', reset);
 elements.scene.addEventListener('change', reset);
 elements.engine.addEventListener('change', configureBackend);
-elements.count.addEventListener('change', () => comparison.invalidate());
+elements.count.addEventListener('change', invalidateExperiments);
 elements.temperature.addEventListener('input', () => {
-  comparison.invalidate();
+  invalidateExperiments();
   elements['temperature-value'].value = Number(elements.temperature.value).toFixed(1);
 });
 elements['set-goal'].addEventListener('click', () => setGoal(
