@@ -20,7 +20,7 @@ def _cell_index(cells, marker):
 def test_colab_preflight_precedes_source_build():
     cells = _cells()
     assert _cell_index(cells, "GPU runtime not detected") < _cell_index(
-        cells, "git clone --depth 1 --branch v0.3.0"
+        cells, "git clone --depth 1 --branch v0.4.0"
     )
 
 
@@ -38,7 +38,7 @@ def test_colab_completion_artifact_has_required_checks():
     for marker in (
         '"schema_version": 1',
         '"surface": "colab_quickstart"',
-        '"release": "v0.3.0"',
+        '"release": "v0.4.0"',
         '"mppi"',
         '"registration"',
         '"artifacts"',

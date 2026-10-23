@@ -31,7 +31,7 @@ def test_default_output_stays_in_build_tree():
 
 def test_source_version_matches_package_metadata():
     module = load_script()
-    assert module.source_version() == "0.3.0"
+    assert module.source_version() == "0.4.0"
 
 
 def test_missing_gif_becomes_classified_artifact_failure(tmp_path):
