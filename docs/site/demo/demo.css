@@ -55,6 +55,14 @@ footer { border-top: 1px solid #293940; border-bottom: 0; color: #a7bdc5; }
 .sampling-share { background: #99c8ff; } .rollout-share { background: #73e4c0; } .reduction-share { background: #ffcc7c; }
 @media (max-width: 760px) { .insight-grid { grid-template-columns: 1fr; } }
 #mission-count, #workload-scope { max-width: 360px; }
+#budget-ms { max-width: 360px; }
+.budget-section { margin-top: 32px; padding-top: 24px; border-top: 1px solid #405660; }
+.budget-results { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; }
+.budget-results article { min-width: 0; }
+.budget-results p { font-size: 13px; line-height: 1.7; }
+.budget-section pre { white-space: pre-wrap; overflow-wrap: anywhere; font: 12px/1.7 ui-monospace, monospace; color: #bed0d6; }
+.budget-results canvas { cursor: default; }
+@media (max-width: 760px) { .budget-results { grid-template-columns: 1fr; } }
 .mission-results div, .planning-stages dl div { display: block; }
 .mission-results dd, .planning-stages dd { margin-top: 8px; line-height: 1.7; overflow-wrap: anywhere; }
 @media (max-width: 760px) { .workload-grid { grid-template-columns: 1fr; } }

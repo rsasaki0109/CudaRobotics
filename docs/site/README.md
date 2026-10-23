@@ -17,6 +17,32 @@ Then open `http://localhost:8080/`.
 
 ## Comparison coverage: every executable browser demo
 
+MPPI **Compare within budget** calibrates complete cold-start plans at the
+selected built-in scene's initial pose and first guide target, not an edited
+live goal. A 5/10/20/50/100 ms soft deadline is applied independently of the
+other timing/count selectors. It tests the same four counts with three warmups
+and 15 alternating pairs, excludes mismatched cost/control outputs, and selects
+the largest tested count whose P90 fits per backend. This is not a continuous
+maximum or a guarantee for future states. No fitting count means untested, not a
+failed mission; GPU absence never fabricates counts or results.
+
+Three seeded, independent warm-start missions then use each selected fixed
+count. Every plan measures sampling, costs and CPU softmin/update, including GPU
+transfers and CPU allocations. One evaluator warmup before each trial excludes
+buffer setup. Checks, drawing, motion, inter-step yields and setup are untimed.
+If a plan exceeds the deadline, computation finishes but the command is discarded
+before motion and the mission ends as `deadline_stop`. This is not hard real-time
+preemption: JavaScript/GPU work cannot be interrupted, and simulated time only
+advances for accepted commands. Late raw durations remain in JSON. Arrival,
+safe stop, deadline stop and timeout stay separate. Side-by-side paths use the
+same seed colors; distance sums the two guarded model substep segments and mean
+distance includes stopped trials. Different selected counts yield different
+candidate sets, so this is not pure hardware parity or proof of a GPU-quality
+win. Three trials do not establish reliability or continuous collision safety.
+JSON includes calibration samples, selections/reasons, all mission paths,
+planning durations and deadline misses. Changes, tab hiding and cancellation
+discard partial experiments and release dedicated GPU resources.
+
 MPPI adds **Compare 4 workloads**: 128, 512, 2,048 and 8,192 candidates at the
 same captured pose/local target and 32-step horizon. Each count generates fresh
 seed-311 controls; controls match within CPU/GPU pairs but are not nested across

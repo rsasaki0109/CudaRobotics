@@ -4,7 +4,7 @@ import {pathToFileURL} from 'node:url';
 import {GpuCosts} from '../docs/site/demo/gpu.mjs';
 import {Planner, scenes, cpuCosts, safeAdvance, COLLISION} from '../docs/site/demo/planner.mjs';
 import {mppiSnapshot, compareMppi} from '../docs/site/demo/benchmark.mjs';
-import {compareMissions} from '../docs/site/demo/workloads.mjs';
+import {compareMissions, runMission} from '../docs/site/demo/workloads.mjs';
 import {compareMppiPlans} from '../docs/site/demo/plan-benchmark.mjs';
 
 const {create, globals} = await import(process.env.WEBGPU_MODULE
@@ -62,6 +62,14 @@ try {
     assert.equal(missions.summaries.gpu.reached, 3);
     assert.ok(missions.summaries.gpu.minimumClearance > 0);
     console.log('Independent three-seed CPU / GPU guarded mission outcomes: PASS');
+    const budgetTrial = await runMission({scene: scenes.gap, count: 128, seed: 311, maxSteps: 1}, {
+      evaluate: (...args) => evaluator.evaluate(...args), budgetMs: 1000, yieldControl: async () => {},
+    });
+    assert.equal(budgetTrial.planning.timing.samplesMs.length, 1);
+    assert.ok(budgetTrial.planning.timing.samplesMs.every(Number.isFinite));
+    assert.ok(['timeout', 'deadline_stop'].includes(budgetTrial.status));
+    assert.equal(budgetTrial.steps, budgetTrial.status === 'deadline_stop' ? 0 : 1);
+    console.log('Real WebGPU mission plan timing and guarded soft-deadline outcome: PASS');
     for (const [name, scene] of Object.entries(scenes)) {
       const planner = new Planner();
       let state = [...scene.start];

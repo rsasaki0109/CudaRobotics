@@ -1,10 +1,12 @@
-import {WORKLOAD_COUNTS, workloadMatches, compareWorkloads, compareMissions} from './workloads.mjs?v=workload-insights-1';
+import {WORKLOAD_COUNTS, workloadMatches, compareWorkloads, compareMissions} from './workloads.mjs?v=budget-1';
+import {compareBudget} from './budget.mjs';
+import {drawBudgetPaths, renderBudget} from './budget-view.mjs';
 
 export class WorkloadPanel {
   constructor(elements, {snapshot, createJob, createGpu, pause, idle, finished}) {
     Object.assign(this, {elements, snapshot, createJob, createGpu, pause, idle, finished});
     this.busy = false; this.ready = false; this.generation = 0; this.reports = {};
-    for (const kind of ['workloads', 'missions']) {
+    for (const kind of ['workloads', 'missions', 'budget']) {
       elements[`compare-${kind}`].addEventListener('click', () => this.run(kind));
       elements[`export-${kind}`].addEventListener('click', () => {
         if (!this.reports[kind]) return;
@@ -16,11 +18,17 @@ export class WorkloadPanel {
     elements['cancel-workloads'].addEventListener('click', () => this.invalidate());
     elements['mission-count'].addEventListener('change', () => this.invalidate());
     elements['workload-scope'].addEventListener('change', () => this.invalidate());
+    elements['budget-ms'].addEventListener('change', () => this.invalidate());
+    elements['cancel-budget'].addEventListener('click', () => this.invalidate());
     this.invalidate();
   }
   setReady(ready) {
     this.ready = ready;
-    for (const kind of ['workloads', 'missions']) this.elements[`compare-${kind}`].disabled = !ready || this.busy;
+    for (const kind of ['workloads', 'missions', 'budget']) this.elements[`compare-${kind}`].disabled = !ready || this.busy;
+  }
+  setStatus(message) {
+    this.elements['workload-status'].textContent = message;
+    this.elements['budget-status'].textContent = message;
   }
   clear(kind) {
     delete this.reports[kind]; this.elements[`export-${kind}`].disabled = true;
@@ -32,15 +40,23 @@ export class WorkloadPanel {
       }
       this.elements['workload-takeaway'].textContent = 'Run the sweep to see the measured trade-off. No result yet.';
       this.elements['workload-crossover'].textContent = 'No measured crossover yet.';
-    } else for (const backend of ['cpu', 'gpu']) this.elements[`mission-${backend}`].textContent = '—';
+    } else if (kind === 'missions') {
+      for (const backend of ['cpu', 'gpu']) this.elements[`mission-${backend}`].textContent = '—';
+    } else {
+      this.elements['budget-calibration'].textContent = 'No calibration yet.';
+      for (const backend of ['cpu', 'gpu']) {
+        for (const field of ['status', 'trials']) this.elements[`budget-${backend}-${field}`].textContent = '—';
+        drawBudgetPaths(this.elements[`budget-${backend}-canvas`], null, null);
+      }
+    }
   }
   invalidate() {
     this.generation++;
-    this.clear('workloads'); this.clear('missions');
+    this.clear('workloads'); this.clear('missions'); this.clear('budget');
     this.elements['workload-method'].textContent = this.elements['workload-scope'].value === 'plan'
       ? 'Complete cold-start plan: CPU sampling + CPU/GPU costs + CPU softmin/update. CPU costs run on the main thread, not in a worker. Motion, safety guard and drawing excluded.'
       : 'Rollout costs only: CPU worker round trip versus GPU upload/readback. Sampling, softmin, motion and drawing excluded.';
-    this.elements['workload-status'].textContent = this.busy ? 'Cancelling after outstanding work finishes…' : 'Ready. Speed sweep and mission validation are separate experiments.';
+    this.setStatus(this.busy ? 'Cancelling after outstanding work finishes…' : 'Ready. Speed, mission quality and budget validation are separate experiments.');
   }
   renderWorkloads(report) {
     this.elements['workload-takeaway'].textContent = report.insights.conclusion;
@@ -82,6 +98,7 @@ export class WorkloadPanel {
     if (!this.ready || this.busy) return;
     this.generation++; this.clear(kind); this.busy = true; this.setReady(this.ready); this.pause();
     this.elements['cancel-workloads'].disabled = false;
+    this.elements['cancel-budget'].disabled = false;
     const generation = this.generation;
     const shouldCancel = () => generation !== this.generation || document.hidden;
     const check = () => {if (shouldCancel()) throw new DOMException('Cancelled', 'AbortError');};
@@ -89,27 +106,39 @@ export class WorkloadPanel {
     try {
       while (!this.idle()) {await new Promise(resolve => setTimeout(resolve, 10)); check();}
       check(); const input = this.snapshot();
-      this.elements['workload-status'].textContent = 'Preparing fixed inputs and dedicated resources (not timed)…';
+      this.setStatus('Preparing fixed inputs and dedicated resources (not timed)…');
       let report;
       if (kind === 'workloads') {
         report = await compareWorkloads(input, {createJob: this.createJob, shouldCancel, onProgress: progress => {
-          this.elements['workload-status'].textContent = `${progress.count.toLocaleString()} trajectories · ${progress.phase} ${progress.backend.toUpperCase()} ${progress.iteration}/${progress.total}`;
+          this.setStatus(`${progress.count.toLocaleString()} trajectories · ${progress.phase} ${progress.backend.toUpperCase()} ${progress.iteration}/${progress.total}`);
         }});
-      } else {
+      } else if (kind === 'missions') {
         let reason = '';
         try {gpu = await this.createGpu();} catch (error) {reason = error.message;}
         check();
         report = {...await compareMissions(input, {gpuEvaluate: gpu ? (...args) => gpu.evaluate(...args) : null, shouldCancel,
-          onProgress: progress => {this.elements['workload-status'].textContent = `${input.count} trajectories · ${progress.backend.toUpperCase()} seed ${progress.seed} · step ${progress.steps}/${progress.maxSteps}`;}}), gpuUnavailableReason: reason};
+          onProgress: progress => {this.setStatus(`${input.count} trajectories · ${progress.backend.toUpperCase()} seed ${progress.seed} · step ${progress.steps}/${progress.maxSteps}`);}}), gpuUnavailableReason: reason};
+      } else {
+        let reason = '';
+        try {gpu = await this.createGpu();} catch (error) {reason = error.message;}
+        check();
+        report = {...await compareBudget(input, {gpuEvaluate: gpu ? (...args) => gpu.evaluate(...args) : null, shouldCancel,
+          onProgress: progress => {this.setStatus(progress.phase === 'calibration'
+            ? `Budget calibration · ${progress.count} candidates · ${progress.calibrationPhase} ${progress.backend.toUpperCase()} ${progress.iteration}/${progress.total}`
+            : `Budget mission · ${progress.backend.toUpperCase()} ${progress.count} candidates · seed ${progress.seed} · step ${progress.steps}/${progress.maxSteps}`);}}), gpuUnavailableReason: reason};
       }
       check(); this.reports[kind] = report;
-      if (kind === 'workloads') this.renderWorkloads(report); else this.renderMissions(report);
+      if (kind === 'workloads') this.renderWorkloads(report);
+      else if (kind === 'missions') this.renderMissions(report);
+      else renderBudget(this.elements, report);
       this.elements[`export-${kind}`].disabled = false;
-      this.elements['workload-status'].textContent = kind === 'workloads' ? 'Sweep complete. Bars share one time scale; shorter is faster. CPU wins remain visible.' : 'Mission trials complete. Arrival, safe stop and timeout are distinct outcomes; no timing ratio is inferred.';
+      this.setStatus(kind === 'workloads' ? 'Sweep complete. Bars share one time scale; shorter is faster. CPU wins remain visible.'
+        : kind === 'missions' ? 'Mission trials complete. Arrival, safe stop and timeout are distinct outcomes; no timing ratio is inferred.'
+          : 'Budget experiment complete. P90 calibration is not a deadline guarantee; late plans were discarded. No automatic GPU-quality winner is claimed.');
     } catch (error) {
-      this.elements['workload-status'].textContent = error.name === 'AbortError' ? 'Cancelled. No partial report saved.' : `Experiment failed: ${error.message}. No partial report saved.`;
+      this.setStatus(error.name === 'AbortError' ? 'Cancelled. No partial report saved.' : `Experiment failed: ${error.message}. No partial report saved.`);
     } finally {
-      try {gpu?.destroy();} finally {this.busy = false; this.elements['cancel-workloads'].disabled = true; this.setReady(this.ready); this.finished();}
+      try {gpu?.destroy();} finally {this.busy = false; this.elements['cancel-workloads'].disabled = true; this.elements['cancel-budget'].disabled = true; this.setReady(this.ready); this.finished();}
     }
   }
 }

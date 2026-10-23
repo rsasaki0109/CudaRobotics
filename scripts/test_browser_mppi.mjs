@@ -6,6 +6,7 @@ import {compareMppi} from '../docs/site/demo/benchmark.mjs';
 import {compareMppiPlans} from '../docs/site/demo/plan-benchmark.mjs';
 import {workloadInsight, summarizeWorkloads} from '../docs/site/demo/workload-insights.mjs';
 import {summarize} from '../docs/site/assets/benchmark.mjs';
+import {selectBudgetCounts, compareBudget} from '../docs/site/demo/budget.mjs';
 
 test('seeded sampling is deterministic and respects command limits', () => {
   const first = new Planner().sample(scenes.gap.start, scenes.gap.goal, 128);
@@ -70,6 +71,8 @@ test('app initializes CPU fallback and supports start, pause, goal validation an
     'cpu-median', 'gpu-median', 'cpu-range', 'gpu-range', 'cpu-bar', 'gpu-bar', 'speedup', 'accuracy',
     'compare-workloads', 'compare-missions', 'export-workloads', 'export-missions', 'cancel-workloads', 'mission-count',
     'workload-status', 'workload-crossover', 'workload-scope', 'workload-method', 'workload-takeaway', 'mission-cpu', 'mission-gpu',
+    'budget-ms', 'compare-budget', 'cancel-budget', 'export-budget', 'budget-calibration', 'budget-status',
+    ...['cpu', 'gpu'].flatMap(backend => ['status', 'canvas', 'trials'].map(field => `budget-${backend}-${field}`)),
     ...WORKLOAD_COUNTS.flatMap(count => ['cpu', 'gpu', 'ratio', 'accuracy', 'stages', 'cpu-bar', 'gpu-bar',
       'verdict', 'effect', 'share', 'sampling-share', 'rollout-share', 'reduction-share'].map(field => `workload-${count}-${field}`))];
   const elements = Object.fromEntries(identifiers.map(id => [id, {
@@ -82,7 +85,9 @@ test('app initializes CPU fallback and supports start, pause, goal validation an
   Object.assign(elements.temperature, {value: '3'});
   elements['mission-count'].value = '128';
   elements['workload-scope'].value = 'kernel';
+  elements['budget-ms'].value = '20';
   elements.world.getContext = () => new Proxy({}, {get: () => () => {}});
+  for (const backend of ['cpu', 'gpu']) elements[`budget-${backend}-canvas`].getContext = elements.world.getContext;
   let frame;
   globalThis.document = {hidden: false, querySelectorAll: () => Object.values(elements)};
   globalThis.requestAnimationFrame = callback => { frame = callback; };
@@ -105,6 +110,12 @@ test('app initializes CPU fallback and supports start, pause, goal validation an
     assert.equal(elements['export-workloads'].disabled, true);
     assert.equal(elements.compare.disabled, false);
     assert.match(elements['workload-status'].textContent, /Cancelled/);
+    const budget = elements['compare-budget'].listeners.click();
+    assert.equal(elements.compare.disabled, true);
+    elements['cancel-budget'].listeners.click(); await budget;
+    assert.equal(elements['export-budget'].disabled, true);
+    assert.equal(elements.compare.disabled, false);
+    assert.match(elements['budget-status'].textContent, /Cancelled/);
     elements.run.listeners.click();
     await frame();
     assert.equal(elements.time.textContent, '0.1 s');
@@ -379,4 +390,107 @@ test('sweep conclusions count only supported per-count winners and preserve expo
   assert.deepEqual(JSON.parse(JSON.stringify(insights)), insights);
   const absent = summarizeWorkloads({measurement: 'kernel', results: [{count: 128, report: {...cpuWin, gpu: null}}]});
   assert.equal(absent.conclusion, 'CPU measurements only. No GPU/CPU conclusion.');
+});
+
+function budgetCalibration(count, cpuMs, gpuMs = null) {
+  return {count, report: {cpu: {medianMs: 1, p90Ms: cpuMs}, gpu: gpuMs === null ? null : {medianMs: 1, p90Ms: gpuMs},
+    accuracy: gpuMs === null ? null : {matches: true}, commandAccuracy: gpuMs === null ? null : {matches: true}}};
+}
+
+test('budget selection uses P90, largest tested verified counts and no synthetic minimum', () => {
+  const rows = [budgetCalibration(128, 4, 7), budgetCalibration(512, 12, 9), budgetCalibration(2048, 50, 15), budgetCalibration(8192, 200, 25)];
+  let selected = selectBudgetCounts(rows, 20, true);
+  assert.equal(selected.cpu.count, 512); assert.equal(selected.gpu.count, 2048);
+  rows[2].report.commandAccuracy.matches = false;
+  selected = selectBudgetCounts(rows, 20, true);
+  assert.equal(selected.gpu.count, 512);
+  assert.equal(selectBudgetCounts(rows, 1, true).cpu.count, null);
+  assert.equal(selectBudgetCounts(rows, 20, false).gpu.count, null);
+  assert.equal(selectBudgetCounts([budgetCalibration(128, 0), budgetCalibration(999, 1)], 20, false).cpu.count, null);
+  for (const budget of [0, -1, NaN, 1001]) assert.throws(() => selectBudgetCounts(rows, budget, true), /Invalid planning budget/);
+});
+
+test('late mission plans are timed but discarded before any motion, including overrun samples', async () => {
+  let clock = 0;
+  const trial = await runMission({scene: scenes.gap, count: 128, seed: 311}, {budgetMs: 5, now: () => clock,
+    yieldControl: async () => {}, evaluate: (...args) => {clock += 6; return cpuCosts(...args);}});
+  assert.equal(trial.status, 'deadline_stop'); assert.equal(trial.steps, 0);
+  assert.deepEqual(trial.path, [scenes.gap.start]); assert.equal(trial.pathLength, 0);
+  assert.deepEqual(trial.planning.timing.samplesMs, [6]); assert.equal(trial.planning.deadlineMisses, 1);
+  assert.ok(trial.validRollouts > 0);
+});
+
+test('plans exactly on budget advance guarded substeps and record path distance, not wall-time motion', async () => {
+  let clock = 0;
+  const trial = await runMission({scene: scenes.gap, count: 128, seed: 311, maxSteps: 1}, {budgetMs: 5, now: () => clock,
+    yieldControl: async () => {}, evaluate: (...args) => {clock += 5; return cpuCosts(...args);}});
+  assert.equal(trial.status, 'timeout'); assert.equal(trial.steps, 1); assert.equal(trial.planning.deadlineMisses, 0);
+  assert.equal(trial.simulationSeconds, .1); assert.ok(trial.pathLength > 0); assert.ok(trial.minimumClearance > 0);
+  assert.ok(trial.pathLength >= Math.hypot(trial.path[1][0] - trial.path[0][0], trial.path[1][1] - trial.path[0][1]) - 1e-12);
+  clock = 10;
+  await assert.rejects(runMission({scene: scenes.gap, count: 128, seed: 311}, {budgetMs: 5, now: () => clock--, yieldControl: async () => {}}), /Invalid mission benchmark clock/);
+});
+
+test('budget experiment calibrates fixed initial targets then independently runs three seeds at selected counts', async () => {
+  let clock = 0;
+  const calls = {cpu: [], gpu: []};
+  const progress = [];
+  const evaluate = backend => (...args) => {calls[backend].push(args[4]); clock += backend === 'cpu' ? 2 : 3; return cpuCosts(...args);};
+  const report = await compareBudget({sceneId: 'slalom', temperature: 3, budgetMs: 10}, {
+    maxSteps: 1, now: () => clock, yieldControl: async () => {}, cpuEvaluate: evaluate('cpu'), gpuEvaluate: evaluate('gpu'),
+    calibrate: async (input, options) => {
+      assert.deepEqual(input.state, scenes.slalom.start); assert.deepEqual(input.goal, scenes.slalom.waypoints[0]);
+      options.onProgress({phase: 'measurement', backend: 'cpu', iteration: 1, total: 1});
+      return budgetCalibration(input.count, input.count === 128 ? 4 : 40, input.count === 512 ? 5 : 40).report;
+    }, onProgress: value => progress.push(value),
+  });
+  assert.equal(report.selections.cpu.count, 128); assert.equal(report.selections.gpu.count, 512);
+  assert.deepEqual(calls.cpu, Array(6).fill(128)); assert.deepEqual(calls.gpu, Array(6).fill(512));
+  assert.equal(report.summaries.cpu.timeouts, 3); assert.equal(report.summaries.gpu.timeouts, 3);
+  assert.deepEqual(report.summaries.cpu.planning.samplesMs, [2, 2, 2]);
+  assert.deepEqual(report.summaries.gpu.planning.samplesMs, [3, 3, 3]);
+  assert.equal(report.summaries.cpu.deadlineMisses, 0);
+  assert.ok(progress.some(value => value.phase === 'calibration' && value.calibrationPhase === 'measurement'));
+  assert.deepEqual(report.seeds, [311, 312, 313]);
+  assert.equal(JSON.parse(JSON.stringify(report)).schema, 'cudarobotics.mppi-budget.v1');
+});
+
+test('budget experiments distinguish no fitting count and absent GPUs from failed missions', async () => {
+  for (const fits of [false, true]) {
+    let clock = 0;
+    const report = await compareBudget({sceneId: 'gap', budgetMs: 10}, {maxSteps: 1, yieldControl: async () => {}, now: () => clock,
+      cpuEvaluate: (...args) => {assert.ok(fits); clock++; return cpuCosts(...args);},
+      calibrate: async input => budgetCalibration(input.count, fits && input.count === 128 ? 5 : 30).report});
+    assert.equal(report.selections.cpu.count, fits ? 128 : null);
+    assert.equal(report.results.cpu === null, !fits); assert.equal(report.summaries.cpu === null, !fits);
+    assert.equal(report.results.gpu, null); assert.equal(report.summaries.gpu, null);
+  }
+});
+
+test('budget trials can still reach all goals; fitting calibration does not silently disable deadline enforcement', async () => {
+  let clock = 0;
+  const evaluate = (...args) => {clock++; return cpuCosts(...args);};
+  const report = await compareBudget({sceneId: 'gap', budgetMs: 10}, {yieldControl: async () => {}, now: () => clock,
+    cpuEvaluate: evaluate, gpuEvaluate: evaluate,
+    calibrate: async input => budgetCalibration(input.count, input.count === 128 ? 5 : 30, input.count === 128 ? 5 : 30).report});
+  assert.equal(report.summaries.cpu.reached, 3); assert.equal(report.summaries.gpu.reached, 3);
+  assert.equal(report.summaries.cpu.deadlineStops, 0); assert.ok(report.summaries.cpu.meanPathLength > 0);
+  let calls = 0;
+  const late = await compareBudget({sceneId: 'gap', budgetMs: 10}, {yieldControl: async () => {}, now: () => clock,
+    cpuEvaluate: (...args) => {calls++; clock += 11; return cpuCosts(...args);},
+    calibrate: async input => budgetCalibration(input.count, input.count === 128 ? 5 : 30).report});
+  assert.equal(late.summaries.cpu.deadlineStops, 3); assert.equal(late.summaries.cpu.deadlineMisses, 3);
+  assert.equal(late.summaries.cpu.meanPathLength, 0); assert.equal(calls, 6);
+});
+
+test('budget calibration or mission cancellation never exports a partial experiment', async () => {
+  let cancelled = false;
+  await assert.rejects(compareBudget({sceneId: 'gap'}, {shouldCancel: () => cancelled,
+    calibrate: async input => {cancelled = true; return budgetCalibration(input.count, 5).report;}}), {name: 'AbortError'});
+  cancelled = false;
+  let calls = 0;
+  await assert.rejects(compareBudget({sceneId: 'gap'}, {shouldCancel: () => cancelled, yieldControl: async () => {},
+    calibrate: async input => budgetCalibration(input.count, input.count === 128 ? 5 : 30).report,
+    cpuEvaluate: (...args) => {calls++; if(calls === 2) cancelled = true; return cpuCosts(...args);}}), {name: 'AbortError'});
+  await assert.rejects(compareBudget({sceneId: 'unknown'}), /Invalid budget experiment settings/);
 });

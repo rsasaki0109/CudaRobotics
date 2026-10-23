@@ -1,6 +1,7 @@
 import {mppiSnapshot} from './benchmark.mjs';
 import {summarizeWorkloads} from './workload-insights.mjs';
 import {Planner, scenes, cpuCosts, safeAdvance, advance, clearance, HORIZON, DT, COLLISION} from './planner.mjs';
+import {summarize} from '../assets/benchmark.mjs';
 
 export const WORKLOAD_COUNTS = Object.freeze([128, 512, 2048, 8192]);
 export const MISSION_SEEDS = Object.freeze([311, 312, 313]);
@@ -37,10 +38,12 @@ export async function compareWorkloads(source, {createJob, shouldCancel = () => 
 }
 
 export async function runMission({scene, count, seed, temperature = 3, maxSteps = 600},
-  {evaluate = cpuCosts, shouldCancel = () => false, yieldControl = yieldFrame, onProgress = () => {}} = {}) {
+  {evaluate = cpuCosts, shouldCancel = () => false, yieldControl = yieldFrame, onProgress = () => {},
+    budgetMs = null, now = () => performance.now()} = {}) {
   if (!scene || !Number.isInteger(count) || !WORKLOAD_COUNTS.includes(count) || !Number.isInteger(seed)
     || !Number.isFinite(temperature) || temperature < .5 || temperature > 10
-    || !Number.isInteger(maxSteps) || maxSteps < 1 || maxSteps > 600) throw new Error('Invalid mission settings');
+    || !Number.isInteger(maxSteps) || maxSteps < 1 || maxSteps > 600
+    || (budgetMs !== null && (!Number.isFinite(budgetMs) || budgetMs <= 0))) throw new Error('Invalid mission settings');
   const planner = new Planner(seed);
   let state = [...scene.start];
   const waypoints = (scene.waypoints ?? []).map(point => [...point]);
@@ -50,20 +53,30 @@ export async function runMission({scene, count, seed, temperature = 3, maxSteps 
   let steps = 0;
   let validRollouts = 0;
   let evaluatedRollouts = 0;
+  let pathLength = 0;
+  const planTimes = [];
   for (; status === 'timeout' && steps < maxSteps;) {
     checkCancellation(shouldCancel); await yieldControl(); checkCancellation(shouldCancel);
     if (Math.hypot(state[0] - scene.goal[0], state[1] - scene.goal[1]) < .3) {status = 'reached'; break;}
     while (waypoints.length && Math.hypot(state[0] - waypoints[0][0], state[1] - waypoints[0][1]) < .65) waypoints.shift();
     const target = waypoints[0] ?? scene.goal;
+    const started = budgetMs === null ? null : now();
     const controls = planner.sample(state, target, count);
     const costs = await evaluate(state, target, scene.obstacles, controls, count);
+    const command = planner.update(costs, controls, temperature);
+    const duration = budgetMs === null ? null : now() - started;
     checkCancellation(shouldCancel);
     if (costs.length !== count || !costs.every(cost => Number.isFinite(cost) && cost >= 0)) throw new Error('Invalid mission rollout costs');
-    const command = planner.update(costs, controls, temperature);
+    if (duration !== null) {
+      if (!Number.isFinite(duration) || duration < 0) throw new Error('Invalid mission benchmark clock');
+      planTimes.push(duration);
+    }
     validRollouts += command.valid; evaluatedRollouts += count;
+    if (duration !== null && duration > budgetMs) {status = 'deadline_stop'; break;}
     const next = safeAdvance(state, command.velocity, command.angular, scene.obstacles);
     if (!command.valid || !next) {status = 'safe_stop'; break;}
     const half = advance(state, command.velocity, command.angular, DT / 2);
+    pathLength += Math.hypot(half[0] - state[0], half[1] - state[1]) + Math.hypot(next[0] - half[0], next[1] - half[1]);
     minimumClearance = Math.min(minimumClearance, clearance(half[0], half[1], scene.obstacles), clearance(next[0], next[1], scene.obstacles));
     state = next; steps++; path.push([...state]);
     if (Math.hypot(state[0] - scene.goal[0], state[1] - scene.goal[1]) < .3) status = 'reached';
@@ -71,7 +84,9 @@ export async function runMission({scene, count, seed, temperature = 3, maxSteps 
   }
   checkCancellation(shouldCancel);
   return {seed, count, status, steps, simulationSeconds: steps * DT, goalDistance: Math.hypot(state[0] - scene.goal[0], state[1] - scene.goal[1]),
-    minimumClearance, validRollouts, evaluatedRollouts, path};
+    minimumClearance, validRollouts, evaluatedRollouts, path, pathLength,
+    planning: budgetMs === null ? null : {budgetMs, timing: planTimes.length ? summarize(planTimes) : null,
+      deadlineMisses: planTimes.filter(duration => duration > budgetMs).length}};
 }
 
 export async function compareMissions({sceneId, count, temperature}, {gpuEvaluate = null, shouldCancel = () => false,

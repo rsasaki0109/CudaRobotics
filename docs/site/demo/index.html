@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="description" content="Run interactive MPPI robot navigation locally in your browser with WebGPU or a CPU fallback.">
   <title>CudaRobotics · Browser MPPI Lab</title>
-  <link rel="stylesheet" href="demo.css?v=workload-insights-1">
+  <link rel="stylesheet" href="demo.css?v=budget-1">
   <link rel="stylesheet" href="../assets/comparison.css">
 </head>
 <body>
@@ -75,11 +75,26 @@
       <div class="buttons"><button id="compare-missions" disabled>Validate 3 seeds</button><button id="export-missions" class="secondary" disabled>Save missions</button></div>
       <dl class="mission-results"><div><dt>CPU missions</dt><dd id="mission-cpu">—</dd></div><div><dt>GPU missions</dt><dd id="mission-gpu">—</dd></div></dl>
       <p class="fine">Arrival is distance below 0.30 m. Safe stops and timeouts count as failures, not successes. Motion is guarded at two substeps per command; minimum clearance is surface-to-robot margin at those checks, not a continuous collision proof. Three deterministic trials are not a general reliability estimate. CPU missions run on the main thread and yield between steps. No mission speed ratio is inferred. JSON includes seeds, settings, complete paths and classified outcomes. Missing GPU results remain unavailable. Changes, cancellation or hiding the tab discard partial reports.</p>
+      <section class="budget-section" aria-labelledby="budget-title">
+        <p class="eyebrow">SAME TIME BUDGET / DIFFERENT CANDIDATE COUNTS</p><h3 id="budget-title">What fits a planning deadline?</h3>
+        <p>Calibrate complete plans, then compare three seeded missions at the largest tested count that fits each backend's P90 budget.</p>
+        <label for="budget-ms">Soft planning deadline</label><select id="budget-ms"><option value="5">5 ms</option><option value="10">10 ms</option><option value="20" selected>20 ms</option><option value="50">50 ms</option><option value="100">100 ms</option></select>
+        <div class="buttons"><button id="compare-budget" disabled>Compare within budget</button><button id="cancel-budget" class="secondary" disabled>Cancel</button><button id="export-budget" class="secondary" disabled>Save budget experiment</button></div>
+        <p id="budget-status" role="status">Preparing experiments…</p>
+        <p class="fine">Independent of the live count and sweep timing selector. Uses the selected built-in environment from its initial pose, first guide target and current temperature, <strong>not an edited goal</strong>. Calibration tests 128, 512, 2,048 and 8,192 candidates, with three warmups and 15 alternating complete-plan pairs. Counts whose costs or controls disagree are excluded. Each backend selects its largest tested count whose P90 fits; this is neither a continuous maximum nor a deadline guarantee. A backend with no fitting count is not tested.</p>
+        <pre id="budget-calibration">No calibration yet.</pre>
+        <div class="budget-results">
+          <article><h4>CPU · calibrated count</h4><p id="budget-cpu-status">—</p><canvas id="budget-cpu-canvas" width="400" height="400" aria-label="CPU budget mission paths, detailed outcomes follow"></canvas><pre id="budget-cpu-trials">—</pre></article>
+          <article><h4>GPU · calibrated count</h4><p id="budget-gpu-status">—</p><canvas id="budget-gpu-canvas" width="400" height="400" aria-label="GPU budget mission paths, detailed outcomes follow"></canvas><pre id="budget-gpu-trials">—</pre></article>
+        </div>
+        <p class="fine">Path colors: seed 311 blue, 312 mint, 313 amber. Circles mark the goal and recorded endpoints. Each independent mission uses the selected count throughout, with normal warm-start updates and a 600-step limit. Different counts mean different candidate sets, even with the same seeds and policy. Success is not assumed to improve with more samples.</p>
+        <p class="fine"><strong>Soft deadline, not real-time preemption:</strong> every mission plan times CPU sampling + cost evaluation + CPU softmin/update, including GPU transfers. An over-budget evaluator is allowed to finish, then its command is discarded and the mission stops <em>before motion</em>. Late durations remain in JSON and count as deadline stops, not safe arrivals. The main thread cannot forcibly interrupt JavaScript or GPU work. One evaluator warmup per trial excludes buffer setup. Checks, drawing, motion and between-step yields are untimed; simulated time advances only on accepted commands. Path length sums the two guarded model substep segments. Three trials do not establish reliability, continuous collision safety or a GPU-quality winner.</p>
+      </section>
     </section>
     <section class="about"><h2>Same parallel idea. A browser-native backend.</h2><p>Like the native CUDA controller, one GPU invocation evaluates one candidate trajectory. A softmin weights the sampled control sequences; the first command moves the robot, then the horizon shifts. Guide waypoints in the slalom scene provide a global route; MPPI is a local controller.</p><p>This is a simplified JavaScript / WGSL port, <strong>not CUDA running in a browser</strong>, not the full Nav2 controller and not a native performance benchmark. Sampling, weight reduction and drawing run on the CPU. WebGPU evaluates rollout costs; unsupported devices automatically use the JavaScript reference. No installs, external assets, telemetry, camera permissions or backend server.</p><p><a href="../nav2.html">Run the native CUDA / Nav2 controller ↗</a> · <a href="../python.html">Python GPU API ↗</a></p></section>
   </main>
   <footer>CudaRobotics / Browser MPPI Lab <span>Built for exploration, not robot deployment.</span></footer>
   <noscript>This interactive demo requires JavaScript. The documentation links remain available.</noscript>
-  <script type="module" src="app.mjs?v=workload-insights-1"></script>
+  <script type="module" src="app.mjs?v=budget-1"></script>
 </body>
 </html>
