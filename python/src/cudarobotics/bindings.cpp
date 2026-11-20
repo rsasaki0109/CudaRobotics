@@ -689,7 +689,7 @@ private:
 NB_MODULE(_cudarobotics, m)
 {
   m.doc() = "CUDA Robotics Python bindings";
-  m.attr("__version__") = "0.4.1";
+  m.attr("__version__") = "0.4.2";
 
   nb::enum_<cr::MotionModel>(m, "MotionModel")
     .value("DiffDrive", cr::MotionModel::DiffDrive)

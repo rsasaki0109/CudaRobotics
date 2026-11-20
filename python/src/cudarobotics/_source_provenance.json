@@ -1,7 +1,7 @@
 {
   "algorithm": "sha256-text-lf",
   "schema_version": 1,
-  "source_digest": "ffdacda4d776ad783ab01a389705b076aadf0f33bc99eb4a2c2bcf9e847453b1",
+  "source_digest": "c17301863deba11bfcfb1238ca3b64825e30ab46e7eea047c3766f5444cdb73a",
   "sources": {
     "CMakeLists.txt": "d661f49cf50e486b338f2f1b01f121189295824d722dd76e4f852044494ba1b0",
     "README.md": "cd19a92f86e90e86d0e2eda7f132c2cf1755a743e0b2ef3e843dcb8e16955a6b",
@@ -39,9 +39,9 @@
     "core/src/robust_p2plane_gpu.cu": "636086b0cf6c3d0c9fc78e8f1798df6dc79a22e86af06e8836b6ffdeaea63545",
     "core/src/robust_treg_gpu.cu": "d28246e367a2a34cc3cafd8136415e01be697b93a98d93073544dd00c3d6daa9",
     "core/src/sinkhorn_gpu.cu": "7866ff758b09e9a6f3115dc14f1b638db0fb550982b76602bde0b1159e716411",
-    "pyproject.toml": "eaf8dd1e33de72e14a37feab8b2535b2b7bfbda22864838818ea301804340438",
+    "pyproject.toml": "267e71e2dc65e93733e926ac674758a03bc2d34d33a0af210c03d385aa49772a",
     "src/cudarobotics/__init__.py": "7f20301ebd6424d5c8b1dc3198ddf649307a0c3e9bcabb5b2a10e34633a455b4",
-    "src/cudarobotics/bindings.cpp": "00807108de4c829bd537893ad750a3a8b5d07e306f10b93d90eb31dd52d90639",
+    "src/cudarobotics/bindings.cpp": "3ecfd9bd8827acccf517d37383169e02eb19938831081730a2a52933f81bb003",
     "src/cudarobotics/registration/__init__.py": "f01e0602ce4c90c163a01eb03f68bcb14040084b8740d07a63677ba08ec9a6fb"
   }
 }
