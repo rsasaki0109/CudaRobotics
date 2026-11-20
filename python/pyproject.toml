@@ -9,14 +9,14 @@ build-backend = "scikit_build_core.build"
 [project]
 name = "cudarobotics"
 version = "0.4.2"
-description = "CUDA-accelerated robotics algorithms: GPU MPPI and point-cloud registration"
+description = "CUDA-accelerated robotics algorithms: GPU MPPI, point-cloud registration, and CudaNav"
 readme = "README.md"
 requires-python = ">=3.9"
 license = { text = "MIT" }
 authors = [
   { name = "CudaRobotics contributors" },
 ]
-keywords = ["cuda", "robotics", "mppi", "registration", "gpu"]
+keywords = ["cuda", "robotics", "mppi", "registration", "gpu", "kiss-icp", "esdf", "navigation"]
 classifiers = [
   "Development Status :: 3 - Alpha",
   "Intended Audience :: Science/Research",
@@ -41,6 +41,9 @@ examples = [
 test = [
   "pytest>=7.0",
 ]
+
+[project.scripts]
+cudarobotics-cudanav = "cudarobotics.navigation.cli:main"
 
 [project.urls]
 Homepage = "https://github.com/rsasaki0109/CudaRobotics"
@@ -79,4 +82,5 @@ testpaths = ["tests"]
 filterwarnings = ["ignore::DeprecationWarning"]
 markers = [
   "gpu_registration: requires a CUDA-capable GPU for registration consistency checks",
+  "gpu_navigation: requires a CUDA-capable GPU for the CudaNav pipeline",
 ]

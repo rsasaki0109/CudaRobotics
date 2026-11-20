@@ -32,6 +32,16 @@ nanobind_add_module(_cudarobotics
   ${CUDAROBOTICS_ROOT}/src/bcpd_gpu.cu
   ${CUDAROBOTICS_ROOT}/src/robust_treg_gpu.cu
   ${CUDAROBOTICS_ROOT}/src/robust_p2plane_gpu.cu
+  ${CUDAROBOTICS_ROOT}/src/gpu_kiss_icp.cu
+  ${CUDAROBOTICS_ROOT}/src/voxel_mapping_gpu.cu
+  ${CUDAROBOTICS_ROOT}/src/esdf_2d_gpu.cu
+)
+
+# The KISS-ICP source doubles as a standalone OpenCV demo; the core-only build
+# drops the demo, OpenCV, and process-exiting CUDA error handling.
+set_source_files_properties(
+  ${CUDAROBOTICS_ROOT}/src/gpu_kiss_icp.cu
+  PROPERTIES COMPILE_DEFINITIONS CUDAROBOTICS_KISS_ICP_CORE_ONLY
 )
 
 target_include_directories(_cudarobotics PRIVATE

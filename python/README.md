@@ -56,6 +56,30 @@ python examples/python/mppi_dlpack_costmap.py  # requires CUDA PyTorch or CuPy
 python examples/python/registration_quickstart.py
 ```
 
+## CudaNav Navigation (development)
+
+`cudarobotics.navigation` exposes the GPU KISS-ICP odometry, rolling voxel
+map, exact 2-D ESDF, and CUDA MPPI cores that the ROS 2 CudaNav packages use,
+plus one pipeline object and a CLI:
+
+```bash
+cudarobotics-cudanav sim --output-dir build/cudanav_sim --check
+cudarobotics-cudanav sequence recording.crkicp --output-dir build/cudanav_seq
+```
+
+```python
+from cudarobotics.navigation import CudaNavPipeline
+
+nav = CudaNavPipeline()
+step = nav.step(points_xyz, path=path_xy)  # (N, 3) scan, (M, 2) path
+v, w = step.command
+```
+
+`sim` is a synthetic, command-driven closed loop, not real-sensor evidence.
+See [`docs/python_cudanav.md`](../docs/python_cudanav.md) for the API, the
+output files, and current limits. This surface is not part of a published
+release yet.
+
 ## Registration Result API
 
 v0.2 keeps the tuple API and adds a normalized dataclass result:

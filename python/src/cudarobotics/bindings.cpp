@@ -4,7 +4,9 @@
 
 #include <algorithm>
 #include <array>
+#include <cstddef>
 #include <cstdint>
+#include <initializer_list>
 #include <limits>
 #include <memory>
 #include <stdexcept>
@@ -13,13 +15,19 @@
 
 #include "cuda_mppi_controller/mppi_gpu.hpp"
 #include "cudarobotics/bcpd_gpu.hpp"
+#include "cudarobotics/esdf_2d_gpu.hpp"
 #include "cudarobotics/fgr_gpu.hpp"
 #include "cudarobotics/filterreg_gpu.hpp"
+#include "cudarobotics/kiss_icp_gpu.hpp"
 #include "cudarobotics/robust_p2plane_gpu.hpp"
 #include "cudarobotics/robust_treg_gpu.hpp"
 #include "cudarobotics/sinkhorn_reg_gpu.hpp"
+#include "cudarobotics/voxel_mapping_gpu.hpp"
+
+#include <cuda_runtime.h>
 
 #include <nanobind/ndarray.h>
+#include <nanobind/stl/string.h>
 
 namespace nb = nanobind;
 using namespace nb::literals;
@@ -684,6 +692,338 @@ private:
   reg::BcpdGpu registrar_;
 };
 
+template<typename T>
+using NumpyArray = nb::ndarray<nb::numpy, T, nb::c_contig>;
+
+// Move a host vector into a NumPy array that owns it (no copy).
+template<typename T>
+NumpyArray<T> toNumpy(std::vector<T> values, std::initializer_list<size_t> shape)
+{
+  auto * storage = new std::vector<T>(std::move(values));
+  nb::capsule owner(storage, [](void * ptr) noexcept {
+    delete static_cast<std::vector<T> *>(ptr);
+  });
+  return NumpyArray<T>(storage->data(), shape, owner);
+}
+
+nb::dict kissPoseToDict(const reg::KissIcpPose & pose)
+{
+  nb::list rotation;
+  for (int i = 0; i < 9; ++i) {
+    rotation.append(pose.R.m[i]);
+  }
+  nb::list translation;
+  for (int k = 0; k < 3; ++k) {
+    translation.append(pose.t[k]);
+  }
+  nb::dict out;
+  out["rotation"] = rotation;
+  out["translation"] = translation;
+  return out;
+}
+
+reg::KissIcpPose kissPoseFrom(nb::object rotation, nb::object translation)
+{
+  reg::KissIcpPose pose;
+  if (rotation.ptr() != Py_None) {
+    const auto r = readFloatSequence<9>(rotation, "rotation");
+    std::copy(r.begin(), r.end(), pose.R.m);
+  }
+  if (translation.ptr() != Py_None) {
+    const auto t = readFloatSequence<3>(translation, "translation");
+    std::copy(t.begin(), t.end(), pose.t);
+  }
+  return pose;
+}
+
+class PyKissIcpOdometry
+{
+public:
+  explicit PyKissIcpOdometry(const reg::KissIcpConfig & config)
+  : odometry_(validated(config))
+  {
+  }
+
+  void reset(nb::object rotation, nb::object translation)
+  {
+    odometry_.reset(kissPoseFrom(rotation, translation));
+  }
+
+  nb::dict register_scan(
+    nb::object points,
+    nb::object point_times,
+    nb::object scan_start,
+    nb::object scan_end)
+  {
+    BufferView points_view(points, 2, 3, 4, "points");
+    const auto count = static_cast<std::size_t>(points_view.dim(0));
+    reg::KissIcpFrameResult result;
+    if (point_times.ptr() == Py_None) {
+      if (scan_start.ptr() != Py_None || scan_end.ptr() != Py_None) {
+        throw std::invalid_argument("scan_start/scan_end require point_times");
+      }
+      result = odometry_.register_scan(points_view.data<float>(), count);
+    } else {
+      BufferView times_view(point_times, 1, -1, 4, "point_times");
+      if (static_cast<std::size_t>(times_view.dim(0)) != count) {
+        throw std::invalid_argument("point_times must have one entry per point");
+      }
+      if ((scan_start.ptr() == Py_None) != (scan_end.ptr() == Py_None)) {
+        throw std::invalid_argument("scan_start and scan_end must be given together");
+      }
+      if (scan_start.ptr() == Py_None) {
+        result = odometry_.register_scan(
+          points_view.data<float>(), count, times_view.data<float>());
+      } else {
+        result = odometry_.register_scan(
+          points_view.data<float>(), count, times_view.data<float>(),
+          nb::cast<float>(scan_start), nb::cast<float>(scan_end));
+      }
+    }
+
+    nb::dict out = kissPoseToDict(result.pose);
+    out["iterations"] = result.alignment.iterations;
+    out["inliers"] = result.alignment.inliers;
+    out["rmse"] = result.alignment.rmse;
+    out["nn_ms"] = result.alignment.nn_ms;
+    out["normal_equation_ms"] = result.alignment.normal_equation_ms;
+    out["threshold"] = result.alignment.threshold;
+    out["input_points"] = result.input_points;
+    out["sampled_points"] = result.sampled_points;
+    out["map_points"] = result.map_points;
+    out["map_initialized"] = result.map_initialized;
+    out["deskewed"] = result.deskewed;
+    out["point_time_span_s"] = result.point_time_span_s;
+    const size_t deskewed_points = result.deskewed_xyz.size() / 3;
+    out["deskewed_xyz"] = toNumpy(std::move(result.deskewed_xyz), {deskewed_points, size_t{3}});
+    return out;
+  }
+
+  nb::dict pose() const
+  {
+    return kissPoseToDict(odometry_.pose());
+  }
+
+  std::size_t frame_count() const
+  {
+    return odometry_.frame_count();
+  }
+
+  std::size_t map_point_count() const
+  {
+    return odometry_.map_point_count();
+  }
+
+  NumpyArray<float> map_snapshot() const
+  {
+    auto values = odometry_.map_snapshot();
+    const size_t points = values.size() / 3;
+    return toNumpy(std::move(values), {points, size_t{3}});
+  }
+
+  nb::dict timing() const
+  {
+    const reg::KissIcpTiming t = odometry_.timing();
+    nb::dict out;
+    out["deskew_ms"] = t.deskew_ms;
+    out["index_build_ms"] = t.index_build_ms;
+    out["map_upload_ms"] = t.map_upload_ms;
+    out["map_normal_ms"] = t.map_normal_ms;
+    out["validation_ms"] = t.validation_ms;
+    out["deskew_wall_ms"] = t.deskew_wall_ms;
+    out["downsample_ms"] = t.downsample_ms;
+    out["icp_ms"] = t.icp_ms;
+    out["map_update_ms"] = t.map_update_ms;
+    out["map_prune_ms"] = t.map_prune_ms;
+    out["map_insert_ms"] = t.map_insert_ms;
+    out["map_pack_ms"] = t.map_pack_ms;
+    out["map_reorder_ms"] = t.map_reorder_ms;
+    out["normal_cache_prepare_ms"] = t.normal_cache_prepare_ms;
+    out["normal_reused_points"] = t.normal_reused_points;
+    out["normal_recomputed_points"] = t.normal_recomputed_points;
+    return out;
+  }
+
+private:
+  static const reg::KissIcpConfig & validated(const reg::KissIcpConfig & config)
+  {
+    const std::string error = reg::validate_kiss_icp_config(config);
+    if (!error.empty()) {
+      throw std::invalid_argument(error);
+    }
+    return config;
+  }
+
+  reg::KissIcpOdometry odometry_;
+};
+
+nb::dict gridInfoToDict(const reg::VoxelGridInfo & grid)
+{
+  nb::dict out;
+  out["width"] = grid.width;
+  out["height"] = grid.height;
+  out["depth"] = grid.depth;
+  out["resolution"] = grid.resolution;
+  out["origin_x"] = grid.origin_x;
+  out["origin_y"] = grid.origin_y;
+  out["origin_z"] = grid.origin_z;
+  return out;
+}
+
+class PyVoxelMapper
+{
+public:
+  explicit PyVoxelMapper(const reg::VoxelMappingConfig & config)
+  : mapper_(validated(config))
+  {
+  }
+
+  void reset(float center_x, float center_y)
+  {
+    mapper_.reset(center_x, center_y);
+  }
+
+  nb::dict integrate_scan(nb::object points_world, nb::object sensor_origin)
+  {
+    BufferView points_view(points_world, 2, 3, 4, "points_world");
+    const auto origin = readFloatSequence<3>(sensor_origin, "sensor_origin");
+    const reg::VoxelMappingStats stats = mapper_.integrate_scan(
+      points_view.data<float>(), static_cast<std::size_t>(points_view.dim(0)),
+      origin.data());
+    nb::dict out;
+    out["input_points"] = stats.input_points;
+    out["integrated_rays"] = stats.integrated_rays;
+    out["observed_voxels"] = stats.observed_voxels;
+    out["grid_shifted"] = stats.grid_shifted;
+    out["shift_x_cells"] = stats.shift_x_cells;
+    out["shift_y_cells"] = stats.shift_y_cells;
+    out["shift_ms"] = stats.shift_ms;
+    out["raycast_ms"] = stats.raycast_ms;
+    return out;
+  }
+
+  nb::dict grid_info() const
+  {
+    return gridInfoToDict(mapper_.grid_info());
+  }
+
+  nb::tuple occupancy_projection()
+  {
+    reg::OccupancyProjection projection = mapper_.occupancy_projection();
+    const auto height = static_cast<size_t>(projection.grid.height);
+    const auto width = static_cast<size_t>(projection.grid.width);
+    if (projection.data.size() != height * width) {
+      throw std::runtime_error("occupancy projection size does not match its grid");
+    }
+    auto data = toNumpy(std::move(projection.data), {height, width});
+    return nb::make_tuple(data, gridInfoToDict(projection.grid), projection.gpu_ms);
+  }
+
+private:
+  static const reg::VoxelMappingConfig & validated(const reg::VoxelMappingConfig & config)
+  {
+    const std::string error = reg::validate_voxel_mapping_config(config);
+    if (!error.empty()) {
+      throw std::invalid_argument(error);
+    }
+    return config;
+  }
+
+  reg::VoxelMapperGpu mapper_;
+};
+
+nb::tuple esdfResultToTuple(reg::Esdf2DResult result)
+{
+  const auto height = static_cast<size_t>(result.height);
+  const auto width = static_cast<size_t>(result.width);
+  if (result.distances.size() != height * width) {
+    throw std::runtime_error("ESDF result size does not match its grid");
+  }
+  nb::dict info;
+  info["resolution"] = result.resolution;
+  info["max_distance"] = result.max_distance;
+  info["occupied_cells"] = result.occupied_cells;
+  info["unknown_cells"] = result.unknown_cells;
+  info["gpu_ms"] = result.gpu_ms;
+  auto distances = toNumpy(std::move(result.distances), {height, width});
+  return nb::make_tuple(distances, info);
+}
+
+class PyEsdf2D
+{
+public:
+  explicit PyEsdf2D(const reg::Esdf2DConfig & config)
+  : esdf_(config)
+  {
+  }
+
+  nb::tuple compute(nb::object occupancy, float resolution, float max_distance)
+  {
+    BufferView view(occupancy, 2, -1, 1, "occupancy");
+    return esdfResultToTuple(esdf_.compute(
+      view.data<std::int8_t>(), view.dim(1), view.dim(0), resolution, max_distance));
+  }
+
+private:
+  reg::Esdf2DGpu esdf_;
+};
+
+nb::tuple esdfCpuReference(
+  nb::object occupancy,
+  float resolution,
+  float max_distance,
+  int occupancy_threshold,
+  reg::UnknownSpacePolicy unknown_policy)
+{
+  BufferView view(occupancy, 2, -1, 1, "occupancy");
+  const int height = view.dim(0);
+  const int width = view.dim(1);
+  const auto * data = view.data<std::int8_t>();
+  std::vector<std::int8_t> cells(data, data + static_cast<std::size_t>(width) * height);
+  return esdfResultToTuple(reg::compute_esdf_2d_cpu_reference(
+    cells, width, height, resolution, max_distance, occupancy_threshold, unknown_policy));
+}
+
+// Report the CUDA runtime/driver and the active device without raising when no
+// GPU is present, so evidence manifests can record the failure reason.
+nb::dict cudaRuntimeInfo()
+{
+  nb::dict out;
+  int runtime_version = 0;
+  int driver_version = 0;
+  cudaRuntimeGetVersion(&runtime_version);
+  cudaDriverGetVersion(&driver_version);
+  out["runtime_version"] = runtime_version;
+  out["driver_version"] = driver_version;
+  int device_count = 0;
+  const cudaError_t count_error = cudaGetDeviceCount(&device_count);
+  if (count_error != cudaSuccess) {
+    cudaGetLastError();
+    out["device_count"] = 0;
+    out["error"] = std::string(cudaGetErrorString(count_error));
+    return out;
+  }
+  out["device_count"] = device_count;
+  int device = 0;
+  cudaDeviceProp properties{};
+  if (device_count > 0 && cudaGetDevice(&device) == cudaSuccess &&
+    cudaGetDeviceProperties(&properties, device) == cudaSuccess)
+  {
+    out["device"] = device;
+    out["name"] = std::string(properties.name);
+    out["compute_capability"] = nb::make_tuple(properties.major, properties.minor);
+    out["total_memory_bytes"] = static_cast<std::size_t>(properties.totalGlobalMem);
+    std::size_t free_bytes = 0;
+    std::size_t total_bytes = 0;
+    if (cudaMemGetInfo(&free_bytes, &total_bytes) == cudaSuccess) {
+      out["free_memory_bytes"] = free_bytes;
+    } else {
+      cudaGetLastError();
+    }
+  }
+  return out;
+}
+
 }  // namespace
 
 NB_MODULE(_cudarobotics, m)
@@ -842,4 +1182,83 @@ NB_MODULE(_cudarobotics, m)
       "target"_a, "source"_a,
       "init_rotation"_a = nb::none(),
       "init_translation"_a = nb::none());
+
+  // --- CudaNav navigation cores (cudarobotics.navigation) ---
+  nb::class_<reg::KissIcpConfig>(m, "KissIcpConfig")
+    .def(nb::init<>())
+    .def_rw("map_voxel_size", &reg::KissIcpConfig::map_voxel_size)
+    .def_rw("scan_voxel_size", &reg::KissIcpConfig::scan_voxel_size)
+    .def_rw("map_radius", &reg::KissIcpConfig::map_radius)
+    .def_rw("threshold_min", &reg::KissIcpConfig::threshold_min)
+    .def_rw("threshold_max", &reg::KissIcpConfig::threshold_max)
+    .def_rw("max_icp_iterations", &reg::KissIcpConfig::max_icp_iterations)
+    .def_rw("normal_neighbors", &reg::KissIcpConfig::normal_neighbors)
+    .def_rw("max_scan_points", &reg::KissIcpConfig::max_scan_points)
+    .def_rw("max_map_points", &reg::KissIcpConfig::max_map_points)
+    .def_rw("hash_capacity", &reg::KissIcpConfig::hash_capacity);
+
+  nb::class_<PyKissIcpOdometry>(m, "_KissIcpOdometry")
+    .def(nb::init<const reg::KissIcpConfig &>())
+    .def("reset", &PyKissIcpOdometry::reset,
+      "rotation"_a = nb::none(), "translation"_a = nb::none())
+    .def(
+      "register_scan", &PyKissIcpOdometry::register_scan,
+      "points"_a, "point_times"_a = nb::none(),
+      "scan_start"_a = nb::none(), "scan_end"_a = nb::none())
+    .def("pose", &PyKissIcpOdometry::pose)
+    .def("frame_count", &PyKissIcpOdometry::frame_count)
+    .def("map_point_count", &PyKissIcpOdometry::map_point_count)
+    .def("map_snapshot", &PyKissIcpOdometry::map_snapshot)
+    .def("timing", &PyKissIcpOdometry::timing);
+
+  nb::class_<reg::VoxelMappingConfig>(m, "VoxelMappingConfig")
+    .def(nb::init<>())
+    .def_rw("width", &reg::VoxelMappingConfig::width)
+    .def_rw("height", &reg::VoxelMappingConfig::height)
+    .def_rw("depth", &reg::VoxelMappingConfig::depth)
+    .def_rw("resolution", &reg::VoxelMappingConfig::resolution)
+    .def_rw("origin_z", &reg::VoxelMappingConfig::origin_z)
+    .def_rw("min_range", &reg::VoxelMappingConfig::min_range)
+    .def_rw("max_range", &reg::VoxelMappingConfig::max_range)
+    .def_rw("log_odds_occupied", &reg::VoxelMappingConfig::log_odds_occupied)
+    .def_rw("log_odds_free", &reg::VoxelMappingConfig::log_odds_free)
+    .def_rw("log_odds_min", &reg::VoxelMappingConfig::log_odds_min)
+    .def_rw("log_odds_max", &reg::VoxelMappingConfig::log_odds_max)
+    .def_rw("occupied_threshold", &reg::VoxelMappingConfig::occupied_threshold)
+    .def_rw("projection_min_z", &reg::VoxelMappingConfig::projection_min_z)
+    .def_rw("projection_max_z", &reg::VoxelMappingConfig::projection_max_z)
+    .def_rw("rolling_margin_cells", &reg::VoxelMappingConfig::rolling_margin_cells)
+    .def_rw("max_scan_points", &reg::VoxelMappingConfig::max_scan_points);
+
+  nb::class_<PyVoxelMapper>(m, "_VoxelMapper")
+    .def(nb::init<const reg::VoxelMappingConfig &>())
+    .def("reset", &PyVoxelMapper::reset, "center_x"_a, "center_y"_a)
+    .def(
+      "integrate_scan", &PyVoxelMapper::integrate_scan,
+      "points_world"_a, "sensor_origin"_a)
+    .def("grid_info", &PyVoxelMapper::grid_info)
+    .def("occupancy_projection", &PyVoxelMapper::occupancy_projection);
+
+  nb::enum_<reg::UnknownSpacePolicy>(m, "UnknownSpacePolicy")
+    .value("Free", reg::UnknownSpacePolicy::Free)
+    .value("Occupied", reg::UnknownSpacePolicy::Occupied);
+
+  nb::class_<reg::Esdf2DConfig>(m, "Esdf2DConfig")
+    .def(nb::init<>())
+    .def_rw("max_width", &reg::Esdf2DConfig::max_width)
+    .def_rw("max_height", &reg::Esdf2DConfig::max_height)
+    .def_rw("occupancy_threshold", &reg::Esdf2DConfig::occupancy_threshold)
+    .def_rw("unknown_policy", &reg::Esdf2DConfig::unknown_policy);
+
+  nb::class_<PyEsdf2D>(m, "_Esdf2D")
+    .def(nb::init<const reg::Esdf2DConfig &>())
+    .def(
+      "compute", &PyEsdf2D::compute,
+      "occupancy"_a, "resolution"_a, "max_distance"_a);
+
+  m.def(
+    "_esdf_2d_cpu_reference", &esdfCpuReference,
+    "occupancy"_a, "resolution"_a, "max_distance"_a,
+    "occupancy_threshold"_a, "unknown_policy"_a);
+  m.def("cuda_runtime_info", &cudaRuntimeInfo);
 }

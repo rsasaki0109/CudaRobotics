@@ -24,8 +24,31 @@ CUDA_SOURCES = (
     "bcpd_gpu.cu",
     "robust_treg_gpu.cu",
     "robust_p2plane_gpu.cu",
+    "gpu_kiss_icp.cu",
+    "voxel_mapping_gpu.cu",
+    "esdf_2d_gpu.cu",
+)
+# Private headers of the CUDA KISS-ICP core, bundled next to cuda_check.cuh.
+PRIVATE_HEADERS = (
+    "kiss_icp_spatial.cuh",
+    "kiss_icp_reduction.cuh",
+    "kiss_icp_host_map.hpp",
+    "kiss_icp_downsample.hpp",
+    "kiss_icp_order.cuh",
+    "kiss_icp_normal_cache.cuh",
+)
+NAVIGATION_MODULES = (
+    "__init__.py",
+    "core.py",
+    "pipeline.py",
+    "simulation.py",
+    "closed_loop.py",
+    "sequence.py",
+    "evidence.py",
+    "cli.py",
 )
 PROVENANCE_PATH = "src/cudarobotics/_source_provenance.json"
+CLI_ENTRY_POINT = "cudarobotics-cudanav = cudarobotics.navigation.cli:main"
 
 
 def validate_provenance(contents: bytes, artifact: str) -> None:
@@ -78,6 +101,10 @@ def validate_sdist(path: Path, version: str) -> None:
         f"{root}/core/include/cuda_mppi_controller/mppi_gpu.hpp",
     }
     required.update(f"{root}/core/src/{name}" for name in CUDA_SOURCES)
+    required.update(f"{root}/core/include/{name}" for name in PRIVATE_HEADERS)
+    required.update(
+        f"{root}/src/cudarobotics/navigation/{name}" for name in NAVIGATION_MODULES
+    )
     required.update(
         f"{root}/core/include/cudarobotics/{path.name}"
         for path in (REPO / "include" / "cudarobotics").glob("*.hpp")
@@ -113,7 +140,9 @@ def validate_wheel(path: Path, version: str) -> None:
         f"{dist_info}/METADATA",
         f"{dist_info}/WHEEL",
         f"{dist_info}/RECORD",
+        f"{dist_info}/entry_points.txt",
     }
+    required.update(f"cudarobotics/navigation/{name}" for name in NAVIGATION_MODULES)
     with zipfile.ZipFile(path) as archive:
         names = set(archive.namelist())
         missing = sorted(required - names)
@@ -128,6 +157,11 @@ def validate_wheel(path: Path, version: str) -> None:
             f"{path.name} must contain exactly one native extension, got "
             f"{extensions}"
         )
+        entry_points = archive.read(f"{dist_info}/entry_points.txt").decode("utf-8")
+        assert re.search(
+            r"(?m)^cudarobotics-cudanav\s*=\s*cudarobotics\.navigation\.cli:main\s*$",
+            entry_points,
+        ), f"{path.name} does not declare the {CLI_ENTRY_POINT!r} console script"
         metadata = archive.read(f"{dist_info}/METADATA").decode("utf-8")
         assert re.search(r"(?m)^Name: cudarobotics$", metadata)
         assert re.search(

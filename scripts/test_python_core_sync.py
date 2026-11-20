@@ -18,6 +18,18 @@ CUDA_SOURCES = (
     "bcpd_gpu.cu",
     "robust_treg_gpu.cu",
     "robust_p2plane_gpu.cu",
+    "gpu_kiss_icp.cu",
+    "voxel_mapping_gpu.cu",
+    "esdf_2d_gpu.cu",
+)
+# Private headers of the CUDA KISS-ICP core, bundled next to cuda_check.cuh.
+PRIVATE_HEADERS = (
+    "kiss_icp_spatial.cuh",
+    "kiss_icp_reduction.cuh",
+    "kiss_icp_host_map.hpp",
+    "kiss_icp_downsample.hpp",
+    "kiss_icp_order.cuh",
+    "kiss_icp_normal_cache.cuh",
 )
 
 
@@ -46,6 +58,11 @@ def main() -> int:
         REPO / "include" / "cuda_check.cuh",
         REPO / "python" / "core" / "include" / "cuda_check.cuh",
     )
+    for header in PRIVATE_HEADERS:
+        assert_same(
+            REPO / "include" / header,
+            REPO / "python" / "core" / "include" / header,
+        )
     assert_same(
         REPO / "include" / "cuda_mppi_controller" / "mppi_gpu.hpp",
         REPO
@@ -92,7 +109,8 @@ def main() -> int:
 
     print(
         "Python bundled CUDA core is synchronized: "
-        f"{len(CUDA_SOURCES)} sources, {len(source_headers) + 2} headers; "
+        f"{len(CUDA_SOURCES)} sources, "
+        f"{len(source_headers) + len(PRIVATE_HEADERS) + 2} headers; "
         "source provenance is current"
     )
     return 0
