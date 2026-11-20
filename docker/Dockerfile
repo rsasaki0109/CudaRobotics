@@ -34,10 +34,11 @@ ENV PATH=/usr/local/cuda/bin:${PATH}
 # The ROS packages read the shared GPU core from the repo root (../../.. from
 # each package), so mirror that layout: /ws/{src,include,ros2_ws}.
 WORKDIR /ws
+# Copy the whole (small) header tree so new private headers of the shared
+# cores cannot silently break the image; scripts/check_docker_build_context.py
+# verifies the copied sources resolve every repository include.
 COPY src/mppi_gpu.cu src/gpu_kiss_icp.cu src/voxel_mapping_gpu.cu src/esdf_2d_gpu.cu src/
-COPY include/cuda_check.cuh include/cuda_check.cuh
-COPY include/cudarobotics include/cudarobotics
-COPY include/cuda_mppi_controller include/cuda_mppi_controller
+COPY include include
 COPY ros2_ws/src/cuda_robotics_msgs ros2_ws/src/cuda_robotics_msgs
 COPY ros2_ws/src/cuda_robotics_common ros2_ws/src/cuda_robotics_common
 COPY ros2_ws/src/cuda_kiss_icp ros2_ws/src/cuda_kiss_icp
