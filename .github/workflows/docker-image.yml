@@ -15,6 +15,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Check Docker build context
+        run: python3 scripts/check_docker_build_context.py
+
       # The build stage (nvcc + nav2) is large; reclaim runner disk first.
       - name: Free disk space
         run: sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/hostedtoolcache/CodeQL
