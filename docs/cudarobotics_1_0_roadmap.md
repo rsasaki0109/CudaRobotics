@@ -35,7 +35,7 @@ explicit failure reporting across the complete loop.
 | Area | Implemented | Evidence still required |
 |---|---|---|
 | v0.3 release | Published `v0.3.0` at `67f134554d054de14f41f86f4a3a800484d886a1`; Build, Python manylinux, ROS 2, systems-paper archive, release-asset re-download, and GHCR publication gates pass | Complete |
-| v0.4 Python CudaNav | ROS 2 CudaNav components and reusable CUDA cores exist, while the Python package currently exposes MPPI and registration | One Python navigation API, CLI, public-dataset quickstart, fixed-seed benchmark, and portable wheels |
+| Python CudaNav | `cudarobotics.navigation` binds the KISS-ICP, voxel-map, and ESDF cores next to CUDA MPPI; `CudaNavPipeline` and the `cudarobotics-cudanav sim`/`sequence` CLI run the complete loop on `master` (B-1, see [`python_cudanav.md`](python_cudanav.md)) | Public-dataset quickstart, fixed-seed benchmark evidence, and a release that ships the API in the portable wheels |
 | v1 release target | The support matrix keeps `1.0.0` as the future target while the published Python and ROS 2 source version is `0.3.0`; readiness remains fail-closed in `development` | Promote a proven v0.4 surface, then acquire immutable-tag fresh-clone, physical-GPU, published-image, and deployed-docs attestations |
 | GPU odometry | Reusable voxel-hash KISS-ICP core, lifecycle ROS component, exact-master Jazzy CI, and 804 odometry outputs in the content-addressed Istanbul ROS 2 GPU shadow release | Complete |
 | Mapping | Rolling voxel map, exact typed ESDF, lifecycle nodes, exact-master Jazzy CI, and 796 occupancy plus 794 ESDF outputs in the Istanbul ROS 2 GPU shadow release | Complete |
@@ -231,6 +231,13 @@ v0.4 exit gates:
 - source distribution, wheels, documentation, and examples report the same
   version;
 - multi-GPU remains optional and is not a release blocker.
+
+Milestone B-1 status (2026-11-20): the Python API, the pipeline object, and
+the CLI are implemented over the existing cores and documented in
+[`python_cudanav.md`](python_cudanav.md). CPU/no-GPU tests cover the schemas,
+the file format, and failure handling; GPU tests cover the cores, the ESDF
+oracle, and the closed-loop smoke gate. The public-dataset quickstart,
+fixed-seed benchmark evidence, and the wheel release remain open.
 
 Website expansion is paused during this epic. Update Markdown documentation
 and package examples first; resume site changes only after the Python API and

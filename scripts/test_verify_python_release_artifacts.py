@@ -34,6 +34,13 @@ def required_sdist_names() -> set[str]:
         f"{ROOT}/core/src/{name}" for name in verifier.CUDA_SOURCES
     )
     names.update(
+        f"{ROOT}/core/include/{name}" for name in verifier.PRIVATE_HEADERS
+    )
+    names.update(
+        f"{ROOT}/src/cudarobotics/navigation/{name}"
+        for name in verifier.NAVIGATION_MODULES
+    )
+    names.update(
         f"{ROOT}/core/include/cudarobotics/{path.name}"
         for path in (
             verifier.REPO / "include" / "cudarobotics"
@@ -60,6 +67,10 @@ def write_wheel(
     *,
     include_extension: bool = True,
     provenance: bytes | None = None,
+    entry_points: bytes = (
+        b"[console_scripts]\n"
+        b"cudarobotics-cudanav = cudarobotics.navigation.cli:main\n"
+    ),
 ) -> None:
     dist_info = f"cudarobotics-{VERSION}.dist-info"
     files = {
@@ -73,7 +84,12 @@ def write_wheel(
         ),
         f"{dist_info}/WHEEL": b"Wheel-Version: 1.0\n",
         f"{dist_info}/RECORD": b"",
+        f"{dist_info}/entry_points.txt": entry_points,
     }
+    files.update(
+        (f"cudarobotics/navigation/{name}", b"")
+        for name in verifier.NAVIGATION_MODULES
+    )
     if include_extension:
         files["cudarobotics/_cudarobotics.test.so"] = b"native"
     with zipfile.ZipFile(path, "w") as archive:
@@ -114,6 +130,26 @@ class ArtifactVerifierTests(unittest.TestCase):
                 AssertionError, "exactly one native extension"
             ):
                 verifier.validate_wheel(path, VERSION)
+
+    def test_wheel_requires_cudanav_console_script(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = (
+                Path(directory)
+                / f"cudarobotics-{VERSION}-py3-none-any.whl"
+            )
+            write_wheel(path, entry_points=b"[console_scripts]\n")
+            with self.assertRaisesRegex(AssertionError, "console script"):
+                verifier.validate_wheel(path, VERSION)
+
+    def test_sdist_requires_navigation_sources(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / f"cudarobotics-{VERSION}.tar.gz"
+            names = required_sdist_names()
+            names.discard(f"{ROOT}/core/src/gpu_kiss_icp.cu")
+            names.discard(f"{ROOT}/core/include/kiss_icp_spatial.cuh")
+            write_sdist(path, names)
+            with self.assertRaisesRegex(AssertionError, "gpu_kiss_icp.cu"):
+                verifier.validate_sdist(path, VERSION)
 
     def test_wheel_rejects_stale_source_provenance(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

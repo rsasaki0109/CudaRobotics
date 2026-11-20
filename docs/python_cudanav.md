@@ -1,0 +1,151 @@
+# Python CudaNav (`cudarobotics.navigation`)
+
+Status: development surface on `master`, not yet in a published release. It
+is milestone B-1 of Epic 4 in the
+[1.0 roadmap](cudarobotics_1_0_roadmap.md#epic-4-v04-python-cudanav).
+
+`cudarobotics.navigation` lets Python call the same tested CUDA cores that the
+ROS 2 CudaNav packages use. Nothing is re-implemented in Python:
+
+| Python | CUDA core | ROS 2 package |
+|---|---|---|
+| `KissIcpOdometry` | `cudarobotics::KissIcpOdometry` (`src/gpu_kiss_icp.cu`) | `cuda_kiss_icp` |
+| `VoxelMap` | `cudarobotics::VoxelMapperGpu` (`src/voxel_mapping_gpu.cu`) | `cuda_voxel_mapping` |
+| `Esdf2D` | `cudarobotics::Esdf2DGpu` (`src/esdf_2d_gpu.cu`) | `cuda_esdf` |
+| `cudarobotics.MppiPlanner` | `cuda_mppi_controller::MppiGpu` (`src/mppi_gpu.cu`) | `cuda_mppi_controller` |
+
+`CudaNavPipeline` connects these stages. The order and the default parameters
+are the same as the native closed loop in
+`tools/cudanav_gpu_closed_loop_s_course.cu`. Only the glue between the stages
+is NumPy:
+- footprint clearing;
+- the occupancy plus ESDF to uint8 costmap mapping;
+- the local path window.
+
+## Install
+
+The navigation cores are compiled into the same `_cudarobotics` extension as
+MPPI and registration. Build from a checkout:
+
+```bash
+./scripts/sync_python_core.sh
+pip install 'python/[examples]'
+```
+
+## API
+
+```python
+import numpy as np
+from cudarobotics.navigation import CudaNavPipeline
+from cudarobotics.navigation.simulation import Pose2D, course_segments, interpolate_path, simulate_scan
+
+nav = CudaNavPipeline()
+path = interpolate_path()  # (M, 2) float32 mission path
+step = nav.step(simulate_scan(Pose2D(), course_segments()), path=path)
+
+step.odometry.translation, step.odometry.yaw   # GPU KISS-ICP pose
+step.occupancy.data                             # int8 (H, W): -1 unknown, 0 free, 100 occupied
+step.distance_field.distances                   # float32 (H, W) metres, clipped at 2.0
+step.costmap                                    # uint8 (H, W) MPPI costmap
+step.command                                    # (v, w) from CUDA MPPI
+step.timings_ms                                 # odometry/mapping/esdf/costmap/mppi/total
+```
+
+The stages can also be used on their own:
+- `KissIcpOdometry.register(points, point_times=None)` returns an
+  `OdometryFrame`. Passing per-point times enables GPU deskew.
+- `VoxelMap.integrate(points_world, sensor_origin)` followed by
+  `VoxelMap.occupancy()` returns an `OccupancyGrid`.
+- `Esdf2D.compute(grid)` returns a `DistanceField`.
+  `esdf_2d_cpu_reference(grid, ...)` is the exhaustive CPU oracle and does not
+  need a GPU.
+- `costmap_from_esdf(grid, field)` builds the costmap with these costs:
+
+  | Cell | Cost |
+  |---|---|
+  | unknown | 255 |
+  | occupied | 254 |
+  | within 0.25 m | 253 |
+  | out to 1.0 m | `252·exp(-3(d-0.25))` |
+  | otherwise | 0 |
+
+- `CudaNavPipeline(enable_planner=False).step(points)` runs odometry, mapping
+  and ESDF without MPPI, for recorded data.
+
+Configuration objects (`KissIcpConfig`, `VoxelMappingConfig`, `Esdf2DConfig`,
+`MppiParams`) are accepted by every constructor. Keyword overrides are checked
+against the field names, and invalid values are rejected by the C++
+validators with `ValueError`.
+
+## CLI
+
+```bash
+cudarobotics-cudanav sim --output-dir build/cudanav_sim [--traversals N] [--check]
+cudarobotics-cudanav sequence recording.crkicp --output-dir build/cudanav_seq [--check]
+```
+
+**`sim`** drives the S-course mission in closed loop. It is the same world,
+LiDAR model, unicycle plant and quality gate as the native tool:
+- the smoke gate for one traversal: drift < 5% and deadline misses < 5%;
+- the release-style gate for several traversals: drift < 1% and deadline
+  misses < 1%;
+- in both cases: zero collisions, a goal within 0.30 m, a causal command
+  effect, and the native bounds.
+
+**`sequence`** runs odometry, mapping and ESDF over a recorded `CRKICP1` file.
+- `scripts/export_cudanav_kiss_icp_sequence.py` writes this format from a ROS 2
+  bag without needing a ROS installation.
+- The reference poses in the file give ATE and final drift.
+- The gate defaults are the native ones: ATE ≤ 5 m, drift ≤ 10%, and at least
+  30 inliers.
+
+Both commands write the following files to `--output-dir`:
+
+| File | Contents |
+|---|---|
+| `summary.json` | `schema_version`, `success`, `smoke_pass`, `quality_pass`, `checks`, odometry/collision/deadline metrics, `stage_latency_ms` (p50/p95/max per stage) |
+| `manifest.json` | package version, source-provenance digest, CUDA runtime/driver/device/memory, command line, parameters, seeds, input SHA-256, output names |
+| `trajectory.csv` | per-frame reference and estimated pose, error, inliers, map statistics, timings |
+| `occupancy.npy`, `esdf.npy`, `costmap.npy` | final grids |
+| `overview.png` | occupancy, ESDF and both trajectories (only when matplotlib is installed and `--no-plot` is not given) |
+
+When a run fails, `summary.json` still satisfies the Docker `cudanav` summary
+contract and adds `failure.stage`, `failure.type` and `failure.message`, and
+the command exits 1. A run with no visible GPU is reported this way, at the
+`initialize` stage. `--check` turns a completed run that fails its gate into
+exit 2.
+
+## Determinism
+
+- The simulator uses no randomness.
+- CUDA MPPI uses its fixed cuRAND seed (42), which is recorded in the manifest.
+- Stages given the same input are repeatable.
+- A full closed loop is not bit-identical from run to run. The voxel map
+  combines log-odds updates to the same voxel with clamped float atomics, so
+  their order can change an occupancy cell. That changes the costmap, and the
+  mission can then differ by a few frames. The ROS 2 and native stacks share
+  this core, and the tests therefore check the gate outcome rather than
+  bitwise trajectories.
+
+## Reference result
+
+The Python `sim` closed loop on an NVIDIA consumer GPU (CUDA 13.3 build), next
+to the retained native result in
+`docs/results/cudanav_gpu_closed_loop_2026-07-29.json`:
+
+| Run | Frames | Drift | ATE | Goal distance | Collisions | Frame p95 |
+|---|---|---|---|---|---|---|
+| Python `cudarobotics-cudanav sim` | 227–230 | 0.22–0.24% | 0.013–0.014 m | 0.28 m | 0 | 6.1 ms |
+| Native `cudanav_gpu_closed_loop_s_course` (retained) | 225 | 0.22% | 0.013 m | 0.28 m | 0 | 4.7 ms |
+
+These are synthetic smoke results, not release evidence.
+
+## Limits and next steps
+
+- `sim` uses synthetic LiDAR and a command-driven plant, so it is not
+  real-sensor evidence. `sequence` provides the recorded-data path, but no
+  public quickstart dataset has been selected yet.
+- Still to do for Epic 4 (milestone B-2):
+  - a documented public-dataset quickstart of manageable size;
+  - fixed-seed benchmark evidence with at least three repetitions;
+  - a release that ships this API in the CPython 3.10/3.12 manylinux wheels.
