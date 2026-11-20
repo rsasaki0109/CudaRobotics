@@ -36,6 +36,7 @@ class StageV1DocsTest(unittest.TestCase):
                 text = (output / name).read_text(encoding="utf-8")
                 self.assertNotIn("0.3.0", text)
                 self.assertNotIn("0.4.0", text)
+                self.assertNotIn("0.4.2", text)
                 self.assertNotIn("CudaRobotics/blob/master/", text)
                 self.assertNotIn("CudaRobotics/tree/master/", text)
             index = (output / "index.html").read_text(encoding="utf-8")
@@ -54,8 +55,9 @@ class StageV1DocsTest(unittest.TestCase):
         install = (ROOT / "docs" / "site" / "install.html").read_text(
             encoding="utf-8"
         )
-        self.assertIn("published v0.4.0", index)
-        self.assertIn("releases/tag/v0.4.0", install)
+        self.assertIn("published v0.4.2", index)
+        self.assertIn("releases/tag/v0.4.2", install)
+        self.assertIn("cuda-mppi-controller-demo:v0.4.2 cudanav", install)
 
     def test_wrong_tag_and_existing_output_are_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

@@ -2,9 +2,9 @@
 
 [![GitHub stars](https://img.shields.io/github/stars/rsasaki0109/CudaRobotics?style=social)](https://github.com/rsasaki0109/CudaRobotics/stargazers)
 [![CUDA](https://img.shields.io/badge/CUDA-12.x-76B900)](https://developer.nvidia.com/cuda-toolkit)
-[![Docs](https://img.shields.io/badge/docs-v0.4.0-1f6f64)](https://rsasaki0109.github.io/CudaRobotics/docs/)
+[![Docs](https://img.shields.io/badge/docs-v0.4.2-1f6f64)](https://rsasaki0109.github.io/CudaRobotics/docs/)
 [![Gallery](https://img.shields.io/badge/gallery-animated_demos-blue)](https://rsasaki0109.github.io/CudaRobotics/)
-[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/rsasaki0109/CudaRobotics/blob/v0.4.0/examples/colab/cudarobotics_quickstart.ipynb)
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/rsasaki0109/CudaRobotics/blob/v0.4.2/examples/colab/cudarobotics_quickstart.ipynb)
 
 <p align="center">
   <a href="gif/cudanav_gpu_closed_loop_release.gif">
@@ -68,7 +68,7 @@ Choose the shortest path for what you want to do:
 | **Check whether a robot fits a warehouse route** | [Navigation Workbench](https://rsasaki0109.github.io/CudaRobotics/docs/navigation/) | Edit obstacles, compare GPU/CPU distance-field timings, plan with footprint clearance and export map/route JSON (browser simulation) | Seconds |
 | **Watch massively parallel GPU localization** | [Particle Storm](https://rsasaki0109.github.io/CudaRobotics/docs/particles/) | 65,536 pose hypotheses, GPU scan matching/resampling/rendering and teleport recovery (WebGPU, not native CUDA) | Seconds |
 | **Run an interactive demo directly on GitHub Pages** | [Browser MPPI lab](https://rsasaki0109.github.io/CudaRobotics/docs/demo/) | Live navigation, editable goals, WebGPU rollouts or CPU fallback (simplified port, not native CUDA) | Seconds |
-| **Try it without setting up CUDA locally** | [Run the latest Colab onboarding](https://colab.research.google.com/github/rsasaki0109/CudaRobotics/blob/master/examples/colab/cudarobotics_quickstart.ipynb) (builds published v0.4.0) | An MPPI navigation GIF and a checked result JSON | 5–10 min |
+| **Try it without setting up CUDA locally** | [Run the latest Colab onboarding](https://colab.research.google.com/github/rsasaki0109/CudaRobotics/blob/master/examples/colab/cudarobotics_quickstart.ipynb) (builds published v0.4.2) | An MPPI navigation GIF and a checked result JSON | 5–10 min |
 | **Use the Python API on my NVIDIA GPU** | Follow the commands below, then open the [Python guide](python/README.md) | A planner command plus registration metrics | 10–15 min |
 | **Integrate with ROS 2 / Nav2** | Follow the [Level 3 CudaNav recipe](docs/onboarding_recipes.md#level-3-move-to-ros-2-and-nav2) and [CudaNav architecture](docs/cudanav_architecture.md) | A deterministic closed-loop GPU navigation run | 15+ min |
 
@@ -104,7 +104,7 @@ can track improvements using the privacy-preserving
 | Want to see | Open |
 |---|---|
 | **Install / API / Nav2 docs** | [CudaRobotics docs site](https://rsasaki0109.github.io/CudaRobotics/docs/) |
-| **Try it in your browser (free Colab GPU)** | [Colab quickstart notebook](https://colab.research.google.com/github/rsasaki0109/CudaRobotics/blob/v0.4.0/examples/colab/cudarobotics_quickstart.ipynb) |
+| **Try it in your browser (free Colab GPU)** | [Colab quickstart notebook](https://colab.research.google.com/github/rsasaki0109/CudaRobotics/blob/v0.4.2/examples/colab/cudarobotics_quickstart.ipynb) |
 | Visual demos | [Full animated gallery](https://rsasaki0109.github.io/CudaRobotics/) |
 | **GPU MPPI controller plugin for Nav2** | [`ros2_ws/src/cuda_mppi_controller/`](ros2_ws/src/cuda_mppi_controller/) |
 | **CudaNav voxel mapping, typed ESDF, and Nav2 bridge** | [`docs/cudanav_architecture.md`](docs/cudanav_architecture.md), [`docs/cuda_voxel_costmap_layer.md`](docs/cuda_voxel_costmap_layer.md) |
@@ -157,7 +157,7 @@ The reusable GPU MPPI core is available as an experimental Python package.
 Build requirements: Linux x86_64, CUDA Toolkit >= 12.0, CMake >= 3.18.
 
 **No local GPU?** Run the
-[Colab quickstart notebook](https://colab.research.google.com/github/rsasaki0109/CudaRobotics/blob/v0.4.0/examples/colab/cudarobotics_quickstart.ipynb)
+[Colab quickstart notebook](https://colab.research.google.com/github/rsasaki0109/CudaRobotics/blob/v0.4.2/examples/colab/cudarobotics_quickstart.ipynb)
 — it builds the package on a free Colab GPU and runs the MPPI + registration demos
 in your browser.
 
