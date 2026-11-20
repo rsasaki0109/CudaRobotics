@@ -46,15 +46,30 @@ case "${1:-benchmark}" in
     rm -f -- "$summary"
     echo "== End-to-end CudaNav closed-loop smoke =="
     echo "GPU KISS-ICP -> voxel map -> ESDF -> Nav2 CUDA MPPI -> simulator"
+    # A non-interactive shell starts background jobs with SIGINT ignored, so
+    # `ros2 launch` would never see the shutdown request. Job control keeps
+    # SIGINT deliverable and gives the launch tree its own process group.
+    set -m
     ros2 launch cuda_nav_bringup cudanav_closed_loop.launch.py \
       "output_path:=$summary" \
       "traversal_count:=$traversals" \
       "mission_timeout_sec:=$mission_timeout" \
       >"$launch_log" 2>&1 &
     launch_pid=$!
+    set +m
     cleanup() {
       if kill -0 "$launch_pid" 2>/dev/null; then
         kill -INT "$launch_pid" 2>/dev/null || true
+        for _ in $(seq 1 60); do
+          kill -0 "$launch_pid" 2>/dev/null || break
+          sleep 0.5
+        done
+        if kill -0 "$launch_pid" 2>/dev/null; then
+          echo "CudaNav launch did not stop after SIGINT; terminating" >&2
+          kill -TERM -- "-$launch_pid" 2>/dev/null || true
+          sleep 2
+          kill -KILL -- "-$launch_pid" 2>/dev/null || true
+        fi
         wait "$launch_pid" 2>/dev/null || true
       fi
     }
