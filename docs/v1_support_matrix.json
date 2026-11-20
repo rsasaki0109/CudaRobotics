@@ -53,7 +53,7 @@
       "mode": "cudanav"
     },
     "colab": {
-      "url": "https://colab.research.google.com/github/rsasaki0109/CudaRobotics/blob/v0.4.0/examples/colab/cudarobotics_quickstart.ipynb",
+      "url": "https://colab.research.google.com/github/rsasaki0109/CudaRobotics/blob/v0.4.2/examples/colab/cudarobotics_quickstart.ipynb",
       "scope": "Python MPPI and registration GPU quickstart",
       "requires_gpu_runtime": true
     },
@@ -66,7 +66,7 @@
     }
   },
   "release_readiness": {
-    "published_version": "0.4.0",
+    "published_version": "0.4.2",
     "quickstart_15_minute_evidence": null,
     "cudanav_release_evidence": null,
     "docker_gpu_evidence": null,

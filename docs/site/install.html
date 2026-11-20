@@ -26,7 +26,7 @@
       <p class="eyebrow">Getting started</p>
       <h1>Install CudaRobotics</h1>
       <p>
-        Use the published v0.4.0 GitHub assets, build the current source from a
+        Use the published v0.4.2 GitHub assets, build the current source from a
         checkout, or run the Nav2 CUDA MPPI demo from GHCR.
       </p>
     </div>
@@ -37,7 +37,7 @@
           <article class="card">
             <span class="tag amber">Release assets</span>
             <h3>Install a wheel</h3>
-            <p>Download the matching Linux x86_64 wheel from the published v0.4.0 release.</p>
+            <p>Download the matching Linux x86_64 wheel from the published v0.4.2 release.</p>
           </article>
           <article class="card">
             <span class="tag">Source build</span>
@@ -70,16 +70,16 @@
       <section class="section" id="release-assets">
         <div class="section-head">
           <h2>Published Release Assets</h2>
-          <p>The v0.4.0 release is the latest published release; its CPython 3.10/3.12 wheels are verified against the tag source.</p>
+          <p>The v0.4.2 release is the latest published release; its CPython 3.10/3.12 wheels are verified against the tag source.</p>
         </div>
         <div class="card">
           <div class="code">
-<pre><code>python -m pip install ./cudarobotics-0.4.0-*.whl
+<pre><code>python -m pip install ./cudarobotics-0.4.2-*.whl
 python -c "import cudarobotics as cr; print(cr.__version__)"</code></pre>
           </div>
           <p>
             Download assets from
-            <a href="https://github.com/rsasaki0109/CudaRobotics/releases/tag/v0.4.0">GitHub Releases</a>.
+            <a href="https://github.com/rsasaki0109/CudaRobotics/releases/tag/v0.4.2">GitHub Releases</a>.
             PyPI publishing is not currently part of the supported distribution path.
           </p>
         </div>
@@ -113,7 +113,7 @@ python examples/python/onboarding_quickstart.py</code></pre>
             Maintainers should run `./scripts/sync_python_core.sh` before
             building release artifacts so the Python package contains the
             current CUDA core. See the
-            <a href="https://github.com/rsasaki0109/CudaRobotics/blob/master/docs/releases/v0.4.0_release_checklist.md">v0.4.0 release checklist</a>
+            <a href="https://github.com/rsasaki0109/CudaRobotics/blob/master/docs/releases/v0.4.2_release_checklist.md">v0.4.2 release checklist</a>
             for the retained release evidence and validation commands.
           </p>
         </div>
@@ -122,11 +122,13 @@ python examples/python/onboarding_quickstart.py</code></pre>
       <section class="section" id="docker-demo">
         <div class="section-head">
           <h2>Docker Demo</h2>
-          <p>The latest published image (v0.3.0) loads the Nav2 plugin and runs the controller benchmark. The development image also contains the complete short CudaNav loop.</p>
+          <p>The published v0.4.2 image loads the Nav2 plugin, runs the controller benchmark, and runs the complete short CudaNav loop with <code>cudanav</code>.</p>
         </div>
         <div class="card">
           <div class="code">
-<pre><code>docker run --rm --gpus all ghcr.io/rsasaki0109/cuda-mppi-controller-demo:v0.3.0
+<pre><code>docker run --rm --gpus all ghcr.io/rsasaki0109/cuda-mppi-controller-demo:v0.4.2
+docker run --rm --gpus all -v "$PWD/out:/out" \
+  ghcr.io/rsasaki0109/cuda-mppi-controller-demo:v0.4.2 cudanav
 
 # current source checkout: end-to-end CudaNav development smoke
 docker build --pull --no-cache -f docker/Dockerfile -t cudarobotics .
@@ -158,7 +160,7 @@ docker run --rm --gpus all -v "$PWD/out:/out" cudarobotics cudanav</code></pre>
             No local setup needed:
             <a href="https://colab.research.google.com/github/rsasaki0109/CudaRobotics/blob/master/examples/colab/cudarobotics_quickstart.ipynb">open the latest Colab onboarding</a>.
             Its notebook UX follows the current documentation while the
-            package clone remains pinned to published v0.4.0.
+            package clone remains pinned to published v0.4.2.
           </p>
         </div>
       </section>

@@ -16,19 +16,22 @@ TEXT_SUFFIXES = {".css", ".html", ".js", ".json", ".md", ".txt"}
 def transform_text(text: str, *, tag: str) -> str:
     replacements = (
         (
-            "v0.4.0 adds seeded CPU/WebGPU browser labs and native KISS-ICP\n"
-            "            host-pipeline improvements on top of the integrated CudaNav\n"
-            "            stack, with verified CPython 3.10/3.12 wheels.",
+            "v0.4.2 carries the v0.4.0 seeded CPU/WebGPU browser labs and\n"
+            "            native KISS-ICP host-pipeline improvements on top of the "
+            "integrated\n"
+            "            CudaNav stack, with verified CPython 3.10/3.12 wheels and "
+            "a GHCR\n"
+            "            image whose CudaNav smoke exits cleanly.",
             "v1.0.0 connects GPU KISS-ICP, rolling voxel mapping, typed ESDF,\n"
             "            and ROS 2 CUDA MPPI as the quality-gated end-to-end "
             "CudaNav stack.",
         ),
         (
-            "docs/releases/v0.4.0_release_checklist.md",
+            "docs/releases/v0.4.2_release_checklist.md",
             "docs/releases/v1.0.0_release_checklist.md",
         ),
         (
-            "docs/releases/v0.4.0_notes.md",
+            "docs/releases/v0.4.2_notes.md",
             "docs/releases/v1.0.0_notes.md",
         ),
         ("CudaRobotics/tree/master/", f"CudaRobotics/tree/{tag}/"),
@@ -54,8 +57,10 @@ def transform_text(text: str, *, tag: str) -> str:
             "path.",
             "records the release-supported surfaces and their evidence gates.",
         ),
+        ("v0.4.2", f"v{VERSION}"),
         ("v0.4.0", f"v{VERSION}"),
         ("v0.3.0", f"v{VERSION}"),
+        ("0.4.2", VERSION),
         ("0.4.0", VERSION),
         ("0.3.0", VERSION),
     )

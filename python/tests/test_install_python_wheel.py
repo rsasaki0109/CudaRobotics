@@ -27,8 +27,8 @@ def test_selects_published_cp310_and_cp312_assets():
             minor=minor,
         )
         tag = f"cp3{minor}"
-        assert version == "0.4.0"
-        assert f"cudarobotics-0.4.0-{tag}-{tag}" in requirement
+        assert version == "0.4.2"
+        assert f"cudarobotics-0.4.2-{tag}-{tag}" in requirement
         assert requirement.startswith("cudarobotics[examples] @ https://github.com/")
 
 
