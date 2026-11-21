@@ -20,6 +20,7 @@
   <depend>tf2</depend>
   <depend>tf2_ros</depend>
   <depend>tf2_geometry_msgs</depend>
+  <depend>cuda_robotics_msgs</depend>
 
   <!-- CPU baseline loaded at runtime by the head-to-head benchmark -->
   <exec_depend>nav2_mppi_controller</exec_depend>

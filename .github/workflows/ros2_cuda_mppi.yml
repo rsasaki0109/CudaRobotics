@@ -228,6 +228,7 @@ jobs:
           ros2 run cuda_voxel_costmap_layer plugin_load_test
           ros2 run cuda_mppi_controller plugin_load_test
           ros2 run cuda_mppi_controller parameter_validation_test
+          ros2 run cuda_mppi_controller dynamic_obstacle_input_test
           # Run the lifecycle tests one package at a time on a private,
           # local-only DDS domain. Parallel packages sharing the default domain
           # discover each other, and cuda_voxel_mapping's lifecycle test has

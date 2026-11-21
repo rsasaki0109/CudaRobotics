@@ -90,8 +90,35 @@ Without a back-out, plans are unchanged.
 With the weight at 0, or with no obstacles, the rollout skips the term
 entirely. Plans are then bit-identical to the planner without the critic, which
 `tests/mppi_dynamic_obstacle_smoke.cu` checks. The native S-course closed loop
-is unchanged: 229 frames and 0.153% drift. The Nav2 plugin does not have an
-obstacle input yet, so its behaviour is also unchanged.
+is unchanged: 229 frames and 0.153% drift. The Nav2 plugin is also unchanged
+unless `dynamic_obstacles_topic` and a positive `dynamic_obstacle_weight` are
+set (see below).
+
+## Nav2 input
+
+The Nav2 controller plugin subscribes to tracked objects as
+`cuda_robotics_msgs/TrackedObstacleArray` on `dynamic_obstacles_topic`. Each
+`TrackedObstacle` has an id, a position, a velocity and a radius, all in the
+array's header frame and observed at its stamp. Every control cycle, the
+plugin:
+- drops a message older than `dynamic_obstacles_timeout` (0.5 s);
+- transforms the discs into the costmap frame;
+- extrapolates them by the message age;
+- hands the 64 nearest to `setDynamicObstacles`.
+
+The `dynamic_obstacle_*` critic parameters and the back-out parameters are
+ROS parameters of the plugin. See the
+[plugin README](../ros2_ws/src/cuda_mppi_controller/README.md#tracked-moving-obstacles).
+
+The conversion is tested without ROS or a GPU
+(`dynamic_obstacle_input_test`). What is checked:
+- the frame transform and the velocity rotation;
+- the extrapolation;
+- input validation;
+- keeping the nearest discs.
+
+The plugin has not been run against a live tracker yet. No ROS 2 node
+publishes the scan tracker's tracks so far.
 
 ## CudaNav integration
 
@@ -361,5 +388,6 @@ Closed-loop runs are not bit-reproducible:
   pedestrians move in straight lines with turnarounds.
 - **Small clearances.** Minimum clearances stay around 0.05 m in every
   condition, partly because the pedestrians pause at 0.05 m.
-- **No Nav2 input yet.** The Nav2 controller plugin has no input path for
-  predicted obstacles yet (a topic and message type).
+- **Nav2 input not exercised end to end.** The plugin accepts
+  `TrackedObstacleArray`, but no ROS 2 tracker node publishes it yet, and the
+  closed-loop results above come from the Python pipeline, not from Nav2.
