@@ -1,7 +1,7 @@
 {
   "algorithm": "sha256-text-lf",
   "schema_version": 1,
-  "source_digest": "1988e28d02155ead353b22b9f60e7dd3a1a0db96ba365fc8549a08d806e815ad",
+  "source_digest": "148d7698320be712c9082045b865f1c013316ceae165f456ca84ef5d75dd763e",
   "sources": {
     "CMakeLists.txt": "6f410e315ca5afaa83143c4af3c868a6371e12bf2887f8d08140a426034ddb92",
     "README.md": "52ffb07c822079898029855ab555a5a665a36db1725ba700b9969c16b9acc1f1",
@@ -17,7 +17,7 @@
     "core/include/cudarobotics/filters.hpp": "24cb100848aaec8d3266ef870fd3d4c3734a73823a78e78fb8f14ae5763cdf9f",
     "core/include/cudarobotics/g2o_io.hpp": "c09d1c78f8e3c6e206f7e5be79c4029859807073f1bed57a8d8c8ac97a53c85c",
     "core/include/cudarobotics/gauss_newton.hpp": "d7894a7f6571745d1ba26b94574497b4e304ee1bea7a0b02d18451635acc7d35",
-    "core/include/cudarobotics/geometry.hpp": "497f7fda3aceec04af8cac8345c1fca308f883436cb8cd255de33a2f9b765af9",
+    "core/include/cudarobotics/geometry.hpp": "baed1636b1554ee28a802ca98d257e7e39948217114d558d6ca337350fd9e80c",
     "core/include/cudarobotics/graph_optimization.hpp": "2469ef44067e5a633d443f0f0039ee0b7ac8e81c3997ac3106fd99984ea580e4",
     "core/include/cudarobotics/imls.hpp": "9d7720e863c6d6a942489039550d1a8b2fa9e6c2db89ee11dfa7d9594c692ac9",
     "core/include/cudarobotics/imu_graph.hpp": "7e5b84cf2908ea3af1e173a6821ded6635ff270eb40d5d1f429884c5f5055ea4",

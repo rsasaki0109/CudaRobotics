@@ -195,6 +195,9 @@ The release matrix should cover:
 - fixed seeds with at least three repetitions for benchmark claims;
 - the reference NVIDIA consumer GPU and at least one newer desktop GPU;
 - Jetson as either a tested target or an explicitly experimental target.
+  Current status: experimental and compile-only. `jetson-aarch64.yml` builds
+  for aarch64 and sm_87 without hardware, so no Jetson runtime result is
+  claimed.
 
 ## Epic 4: v0.4 Python CudaNav
 

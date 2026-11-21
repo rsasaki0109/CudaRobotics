@@ -1,0 +1,145 @@
+name: Jetson aarch64 compile
+
+# Experimental, compile-only Jetson target. GitHub's arm64 runners have no
+# NVIDIA GPU, and the CUDA toolkit comes from NVIDIA's sbsa apt repository,
+# not JetPack's L4T toolchain. A pass shows that the sources and build files
+# compile for aarch64 and sm_87 (Jetson Orin) with CUDA 12.6 on Ubuntu 22.04,
+# the JetPack 6 baseline. It is not a runtime test on Jetson hardware.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+    paths-ignore:
+      - "docs/**"
+      - "paper/**"
+      - "gif/**"
+      - "**/*.md"
+
+env:
+  CUDA_VERSION_DASH: "12-6"
+  CUDA_HOME_DIR: /usr/local/cuda-12.6
+  CUDA_ARCH: "87"
+
+jobs:
+  core:
+    runs-on: ubuntu-22.04-arm
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install CUDA compiler (sbsa, no driver)
+        run: |
+          set -eo pipefail
+          test "$(uname -m)" = aarch64
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends wget ca-certificates gnupg
+          CUDA_KEYRING_DEB=/tmp/cudarobotics-cuda-keyring_1.1-1_all.deb
+          wget -q https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2204/sbsa/cuda-keyring_1.1-1_all.deb \
+            -O "$CUDA_KEYRING_DEB"
+          sudo dpkg -i "$CUDA_KEYRING_DEB"
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            "cuda-nvcc-${CUDA_VERSION_DASH}" \
+            "cuda-cudart-dev-${CUDA_VERSION_DASH}" \
+            "libcurand-dev-${CUDA_VERSION_DASH}" \
+            "cuda-cuobjdump-${CUDA_VERSION_DASH}"
+          echo "CUDA_PATH=${CUDA_HOME_DIR}" >> "$GITHUB_ENV"
+          echo "CUDACXX=${CUDA_HOME_DIR}/bin/nvcc" >> "$GITHUB_ENV"
+          echo "${CUDA_HOME_DIR}/bin" >> "$GITHUB_PATH"
+          "${CUDA_HOME_DIR}/bin/nvcc" --version
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get install -y --no-install-recommends \
+            build-essential \
+            ccache \
+            cmake \
+            libeigen3-dev \
+            libopencv-dev \
+            python3-matplotlib \
+            python3-numpy
+
+      - name: Restore compiler cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ccache
+          key: ccache-aarch64-cuda12.6-sm87-${{ github.sha }}
+          restore-keys: ccache-aarch64-cuda12.6-sm87-
+
+      - name: Configure for sm_87
+        run: |
+          ccache --max-size=2G
+          ccache --zero-stats
+          cmake -B build \
+            -DCMAKE_CUDA_ARCHITECTURES=${CUDA_ARCH} \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_CUDA_COMPILER_LAUNCHER=ccache
+
+      - name: Build
+        run: |
+          cmake --build build -j$(nproc)
+          ccache --show-stats
+
+      - name: Check embedded device code
+        run: |
+          for lib in cudarobotics_mppi_gpu cudarobotics_kiss_icp_gpu \
+                     cudarobotics_voxel_mapping_gpu cudarobotics_esdf_2d_gpu; do
+            # LIBRARY_OUTPUT_PATH puts static libraries in lib/, not build/.
+            archive="lib/lib${lib}.a"
+            test -f "$archive"
+            "${CUDA_HOME_DIR}/bin/cuobjdump" --list-elf "$archive" | tee /tmp/elf.txt
+            grep -q "sm_${CUDA_ARCH}" /tmp/elf.txt
+          done
+
+      - name: Run Python tests
+        run: cd build && ctest --output-on-failure --label-regex python -j$(nproc)
+
+      - name: Run CPU tests
+        run: cd build && ctest --output-on-failure --label-regex cpu -j$(nproc)
+
+  python:
+    runs-on: ubuntu-22.04-arm
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install CUDA compiler (sbsa, no driver)
+        run: |
+          set -eo pipefail
+          test "$(uname -m)" = aarch64
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends wget ca-certificates gnupg
+          CUDA_KEYRING_DEB=/tmp/cudarobotics-cuda-keyring_1.1-1_all.deb
+          wget -q https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2204/sbsa/cuda-keyring_1.1-1_all.deb \
+            -O "$CUDA_KEYRING_DEB"
+          sudo dpkg -i "$CUDA_KEYRING_DEB"
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            "cuda-nvcc-${CUDA_VERSION_DASH}" \
+            "cuda-cudart-dev-${CUDA_VERSION_DASH}" \
+            "libcurand-dev-${CUDA_VERSION_DASH}" \
+            "cuda-cuobjdump-${CUDA_VERSION_DASH}"
+          echo "CUDA_PATH=${CUDA_HOME_DIR}" >> "$GITHUB_ENV"
+          echo "CUDACXX=${CUDA_HOME_DIR}/bin/nvcc" >> "$GITHUB_ENV"
+          echo "${CUDA_HOME_DIR}/bin" >> "$GITHUB_PATH"
+          "${CUDA_HOME_DIR}/bin/nvcc" --version
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Sync bundled CUDA core
+        run: ./scripts/sync_python_core.sh
+
+      - name: Build and install for sm_87
+        run: |
+          python -m venv /tmp/cudarobotics-test-venv
+          CUDAARCHS=${CUDA_ARCH} /tmp/cudarobotics-test-venv/bin/pip install "./python[test]"
+
+      - name: Run CPU-only tests
+        run: |
+          PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 \
+            /tmp/cudarobotics-test-venv/bin/pytest \
+              python/tests -m "not gpu_registration and not gpu_navigation" -q

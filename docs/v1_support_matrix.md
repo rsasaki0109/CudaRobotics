@@ -19,6 +19,16 @@ The Colab surface and its in-notebook clone command are pinned to the
 immutable `v1.0.0` tag. That URL intentionally becomes resolvable only after
 the tag is published; it must not fall back to the moving `master` branch.
 
+The `jetson` surface is experimental and compile-only.
+[`jetson-aarch64.yml`](../.github/workflows/jetson-aarch64.yml) builds the
+full CMake tree and the Python package for `CMAKE_CUDA_ARCHITECTURES=87` on
+GitHub's Ubuntu 22.04 arm64 runners. It then runs the CPU and Python CTest
+labels and the CPU-only pytest selection. The toolkit is CUDA 12.6 from
+NVIDIA's sbsa repository rather than JetPack's L4T toolchain, and the
+runners have no GPU. The job therefore shows that the code compiles for
+Jetson Orin. It does not show that it runs there, and no Jetson runtime or
+performance result is claimed.
+
 The target 15-minute path is:
 
 ```bash

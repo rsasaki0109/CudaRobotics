@@ -9,8 +9,9 @@ release docs, tag, GitHub Release assets, and GHCR tag workflow verification.
 Current local worktree is clean on `master`; the next active work should convert
 the new harnesses into real-data validation or continue the SOPPI/object-level
 planning research line.
-Jetson/aarch64 support is
-intentionally skipped for now by user direction. Note: some older sections below
+Jetson/aarch64 is an experimental, compile-only target (2026-11-21, user
+direction): `.github/workflows/jetson-aarch64.yml` builds for sm_87 with no
+Jetson hardware; runtime claims wait for hardware. Note: some older sections below
 carry their own internal dates — treat section headers as the ordering authority
 within each line, not this single timestamp.)
 
@@ -345,8 +346,8 @@ Short term (this week):
 Mid term — pick ONE based on which funnel converts after the release
 (watch stars/traffic/issues per entry point):
 
-- **Jetson / aarch64** — **skip for now by user direction**. Revisit only if
-  concrete user demand appears and hardware for verification is available.
+- **Jetson / aarch64** — compile-only CI landed (2026-11-21, aarch64 + sm_87,
+  no hardware). Runtime validation waits for a device or concrete user demand.
 - **Broaden zero-copy inputs** — after costmap DLPack lands, consider path /
   footprint device inputs only if a real user workflow needs them.
 - **nav2 plugin field validation** — real robot / real bag data; produces

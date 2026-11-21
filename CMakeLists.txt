@@ -605,7 +605,6 @@ cudabot_demo(gpu_constrained_mpc src/gpu_constrained_mpc.cu OPENCV RELAXED_CONST
 add_executable(gpu_cudampc src/gpu_cudampc.cu)
 target_link_libraries(gpu_cudampc ${OpenCV_LIBS})
 target_compile_options(gpu_cudampc PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
-set_target_properties(gpu_cudampc PROPERTIES CUDA_ARCHITECTURES 75)
 
 cudabot_demo(gpu_diff_contact_push src/gpu_diff_contact_push.cu OPENCV RELAXED_CONSTEXPR)
 
