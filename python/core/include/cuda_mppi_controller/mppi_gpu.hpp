@@ -15,6 +15,19 @@ enum class MotionModel
   Omni         // adds lateral velocity vy
 };
 
+// A predicted moving obstacle in the costmap frame: a disc of `radius` that
+// moves with constant velocity (vx, vy) from (x, y) at the time of compute().
+struct DynamicObstacle
+{
+  float x = 0.0f;
+  float y = 0.0f;
+  float vx = 0.0f;
+  float vy = 0.0f;
+  float radius = 0.0f;
+};
+
+constexpr int kMaxDynamicObstacles = 64;
+
 struct MppiParams
 {
   int batch_size = 2048;        // K: sampled trajectories (1 CUDA thread each)
@@ -52,6 +65,15 @@ struct MppiParams
   // existing costmap-only tuning stays unchanged.
   float distance_field_weight = 0.0f;  // stage clearance cost from nearest obstacle
   float distance_field_cutoff = 0.75f; // [m] no clearance penalty beyond this distance
+  // Optional predicted dynamic-obstacle critic (see setDynamicObstacles).
+  // Disabled by default. At rollout time tau = (t + 1) * model_dt the
+  // clearance to obstacle i is
+  //   c = |q(tau) - (p_i + v_i tau)| - r_i - robot_radius - growth * tau;
+  // c < 0 adds collision_cost, 0 <= c < margin adds weight * (margin - c)^2 * dt.
+  float dynamic_obstacle_weight = 0.0f;
+  float dynamic_obstacle_margin = 0.4f;        // [m]
+  float dynamic_obstacle_robot_radius = 0.25f; // [m] disc approximation of the robot
+  float dynamic_obstacle_growth = 0.1f;        // [m/s] prediction uncertainty growth
   float smoothness_weight = 0.2f;    // stage (du)^2 between consecutive steps
   float backward_weight = 0.5f;      // stage penalty on v < 0
   // stage penalty on (v_max - v): counters the softmin saturation bias
@@ -104,6 +126,13 @@ public:
   void reset();
 
   void setSpeedLimit(float v_max);
+
+  // Replace the predicted dynamic obstacles used by the following compute
+  // calls (count == 0 clears them). At most kMaxDynamicObstacles; non-finite
+  // values or a negative radius throw std::invalid_argument. The obstacles
+  // only affect the cost when MppiParams::dynamic_obstacle_weight > 0.
+  void setDynamicObstacles(const DynamicObstacle * obstacles, int count);
+  int dynamicObstacleCount() const;
 
   // All poses are in the costmap global frame.
   // costmap: row-major uchar grid (size_x * size_y), nullptr allowed (free space).

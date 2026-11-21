@@ -79,6 +79,13 @@ By default the occupancy, ESDF and costmap stay on the GPU from the voxel
 projection to MPPI (`stage_chain="device"`). The step's grids are copied to
 NumPy only when they are read.
 
+Tracked moving objects can be passed as `step(..., dynamic_obstacles=rows)`,
+with rows of `(x, y, vx, vy, radius)`, and MPPI then avoids their predicted
+trajectories (`MppiPlanner.set_dynamic_obstacles` does the same for the
+planner alone). `cudarobotics-cudanav sim --scenario crossing` evaluates this
+with pedestrians crossing the course; see
+[`docs/cudanav_dynamic_obstacles.md`](../docs/cudanav_dynamic_obstacles.md).
+
 `sim` is a synthetic, command-driven closed loop, not real-sensor evidence.
 See [`docs/python_cudanav.md`](../docs/python_cudanav.md) for the API, the
 output files, and current limits. This surface is not part of a published

@@ -78,6 +78,11 @@ def default_mppi_params(*, reverse: bool = False) -> MppiParams:
     params.path_angle_weight = 0.75
     params.distance_field_weight = 3.0
     params.distance_field_cutoff = 0.75
+    # Only active when step() receives dynamic_obstacles.
+    params.dynamic_obstacle_weight = 25.0
+    params.dynamic_obstacle_margin = 0.4
+    params.dynamic_obstacle_robot_radius = 0.25
+    params.dynamic_obstacle_growth = 0.1
     if reverse:
         params.backward_weight = 0.0
     return params
@@ -126,6 +131,22 @@ def local_path_window(
 
 
 STAGE_CHAINS = ("device", "host")
+# Extra radius cleared around each tracked moving obstacle in the occupancy
+# grid; the planner sees those obstacles through their predicted trajectory.
+DYNAMIC_CLEARING_MARGIN = 0.15
+
+
+def _dynamic_rows(dynamic_obstacles: Any) -> np.ndarray | None:
+    if dynamic_obstacles is None:
+        return None
+    rows = np.ascontiguousarray(dynamic_obstacles, dtype=np.float32)
+    if rows.size == 0:
+        return None
+    if rows.ndim != 2 or rows.shape[1] != 5:
+        raise ValueError("dynamic_obstacles must have shape (N, 5): x, y, vx, vy, radius")
+    if not np.all(np.isfinite(rows)):
+        raise ValueError("dynamic_obstacles must be finite")
+    return rows
 
 
 class PipelineStep:
@@ -310,7 +331,16 @@ class CudaNavPipeline:
         scan_end: float | None = None,
         path: Any = None,
         reverse: bool = False,
+        dynamic_obstacles: Any = None,
     ) -> PipelineStep:
+        """Process one scan.
+
+        ``dynamic_obstacles`` is optional ``(N, 5)`` rows of ``x, y, vx, vy,
+        radius`` in the map frame (tracked moving objects). Their cells are
+        cleared from the occupancy grid and MPPI avoids their constant-velocity
+        predictions instead; leave it ``None`` to treat everything as static.
+        """
+        dynamic = _dynamic_rows(dynamic_obstacles)
         timings: dict[str, float] = {}
         started = time.perf_counter()
 
@@ -325,11 +355,17 @@ class CudaNavPipeline:
         world = transform_points(scan, frame.rotation, frame.translation)
         mapping = self.voxel_map.integrate(world, frame.translation)
         if self._chain is not None:
-            return self._step_device(frame, mapping, path, reverse, timings, stage, started)
+            return self._step_device(
+                frame, mapping, path, reverse, dynamic, timings, stage, started
+            )
 
         occupancy = clear_footprint(
             self.voxel_map.occupancy(), frame.x, frame.y, self.footprint_clearing_radius
         )
+        for x, y, _vx, _vy, radius in [] if dynamic is None else dynamic:
+            occupancy = clear_footprint(
+                occupancy, float(x), float(y), float(radius) + DYNAMIC_CLEARING_MARGIN
+            )
         timings["mapping"] = _ms(stage)
 
         stage = time.perf_counter()
@@ -345,6 +381,7 @@ class CudaNavPipeline:
         if path is not None:
             stage = time.perf_counter()
             local = local_path_window(path, frame.x, frame.y)
+            self._planner(reverse).set_dynamic_obstacles(dynamic)
             v, _vy, w, planner = self._planner(reverse).compute(
                 (frame.x, frame.y, frame.yaw),
                 costmap,
@@ -377,6 +414,7 @@ class CudaNavPipeline:
         mapping: dict[str, Any],
         path: Any,
         reverse: bool,
+        dynamic: np.ndarray | None,
         timings: dict[str, float],
         stage: float,
         started: float,
@@ -385,6 +423,11 @@ class CudaNavPipeline:
         projection = chain.project(
             self.voxel_map._mapper, frame.x, frame.y, self.footprint_clearing_radius
         )
+        occupied_cells = int(projection["occupied_cells"])
+        for x, y, _vx, _vy, radius in [] if dynamic is None else dynamic:
+            occupied_cells = int(
+                chain.clear_disc(float(x), float(y), float(radius) + DYNAMIC_CLEARING_MARGIN)
+            )
         grid = projection["grid"]
         resolution = float(grid["resolution"])
         origin = (float(grid["origin_x"]), float(grid["origin_y"]))
@@ -403,6 +446,7 @@ class CudaNavPipeline:
         if path is not None:
             stage = time.perf_counter()
             local = local_path_window(path, frame.x, frame.y)
+            self._planner(reverse).set_dynamic_obstacles(dynamic)
             v, _vy, w, planner = chain.plan(
                 self._planner(reverse)._planner,
                 (frame.x, frame.y, frame.yaw),
@@ -419,7 +463,7 @@ class CudaNavPipeline:
         return PipelineStep(
             odometry=frame,
             mapping=mapping,
-            occupied_cells=int(projection["occupied_cells"]),
+            occupied_cells=occupied_cells,
             command=command,
             planner=planner,
             timings_ms=timings,

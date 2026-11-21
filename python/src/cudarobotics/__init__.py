@@ -99,6 +99,26 @@ class MppiPlanner:
     def set_speed_limit(self, v_max):
         self._planner.set_speed_limit(v_max)
 
+    def set_dynamic_obstacles(self, obstacles):
+        """Predicted moving obstacles for the following ``compute`` calls.
+
+        ``obstacles`` is ``(N, 5)`` rows of ``x, y, vx, vy, radius`` in the
+        costmap frame (constant-velocity discs), at most 64 rows; ``None`` or an
+        empty array clears them. They only change the plan when
+        ``params.dynamic_obstacle_weight > 0``.
+        """
+        if obstacles is not None:
+            obstacles = np.ascontiguousarray(obstacles, dtype=np.float32)
+            if obstacles.size == 0:
+                obstacles = None
+            elif obstacles.ndim != 2 or obstacles.shape[1] != 5:
+                raise ValueError("obstacles must have shape (N, 5): x, y, vx, vy, radius")
+        self._planner.set_dynamic_obstacles(obstacles)
+
+    @property
+    def dynamic_obstacle_count(self):
+        return self._planner.dynamic_obstacle_count
+
     def compute(
         self,
         state,

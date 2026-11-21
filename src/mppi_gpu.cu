@@ -47,6 +47,8 @@ struct DeviceParams
   float smooth_w, backward_w;
   float curvature_speed_min;
   float distance_field_w, distance_field_cutoff;
+  float dynamic_w, dynamic_margin, dynamic_robot_radius, dynamic_growth;
+  int dynamic_count;   // 0 disables the dynamic-obstacle critic
   float speed_w, angular_w;
   int follow_offset;   // path index offset for the path-follow cost
   float collision_cost;
@@ -222,6 +224,7 @@ __global__ void rollout_kernel(
   DeviceParams p,
   const unsigned char * __restrict__ costmap,
   const float * __restrict__ distance_field,
+  const DynamicObstacle * __restrict__ dynamic_obstacles,  // [dynamic_count]
   const float * __restrict__ path,        // [path_len * 2]
   const float * __restrict__ nominal,     // [T * kCtrlDim]
   float * __restrict__ perturbed,         // [K * T * kCtrlDim]
@@ -318,6 +321,26 @@ __global__ void rollout_kernel(
       if (dist < p.distance_field_cutoff) {
         const float q = (p.distance_field_cutoff - dist) / p.distance_field_cutoff;
         cost += p.distance_field_w * q * q * p.dt;
+      }
+    }
+
+    // predicted dynamic obstacles: constant-velocity discs whose radius grows
+    // with the prediction horizon
+    if (p.dynamic_count > 0) {
+      const float tau = (t + 1) * p.dt;
+      const float growth = p.dynamic_growth * tau;
+      for (int i = 0; i < p.dynamic_count; ++i) {
+        const DynamicObstacle o = dynamic_obstacles[i];
+        const float dx = x - (o.x + o.vx * tau);
+        const float dy = y - (o.y + o.vy * tau);
+        const float clearance =
+          sqrtf(dx * dx + dy * dy) - o.radius - p.dynamic_robot_radius - growth;
+        if (clearance < 0.0f) {
+          cost += p.collision_cost;
+        } else if (clearance < p.dynamic_margin) {
+          const float q = p.dynamic_margin - clearance;
+          cost += p.dynamic_w * q * q * p.dt;
+        }
       }
     }
 
@@ -515,6 +538,8 @@ struct MppiGpu::Impl
   float * d_distance_field = nullptr;
   size_t costmap_capacity = 0;
   size_t distance_field_capacity = 0;
+  DynamicObstacle * d_dynamic_obstacles = nullptr;  // [kMaxDynamicObstacles]
+  int dynamic_count = 0;
 
   std::vector<float> h_nominal;
   std::vector<float> h_last_valid_nominal;
@@ -542,6 +567,8 @@ struct MppiGpu::Impl
     reduce_temp_bytes = std::max(min_bytes, sum_bytes);
     CUDA_CHECK(cudaMalloc(&d_reduce_temp, reduce_temp_bytes));
     CUDA_CHECK(cudaMalloc(&d_path, kMaxPathPoints * 2 * sizeof(float)));
+    CUDA_CHECK(cudaMalloc(
+        &d_dynamic_obstacles, kMaxDynamicObstacles * sizeof(DynamicObstacle)));
 
     h_nominal.assign(T * kCtrlDim, 0.0f);
     h_last_valid_nominal.assign(T * kCtrlDim, 0.0f);
@@ -568,6 +595,7 @@ struct MppiGpu::Impl
     cudaFree(d_path);
     cudaFree(d_costmap);
     cudaFree(d_distance_field);
+    cudaFree(d_dynamic_obstacles);
   }
 
   void reset()
@@ -617,6 +645,38 @@ void MppiGpu::reset()
 void MppiGpu::setSpeedLimit(float v_max)
 {
   impl_->v_max_limit = v_max;
+}
+
+void MppiGpu::setDynamicObstacles(const DynamicObstacle * obstacles, int count)
+{
+  if (count < 0 || count > kMaxDynamicObstacles) {
+    throw std::invalid_argument(
+            "dynamic obstacle count must be in [0, " +
+            std::to_string(kMaxDynamicObstacles) + "]");
+  }
+  if (count > 0 && obstacles == nullptr) {
+    throw std::invalid_argument("dynamic obstacles pointer must not be null");
+  }
+  for (int i = 0; i < count; ++i) {
+    const DynamicObstacle & o = obstacles[i];
+    if (!std::isfinite(o.x) || !std::isfinite(o.y) || !std::isfinite(o.vx) ||
+      !std::isfinite(o.vy) || !std::isfinite(o.radius) || o.radius < 0.0f)
+    {
+      throw std::invalid_argument(
+              "dynamic obstacles must be finite with a non-negative radius");
+    }
+  }
+  if (count > 0) {
+    CUDA_CHECK(cudaMemcpy(
+        impl_->d_dynamic_obstacles, obstacles, count * sizeof(DynamicObstacle),
+        cudaMemcpyHostToDevice));
+  }
+  impl_->dynamic_count = count;
+}
+
+int MppiGpu::dynamicObstacleCount() const
+{
+  return impl_->dynamic_count;
 }
 
 MppiResult MppiGpu::computeInternal(
@@ -705,6 +765,11 @@ MppiResult MppiGpu::computeInternal(
   dp.costmap_w = mp.costmap_weight;
   dp.distance_field_w = mp.distance_field_weight;
   dp.distance_field_cutoff = mp.distance_field_cutoff;
+  dp.dynamic_w = mp.dynamic_obstacle_weight;
+  dp.dynamic_margin = mp.dynamic_obstacle_margin;
+  dp.dynamic_robot_radius = mp.dynamic_obstacle_robot_radius;
+  dp.dynamic_growth = mp.dynamic_obstacle_growth;
+  dp.dynamic_count = mp.dynamic_obstacle_weight > 0.0f ? im.dynamic_count : 0;
   dp.smooth_w = mp.smoothness_weight;
   dp.backward_w = mp.backward_weight;
   dp.speed_w = mp.speed_weight;
@@ -739,7 +804,8 @@ MppiResult MppiGpu::computeInternal(
 
   for (int iter = 0; iter < mp.iteration_count; ++iter) {
     rollout_kernel<<<rollout_blocks, threads>>>(
-      dp, rollout_costmap, rollout_distance_field, im.d_path, im.d_nominal, im.d_perturbed,
+      dp, rollout_costmap, rollout_distance_field, im.d_dynamic_obstacles, im.d_path,
+      im.d_nominal, im.d_perturbed,
       im.d_costs, im.d_rng);
     CUDA_CHECK(cudaGetLastError());
     CUDA_CHECK(cub::DeviceReduce::Min(

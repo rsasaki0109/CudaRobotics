@@ -122,6 +122,14 @@ No Jetson measurement exists. On Jetson, the CPU and GPU share memory and the
 CPU is weaker, so avoiding host round trips and NumPy work should matter more
 there. That is an expectation, not a result.
 
+### Moving obstacles
+
+Pass tracked moving objects as `step(..., dynamic_obstacles=rows)`, with rows
+of `(x, y, vx, vy, radius)` in the map frame. Their cells are cleared from the
+occupancy grid, and CUDA MPPI avoids their constant-velocity predictions.
+Remove their points from the scan as well. The critic and an evaluation are
+described in [`cudanav_dynamic_obstacles.md`](cudanav_dynamic_obstacles.md).
+
 Configuration objects (`KissIcpConfig`, `VoxelMappingConfig`, `Esdf2DConfig`,
 `MppiParams`) are accepted by every constructor. Keyword overrides are checked
 against the field names, and invalid values are rejected by the C++
@@ -148,6 +156,17 @@ LiDAR model, unicycle plant and quality gate as the native tool:
 - The reference poses in the file give ATE and final drift.
 - The gate defaults are the native ones: ATE ≤ 5 m, drift ≤ 10%, and at least
   30 inliers.
+
+**`sim --scenario crossing`** runs one S-course traversal while two
+pedestrians cross the corridors.
+- `--dynamic-mode map|tracked_static|predicted` selects how they reach the
+  planner.
+- `--seed` sets their schedules.
+- The `--obs-*` options degrade the oracle tracker.
+- The gate requires the goal within 60 s, no wall contact, and no
+  robot-caused pedestrian contact.
+
+See [`cudanav_dynamic_obstacles.md`](cudanav_dynamic_obstacles.md).
 
 Both commands write the following files to `--output-dir`:
 

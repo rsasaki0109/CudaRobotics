@@ -598,6 +598,9 @@ target_link_libraries(cudanav_costmap_gpu_smoke
 
 cudabot_demo(mppi_reduction_smoke tests/mppi_reduction_smoke.cu)
 
+add_executable(mppi_dynamic_obstacle_smoke tests/mppi_dynamic_obstacle_smoke.cu)
+target_link_libraries(mppi_dynamic_obstacle_smoke cudarobotics_mppi_gpu)
+
 cudabot_demo(gpu_mpc_qp src/gpu_mpc_qp.cu OPENCV RELAXED_CONSTEXPR)
 
 cudabot_demo(gpu_constrained_mpc src/gpu_constrained_mpc.cu OPENCV RELAXED_CONSTEXPR)
@@ -804,6 +807,12 @@ set_tests_properties(cudanav_costmap_gpu_smoke PROPERTIES
 add_test(NAME mppi_reduction_smoke
   COMMAND $<TARGET_FILE:mppi_reduction_smoke>)
 set_tests_properties(mppi_reduction_smoke PROPERTIES
+  TIMEOUT 60
+  LABELS "gpu;mppi;reference")
+
+add_test(NAME mppi_dynamic_obstacle_smoke
+  COMMAND $<TARGET_FILE:mppi_dynamic_obstacle_smoke>)
+set_tests_properties(mppi_dynamic_obstacle_smoke PROPERTIES
   TIMEOUT 60
   LABELS "gpu;mppi;reference")
 

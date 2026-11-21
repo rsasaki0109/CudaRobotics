@@ -264,3 +264,99 @@ def test_cli_records_malformed_sequence_as_failure(tmp_path, monkeypatch, capsys
     assert summary["failure"]["stage"] == "run"
     assert summary["failure"]["type"] == "SequenceFormatError"
     capsys.readouterr()
+
+
+# --- moving obstacles (crossing scenario) -----------------------------------
+
+
+def test_moving_obstacle_walks_a_triangle_wave():
+    from cudarobotics.navigation.simulation import MovingObstacle
+
+    walker = MovingObstacle(start=(0.0, 0.0), end=(2.0, 0.0), speed=0.5, radius=0.25)
+    assert walker.state(0.0) == pytest.approx((0.0, 0.0, 0.5, 0.0))
+    assert walker.state(2.0) == pytest.approx((1.0, 0.0, 0.5, 0.0))
+    assert walker.state(6.0) == pytest.approx((1.0, 0.0, -0.5, 0.0))  # on the way back
+    assert walker.state(8.0)[:2] == pytest.approx((0.0, 0.0), abs=1e-9)
+    shifted = MovingObstacle(start=(0.0, 0.0), end=(2.0, 0.0), speed=0.5, phase=2.0)
+    assert shifted.state(0.0) == pytest.approx(walker.state(2.0))
+
+
+def test_obstacles_are_seen_by_the_scan_and_masked():
+    from cudarobotics.navigation.simulation import (
+        obstacle_segments,
+        simulate_scan_with_obstacles,
+    )
+
+    segments = course_segments()
+    states = np.asarray([[1.0, 0.0, 0.0, 0.0, 0.25]], dtype=np.float32)
+    assert obstacle_segments(states).shape == (12, 4)
+    points, dynamic = simulate_scan_with_obstacles(Pose2D(), segments, states)
+    plain = simulate_scan(Pose2D(), segments)
+    assert points.shape == plain.shape and dynamic.shape == (points.shape[0],)
+    assert 0 < dynamic.sum() < points.shape[0]
+    ahead = points[dynamic]
+    # Hits lie on the circumscribed 12-gon of the disc centred 1.0 m ahead.
+    from_centre = np.hypot(ahead[:, 0] - 1.0, ahead[:, 1])
+    assert np.all((from_centre > 0.249) & (from_centre < 0.25 / math.cos(math.pi / 12) + 1e-3))
+    assert np.all(ahead[:, 0] > 0.0)
+    empty_points, empty_mask = simulate_scan_with_obstacles(
+        Pose2D(), segments, np.zeros((0, 5), dtype=np.float32)
+    )
+    np.testing.assert_array_equal(empty_points, plain)
+    assert not empty_mask.any()
+
+
+def test_dynamic_clearance_and_phases_are_deterministic():
+    from cudarobotics.navigation.dynamic_scenario import crossing_phases
+    from cudarobotics.navigation.simulation import dynamic_clearance
+
+    states = np.asarray([[1.0, 0.0, 0.0, 0.0, 0.25]], dtype=np.float32)
+    assert dynamic_clearance(0.0, 0.0, states) == pytest.approx(1.0 - 0.25 - 0.24)
+    assert math.isinf(dynamic_clearance(0.0, 0.0, np.zeros((0, 5))))
+    assert crossing_phases(3) == crossing_phases(3)
+    assert crossing_phases(3) != crossing_phases(4)
+
+
+def test_observation_model_delays_and_perturbs_deterministically():
+    from cudarobotics.navigation.dynamic_scenario import ObservationModel, observe
+
+    history = [np.full((2, 5), float(index), dtype=np.float32) for index in range(5)]
+    exact = observe(history, ObservationModel(), np.random.default_rng(0))
+    np.testing.assert_array_equal(exact, history[-1])
+    delayed = observe(history, ObservationModel(latency_frames=2), np.random.default_rng(0))
+    np.testing.assert_array_equal(delayed, history[2])
+    noisy = ObservationModel(position_noise_m=0.1, velocity_noise_mps=0.2)
+    first = observe(history, noisy, np.random.default_rng(7))
+    second = observe(history, noisy, np.random.default_rng(7))
+    np.testing.assert_array_equal(first, second)
+    assert np.all(first[:, 4] == history[-1][:, 4])  # radius is not perturbed
+    dropped = observe(history, ObservationModel(dropout_probability=0.99), np.random.default_rng(1))
+    assert dropped.shape[0] <= 2
+    with pytest.raises(ValueError):
+        ObservationModel(latency_frames=-1)
+    with pytest.raises(ValueError):
+        ObservationModel(dropout_probability=1.0)
+
+
+def test_pedestrians_yield_instead_of_walking_into_the_robot():
+    from cudarobotics.navigation.dynamic_scenario import PedestrianClock
+    from cudarobotics.navigation.simulation import MovingObstacle
+
+    walker = MovingObstacle(start=(0.0, 0.0), end=(4.0, 0.0), speed=1.0, radius=0.25)
+    clock = PedestrianClock([walker])
+    robot = Pose2D(1.2, 0.0, 0.0)
+    for _ in range(20):
+        clock.advance(robot, 0.1)
+    x = clock.states()[0, 0]
+    assert x < robot.x - 0.25 - 0.24  # stopped short of the robot
+    assert clock.paused[0] and np.all(clock.states()[0, 2:4] == 0.0)
+    clock.advance(Pose2D(3.5, 3.0, 0.0), 0.1)  # robot moved away: walking resumes
+    assert not clock.paused[0]
+
+
+def test_crossing_cli_usage_errors(tmp_path, capsys):
+    base = ["sim", "--output-dir", str(tmp_path), "--scenario", "crossing"]
+    assert cli.main(base + ["--dynamic-mode", "oracle"]) == cli.EXIT_USAGE
+    assert cli.main(base + ["--obs-dropout", "1.5"]) == cli.EXIT_USAGE
+    assert cli.main(base + ["--obs-latency-frames", "-1"]) == cli.EXIT_USAGE
+    capsys.readouterr()
