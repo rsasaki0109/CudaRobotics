@@ -348,7 +348,10 @@ Mid term — pick ONE based on which funnel converts after the release
 
 - **Dynamic-obstacle MPPI** — landed 2026-11-21: predicted moving-obstacle critic
   in `MppiGpu` + CudaNav `dynamic_obstacles` + `sim --scenario crossing`
-  (oracle tracker). Next: scan-based pedestrian tracker, Nav2 obstacle input.
+  (oracle tracker). Scan-based tracker (`ScanObjectTracker`, occupancy-age
+  candidates, CV KF) + opt-in overlap allowance landed after: 4/6 crossings
+  with no oracle. Next: dynamic-aware retreat, freezing, GPU tracker, Nav2
+  obstacle input.
 - **Jetson / aarch64** — compile-only CI landed (2026-11-21, aarch64 + sm_87,
   no hardware). Runtime validation waits for a device or concrete user demand.
 - **Broaden zero-copy inputs** — after costmap DLPack lands, consider path /

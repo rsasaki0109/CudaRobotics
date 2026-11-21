@@ -17,8 +17,13 @@ Three ways of handling them are compared:
 ``tracked_static``
     Like ``predicted`` but the planner gets zero velocities, isolating the
     value of the motion prediction from keeping obstacles out of the map.
+``tracked_scan``
+    No oracle: the pipeline's :class:`~cudarobotics.navigation.tracking.ScanObjectTracker`
+    finds the pedestrians in the scan itself (points in previously free
+    cells), keeps them out of the map and gives MPPI its tracks. Tracking
+    accuracy against the true pedestrians is reported in ``tracking``.
 
-Everything is synthetic; the tracker is an oracle, not a perception result.
+Everything is synthetic; except in ``tracked_scan`` the tracker is an oracle.
 """
 
 from __future__ import annotations
@@ -32,6 +37,7 @@ import numpy as np
 
 from .evidence import SCHEMA_VERSION, latency_summary, percentile
 from .pipeline import CudaNavPipeline, PipelineStep
+from .tracking import ScanObjectTracker
 from .simulation import (
     DT,
     GOAL_TOLERANCE,
@@ -50,7 +56,10 @@ from .simulation import (
 )
 
 SCENARIO = "cudanav_s_course_crossing"
-DYNAMIC_MODES = ("map", "tracked_static", "predicted")
+DYNAMIC_MODES = ("map", "tracked_static", "predicted", "tracked_scan")
+TRACK_MATCH_M = 0.5        # a visible pedestrian counts as tracked within this distance
+FALSE_TRACK_M = 0.7        # a confirmed track this far from every pedestrian is false
+VISIBLE_RAYS = 3           # rays that must hit a pedestrian for it to count as visible
 DEADLINE_MS = 150.0
 MAXIMUM_FRAMES = 600  # 60 s of simulated time for one traversal
 MAXIMUM_DRIFT_PERCENT = 5.0
@@ -145,6 +154,64 @@ class PedestrianClock:
                 self.elapsed[index] += dt
 
 
+def _score_tracks(
+    tally: dict[str, Any],
+    tracks: np.ndarray | None,
+    states: np.ndarray,
+    truth: Pose2D,
+    points: np.ndarray,
+    on_obstacle: np.ndarray,
+) -> None:
+    """Compare one frame's confirmed tracks with the true pedestrians."""
+    tracks = np.zeros((0, 5), np.float32) if tracks is None else np.asarray(tracks)
+    # Which pedestrian each obstacle return belongs to (nearest centre).
+    cos, sin = math.cos(truth.yaw), math.sin(truth.yaw)
+    hits = points[on_obstacle]
+    world_x = truth.x + cos * hits[:, 0] - sin * hits[:, 1]
+    world_y = truth.y + sin * hits[:, 0] + cos * hits[:, 1]
+    rays = np.zeros(states.shape[0], dtype=np.int64)
+    if hits.shape[0]:
+        owner = np.argmin(
+            np.hypot(world_x[:, None] - states[None, :, 0], world_y[:, None] - states[None, :, 1]),
+            axis=1,
+        )
+        rays = np.bincount(owner, minlength=states.shape[0]) // 3  # three height layers
+    for index, (x, y, vx, vy, _radius) in enumerate(states):
+        if rays[index] < VISIBLE_RAYS:
+            continue
+        tally["visible_pedestrian_frames"] += 1
+        if tracks.shape[0] == 0:
+            continue
+        distance = np.hypot(tracks[:, 0] - x, tracks[:, 1] - y)
+        nearest = int(np.argmin(distance))
+        if distance[nearest] <= TRACK_MATCH_M:
+            tally["tracked_pedestrian_frames"] += 1
+            tally["position_squared_errors"].append(float(distance[nearest] ** 2))
+            tally["velocity_squared_errors"].append(
+                float((tracks[nearest, 2] - vx) ** 2 + (tracks[nearest, 3] - vy) ** 2)
+            )
+    for x, y, *_rest in tracks:
+        if np.min(np.hypot(states[:, 0] - x, states[:, 1] - y)) > FALSE_TRACK_M:
+            tally["false_track_frames"] += 1
+
+
+def _tracking_summary(tally: dict[str, Any]) -> dict[str, Any]:
+    visible = tally["visible_pedestrian_frames"]
+    matched = tally["tracked_pedestrian_frames"]
+    positions = tally["position_squared_errors"]
+    velocities = tally["velocity_squared_errors"]
+    return {
+        "visible_pedestrian_frames": visible,
+        "tracked_pedestrian_frames": matched,
+        "recall": matched / visible if visible else None,
+        "position_rmse_m": math.sqrt(sum(positions) / len(positions)) if positions else None,
+        "velocity_rmse_mps": math.sqrt(sum(velocities) / len(velocities)) if velocities else None,
+        "false_track_frames": tally["false_track_frames"],
+        "match_distance_m": TRACK_MATCH_M,
+        "false_track_distance_m": FALSE_TRACK_M,
+    }
+
+
 def crossing_phases(seed: int) -> tuple[float, float]:
     """Deterministic schedule offsets (seconds) for the two pedestrians."""
     rng = np.random.default_rng(seed)
@@ -202,14 +269,27 @@ def run_crossing(
         raise ValueError(f"dynamic_mode must be one of {DYNAMIC_MODES}")
     if maximum_steps < 10:
         raise ValueError("maximum_steps must be >= 10")
-    nav = CudaNavPipeline() if pipeline is None else pipeline
+    scan_mode = dynamic_mode == "tracked_scan"
+    if pipeline is None:
+        nav = CudaNavPipeline(tracker=ScanObjectTracker() if scan_mode else None)
+    else:
+        nav = pipeline
+    if scan_mode and nav.tracker is None:
+        raise ValueError("tracked_scan needs a CudaNavPipeline created with a tracker")
     segments = course_segments()
     obstacles = crossing_obstacles(crossing_phases(seed))
     clock = PedestrianClock(obstacles)
     path = interpolate_path(PATH_SPACING, reverse=False)
     params = nav.mppi_params
     observation_rng = np.random.default_rng(seed + 1_000_003)
-    tracked_mode = dynamic_mode != "map"  # both tracked modes use the oracle tracker
+    oracle_mode = dynamic_mode in ("tracked_static", "predicted")
+    tracking = {
+        "visible_pedestrian_frames": 0,
+        "tracked_pedestrian_frames": 0,
+        "false_track_frames": 0,
+        "position_squared_errors": [],
+        "velocity_squared_errors": [],
+    }
 
     truth = Pose2D()
     previous_estimate = (0.0, 0.0)
@@ -258,12 +338,15 @@ def run_crossing(
 
         points, on_obstacle = simulate_scan_with_obstacles(truth, segments, states)
         tracked = None
-        if tracked_mode:
+        if oracle_mode:
             points = points[~on_obstacle]
             tracked = observe(tracks, observation, observation_rng)
             if dynamic_mode == "tracked_static":
                 tracked[:, 2:4] = 0.0  # tracked positions without velocity prediction
-        result = nav.step(points, path=path, dynamic_obstacles=tracked)
+        result = nav.step(points, path=path, dynamic_obstacles=tracked, stamp=now)
+        if scan_mode:
+            _score_tracks(tracking, result.tracks, states, truth, points, on_obstacle)
+            tracked = result.tracks
         last_step = result
         odom = result.odometry
         previous_estimate = (odom.x, odom.y)
@@ -353,7 +436,9 @@ def run_crossing(
         "seed": seed,
         "obstacle_phases_s": [obstacle.phase for obstacle in obstacles],
         "observation": {
-            "source": "simulator_oracle" if tracked_mode else "none",
+            "source": (
+                "simulator_oracle" if oracle_mode else "scan_tracker" if scan_mode else "none"
+            ),
             "latency_frames": observation.latency_frames,
             "position_noise_m": observation.position_noise_m,
             "velocity_noise_mps": observation.velocity_noise_mps,
@@ -390,11 +475,12 @@ def run_crossing(
         "retreating_evaluations": retreating,
         "maximum_non_wall_occupied_cells": maximum_ghosts,
         "final_non_wall_occupied_cells": ghost_samples[-1] if ghost_samples else 0,
+        "tracking": _tracking_summary(tracking) if scan_mode else None,
         "claims": {
             "gpu_core_closed_loop": True,
             "ros2_runtime": False,
             "real_data": False,
-            "perception_tracking": False,
+            "perception_tracking": scan_mode,
         },
     }
     stage_latency = {name: latency_summary(values) for name, values in stage_ms.items()}

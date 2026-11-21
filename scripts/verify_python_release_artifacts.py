@@ -45,6 +45,7 @@ NAVIGATION_MODULES = (
     "simulation.py",
     "closed_loop.py",
     "dynamic_scenario.py",
+    "tracking.py",
     "sequence.py",
     "evidence.py",
     "cli.py",

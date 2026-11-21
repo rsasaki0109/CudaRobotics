@@ -82,7 +82,9 @@ NumPy only when they are read.
 Tracked moving objects can be passed as `step(..., dynamic_obstacles=rows)`,
 with rows of `(x, y, vx, vy, radius)`, and MPPI then avoids their predicted
 trajectories (`MppiPlanner.set_dynamic_obstacles` does the same for the
-planner alone). `cudarobotics-cudanav sim --scenario crossing` evaluates this
+planner alone). `CudaNavPipeline(tracker=ScanObjectTracker())` instead finds
+and tracks moving objects in the scan itself.
+`cudarobotics-cudanav sim --scenario crossing` evaluates this
 with pedestrians crossing the course; see
 [`docs/cudanav_dynamic_obstacles.md`](../docs/cudanav_dynamic_obstacles.md).
 

@@ -117,6 +117,36 @@ void co_located_obstacle_invalidates_every_rollout()
           "an obstacle covering the robot makes every rollout collide");
 }
 
+void overlap_allowance_tolerates_a_small_existing_overlap()
+{
+    // A static disc ahead that the robot already penetrates by 0.05 m, as a
+    // tracking error can cause.
+    const DynamicObstacle ahead{0.5f, 0.0f, 0.0f, 0.0f, 0.3f};
+    MppiParams strict = params(25.0f);
+    strict.enable_retreat = false;
+    MppiGpu hard(strict);
+    hard.setDynamicObstacles(&ahead, 1);
+    check(plan(hard, 1).back().all_colliding,
+          "without an allowance an existing overlap makes every rollout collide");
+
+    MppiParams tolerant = strict;
+    tolerant.dynamic_obstacle_overlap_allowance = 0.1f;
+    MppiGpu soft(tolerant);
+    soft.setDynamicObstacles(&ahead, 1);
+    const MppiResult result = plan(soft, 1).back();
+    std::printf("allowance: v=%.3f w=%.3f valid=%.3f\n", result.v, result.w, result.valid_rollout_ratio);
+    check(!result.all_colliding && result.valid_rollouts > 0,
+          "an allowed overlap must leave valid rollouts");
+    check(result.v < 0.25f, "the robot must not drive deeper into the disc");
+
+    // Beyond the cap the allowance does not apply.
+    const DynamicObstacle deep{0.2f, 0.0f, 0.0f, 0.0f, 0.3f};
+    MppiGpu capped(tolerant);
+    capped.setDynamicObstacles(&deep, 1);
+    check(plan(capped, 1).back().valid_rollout_ratio < 0.05f,
+          "a penetration deeper than the cap is still a collision");
+}
+
 void invalid_input_is_rejected()
 {
     MppiGpu planner(params(25.0f));
@@ -145,6 +175,7 @@ int main()
     disabled_critic_is_bit_identical();
     head_on_mover_changes_the_command();
     co_located_obstacle_invalidates_every_rollout();
+    overlap_allowance_tolerates_a_small_existing_overlap();
     invalid_input_is_rejected();
     std::printf("mppi_dynamic_obstacle_smoke: OK\n");
     return 0;

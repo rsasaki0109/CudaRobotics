@@ -48,6 +48,7 @@ struct DeviceParams
   float curvature_speed_min;
   float distance_field_w, distance_field_cutoff;
   float dynamic_w, dynamic_margin, dynamic_robot_radius, dynamic_growth;
+  float dynamic_overlap_allowance;
   int dynamic_count;   // 0 disables the dynamic-obstacle critic
   float speed_w, angular_w;
   int follow_offset;   // path index offset for the path-follow cost
@@ -335,7 +336,19 @@ __global__ void rollout_kernel(
         const float dy = y - (o.y + o.vy * tau);
         const float clearance =
           sqrtf(dx * dx + dy * dy) - o.radius - p.dynamic_robot_radius - growth;
-        if (clearance < 0.0f) {
+        bool collides = clearance < 0.0f;
+        if (p.dynamic_overlap_allowance > 0.0f) {
+          // Tolerate the robot's current penetration of the observed disc
+          // (capped), judged without the uncertainty growth.
+          const float reach = o.radius + p.dynamic_robot_radius;
+          const float sx = p.start_x - o.x;
+          const float sy = p.start_y - o.y;
+          const float penetration = fmaxf(0.0f, reach - sqrtf(sx * sx + sy * sy));
+          // 1e-4 m absorbs rounding between the two distance computations,
+          // so standing still at the start pose is never a collision.
+          collides = clearance + growth < -fminf(penetration, p.dynamic_overlap_allowance) - 1.0e-4f;
+        }
+        if (collides) {
           cost += p.collision_cost;
         } else if (clearance < p.dynamic_margin) {
           const float q = p.dynamic_margin - clearance;
@@ -769,6 +782,7 @@ MppiResult MppiGpu::computeInternal(
   dp.dynamic_margin = mp.dynamic_obstacle_margin;
   dp.dynamic_robot_radius = mp.dynamic_obstacle_robot_radius;
   dp.dynamic_growth = mp.dynamic_obstacle_growth;
+  dp.dynamic_overlap_allowance = std::max(0.0f, mp.dynamic_obstacle_overlap_allowance);
   dp.dynamic_count = mp.dynamic_obstacle_weight > 0.0f ? im.dynamic_count : 0;
   dp.smooth_w = mp.smoothness_weight;
   dp.backward_w = mp.backward_weight;

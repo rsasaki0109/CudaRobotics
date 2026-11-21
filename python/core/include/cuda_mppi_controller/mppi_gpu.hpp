@@ -74,6 +74,14 @@ struct MppiParams
   float dynamic_obstacle_margin = 0.4f;        // [m]
   float dynamic_obstacle_robot_radius = 0.25f; // [m] disc approximation of the robot
   float dynamic_obstacle_growth = 0.1f;        // [m/s] prediction uncertainty growth
+  // Tolerated current overlap for tracked (noisy) obstacles. With a value
+  // a > 0, an existing penetration p of disc i at the start pose (up to a) is
+  // allowed: a rollout collides only when gap < -min(p, a), where
+  // gap = |q(tau) - (p_i + v_i tau)| - r_i - robot_radius, and the growth
+  // term enters only the soft cost. This keeps a robot that a tracking error
+  // places just inside a disc from seeing every rollout collide. 0 (default)
+  // keeps the hard check above.
+  float dynamic_obstacle_overlap_allowance = 0.0f;  // [m]
   float smoothness_weight = 0.2f;    // stage (du)^2 between consecutive steps
   float backward_weight = 0.5f;      // stage penalty on v < 0
   // stage penalty on (v_max - v): counters the softmin saturation bias

@@ -54,7 +54,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     sim.add_argument(
         "--dynamic-mode",
-        choices=("map", "tracked_static", "predicted"),
+        choices=("map", "tracked_static", "predicted", "tracked_scan"),
         default="predicted",
         help="crossing only: how moving obstacles reach the planner",
     )
@@ -198,6 +198,7 @@ def _run_crossing(args: argparse.Namespace, argv: Sequence[str]) -> int:
         run_crossing,
     )
     from .pipeline import CudaNavPipeline
+    from .tracking import ScanObjectTracker
 
     observation = ObservationModel(
         latency_frames=args.obs_latency_frames,
@@ -210,7 +211,10 @@ def _run_crossing(args: argparse.Namespace, argv: Sequence[str]) -> int:
         seed=args.seed,
         observation=observation,
         maximum_steps=min(args.max_steps, 600),
-        pipeline=CudaNavPipeline(stage_chain=args.stage_chain),
+        pipeline=CudaNavPipeline(
+            stage_chain=args.stage_chain,
+            tracker=ScanObjectTracker() if args.dynamic_mode == "tracked_scan" else None,
+        ),
     )
     parameters = {
         "stage_chain": args.stage_chain,
