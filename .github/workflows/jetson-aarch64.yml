@@ -86,8 +86,9 @@ jobs:
         run: |
           for lib in cudarobotics_mppi_gpu cudarobotics_kiss_icp_gpu \
                      cudarobotics_voxel_mapping_gpu cudarobotics_esdf_2d_gpu; do
-            archive=$(find build -name "lib${lib}.a" -print -quit)
-            test -n "$archive"
+            # LIBRARY_OUTPUT_PATH puts static libraries in lib/, not build/.
+            archive="lib/lib${lib}.a"
+            test -f "$archive"
             "${CUDA_HOME_DIR}/bin/cuobjdump" --list-elf "$archive" | tee /tmp/elf.txt
             grep -q "sm_${CUDA_ARCH}" /tmp/elf.txt
           done

@@ -6,6 +6,14 @@ import pytest
 import cudarobotics as cr
 from cudarobotics import registration
 
+# A runner with no NVIDIA driver at all (e.g. GitHub arm64) reports the driver
+# as insufficient rather than "no CUDA-capable device"; both mean no GPU.
+NO_GPU_MESSAGES = ("no CUDA-capable device", "driver version is insufficient")
+
+
+def _no_usable_gpu(exc):
+    return any(message in str(exc) for message in NO_GPU_MESSAGES)
+
 
 def test_version():
     assert isinstance(cr.__version__, str)
@@ -25,7 +33,7 @@ def test_mppi_planner_smoke():
             distance_field_cutoff=0.5,
         )
     except RuntimeError as exc:
-        if "no CUDA-capable device" in str(exc):
+        if _no_usable_gpu(exc):
             pytest.skip("CUDA GPU not available in this environment")
         raise
     costmap = np.zeros((40, 40), dtype=np.uint8)
@@ -64,7 +72,7 @@ def test_mppi_planner_cuda_dlpack_costmap_smoke():
             distance_field_cutoff=0.5,
         )
     except RuntimeError as exc:
-        if "no CUDA-capable device" in str(exc):
+        if _no_usable_gpu(exc):
             pytest.skip("CUDA GPU not available in this environment")
         raise
     costmap = torch.zeros((40, 40), dtype=torch.uint8, device="cuda")
