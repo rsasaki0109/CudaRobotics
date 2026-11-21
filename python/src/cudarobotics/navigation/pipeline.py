@@ -152,6 +152,48 @@ def _clearing_discs(
     return discs
 
 
+# Cells occupied for this many consecutive frames are structure (walls) that
+# clearing a tracked object must not erase: 5 s at 10 Hz.
+STRUCTURE_PROTECT_FRAMES = 50
+
+
+def _spare_structure(
+    discs: list[tuple[float, float, float]], age: OccupancyAge
+) -> list[tuple[float, float, float]]:
+    """Shrink each disc so it stops short of long-standing structure cells.
+
+    Pedestrians next to a wall would otherwise erase the wall from the map
+    (the clearing radius includes a margin beyond the pedestrian).
+    """
+    if not discs or age.age is None:
+        return discs
+    structure = age.age >= STRUCTURE_PROTECT_FRAMES
+    if not structure.any():
+        return discs
+    resolution = float(age.resolution)
+    ox, oy = age.origin
+    height, width = structure.shape
+    spared = []
+    for x, y, radius in discs:
+        c0 = max(int(np.floor((x - radius - ox) / resolution)), 0)
+        c1 = min(int(np.floor((x + radius - ox) / resolution)) + 1, width)
+        r0 = max(int(np.floor((y - radius - oy) / resolution)), 0)
+        r1 = min(int(np.floor((y + radius - oy) / resolution)) + 1, height)
+        if c0 >= c1 or r0 >= r1:
+            spared.append((x, y, radius))
+            continue
+        rows, columns = np.nonzero(structure[r0:r1, c0:c1])
+        if rows.size == 0:
+            spared.append((x, y, radius))
+            continue
+        cx = ox + (columns + c0 + 0.5) * resolution
+        cy = oy + (rows + r0 + 0.5) * resolution
+        nearest = float(np.min(np.hypot(cx - x, cy - y)))
+        # Keep the nearest structure cell's centre outside the disc.
+        spared.append((x, y, min(radius, max(0.0, nearest - resolution))))
+    return spared
+
+
 def _annotate(step: "PipelineStep", tracked: TrackerResult | None) -> "PipelineStep":
     if tracked is not None:
         step.tracks = tracked.tracks
@@ -434,11 +476,20 @@ class CudaNavPipeline:
             )
             return _annotate(result, tracked)
 
-        occupancy = clear_footprint(
-            self.voxel_map.occupancy(), frame.x, frame.y, self.footprint_clearing_radius
-        )
+        occupancy = self.voxel_map.occupancy()
+        footprint = (frame.x, frame.y, self.footprint_clearing_radius)
         if self.tracker is not None:
+            occupancy = clear_footprint(occupancy, *footprint)
             self._occupancy_age.update(occupancy)
+            discs = list(discs)
+        elif discs:
+            # External tracks keep their objects out of the map, so cells
+            # occupied for long are structure: age the uncleared grid, then
+            # clear the footprint and the objects without erasing walls.
+            self._occupancy_age.update(occupancy)
+            discs = _spare_structure([footprint] + discs, self._occupancy_age)
+        else:
+            discs = [footprint]
         for x, y, radius in discs:
             occupancy = clear_footprint(occupancy, x, y, radius)
         timings["mapping"] = _ms(stage)
@@ -496,11 +547,17 @@ class CudaNavPipeline:
         started: float,
     ) -> PipelineStep:
         chain = self._chain
+        # With external tracks the footprint is cleared below, sparing walls
+        # (see the host chain); otherwise the projection clears it directly.
+        spare = self.tracker is None and bool(discs)
         projection = chain.project(
-            self.voxel_map._mapper, frame.x, frame.y, self.footprint_clearing_radius
+            self.voxel_map._mapper,
+            frame.x,
+            frame.y,
+            -1.0 if spare else self.footprint_clearing_radius,
         )
         occupied_cells = int(projection["occupied_cells"])
-        if self.tracker is not None:
+        if self.tracker is not None or spare:
             grid = projection["grid"]
             self._occupancy_age.update(
                 OccupancyGrid(
@@ -508,6 +565,10 @@ class CudaNavPipeline:
                     resolution=float(grid["resolution"]),
                     origin=(float(grid["origin_x"]), float(grid["origin_y"])),
                 )
+            )
+        if spare:
+            discs = _spare_structure(
+                [(frame.x, frame.y, self.footprint_clearing_radius)] + discs, self._occupancy_age
             )
         for x, y, radius in discs:
             occupied_cells = int(chain.clear_disc(x, y, radius))

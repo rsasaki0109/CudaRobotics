@@ -192,6 +192,103 @@ def crossing_obstacles(phases: tuple[float, float] = (0.0, 0.0)) -> tuple[Moving
     )
 
 
+@dataclass(frozen=True)
+class PolylineWalker:
+    """A disc that walks back and forth along a polyline (triangle wave)."""
+
+    points: tuple[tuple[float, float], ...]
+    speed: float
+    radius: float = 0.25
+    phase: float = 0.0
+
+    def state(self, time_s: float) -> tuple[float, float, float, float]:
+        """World ``(x, y, vx, vy)`` at ``time_s``."""
+        lengths = [
+            math.hypot(bx - ax, by - ay)
+            for (ax, ay), (bx, by) in zip(self.points[:-1], self.points[1:])
+        ]
+        total = sum(lengths)
+        if total <= 1.0e-9 or self.speed <= 0.0:
+            return self.points[0][0], self.points[0][1], 0.0, 0.0
+        travelled = (time_s + self.phase) * self.speed % (2.0 * total)
+        sign = 1.0
+        if travelled > total:
+            travelled, sign = 2.0 * total - travelled, -1.0
+        last = len(lengths) - 1
+        for index, length in enumerate(lengths):
+            if length <= 1.0e-9 or (travelled > length and index < last):
+                travelled -= length
+                continue
+            (ax, ay), (bx, by) = self.points[index], self.points[index + 1]
+            ux, uy = (bx - ax) / length, (by - ay) / length
+            s = min(travelled, length)
+            return ax + ux * s, ay + uy * s, sign * ux * self.speed, sign * uy * self.speed
+        bx, by = self.points[-1]
+        return bx, by, 0.0, 0.0
+
+
+def head_on_obstacles(phases: tuple[float, float] = (0.0, 0.0)) -> tuple[MovingObstacle, ...]:
+    """Two pedestrians walking along the corridors, against the robot's path.
+
+    Each walks back and forth along the robot's own line through a corridor,
+    so the robot meets them head on and has to pass beside them.
+    """
+    return (
+        MovingObstacle(start=(5.3, 1.55), end=(2.5, 1.55), speed=0.45, radius=0.25, phase=phases[0]),
+        MovingObstacle(start=(7.7, -1.55), end=(5.2, -1.55), speed=0.4, radius=0.25, phase=phases[1]),
+    )
+
+
+def follower_obstacle(phase: float = 0.0, speed: float = 0.65) -> PolylineWalker:
+    """A pedestrian walking the robot's own route, starting just behind it.
+
+    It is faster than the robot's cruise speed, so it catches up and walks
+    close behind the robot while the robot waits or slows down.
+    """
+    return PolylineWalker(
+        points=((-0.9, 0.0),) + tuple(WAYPOINTS[1:]), speed=speed, radius=0.25, phase=phase
+    )
+
+
+CROWD_BOUNDS = (-0.6, -2.1, 9.6, 2.1)  # x0, y0, x1, y1 of the sampled endpoints
+
+
+def crowd_obstacles(seed: int, count: int = 5) -> tuple[MovingObstacle, ...]:
+    """``count`` pedestrians pacing random wall-free segments of the course.
+
+    Endpoints are drawn inside the outer walls, every point of a segment keeps
+    0.15 m from the walls, and no pedestrian starts within 1.2 m of the robot's
+    start.
+    """
+    if count < 0:
+        raise ValueError("count must be >= 0")
+    rng = np.random.default_rng(seed + 7_919)
+    segments = course_segments()
+    obstacles: list[MovingObstacle] = []
+    x0, y0, x1, y1 = CROWD_BOUNDS
+    radius = 0.25
+    while len(obstacles) < count:
+        a = (float(rng.uniform(x0, x1)), float(rng.uniform(y0, y1)))
+        b = (float(rng.uniform(x0, x1)), float(rng.uniform(y0, y1)))
+        length = math.hypot(b[0] - a[0], b[1] - a[1])
+        if not 1.5 <= length <= 5.0:
+            continue
+        samples = np.linspace(0.0, 1.0, max(2, int(length / 0.05)))
+        if any(
+            collides(a[0] + t * (b[0] - a[0]), a[1] + t * (b[1] - a[1]), segments, radius + 0.15)
+            for t in samples
+        ):
+            continue
+        speed = float(rng.uniform(0.3, 0.6))
+        phase = float(rng.uniform(0.0, 2.0 * length / speed))
+        candidate = MovingObstacle(start=a, end=b, speed=speed, radius=radius, phase=phase)
+        x, y, _, _ = candidate.state(0.0)
+        if math.hypot(x - WAYPOINTS[0][0], y - WAYPOINTS[0][1]) < 1.2:
+            continue
+        obstacles.append(candidate)
+    return tuple(obstacles)
+
+
 def obstacle_states(obstacles, time_s: float) -> np.ndarray:
     """``(N, 5)`` float32 rows of ``x, y, vx, vy, radius`` at ``time_s``."""
     rows = [(*obstacle.state(time_s), obstacle.radius) for obstacle in obstacles]

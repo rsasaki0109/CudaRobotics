@@ -59,6 +59,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="crossing only: how moving obstacles reach the planner",
     )
     sim.add_argument("--seed", type=int, default=0, help="crossing only: pedestrian schedule seed")
+    sim.add_argument(
+        "--layout",
+        choices=("crossing", "head_on", "overtake", "crowd"),
+        default="crossing",
+        help="crossing only: which pedestrians walk the course",
+    )
     sim.add_argument("--obs-latency-frames", type=int, default=0)
     sim.add_argument("--obs-position-noise-m", type=float, default=0.0)
     sim.add_argument("--obs-velocity-noise-mps", type=float, default=0.0)
@@ -209,6 +215,7 @@ def _run_crossing(args: argparse.Namespace, argv: Sequence[str]) -> int:
     result = run_crossing(
         dynamic_mode=args.dynamic_mode,
         seed=args.seed,
+        layout=args.layout,
         observation=observation,
         maximum_steps=min(args.max_steps, 600),
         pipeline=CudaNavPipeline(
@@ -221,6 +228,7 @@ def _run_crossing(args: argparse.Namespace, argv: Sequence[str]) -> int:
         "scenario": "crossing",
         "dynamic_mode": args.dynamic_mode,
         "seed": args.seed,
+        "layout": args.layout,
         "observation": result.summary["observation"],
         "max_steps": min(args.max_steps, 600),
     }

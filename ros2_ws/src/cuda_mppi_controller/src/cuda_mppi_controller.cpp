@@ -114,6 +114,7 @@ void validateControllerParams(const MppiParams & params, double lookahead_dist,
   requireNonNegative("yaw_goal_activation_dist", params.yaw_goal_activation_dist);
   requireNonNegative("retreat_scale", params.retreat_scale);
   requireNonNegative("retreat_reverse_speed", params.retreat_reverse_speed);
+  requireNonNegative("retreat_check_horizon", params.retreat_check_horizon);
 
   requirePositive("lookahead_dist", lookahead_dist);
   requireNonNegative("transform_tolerance", transform_tolerance);
@@ -195,6 +196,12 @@ bool applyControllerParameter(const std::string & key, const rclcpp::Parameter &
     params.retreat_scale = static_cast<float>(parameter.as_double());
   } else if (key == "retreat_reverse_speed") {
     params.retreat_reverse_speed = static_cast<float>(parameter.as_double());
+  } else if (key == "retreat_avoid_dynamic_obstacles") {
+    params.retreat_avoid_dynamic_obstacles = parameter.as_bool();
+  } else if (key == "retreat_avoid_lethal_cells") {
+    params.retreat_avoid_lethal_cells = parameter.as_bool();
+  } else if (key == "retreat_check_horizon") {
+    params.retreat_check_horizon = static_cast<float>(parameter.as_double());
   } else if (key == "lookahead_dist") {
     lookahead_dist = parameter.as_double();
   } else if (key == "transform_tolerance") {
@@ -256,6 +263,9 @@ bool CudaMppiController::updateParamsFromNode(
   bool enable_retreat = next.enable_retreat;
   double retreat_scale = next.retreat_scale;
   double retreat_reverse_speed = next.retreat_reverse_speed;
+  bool retreat_avoid_dynamic_obstacles = next.retreat_avoid_dynamic_obstacles;
+  bool retreat_avoid_lethal_cells = next.retreat_avoid_lethal_cells;
+  double retreat_check_horizon = next.retreat_check_horizon;
 
   node->get_parameter(name_ + ".batch_size", batch_size);
   node->get_parameter(name_ + ".time_steps", time_steps);
@@ -291,6 +301,9 @@ bool CudaMppiController::updateParamsFromNode(
   node->get_parameter(name_ + ".enable_retreat", enable_retreat);
   node->get_parameter(name_ + ".retreat_scale", retreat_scale);
   node->get_parameter(name_ + ".retreat_reverse_speed", retreat_reverse_speed);
+  node->get_parameter(name_ + ".retreat_avoid_dynamic_obstacles", retreat_avoid_dynamic_obstacles);
+  node->get_parameter(name_ + ".retreat_avoid_lethal_cells", retreat_avoid_lethal_cells);
+  node->get_parameter(name_ + ".retreat_check_horizon", retreat_check_horizon);
   node->get_parameter(name_ + ".lookahead_dist", next_lookahead_dist);
   node->get_parameter(name_ + ".transform_tolerance", next_transform_tolerance);
   node->get_parameter(name_ + ".diagnostics_log_period", next_diagnostics_log_period);
@@ -330,6 +343,9 @@ bool CudaMppiController::updateParamsFromNode(
   next.enable_retreat = enable_retreat;
   next.retreat_scale = static_cast<float>(retreat_scale);
   next.retreat_reverse_speed = static_cast<float>(retreat_reverse_speed);
+  next.retreat_avoid_dynamic_obstacles = retreat_avoid_dynamic_obstacles;
+  next.retreat_avoid_lethal_cells = retreat_avoid_lethal_cells;
+  next.retreat_check_horizon = static_cast<float>(retreat_check_horizon);
 
   validateControllerParams(
     next, next_lookahead_dist, next_transform_tolerance, next_diagnostics_log_period);
@@ -398,6 +414,9 @@ void CudaMppiController::configure(
   declare_param("enable_retreat", params_.enable_retreat);
   declare_param("retreat_scale", static_cast<double>(params_.retreat_scale));
   declare_param("retreat_reverse_speed", static_cast<double>(params_.retreat_reverse_speed));
+  declare_param("retreat_avoid_dynamic_obstacles", params_.retreat_avoid_dynamic_obstacles);
+  declare_param("retreat_avoid_lethal_cells", params_.retreat_avoid_lethal_cells);
+  declare_param("retreat_check_horizon", static_cast<double>(params_.retreat_check_horizon));
   declare_param("lookahead_dist", lookahead_dist_);
   declare_param("transform_tolerance", transform_tolerance_);
   declare_param("diagnostics_log_period", diagnostics_log_period_);

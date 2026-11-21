@@ -148,14 +148,41 @@ void overlap_allowance_tolerates_a_small_existing_overlap()
 }
 
 // Plan freely, then drop a disc onto the robot so every rollout collides and
-// the back-out takes over; returns the first back-out command.
-MppiResult retreat_after_blocking(MppiParams p)
+// the back-out takes over; returns the first back-out command. `behind`
+// optionally adds a second obstacle.
+MppiResult retreat_after_blocking(MppiParams p, const DynamicObstacle* behind = nullptr)
 {
     MppiGpu planner(p);
     plan(planner, 3);
-    const DynamicObstacle on_robot{0.0f, 0.0f, 0.0f, 0.0f, 0.5f};
-    planner.setDynamicObstacles(&on_robot, 1);
+    std::vector<DynamicObstacle> obstacles{{0.0f, 0.0f, 0.0f, 0.0f, 0.5f}};
+    if (behind != nullptr) obstacles.push_back(*behind);
+    planner.setDynamicObstacles(obstacles.data(), static_cast<int>(obstacles.size()));
     return plan(planner, 1).back();
+}
+
+void back_out_does_not_reverse_into_an_obstacle()
+{
+    MppiParams p = params(25.0f);
+    p.retreat_reverse_speed = 0.2f;
+    // A pedestrian standing 0.1 m behind the robot (reach 0.25 + 0.25).
+    const DynamicObstacle behind{-0.6f, 0.0f, 0.0f, 0.0f, 0.25f};
+    const MppiResult blocked = retreat_after_blocking(p, &behind);
+    std::printf("retreat with obstacle behind: v=%.3f w=%.3f blocked=%d\n",
+                blocked.v, blocked.w, blocked.retreat_blocked ? 1 : 0);
+    check(blocked.retreating && blocked.retreat_blocked && blocked.v == 0.0f,
+          "a back-out towards an obstacle drops its translation");
+
+    p.retreat_avoid_dynamic_obstacles = false;
+    const MppiResult unchecked = retreat_after_blocking(p, &behind);
+    check(unchecked.retreating && !unchecked.retreat_blocked && unchecked.v < 0.0f,
+          "with the check off the back-out reverses regardless");
+
+    // An obstacle far behind does not block it.
+    p.retreat_avoid_dynamic_obstacles = true;
+    const DynamicObstacle far_behind{-3.0f, 0.0f, 0.0f, 0.0f, 0.25f};
+    const MppiResult free_back = retreat_after_blocking(p, &far_behind);
+    check(free_back.retreating && !free_back.retreat_blocked && free_back.v < 0.0f,
+          "an obstacle out of reach leaves the back-out unchanged");
 }
 
 void retreat_reverse_speed_lets_a_forward_only_robot_back_out()
@@ -171,6 +198,43 @@ void retreat_reverse_speed_lets_a_forward_only_robot_back_out()
     std::printf("retreat: clamped v=%.3f | reverse v=%.3f\n", clamped.v, reversing.v);
     check(reversing.retreating && reversing.v < 0.0f && reversing.v >= -0.2f - 1.0e-6f,
           "retreat_reverse_speed allows a bounded reverse back-out");
+}
+
+void back_out_does_not_reverse_into_a_wall()
+{
+    // 5 m x 5 m costmap centred on the robot, lethal everywhere behind x = -0.15.
+    const int size = 100;
+    const float resolution = 0.05f, origin = -2.5f;
+    std::vector<unsigned char> costmap(size * size, 0);
+    for (int my = 0; my < size; ++my)
+        for (int mx = 0; mx < size; ++mx)
+            if (origin + (mx + 0.5f) * resolution < -0.15f) costmap[my * size + mx] = 254;
+    std::vector<float> path;
+    for (int i = 0; i <= 40; ++i) path.insert(path.end(), {0.1f * i, 0.0f});
+    auto run = [&](bool check) {
+        MppiParams p = params(25.0f);
+        p.retreat_reverse_speed = 0.2f;
+        p.retreat_avoid_lethal_cells = check;
+        MppiGpu planner(p);
+        MppiResult result;
+        for (int cycle = 0; cycle < 4; ++cycle) {
+            if (cycle == 3) {
+                const DynamicObstacle on_robot{0.0f, 0.0f, 0.0f, 0.0f, 0.5f};
+                planner.setDynamicObstacles(&on_robot, 1);
+            }
+            result = planner.compute(
+                0.0f, 0.0f, 0.0f, costmap.data(), size, size, origin, origin, resolution,
+                path.data(), static_cast<int>(path.size() / 2), 4.0f, 0.0f, 0.0f, true);
+        }
+        return result;
+    };
+    const MppiResult blocked = run(true);
+    std::printf("retreat towards a wall: v=%.3f blocked=%d\n", blocked.v, blocked.retreat_blocked ? 1 : 0);
+    check(blocked.retreating && blocked.retreat_blocked && blocked.v == 0.0f,
+          "a back-out into lethal cells drops its translation");
+    const MppiResult unchecked = run(false);
+    check(unchecked.retreating && !unchecked.retreat_blocked && unchecked.v < 0.0f,
+          "with the lethal-cell check off the back-out reverses regardless");
 }
 
 void invalid_input_is_rejected()
@@ -203,6 +267,8 @@ int main()
     co_located_obstacle_invalidates_every_rollout();
     overlap_allowance_tolerates_a_small_existing_overlap();
     retreat_reverse_speed_lets_a_forward_only_robot_back_out();
+    back_out_does_not_reverse_into_an_obstacle();
+    back_out_does_not_reverse_into_a_wall();
     invalid_input_is_rejected();
     std::printf("mppi_dynamic_obstacle_smoke: OK\n");
     return 0;

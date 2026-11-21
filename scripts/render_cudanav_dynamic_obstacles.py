@@ -38,6 +38,8 @@ SUMMARY_FIELDS = (
     "pedestrian_yield_frames",
     "all_colliding_evaluations",
     "retreating_evaluations",
+    "retreat_blocked_evaluations",
+    "pedestrian_turnarounds",
     "maximum_non_wall_occupied_cells",
     "odometry_drift_percent",
     "frame_ms_p95",
