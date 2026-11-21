@@ -56,7 +56,7 @@ RUN . /opt/ros/${ROS_DISTRO}/setup.sh && cd ros2_ws && \
         cuda_voxel_mapping cuda_esdf cuda_voxel_costmap_layer \
         cuda_mppi_controller cuda_nav_bringup \
       --cmake-args -DCMAKE_BUILD_TYPE=Release \
-        "-DCMAKE_CUDA_ARCHITECTURES=75-real;80-real;86-real;89-real;90"
+        "-DCMAKE_CUDA_ARCHITECTURES=75-real;80-real;86-real;87-real;89-real;90"
 
 FROM ros:${ROS_DISTRO}-ros-core
 ARG ROS_DISTRO
