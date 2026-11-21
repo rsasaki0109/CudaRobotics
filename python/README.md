@@ -75,6 +75,10 @@ step = nav.step(points_xyz, path=path_xy)  # (N, 3) scan, (M, 2) path
 v, w = step.command
 ```
 
+By default the occupancy, ESDF and costmap stay on the GPU from the voxel
+projection to MPPI (`stage_chain="device"`). The step's grids are copied to
+NumPy only when they are read.
+
 `sim` is a synthetic, command-driven closed loop, not real-sensor evidence.
 See [`docs/python_cudanav.md`](../docs/python_cudanav.md) for the API, the
 output files, and current limits. This surface is not part of a published

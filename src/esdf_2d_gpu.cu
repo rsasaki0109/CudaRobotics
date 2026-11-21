@@ -30,17 +30,19 @@ __global__ void classify_occupancy_kernel(
     int cells,
     int threshold,
     bool unknown_is_occupied,
-    unsigned int* occupied_count,
-    unsigned int* unknown_count)
+    unsigned int* counters)
 {
     const int index = blockIdx.x * blockDim.x + threadIdx.x;
     if (index >= cells) return;
     const int value = occupancy[index];
+    // Device inputs skip the host range check, so invalid cells are counted
+    // here and rejected after the launch.
+    if (value < -1 || value > 100) atomicAdd(&counters[2], 1u);
     const bool unknown = value < 0;
     const bool occupied = unknown ? unknown_is_occupied : value >= threshold;
     seeds[index] = occupied ? 1 : 0;
-    if (occupied) atomicAdd(occupied_count, 1u);
-    if (unknown) atomicAdd(unknown_count, 1u);
+    if (occupied) atomicAdd(&counters[0], 1u);
+    if (unknown) atomicAdd(&counters[1], 1u);
 }
 
 __device__ void distance_transform_1d(
@@ -193,8 +195,7 @@ struct Esdf2DGpu::Impl {
             ESDF_CUDA_CHECK(cudaMalloc(&locations, max_cells * sizeof(int)));
             ESDF_CUDA_CHECK(cudaMalloc(
                 &boundaries, (max_cells + max_lines) * sizeof(float)));
-            ESDF_CUDA_CHECK(cudaMalloc(&occupied_count, sizeof(unsigned int)));
-            ESDF_CUDA_CHECK(cudaMalloc(&unknown_count, sizeof(unsigned int)));
+            ESDF_CUDA_CHECK(cudaMalloc(&counters, 3 * sizeof(unsigned int)));
             ESDF_CUDA_CHECK(cudaEventCreate(&event_start));
             ESDF_CUDA_CHECK(cudaEventCreate(&event_stop));
         } catch (...) {
@@ -215,54 +216,45 @@ struct Esdf2DGpu::Impl {
         cudaFree(distances);
         cudaFree(locations);
         cudaFree(boundaries);
-        cudaFree(occupied_count);
-        cudaFree(unknown_count);
+        cudaFree(counters);
         occupancy = nullptr;
         seeds = nullptr;
         row_distance = distances = boundaries = nullptr;
         locations = nullptr;
-        occupied_count = unknown_count = nullptr;
+        counters = nullptr;
         event_start = event_stop = nullptr;
     }
 
-    Esdf2DResult compute(
-        const std::int8_t* host_occupancy,
-        int width,
-        int height,
-        float resolution,
-        float max_distance)
+    void validate_dimensions(int width, int height, float resolution, float max_distance) const
     {
-        if (!host_occupancy) throw std::invalid_argument("occupancy pointer must not be null");
         validate_request(
             static_cast<std::size_t>(width) * height,
             width, height, resolution, max_distance);
         if (width > config.max_width || height > config.max_height)
             throw std::length_error("occupancy dimensions exceed configured ESDF capacity");
+    }
+
+    // Runs the transform on device-resident occupancy. Only the three
+    // counters come back to the host; distances stay in `distances`.
+    Esdf2DDeviceResult run(
+        const signed char* device_occupancy,
+        int width,
+        int height,
+        float resolution,
+        float max_distance)
+    {
         const int cells = width * height;
-        for (int index = 0; index < cells; ++index) {
-            if (host_occupancy[index] < -1 || host_occupancy[index] > 100)
-                throw std::invalid_argument("occupancy values must lie in [-1, 100]");
-        }
-        Esdf2DResult result;
+        Esdf2DDeviceResult result;
         result.width = width;
         result.height = height;
         result.resolution = resolution;
         result.max_distance = max_distance;
-        result.distances.resize(cells);
-
-        ESDF_CUDA_CHECK(cudaMemcpy(
-            occupancy, host_occupancy, cells * sizeof(signed char),
-            cudaMemcpyHostToDevice));
-        unsigned int zero = 0;
-        ESDF_CUDA_CHECK(cudaMemcpy(
-            occupied_count, &zero, sizeof(zero), cudaMemcpyHostToDevice));
-        ESDF_CUDA_CHECK(cudaMemcpy(
-            unknown_count, &zero, sizeof(zero), cudaMemcpyHostToDevice));
+        ESDF_CUDA_CHECK(cudaMemset(counters, 0, 3 * sizeof(unsigned int)));
         ESDF_CUDA_CHECK(cudaEventRecord(event_start));
         classify_occupancy_kernel<<<(cells + 255) / 256, 256>>>(
-            occupancy, seeds, cells, config.occupancy_threshold,
+            device_occupancy, seeds, cells, config.occupancy_threshold,
             config.unknown_policy == UnknownSpacePolicy::Occupied,
-            occupied_count, unknown_count);
+            counters);
         ESDF_CUDA_CHECK(cudaGetLastError());
         row_distance_kernel<<<(height + 127) / 128, 128>>>(
             seeds, row_distance, width, height, locations, boundaries);
@@ -275,16 +267,64 @@ struct Esdf2DGpu::Impl {
         ESDF_CUDA_CHECK(cudaEventSynchronize(event_stop));
         ESDF_CUDA_CHECK(cudaEventElapsedTime(
             &result.gpu_ms, event_start, event_stop));
+        unsigned int host_counters[3] = {0u, 0u, 0u};
+        ESDF_CUDA_CHECK(cudaMemcpy(
+            host_counters, counters, sizeof(host_counters), cudaMemcpyDeviceToHost));
+        if (host_counters[2] != 0u)
+            throw std::invalid_argument("occupancy values must lie in [-1, 100]");
+        result.occupied_cells = host_counters[0];
+        result.unknown_cells = host_counters[1];
+        result.distances = distances;
+        return result;
+    }
+
+    Esdf2DResult compute(
+        const std::int8_t* host_occupancy,
+        int width,
+        int height,
+        float resolution,
+        float max_distance)
+    {
+        if (!host_occupancy) throw std::invalid_argument("occupancy pointer must not be null");
+        validate_dimensions(width, height, resolution, max_distance);
+        const int cells = width * height;
+        for (int index = 0; index < cells; ++index) {
+            if (host_occupancy[index] < -1 || host_occupancy[index] > 100)
+                throw std::invalid_argument("occupancy values must lie in [-1, 100]");
+        }
+        ESDF_CUDA_CHECK(cudaMemcpy(
+            occupancy, host_occupancy, cells * sizeof(signed char),
+            cudaMemcpyHostToDevice));
+        const Esdf2DDeviceResult device =
+            run(occupancy, width, height, resolution, max_distance);
+        Esdf2DResult result;
+        result.width = width;
+        result.height = height;
+        result.resolution = resolution;
+        result.max_distance = max_distance;
+        result.occupied_cells = device.occupied_cells;
+        result.unknown_cells = device.unknown_cells;
+        result.gpu_ms = device.gpu_ms;
+        result.distances.resize(cells);
         ESDF_CUDA_CHECK(cudaMemcpy(
             result.distances.data(), distances, cells * sizeof(float),
             cudaMemcpyDeviceToHost));
-        ESDF_CUDA_CHECK(cudaMemcpy(
-            &zero, occupied_count, sizeof(zero), cudaMemcpyDeviceToHost));
-        result.occupied_cells = zero;
-        ESDF_CUDA_CHECK(cudaMemcpy(
-            &zero, unknown_count, sizeof(zero), cudaMemcpyDeviceToHost));
-        result.unknown_cells = zero;
         return result;
+    }
+
+    Esdf2DDeviceResult compute_device(
+        const std::int8_t* device_occupancy,
+        int width,
+        int height,
+        float resolution,
+        float max_distance)
+    {
+        if (!device_occupancy)
+            throw std::invalid_argument("occupancy pointer must not be null");
+        validate_dimensions(width, height, resolution, max_distance);
+        return run(
+            reinterpret_cast<const signed char*>(device_occupancy),
+            width, height, resolution, max_distance);
     }
 
     Esdf2DConfig config;
@@ -295,8 +335,7 @@ struct Esdf2DGpu::Impl {
     float* distances = nullptr;
     int* locations = nullptr;
     float* boundaries = nullptr;
-    unsigned int* occupied_count = nullptr;
-    unsigned int* unknown_count = nullptr;
+    unsigned int* counters = nullptr;
     cudaEvent_t event_start = nullptr;
     cudaEvent_t event_stop = nullptr;
 };
@@ -325,6 +364,17 @@ Esdf2DResult Esdf2DGpu::compute(
 {
     validate_request(occupancy.size(), width, height, resolution, max_distance);
     return compute(occupancy.data(), width, height, resolution, max_distance);
+}
+
+Esdf2DDeviceResult Esdf2DGpu::compute_device(
+    const std::int8_t* device_occupancy,
+    int width,
+    int height,
+    float resolution,
+    float max_distance)
+{
+    return impl_->compute_device(
+        device_occupancy, width, height, resolution, max_distance);
 }
 
 const Esdf2DConfig& Esdf2DGpu::config() const noexcept { return impl_->config; }

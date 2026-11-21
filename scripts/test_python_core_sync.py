@@ -21,6 +21,7 @@ CUDA_SOURCES = (
     "gpu_kiss_icp.cu",
     "voxel_mapping_gpu.cu",
     "esdf_2d_gpu.cu",
+    "cudanav_costmap_gpu.cu",
 )
 # Private headers of the CUDA KISS-ICP core, bundled next to cuda_check.cuh.
 PRIVATE_HEADERS = (

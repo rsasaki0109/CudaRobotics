@@ -1138,12 +1138,12 @@
         {
           "path": "include/cudarobotics/voxel_mapping_gpu.hpp",
           "normalization": "text_lf",
-          "sha256": "36e5638815089bcb30cfd119959d4f94dfa0405e875e1203d92e6172e30849de"
+          "sha256": "9f7f8fe01f4fe013c7fc83ac0f64d12380d03756692a64de4a13c4510cdbdc42"
         },
         {
           "path": "include/cudarobotics/esdf_2d_gpu.hpp",
           "normalization": "text_lf",
-          "sha256": "325ed5c8afd23a87eac668d80d70374af099d8ba472c566bf5bf5ca0ee97e782"
+          "sha256": "eda5f2b3e878204774528c1564fe0117ca9eea080e85764716eac32c3d090af2"
         },
         {
           "path": "ros2_ws/src/cuda_nav_bringup/launch/cudanav_closed_loop.launch.py",
@@ -1158,7 +1158,7 @@
         {
           "path": "src/voxel_mapping_gpu.cu",
           "normalization": "text_lf",
-          "sha256": "071c2af40b69c9a2d2e77af711c697f6c5c5a2e8686ddcddf2e7146ebaafd900"
+          "sha256": "422e71e874f465355b280d28aa7bd82396b13430efce115fb1d96789ff9aaf19"
         },
         {
           "path": "ros2_ws/src/cuda_nav_bringup/launch/cudanav_recorded_shadow.launch.py",

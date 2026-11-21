@@ -100,9 +100,41 @@ def test_pipeline_step_products():
     assert mapping_only.command is None and mapping_only.planner is None
 
 
-def test_closed_loop_passes_the_smoke_gate_on_repeated_runs():
-    first = run_s_course()
-    second = run_s_course()
+def test_device_and_host_stage_chains_agree():
+    path = interpolate_path()
+    _, scans = _straight_line_scans(count=4)
+    device = CudaNavPipeline(stage_chain="device")
+    host = CudaNavPipeline(stage_chain="host")
+    for scan in scans:
+        on_device = device.step(scan, path=path)
+        on_host = host.step(scan, path=path)
+        assert on_device.stage_chain == "device" and on_host.stage_chain == "host"
+        # The odometry and voxel cores see identical input, so the grids agree;
+        # the costmap's exponential band may differ by one step (expf rounding).
+        np.testing.assert_array_equal(on_device.occupancy.data, on_host.occupancy.data)
+        np.testing.assert_array_equal(
+            on_device.distance_field.distances, on_host.distance_field.distances
+        )
+        difference = np.abs(on_device.costmap.astype(int) - on_host.costmap.astype(int))
+        assert difference.max() <= 1
+        assert on_device.occupied_cells == on_host.occupied_cells == on_host.occupancy.occupied_cells
+        assert on_device.command is not None and all(np.isfinite(on_device.command))
+
+
+def test_device_step_grids_expire_after_the_next_step():
+    nav = CudaNavPipeline(enable_planner=False)
+    _, scans = _straight_line_scans(count=3)
+    first = nav.step(scans[0])
+    kept = nav.step(scans[1]).materialize()
+    nav.step(scans[2])
+    with pytest.raises(RuntimeError, match="overwrote"):
+        first.occupancy
+    assert kept.costmap.dtype == np.uint8 and kept.occupancy.data.dtype == np.int8
+
+
+def test_closed_loop_passes_the_smoke_gate_with_both_stage_chains():
+    first = run_s_course(pipeline=CudaNavPipeline(stage_chain="device"))
+    second = run_s_course(pipeline=CudaNavPipeline(stage_chain="host"))
     for result in (first, second):
         summary = result.summary
         assert summary["smoke_pass"], {k: v for k, v in summary["checks"].items() if not v}
@@ -156,6 +188,7 @@ def test_cli_sim_writes_the_complete_run(tmp_path, capsys):
     assert cli.main(["sim", "--output-dir", str(output), "--check", "--no-plot"]) == cli.EXIT_OK
     summary = json.loads((output / "summary.json").read_text(encoding="utf-8"))
     assert summary["smoke_pass"] and summary["claims"]["real_data"] is False
+    assert summary["stage_chain"] == "device"
     assert summary["stage_latency_ms"]["frame"]["p95"] > 0.0
     lines = (output / "trajectory.csv").read_text(encoding="utf-8").splitlines()
     assert lines[0].startswith("step,traversal,time_s,truth_x") and len(lines) == summary["frames"] + 1

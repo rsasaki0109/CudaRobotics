@@ -1,4 +1,5 @@
 #include "cuda_mppi_controller/mppi_gpu.hpp"
+#include "cudarobotics/cudanav_costmap_gpu.hpp"
 #include "cudarobotics/esdf_2d_gpu.hpp"
 #include "cudarobotics/kiss_icp_gpu.hpp"
 #include "cudarobotics/voxel_mapping_gpu.hpp"
@@ -204,44 +205,6 @@ std::vector<float> transform_scan(
   return world;
 }
 
-void clear_footprint(
-  cudarobotics::OccupancyProjection& occupancy, float x, float y, float radius)
-{
-  for (int row = 0; row < occupancy.grid.height; ++row) {
-    for (int column = 0; column < occupancy.grid.width; ++column) {
-      const float cell_x =
-        occupancy.grid.origin_x + (column + 0.5f) * occupancy.grid.resolution;
-      const float cell_y =
-        occupancy.grid.origin_y + (row + 0.5f) * occupancy.grid.resolution;
-      if (std::hypot(cell_x - x, cell_y - y) <= radius) {
-        occupancy.data[static_cast<std::size_t>(row) * occupancy.grid.width + column] = 0;
-      }
-    }
-  }
-}
-
-std::vector<unsigned char> make_costmap(
-  const cudarobotics::OccupancyProjection& occupancy,
-  const cudarobotics::Esdf2DResult& distances)
-{
-  std::vector<unsigned char> result(occupancy.data.size(), 0);
-  for (std::size_t index = 0; index < result.size(); ++index) {
-    if (occupancy.data[index] < 0) {
-      result[index] = 255;
-    } else if (occupancy.data[index] >= 50) {
-      result[index] = 254;
-    } else if (distances.distances[index] <= 0.25f) {
-      result[index] = 253;
-    } else if (distances.distances[index] < 1.0f) {
-      const float value =
-        252.0f * std::exp(-3.0f * (distances.distances[index] - 0.25f));
-      result[index] = static_cast<unsigned char>(
-        std::max(1.0f, std::min(252.0f, value)));
-    }
-  }
-  return result;
-}
-
 double percentile(std::vector<double> values, double fraction) {
   if (values.empty()) return 0.0;
   std::sort(values.begin(), values.end());
@@ -251,6 +214,19 @@ double percentile(std::vector<double> values, double fraction) {
   return values[index];
 }
 
+void write_latency(std::ostream& json, const char* name, const std::vector<double>& values,
+                   bool last) {
+  json << "    \"" << name << "\": {\"p50\": " << percentile(values, 0.50)
+       << ", \"p95\": " << percentile(values, 0.95) << ", \"max\": "
+       << (values.empty() ? 0.0 : *std::max_element(values.begin(), values.end()))
+       << "}" << (last ? "\n" : ",\n");
+}
+
+double elapsed_ms(std::chrono::steady_clock::time_point start) {
+  return std::chrono::duration<double, std::milli>(
+    std::chrono::steady_clock::now() - start).count();
+}
+
 struct Options {
   std::string json;
   std::string csv;
@@ -258,6 +234,9 @@ struct Options {
   int traversals = 1;
   double minimum_duration_s = 0.0;
   bool check = false;
+  // "device" keeps occupancy, ESDF and costmap on the GPU between stages;
+  // "host" copies each product to the host (the original chain).
+  std::string stage_chain = "device";
 };
 
 Options options(int argc, char** argv) {
@@ -276,10 +255,12 @@ Options options(int argc, char** argv) {
       result.minimum_duration_s = std::stod(value());
     }
     else if (argument == "--check") result.check = true;
+    else if (argument == "--stage-chain") result.stage_chain = value();
     else throw std::invalid_argument("unknown option: " + argument);
   }
   if (result.json.empty() || result.csv.empty() || result.maximum_steps < 10 ||
-      result.traversals < 1 || result.minimum_duration_s < 0.0) {
+      result.traversals < 1 || result.minimum_duration_s < 0.0 ||
+      (result.stage_chain != "device" && result.stage_chain != "host")) {
     throw std::invalid_argument("invalid closed-loop options");
   }
   return result;
@@ -326,6 +307,9 @@ int main(int argc, char** argv) {
     esdf_config.max_height = voxel_config.height;
     esdf_config.unknown_policy = cudarobotics::UnknownSpacePolicy::Free;
     cudarobotics::Esdf2DGpu esdf(esdf_config);
+    cudarobotics::CostmapBuilderGpu costmap_builder(
+      voxel_config.width, voxel_config.height);
+    const bool device_chain = run.stage_chain == "device";
 
     cuda_mppi_controller::MppiParams mppi_params;
     mppi_params.batch_size = 2048;
@@ -373,6 +357,10 @@ int main(int argc, char** argv) {
     float minimum_nonzero_valid_ratio = 1.0f;
     std::vector<double> frame_ms;
     std::vector<double> solve_ms;
+    std::vector<double> odometry_ms;
+    std::vector<double> mapping_ms;
+    std::vector<double> esdf_ms;
+    std::vector<double> costmap_ms;
     bool goal_reached = false;
     bool drive_reverse_mode = false;
     int traversals_completed = 0;
@@ -402,7 +390,9 @@ int main(int argc, char** argv) {
       }
 
       const auto points = scan(truth, segments);
+      auto stage_start = std::chrono::steady_clock::now();
       const auto odometry_result = odometry.register_scan(points);
+      odometry_ms.push_back(elapsed_ms(stage_start));
       const Pose estimate = estimated_pose(odometry_result.pose);
       if (step > 0) {
         minimum_inliers = std::min(
@@ -414,34 +404,72 @@ int main(int argc, char** argv) {
       const double error = std::hypot(estimate.x - truth.x, estimate.y - truth.y);
       squared_error += error * error;
 
+      stage_start = std::chrono::steady_clock::now();
       const auto world = transform_scan(points, odometry_result.pose);
       const float sensor_origin[] = {
         odometry_result.pose.t[0], odometry_result.pose.t[1], odometry_result.pose.t[2]};
       const auto mapping = mapper.integrate_scan(world, sensor_origin);
       final_observed_voxels = mapping.observed_voxels;
-      auto occupancy = mapper.occupancy_projection();
-      clear_footprint(occupancy, estimate.x, estimate.y, 0.30f);
-      const std::size_t occupied = static_cast<std::size_t>(std::count(
-        occupancy.data.begin(), occupancy.data.end(), static_cast<std::int8_t>(100)));
-      maximum_occupied_cells = std::max(maximum_occupied_cells, occupied);
-      const auto distance_field = esdf.compute(
-        occupancy.data, occupancy.grid.width, occupancy.grid.height,
-        occupancy.grid.resolution, 2.0f);
-      const auto costmap = make_costmap(occupancy, distance_field);
+      const cudarobotics::VoxelGridInfo grid = mapper.grid_info();
+      const cudarobotics::CostmapGridGeometry geometry{
+        grid.width, grid.height, grid.origin_x, grid.origin_y, grid.resolution};
 
-      const auto solve_start = std::chrono::steady_clock::now();
       const bool reverse = traversals_completed % 2 == 1;
       auto& mppi = drive_reverse_mode ? reverse_mppi : forward_mppi;
       const auto& waypoints = mission_waypoints();
       const auto goal = reverse ? waypoints.front() : waypoints.back();
       const auto local_path = local_path_window(path, estimate.x, estimate.y);
-      const auto result = mppi.compute(
-        estimate.x, estimate.y, estimate.yaw,
-        costmap.data(), occupancy.grid.width, occupancy.grid.height,
-        occupancy.grid.origin_x, occupancy.grid.origin_y, occupancy.grid.resolution,
-        local_path.xy.data(), static_cast<int>(local_path.xy.size() / 2),
-        local_path.goal_x, local_path.goal_y, local_path.goal_yaw,
-        local_path.goal_is_final);
+      std::size_t occupied = 0;
+      cuda_mppi_controller::MppiResult result;
+      std::chrono::steady_clock::time_point solve_start;
+      if (device_chain) {
+        // Occupancy, distances and costmap stay on the GPU; only the
+        // occupied-cell count returns to the host.
+        const auto projection = mapper.occupancy_projection_device();
+        occupied = costmap_builder.clear_footprint(
+          projection.data, geometry, estimate.x, estimate.y, 0.30f);
+        mapping_ms.push_back(elapsed_ms(stage_start));
+        stage_start = std::chrono::steady_clock::now();
+        const auto distance_field = esdf.compute_device(
+          projection.data, grid.width, grid.height, grid.resolution, 2.0f);
+        esdf_ms.push_back(elapsed_ms(stage_start));
+        stage_start = std::chrono::steady_clock::now();
+        const auto costmap = costmap_builder.build(
+          projection.data, distance_field.distances, grid.width, grid.height);
+        costmap_ms.push_back(elapsed_ms(stage_start));
+        solve_start = std::chrono::steady_clock::now();
+        result = mppi.computeWithDeviceCostmap(
+          estimate.x, estimate.y, estimate.yaw,
+          costmap.costmap, grid.width, grid.height,
+          grid.origin_x, grid.origin_y, grid.resolution,
+          local_path.xy.data(), static_cast<int>(local_path.xy.size() / 2),
+          local_path.goal_x, local_path.goal_y, local_path.goal_yaw,
+          local_path.goal_is_final);
+      } else {
+        auto occupancy = mapper.occupancy_projection();
+        cudarobotics::clear_footprint_cpu(
+          occupancy.data, geometry, estimate.x, estimate.y, 0.30f);
+        occupied = static_cast<std::size_t>(std::count(
+          occupancy.data.begin(), occupancy.data.end(), static_cast<std::int8_t>(100)));
+        mapping_ms.push_back(elapsed_ms(stage_start));
+        stage_start = std::chrono::steady_clock::now();
+        const auto distance_field = esdf.compute(
+          occupancy.data, grid.width, grid.height, grid.resolution, 2.0f);
+        esdf_ms.push_back(elapsed_ms(stage_start));
+        stage_start = std::chrono::steady_clock::now();
+        const auto costmap =
+          cudarobotics::make_costmap_cpu(occupancy.data, distance_field.distances);
+        costmap_ms.push_back(elapsed_ms(stage_start));
+        solve_start = std::chrono::steady_clock::now();
+        result = mppi.compute(
+          estimate.x, estimate.y, estimate.yaw,
+          costmap.data(), grid.width, grid.height,
+          grid.origin_x, grid.origin_y, grid.resolution,
+          local_path.xy.data(), static_cast<int>(local_path.xy.size() / 2),
+          local_path.goal_x, local_path.goal_y, local_path.goal_yaw,
+          local_path.goal_is_final);
+      }
+      maximum_occupied_cells = std::max(maximum_occupied_cells, occupied);
       const double solve = std::chrono::duration<double, std::milli>(
         std::chrono::steady_clock::now() - solve_start).count();
       solve_ms.push_back(solve);
@@ -557,6 +585,15 @@ int main(int argc, char** argv) {
          << "  \"command_deadline_miss_rate\": " << deadline_miss_rate << ",\n"
          << "  \"frame_ms_p95\": " << percentile(frame_ms, 0.95) << ",\n"
          << "  \"mppi_solve_ms_p95\": " << percentile(solve_ms, 0.95) << ",\n"
+         << "  \"stage_chain\": \"" << run.stage_chain << "\",\n"
+         << "  \"stage_latency_ms\": {\n";
+    write_latency(json, "odometry", odometry_ms, false);
+    write_latency(json, "mapping", mapping_ms, false);
+    write_latency(json, "esdf", esdf_ms, false);
+    write_latency(json, "costmap", costmap_ms, false);
+    write_latency(json, "mppi", solve_ms, false);
+    write_latency(json, "frame", frame_ms, true);
+    json << "  },\n"
          << "  \"invalid_commands\": " << invalid_commands << ",\n"
          << "  \"all_colliding_evaluations\": " << all_colliding << ",\n"
          << "  \"retreating_evaluations\": " << retreating << ",\n"

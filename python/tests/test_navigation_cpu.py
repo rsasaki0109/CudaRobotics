@@ -143,6 +143,13 @@ def test_unknown_config_field_is_rejected_before_gpu_allocation():
         KissIcpOdometry(not_a_field=1)
 
 
+def test_invalid_stage_chain_is_rejected_before_gpu_allocation():
+    from cudarobotics.navigation import CudaNavPipeline
+
+    with pytest.raises(ValueError, match="stage_chain"):
+        CudaNavPipeline(stage_chain="gpu")
+
+
 def _frames(count, version):
     rng = np.random.default_rng(7)
     for index in range(count):
@@ -230,6 +237,7 @@ def test_cli_usage_errors(tmp_path, capsys):
     assert cli.main(["sim"]) == cli.EXIT_USAGE
     assert cli.main(["sequence", str(tmp_path / "missing.crkicp"), "--output-dir", str(tmp_path)]) == cli.EXIT_USAGE
     assert cli.main(["--help"]) == cli.EXIT_OK
+    assert cli.main(["sim", "--output-dir", str(tmp_path), "--stage-chain", "gpu"]) == cli.EXIT_USAGE
     capsys.readouterr()
 
 

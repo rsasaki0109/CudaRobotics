@@ -487,10 +487,22 @@ VoxelGridInfo VoxelMapperGpu::grid_info() const noexcept
 
 OccupancyProjection VoxelMapperGpu::occupancy_projection()
 {
+    const OccupancyProjectionDevice device = occupancy_projection_device();
     OccupancyProjection output;
-    output.grid = impl_->info();
+    output.grid = device.grid;
+    output.gpu_ms = device.gpu_ms;
     output.data.resize(
         static_cast<std::size_t>(impl_->config.width) * impl_->config.height);
+    VOXEL_CUDA_CHECK(cudaMemcpy(
+        output.data.data(), device.data,
+        output.data.size() * sizeof(std::int8_t), cudaMemcpyDeviceToHost));
+    return output;
+}
+
+OccupancyProjectionDevice VoxelMapperGpu::occupancy_projection_device()
+{
+    OccupancyProjectionDevice output;
+    output.grid = impl_->info();
     VOXEL_CUDA_CHECK(cudaEventRecord(impl_->event_start));
     const int cells_2d = impl_->config.width * impl_->config.height;
     const int minimum_z = std::max(
@@ -512,9 +524,7 @@ OccupancyProjection VoxelMapperGpu::occupancy_projection()
     VOXEL_CUDA_CHECK(cudaEventSynchronize(impl_->event_stop));
     VOXEL_CUDA_CHECK(cudaEventElapsedTime(
         &output.gpu_ms, impl_->event_start, impl_->event_stop));
-    VOXEL_CUDA_CHECK(cudaMemcpy(
-        output.data.data(), impl_->projection,
-        output.data.size() * sizeof(std::int8_t), cudaMemcpyDeviceToHost));
+    output.data = reinterpret_cast<std::int8_t*>(impl_->projection);
     return output;
 }
 

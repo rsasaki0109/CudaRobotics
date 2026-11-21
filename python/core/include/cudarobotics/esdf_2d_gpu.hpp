@@ -31,6 +31,20 @@ struct Esdf2DResult {
     float gpu_ms = 0.0f;
 };
 
+// Result of Esdf2DGpu::compute_device. `distances` is a device pointer to
+// width * height row-major floats owned by the Esdf2DGpu object; it stays
+// valid until the next compute call on that object or its destruction.
+struct Esdf2DDeviceResult {
+    int width = 0;
+    int height = 0;
+    float resolution = 0.0f;
+    float max_distance = 0.0f;
+    const float* distances = nullptr;
+    std::size_t occupied_cells = 0;
+    std::size_t unknown_cells = 0;
+    float gpu_ms = 0.0f;
+};
+
 std::string validate_esdf_2d_config(const Esdf2DConfig& config);
 const char* unknown_space_policy_name(UnknownSpacePolicy policy);
 
@@ -52,6 +66,15 @@ public:
         float max_distance);
     Esdf2DResult compute(
         const std::vector<std::int8_t>& occupancy,
+        int width,
+        int height,
+        float resolution,
+        float max_distance);
+    // Same transform for occupancy already on the current CUDA device (for
+    // example VoxelMapperGpu::occupancy_projection_device). Values outside
+    // [-1, 100] raise std::invalid_argument, as with the host overloads.
+    Esdf2DDeviceResult compute_device(
+        const std::int8_t* device_occupancy,
         int width,
         int height,
         float resolution,

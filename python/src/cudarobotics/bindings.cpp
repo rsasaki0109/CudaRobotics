@@ -15,6 +15,7 @@
 
 #include "cuda_mppi_controller/mppi_gpu.hpp"
 #include "cudarobotics/bcpd_gpu.hpp"
+#include "cudarobotics/cudanav_costmap_gpu.hpp"
 #include "cudarobotics/esdf_2d_gpu.hpp"
 #include "cudarobotics/fgr_gpu.hpp"
 #include "cudarobotics/filterreg_gpu.hpp"
@@ -412,6 +413,48 @@ public:
       footprint_len = footprint_view->dim(0);
     }
 
+    return solve(
+      s, costmap_ptr, size_x, size_y, costmap_is_device, o, resolution,
+      path_ptr, path_len, g, goal_is_final, footprint_ptr, footprint_len);
+  }
+
+  // Plans on a costmap that already lives on the current CUDA device.
+  nb::tuple computeOnDeviceCostmap(
+    nb::object state,
+    const unsigned char * device_costmap,
+    int size_x,
+    int size_y,
+    nb::object path,
+    nb::object goal,
+    nb::object origin,
+    float resolution,
+    bool goal_is_final)
+  {
+    const auto s = readFloatSequence<3>(state, "state");
+    const auto g = readFloatSequence<3>(goal, "goal");
+    const auto o = readFloatSequence<2>(origin, "origin");
+    BufferView path_view(path, 2, 2, 4, "path");
+    return solve(
+      s, device_costmap, size_x, size_y, true, o, resolution,
+      path_view.data<float>(), path_view.dim(0), g, goal_is_final, nullptr, 0);
+  }
+
+private:
+  nb::tuple solve(
+    const std::array<float, 3> & s,
+    const unsigned char * costmap_ptr,
+    int size_x,
+    int size_y,
+    bool costmap_is_device,
+    const std::array<float, 2> & o,
+    float resolution,
+    const float * path_ptr,
+    int path_len,
+    const std::array<float, 3> & g,
+    bool goal_is_final,
+    const float * footprint_ptr,
+    int footprint_len)
+  {
     cr::MppiResult result = costmap_is_device ?
       planner_.computeWithDeviceCostmap(
         s[0], s[1], s[2],
@@ -439,7 +482,6 @@ public:
     return nb::make_tuple(result.v, result.vy, result.w, info);
   }
 
-private:
   cr::MppiGpu planner_;
 };
 
@@ -919,6 +961,8 @@ public:
     return nb::make_tuple(data, gridInfoToDict(projection.grid), projection.gpu_ms);
   }
 
+  reg::VoxelMapperGpu & core() { return mapper_; }
+
 private:
   static const reg::VoxelMappingConfig & validated(const reg::VoxelMappingConfig & config)
   {
@@ -964,8 +1008,129 @@ public:
       view.data<std::int8_t>(), view.dim(1), view.dim(0), resolution, max_distance));
   }
 
+  reg::Esdf2DGpu & core() { return esdf_; }
+
 private:
   reg::Esdf2DGpu esdf_;
+};
+
+// Keeps occupancy -> ESDF -> costmap -> MPPI on the GPU. The device buffers
+// belong to the voxel mapper, the ESDF and this object; grids are copied to
+// NumPy only when requested. `generation` increases on every project() so the
+// Python layer can refuse to read grids that a later frame has overwritten.
+class PyCudaNavGridChain
+{
+public:
+  PyCudaNavGridChain(int max_width, int max_height)
+  : builder_(max_width, max_height)
+  {
+  }
+
+  nb::dict project(PyVoxelMapper & voxel, float x, float y, float radius)
+  {
+    const reg::OccupancyProjectionDevice projection = voxel.core().occupancy_projection_device();
+    const reg::CostmapGridGeometry geometry{
+      projection.grid.width, projection.grid.height, projection.grid.origin_x,
+      projection.grid.origin_y, projection.grid.resolution};
+    // A non-positive radius clears nothing, matching the NumPy helper.
+    const std::size_t occupied = builder_.clear_footprint(
+      projection.data, geometry, x, y, radius > 0.0f ? radius : -1.0f);
+    occupancy_ = projection.data;
+    distances_ = nullptr;
+    costmap_ = nullptr;
+    width_ = projection.grid.width;
+    height_ = projection.grid.height;
+    ++generation_;
+    nb::dict out;
+    out["grid"] = gridInfoToDict(projection.grid);
+    out["gpu_ms"] = projection.gpu_ms;
+    out["occupied_cells"] = occupied;
+    out["generation"] = generation_;
+    return out;
+  }
+
+  nb::dict distance(PyEsdf2D & esdf, float resolution, float max_distance)
+  {
+    requireStage(occupancy_, "project");
+    const reg::Esdf2DDeviceResult result =
+      esdf.core().compute_device(occupancy_, width_, height_, resolution, max_distance);
+    distances_ = result.distances;
+    nb::dict info;
+    info["resolution"] = result.resolution;
+    info["max_distance"] = result.max_distance;
+    info["occupied_cells"] = result.occupied_cells;
+    info["unknown_cells"] = result.unknown_cells;
+    info["gpu_ms"] = result.gpu_ms;
+    return info;
+  }
+
+  void build()
+  {
+    requireStage(distances_, "distance");
+    costmap_ = builder_.build(occupancy_, distances_, width_, height_).costmap;
+  }
+
+  nb::tuple plan(
+    PyMppiPlanner & planner,
+    nb::object state,
+    nb::object path,
+    nb::object goal,
+    nb::object origin,
+    float resolution,
+    bool goal_is_final)
+  {
+    requireStage(costmap_, "build");
+    return planner.computeOnDeviceCostmap(
+      state, costmap_, width_, height_, path, goal, origin, resolution, goal_is_final);
+  }
+
+  NumpyArray<std::int8_t> occupancy() const
+  {
+    requireStage(occupancy_, "project");
+    return download(occupancy_);
+  }
+
+  NumpyArray<float> distances() const
+  {
+    requireStage(distances_, "distance");
+    return download(distances_);
+  }
+
+  NumpyArray<unsigned char> costmap() const
+  {
+    requireStage(costmap_, "build");
+    return download(costmap_);
+  }
+
+  std::uint64_t generation() const { return generation_; }
+
+private:
+  template<typename T>
+  NumpyArray<T> download(const T * device) const
+  {
+    std::vector<T> host(static_cast<std::size_t>(width_) * height_);
+    const cudaError_t error = cudaMemcpy(
+      host.data(), device, host.size() * sizeof(T), cudaMemcpyDeviceToHost);
+    if (error != cudaSuccess) {
+      throw std::runtime_error(std::string("CUDA error: ") + cudaGetErrorString(error));
+    }
+    return toNumpy(std::move(host), {static_cast<size_t>(height_), static_cast<size_t>(width_)});
+  }
+
+  static void requireStage(const void * pointer, const char * stage)
+  {
+    if (!pointer) {
+      throw std::runtime_error(std::string("call ") + stage + "() first in this frame");
+    }
+  }
+
+  reg::CostmapBuilderGpu builder_;
+  std::int8_t * occupancy_ = nullptr;
+  const float * distances_ = nullptr;
+  const unsigned char * costmap_ = nullptr;
+  int width_ = 0;
+  int height_ = 0;
+  std::uint64_t generation_ = 0;
 };
 
 nb::tuple esdfCpuReference(
@@ -1255,6 +1420,22 @@ NB_MODULE(_cudarobotics, m)
     .def(
       "compute", &PyEsdf2D::compute,
       "occupancy"_a, "resolution"_a, "max_distance"_a);
+
+  nb::class_<PyCudaNavGridChain>(m, "_CudaNavGridChain")
+    .def(nb::init<int, int>(), "max_width"_a, "max_height"_a)
+    .def("project", &PyCudaNavGridChain::project, "voxel"_a, "x"_a, "y"_a, "radius"_a)
+    .def(
+      "distance", &PyCudaNavGridChain::distance,
+      "esdf"_a, "resolution"_a, "max_distance"_a)
+    .def("build", &PyCudaNavGridChain::build)
+    .def(
+      "plan", &PyCudaNavGridChain::plan,
+      "planner"_a, "state"_a, "path"_a, "goal"_a, "origin"_a, "resolution"_a,
+      "goal_is_final"_a)
+    .def("occupancy", &PyCudaNavGridChain::occupancy)
+    .def("distances", &PyCudaNavGridChain::distances)
+    .def("costmap", &PyCudaNavGridChain::costmap)
+    .def_prop_ro("generation", &PyCudaNavGridChain::generation);
 
   m.def(
     "_esdf_2d_cpu_reference", &esdfCpuReference,
