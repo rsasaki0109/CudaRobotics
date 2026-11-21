@@ -49,7 +49,7 @@ struct DeviceParams
   float distance_field_w, distance_field_cutoff;
   float dynamic_w, dynamic_margin, dynamic_robot_radius, dynamic_growth;
   float dynamic_overlap_allowance;
-  int dynamic_count;   // 0 disables the dynamic-obstacle critic
+  int dynamic_count;  // 0 disables the dynamic-obstacle critic
   float speed_w, angular_w;
   int follow_offset;   // path index offset for the path-follow cost
   float collision_cost;
@@ -527,6 +527,60 @@ __global__ void pack_diagnostics_kernel(
   }
 }
 
+constexpr int kMaxRetreatProbes = 64;
+
+// Positions [x0, y0, x1, y1, ...] after each model_dt step of holding the
+// back-out command (v, vy, w); entry 0 is the start pose.
+std::vector<float> retreat_positions(
+  float x, float y, float yaw, float v, float vy, float w, float horizon, float dt)
+{
+  const int steps = std::min(
+    kMaxRetreatProbes - 1, std::max(1, static_cast<int>(std::ceil(horizon / dt))));
+  std::vector<float> xy{x, y};
+  for (int s = 1; s <= steps; ++s) {
+    x += (v * std::cos(yaw) - vy * std::sin(yaw)) * dt;
+    y += (v * std::sin(yaw) + vy * std::cos(yaw)) * dt;
+    yaw += w * dt;
+    xy.push_back(x);
+    xy.push_back(y);
+  }
+  return xy;
+}
+
+// Does the back-out bring the robot within `clearance` of a predicted
+// obstacle and closer to it than standing still? Obstacles follow their
+// constant-velocity prediction.
+bool retreat_approaches_obstacle(
+  const std::vector<DynamicObstacle> & obstacles, const std::vector<float> & xy,
+  float dt, float robot_radius, float clearance)
+{
+  const int count = static_cast<int>(xy.size() / 2);
+  for (int s = 1; s < count; ++s) {
+    const float tau = s * dt;
+    for (const DynamicObstacle & o : obstacles) {
+      const float ox = o.x + o.vx * tau;
+      const float oy = o.y + o.vy * tau;
+      const float reach = o.radius + robot_radius;
+      const float move = std::hypot(xy[2 * s] - ox, xy[2 * s + 1] - oy) - reach;
+      const float stay = std::hypot(xy[0] - ox, xy[1] - oy) - reach;
+      if (move < clearance && move < stay - 1.0e-3f) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+__global__ void probe_cells_kernel(
+  const unsigned char * __restrict__ costmap, DeviceParams p,
+  const float * __restrict__ xy, int count, unsigned char * __restrict__ out)
+{
+  const int i = blockIdx.x * blockDim.x + threadIdx.x;
+  if (i < count) {
+    out[i] = cell_cost(costmap, p, xy[2 * i], xy[2 * i + 1]);
+  }
+}
+
 }  // namespace
 
 struct MppiGpu::Impl
@@ -552,7 +606,10 @@ struct MppiGpu::Impl
   size_t costmap_capacity = 0;
   size_t distance_field_capacity = 0;
   DynamicObstacle * d_dynamic_obstacles = nullptr;  // [kMaxDynamicObstacles]
+  std::vector<DynamicObstacle> h_dynamic_obstacles;  // host copy for the back-out check
   int dynamic_count = 0;
+  float * d_probe_xy = nullptr;            // [kMaxRetreatProbes * 2]
+  unsigned char * d_probe_cost = nullptr;  // [kMaxRetreatProbes]
 
   std::vector<float> h_nominal;
   std::vector<float> h_last_valid_nominal;
@@ -582,6 +639,8 @@ struct MppiGpu::Impl
     CUDA_CHECK(cudaMalloc(&d_path, kMaxPathPoints * 2 * sizeof(float)));
     CUDA_CHECK(cudaMalloc(
         &d_dynamic_obstacles, kMaxDynamicObstacles * sizeof(DynamicObstacle)));
+    CUDA_CHECK(cudaMalloc(&d_probe_xy, kMaxRetreatProbes * 2 * sizeof(float)));
+    CUDA_CHECK(cudaMalloc(&d_probe_cost, kMaxRetreatProbes));
 
     h_nominal.assign(T * kCtrlDim, 0.0f);
     h_last_valid_nominal.assign(T * kCtrlDim, 0.0f);
@@ -609,6 +668,27 @@ struct MppiGpu::Impl
     cudaFree(d_costmap);
     cudaFree(d_distance_field);
     cudaFree(d_dynamic_obstacles);
+    cudaFree(d_probe_xy);
+    cudaFree(d_probe_cost);
+  }
+
+  // Does the back-out path enter a lethal costmap cell that is worse than
+  // the start cell? Unknown cells (255) are ignored, as in the rollouts.
+  bool retreatEntersLethal(
+    const unsigned char * costmap, const DeviceParams & p, const std::vector<float> & xy)
+  {
+    const int count = static_cast<int>(xy.size() / 2);
+    CUDA_CHECK(cudaMemcpy(d_probe_xy, xy.data(), xy.size() * sizeof(float), cudaMemcpyHostToDevice));
+    probe_cells_kernel<<<1, kMaxRetreatProbes>>>(costmap, p, d_probe_xy, count, d_probe_cost);
+    CUDA_CHECK(cudaGetLastError());
+    unsigned char cost[kMaxRetreatProbes];
+    CUDA_CHECK(cudaMemcpy(cost, d_probe_cost, count, cudaMemcpyDeviceToHost));
+    for (int i = 1; i < count; ++i) {
+      if (cost[i] != 255 && cost[i] >= p.lethal_threshold && (cost[0] == 255 || cost[i] > cost[0])) {
+        return true;
+      }
+    }
+    return false;
   }
 
   void reset()
@@ -684,6 +764,7 @@ void MppiGpu::setDynamicObstacles(const DynamicObstacle * obstacles, int count)
         impl_->d_dynamic_obstacles, obstacles, count * sizeof(DynamicObstacle),
         cudaMemcpyHostToDevice));
   }
+  impl_->h_dynamic_obstacles.assign(obstacles, obstacles + count);
   impl_->dynamic_count = count;
 }
 
@@ -890,6 +971,22 @@ MppiResult MppiGpu::computeInternal(
       res.w = std::min(
         std::max(-retreat_scale * im.h_last_valid_nominal[offset + 2], -mp.w_max),
         mp.w_max);
+      if (mp.retreat_check_horizon > 0.0f && (res.v != 0.0f || res.vy != 0.0f)) {
+        const std::vector<float> xy = retreat_positions(
+          robot_x, robot_y, robot_yaw, res.v, res.vy, res.w,
+          mp.retreat_check_horizon, mp.model_dt);
+        const bool toward_obstacle = mp.retreat_avoid_dynamic_obstacles && dp.dynamic_count > 0 &&
+          retreat_approaches_obstacle(
+            im.h_dynamic_obstacles, xy, mp.model_dt,
+            mp.dynamic_obstacle_robot_radius, mp.dynamic_obstacle_margin);
+        const bool into_wall = mp.retreat_avoid_lethal_cells && rollout_costmap != nullptr &&
+          im.retreatEntersLethal(rollout_costmap, dp, xy);
+        if (toward_obstacle || into_wall) {
+          res.v = 0.0f;
+          res.vy = 0.0f;
+          res.retreat_blocked = true;
+        }
+      }
       if (mp.motion_model == MotionModel::Ackermann) {
         const float w_dyn = std::fabs(res.v) / std::max(mp.min_turning_r, 1.0e-3f);
         res.w = std::min(std::max(res.w, -w_dyn), w_dyn);

@@ -354,8 +354,68 @@ def test_pedestrians_yield_instead_of_walking_into_the_robot():
     assert not clock.paused[0]
 
 
+def test_impatient_pedestrians_turn_around():
+    from cudarobotics.navigation.dynamic_scenario import PedestrianClock
+    from cudarobotics.navigation.simulation import MovingObstacle
+
+    walker = MovingObstacle(start=(0.0, 0.0), end=(4.0, 0.0), speed=1.0, radius=0.25)
+    clock = PedestrianClock([walker], patience_s=1.0)
+    robot = Pose2D(1.2, 0.0, 0.0)
+    for _ in range(20):  # walks up to the robot, then waits 1 s
+        clock.advance(robot, 0.1)
+    assert clock.turnarounds == 1 and clock.direction[0] == -1.0
+    before = clock.states()[0, 0]
+    for _ in range(2):
+        clock.advance(robot, 0.1)
+    after = clock.states()
+    assert after[0, 0] < before and after[0, 2] < 0.0  # walking away, velocity reversed
+
+
+def test_polyline_walker_and_layouts():
+    from cudarobotics.navigation.dynamic_scenario import LAYOUTS, layout_obstacles
+    from cudarobotics.navigation.simulation import PolylineWalker, crowd_obstacles
+
+    walker = PolylineWalker(points=((0.0, 0.0), (1.0, 0.0), (1.0, 1.0)), speed=0.5)
+    assert walker.state(1.0) == pytest.approx((0.5, 0.0, 0.5, 0.0))
+    assert walker.state(3.0) == pytest.approx((1.0, 0.5, 0.0, 0.5))
+    assert walker.state(5.0) == pytest.approx((1.0, 0.5, 0.0, -0.5))  # on the way back
+    segments = course_segments()
+    crowd = crowd_obstacles(4)
+    assert len(crowd) == 5 and crowd == crowd_obstacles(4)
+    for obstacle in crowd:
+        for t in np.linspace(0.0, 1.0, 20):
+            x = obstacle.start[0] + t * (obstacle.end[0] - obstacle.start[0])
+            y = obstacle.start[1] + t * (obstacle.end[1] - obstacle.start[1])
+            assert not collides(x, y, segments, obstacle.radius)
+    counts = {layout: len(layout_obstacles(layout, 0)[0]) for layout in LAYOUTS}
+    assert counts == {"crossing": 2, "head_on": 2, "overtake": 3, "crowd": 5}
+    assert math.isinf(layout_obstacles("crossing", 0)[1])
+    with pytest.raises(ValueError):
+        layout_obstacles("stampede", 0)
+
+
+def test_clearing_discs_spare_long_standing_structure():
+    from cudarobotics.navigation.pipeline import STRUCTURE_PROTECT_FRAMES, _spare_structure
+    from cudarobotics.navigation.tracking import OccupancyAge
+
+    data = np.zeros((40, 40), dtype=np.int8)
+    data[:, 30] = 100  # a wall at x = 1.525
+    age = OccupancyAge()
+    grid = OccupancyGrid(data=data, resolution=0.05, origin=(0.0, 0.0))
+    disc = [(1.2, 1.0, 0.4)]
+    for _ in range(STRUCTURE_PROTECT_FRAMES - 1):
+        age.update(grid)
+    assert _spare_structure(disc, age) == disc  # not structure yet
+    age.update(grid)
+    (x, y, radius), = _spare_structure(disc, age)
+    assert (x, y) == (1.2, 1.0) and radius < 1.525 - 1.2
+    far = [(0.3, 1.0, 0.4)]
+    assert _spare_structure(far, age) == far
+
+
 def test_crossing_cli_usage_errors(tmp_path, capsys):
     base = ["sim", "--output-dir", str(tmp_path), "--scenario", "crossing"]
+    assert cli.main(base + ["--layout", "stampede"]) == cli.EXIT_USAGE
     assert cli.main(base + ["--dynamic-mode", "oracle"]) == cli.EXIT_USAGE
     assert cli.main(base + ["--obs-dropout", "1.5"]) == cli.EXIT_USAGE
     assert cli.main(base + ["--obs-latency-frames", "-1"]) == cli.EXIT_USAGE

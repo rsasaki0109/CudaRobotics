@@ -24,6 +24,8 @@ controller_server:
       enable_retreat: true       # recover by backing out from last valid sequence
       retreat_scale: 0.5         # fraction of last valid controls to reverse
       retreat_reverse_speed: 0.0 # m/s a forward-only robot may reverse while backing out
+      retreat_check_horizon: 1.0 # s the back-out is checked against lethal cells ahead
+      retreat_avoid_lethal_cells: true
       temperature: 0.12         # MPPI softmin lambda
       goal_weight: 20.0         # terminal local-goal distance (linear)
       goal_yaw_weight: 3.0

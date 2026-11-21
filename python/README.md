@@ -85,7 +85,8 @@ trajectories (`MppiPlanner.set_dynamic_obstacles` does the same for the
 planner alone). `CudaNavPipeline(tracker=ScanObjectTracker())` instead finds
 and tracks moving objects in the scan itself.
 `cudarobotics-cudanav sim --scenario crossing` evaluates this
-with pedestrians crossing the course; see
+with pedestrians crossing the course (`--layout head_on|overtake|crowd`
+adds harder pedestrian layouts); see
 [`docs/cudanav_dynamic_obstacles.md`](../docs/cudanav_dynamic_obstacles.md).
 
 `sim` is a synthetic, command-driven closed loop, not real-sensor evidence.

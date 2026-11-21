@@ -48,7 +48,10 @@ from .simulation import (
     collides,
     course_segments,
     crossing_obstacles,
+    crowd_obstacles,
     dynamic_clearance,
+    follower_obstacle,
+    head_on_obstacles,
     interpolate_path,
     point_segment_distance,
     simulate_scan_with_obstacles,
@@ -57,6 +60,9 @@ from .simulation import (
 
 SCENARIO = "cudanav_s_course_crossing"
 DYNAMIC_MODES = ("map", "tracked_static", "predicted", "tracked_scan")
+LAYOUTS = ("crossing", "head_on", "overtake", "crowd")
+PATIENCE_S = 3.0   # pedestrians outside ``crossing`` turn around after waiting this long
+CROWD_SIZE = 5
 TRACK_MATCH_M = 0.5        # a visible pedestrian counts as tracked within this distance
 FALSE_TRACK_M = 0.7        # a confirmed track this far from every pedestrian is false
 VISIBLE_RAYS = 3           # rays that must hit a pedestrian for it to count as visible
@@ -123,23 +129,36 @@ YIELD_CLEARANCE_M = 0.05  # pedestrians pause rather than come closer than this
 
 
 class PedestrianClock:
-    """Per-obstacle schedule time that stops while a pedestrian yields."""
+    """Per-obstacle schedule time that stops while a pedestrian yields.
 
-    def __init__(self, obstacles) -> None:
+    With a finite ``patience_s``, a pedestrian who has waited that long for
+    the robot turns around and walks its schedule backwards instead.
+    """
+
+    def __init__(self, obstacles, patience_s: float = math.inf) -> None:
         self.obstacles = tuple(obstacles)
         self.elapsed = [0.0] * len(self.obstacles)
         self.paused = [False] * len(self.obstacles)
+        self.direction = [1.0] * len(self.obstacles)
+        self.waited = [0.0] * len(self.obstacles)
+        self.patience_s = float(patience_s)
+        self.turnarounds = 0
 
     def states(self) -> np.ndarray:
         rows = []
-        for obstacle, elapsed, paused in zip(self.obstacles, self.elapsed, self.paused):
+        for obstacle, elapsed, paused, direction in zip(
+            self.obstacles, self.elapsed, self.paused, self.direction
+        ):
             x, y, vx, vy = obstacle.state(elapsed)
-            rows.append((x, y, 0.0, 0.0, obstacle.radius) if paused else (x, y, vx, vy, obstacle.radius))
+            if paused:
+                vx = vy = 0.0
+            rows.append((x, y, direction * vx, direction * vy, obstacle.radius))
         return np.asarray(rows, dtype=np.float32).reshape(-1, 5)
 
     def advance(self, robot: Pose2D, dt: float) -> None:
         for index, obstacle in enumerate(self.obstacles):
-            x, y, _vx, _vy = obstacle.state(self.elapsed[index] + dt)
+            step = self.direction[index] * dt
+            x, y, _vx, _vy = obstacle.state(self.elapsed[index] + step)
             blocked = (
                 math.hypot(x - robot.x, y - robot.y) - obstacle.radius - ROBOT_RADIUS
                 < YIELD_CLEARANCE_M
@@ -151,7 +170,14 @@ class PedestrianClock:
             )
             self.paused[index] = blocked and closer
             if not self.paused[index]:
-                self.elapsed[index] += dt
+                self.waited[index] = 0.0
+                self.elapsed[index] += step
+                continue
+            self.waited[index] += dt
+            if self.waited[index] >= self.patience_s:
+                self.direction[index] = -self.direction[index]
+                self.waited[index] = 0.0
+                self.turnarounds += 1
 
 
 def _score_tracks(
@@ -224,6 +250,38 @@ def crossing_phases(seed: int) -> tuple[float, float]:
     return float(rng.uniform(0.0, periods[0])), float(rng.uniform(0.0, periods[1]))
 
 
+def _segment_phases(obstacles, seed: int) -> tuple[float, ...]:
+    rng = np.random.default_rng(seed)
+    return tuple(
+        float(rng.uniform(0.0, 2.0 * math.hypot(o.end[0] - o.start[0], o.end[1] - o.start[1]) / o.speed))
+        for o in obstacles
+    )
+
+
+def layout_obstacles(layout: str, seed: int) -> tuple[tuple[Any, ...], float]:
+    """The pedestrians of ``layout`` for ``seed``, and their patience in seconds.
+
+    ``crossing``: two pedestrians cross the corridors and wait for the robot
+    indefinitely. The other layouts use pedestrians that turn around after
+    ``PATIENCE_S`` of waiting:
+    - ``head_on``: two pedestrians walk the corridors against the robot;
+    - ``overtake``: the two crossing pedestrians plus a faster one walking the
+      robot's route from just behind it;
+    - ``crowd``: ``CROWD_SIZE`` pedestrians pace random segments.
+    """
+    if layout == "crossing":
+        return crossing_obstacles(crossing_phases(seed)), math.inf
+    if layout == "head_on":
+        return head_on_obstacles(_segment_phases(head_on_obstacles(), seed)), PATIENCE_S
+    if layout == "overtake":
+        rng = np.random.default_rng(seed + 31)
+        follower = follower_obstacle(phase=float(rng.uniform(0.0, 1.0)))
+        return crossing_obstacles(crossing_phases(seed)) + (follower,), PATIENCE_S
+    if layout == "crowd":
+        return crowd_obstacles(seed, CROWD_SIZE), PATIENCE_S
+    raise ValueError(f"layout must be one of {LAYOUTS}")
+
+
 def observe(
     history: list[np.ndarray],
     model: ObservationModel,
@@ -259,12 +317,18 @@ def run_crossing(
     *,
     dynamic_mode: str = "predicted",
     seed: int = 0,
+    layout: str = "crossing",
     observation: ObservationModel = ObservationModel(),
     maximum_steps: int = MAXIMUM_FRAMES,
     pipeline: CudaNavPipeline | None = None,
     progress: Callable[[int, Pose2D], None] | None = None,
 ) -> CrossingResult:
-    """One S-course traversal while two pedestrians cross the corridors."""
+    """One S-course traversal while pedestrians move through the course.
+
+    ``layout`` picks the pedestrians (see :func:`layout_obstacles`).
+    """
+    if layout not in LAYOUTS:
+        raise ValueError(f"layout must be one of {LAYOUTS}")
     if dynamic_mode not in DYNAMIC_MODES:
         raise ValueError(f"dynamic_mode must be one of {DYNAMIC_MODES}")
     if maximum_steps < 10:
@@ -277,8 +341,8 @@ def run_crossing(
     if scan_mode and nav.tracker is None:
         raise ValueError("tracked_scan needs a CudaNavPipeline created with a tracker")
     segments = course_segments()
-    obstacles = crossing_obstacles(crossing_phases(seed))
-    clock = PedestrianClock(obstacles)
+    obstacles, patience_s = layout_obstacles(layout, seed)
+    clock = PedestrianClock(obstacles, patience_s)
     path = interpolate_path(PATH_SPACING, reverse=False)
     params = nav.mppi_params
     observation_rng = np.random.default_rng(seed + 1_000_003)
@@ -298,6 +362,7 @@ def run_crossing(
     squared_error = 0.0
     frames = wall_collisions = dynamic_collisions = contact_frames = yield_frames = 0
     invalid_commands = all_colliding = retreating = 0
+    retreat_blocked = 0
     minimum_clearance = math.inf
     maximum_ghosts = 0
     ghost_samples: list[int] = []
@@ -361,6 +426,7 @@ def run_crossing(
         solve_ms.append(solve)
         all_colliding += int(bool(planner.get("all_colliding", False)))
         retreating += int(bool(planner.get("retreating", False)))
+        retreat_blocked += int(bool(planner.get("retreat_blocked", False)))
         valid_ratio = float(planner.get("valid_rollout_ratio", 0.0))
         if (
             not math.isfinite(command_v)
@@ -433,6 +499,8 @@ def run_crossing(
         "schema_version": SCHEMA_VERSION,
         "scenario": SCENARIO,
         "dynamic_mode": dynamic_mode,
+        "layout": layout,
+        "pedestrians": len(obstacles),
         "seed": seed,
         "obstacle_phases_s": [obstacle.phase for obstacle in obstacles],
         "observation": {
@@ -461,6 +529,7 @@ def run_crossing(
         "contact_frames": contact_frames,
         # Pedestrian-frames spent paused because the robot was in the way.
         "pedestrian_yield_frames": yield_frames,
+        "pedestrian_turnarounds": clock.turnarounds,
         "minimum_dynamic_clearance_m": minimum_clearance,
         "ground_truth_distance_m": truth_distance,
         "ground_truth_goal_distance_m": goal_distance,
@@ -473,6 +542,7 @@ def run_crossing(
         "invalid_commands": invalid_commands,
         "all_colliding_evaluations": all_colliding,
         "retreating_evaluations": retreating,
+        "retreat_blocked_evaluations": retreat_blocked,
         "maximum_non_wall_occupied_cells": maximum_ghosts,
         "final_non_wall_occupied_cells": ghost_samples[-1] if ghost_samples else 0,
         "tracking": _tracking_summary(tracking) if scan_mode else None,

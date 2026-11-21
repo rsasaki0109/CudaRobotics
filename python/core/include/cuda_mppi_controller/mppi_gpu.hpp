@@ -108,6 +108,17 @@ struct MppiParams
   // Reverse speed [m/s] the back-out may use even when v_min >= 0; otherwise a
   // forward-only robot can only turn in place. 0 keeps the v_min clamp.
   float retreat_reverse_speed = 0.0f;
+  // Check the back-out command before using it, by holding it for
+  // retreat_check_horizon seconds (0 disables both checks). If it would
+  // - bring the robot within dynamic_obstacle_margin of a predicted dynamic
+  //   obstacle and closer to it than standing still (when the critic is
+  //   active), or
+  // - enter a lethal costmap cell costlier than the start cell,
+  // its translation is dropped (turning in place is kept) and
+  // MppiResult::retreat_blocked is set.
+  bool retreat_avoid_dynamic_obstacles = true;
+  bool retreat_avoid_lethal_cells = true;
+  float retreat_check_horizon = 1.0f;  // [s]
 };
 
 struct MppiResult
@@ -122,6 +133,7 @@ struct MppiResult
   float valid_rollout_ratio = 0.0f;
   bool all_colliding = false;
   bool retreating = false;   // true when command is a recovery back-out action
+  bool retreat_blocked = false;  // back-out translation dropped for a dynamic obstacle
 };
 
 class MppiGpu

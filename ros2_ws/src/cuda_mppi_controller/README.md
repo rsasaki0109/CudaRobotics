@@ -156,6 +156,9 @@ controller_server:
 | `enable_retreat` | true | back out from the last valid sequence on all-colliding rollouts |
 | `retreat_scale` | 0.5 | scale applied when reversing the last valid controls |
 | `retreat_reverse_speed` | 0.0 | reverse speed [m/s] the back-out may use even when `v_min >= 0`; 0 keeps the `v_min` clamp |
+| `retreat_check_horizon` | 1.0 | seconds the back-out command is checked ahead; 0 disables the checks below |
+| `retreat_avoid_lethal_cells` | true | drop the back-out translation if it would enter a lethal cell costlier than the start cell |
+| `retreat_avoid_dynamic_obstacles` | true | same for predicted dynamic obstacles (when the dynamic-obstacle critic is active) |
 | `temperature` | 0.12 | MPPI softmin λ |
 | `goal_weight` | 20.0 | terminal local-goal distance (linear) |
 | `goal_yaw_weight` | 3.0 | terminal yaw error near the final goal |

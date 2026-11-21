@@ -353,8 +353,10 @@ Mid term — pick ONE based on which funnel converts after the release
   with no oracle. 2026-11-22: `retreat_reverse_speed` (0.2 m/s in CudaNav)
   lets the forward-only back-out actually reverse. That resolved the
   standoffs: 6/6 with 0 robot-caused collisions for oracle, delay+noise and
-  scan tracker. Next: obstacle-aware back-out, GPU tracker, Nav2 obstacle
-  input.
+  scan tracker. Then `--layout head_on|overtake|crowd`, a back-out checked
+  against tracked obstacles and lethal cells, and clearing that spares walls:
+  over 72 runs, goals went from 59 to 62 and collisions from 823 to 2.
+  Next: Nav2 obstacle input, GPU tracker. Head-on standoffs remain.
 - **Jetson / aarch64** — compile-only CI landed (2026-11-21, aarch64 + sm_87,
   no hardware). Runtime validation waits for a device or concrete user demand.
 - **Broaden zero-copy inputs** — after costmap DLPack lands, consider path /
