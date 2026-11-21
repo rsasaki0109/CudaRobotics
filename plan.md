@@ -350,8 +350,11 @@ Mid term — pick ONE based on which funnel converts after the release
   in `MppiGpu` + CudaNav `dynamic_obstacles` + `sim --scenario crossing`
   (oracle tracker). Scan-based tracker (`ScanObjectTracker`, occupancy-age
   candidates, CV KF) + opt-in overlap allowance landed after: 4/6 crossings
-  with no oracle. Next: dynamic-aware retreat, freezing, GPU tracker, Nav2
-  obstacle input.
+  with no oracle. 2026-11-22: `retreat_reverse_speed` (0.2 m/s in CudaNav)
+  lets the forward-only back-out actually reverse. That resolved the
+  standoffs: 6/6 with 0 robot-caused collisions for oracle, delay+noise and
+  scan tracker. Next: obstacle-aware back-out, GPU tracker, Nav2 obstacle
+  input.
 - **Jetson / aarch64** — compile-only CI landed (2026-11-21, aarch64 + sm_87,
   no hardware). Runtime validation waits for a device or concrete user demand.
 - **Broaden zero-copy inputs** — after costmap DLPack lands, consider path /

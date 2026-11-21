@@ -1282,7 +1282,8 @@ NB_MODULE(_cudarobotics, m)
     .def_rw("lethal_threshold", &cr::MppiParams::lethal_threshold)
     .def_rw("consider_footprint", &cr::MppiParams::consider_footprint)
     .def_rw("enable_retreat", &cr::MppiParams::enable_retreat)
-    .def_rw("retreat_scale", &cr::MppiParams::retreat_scale);
+    .def_rw("retreat_scale", &cr::MppiParams::retreat_scale)
+    .def_rw("retreat_reverse_speed", &cr::MppiParams::retreat_reverse_speed);
 
   nb::class_<cr::MppiResult>(m, "MppiResult")
     .def(nb::init<>())

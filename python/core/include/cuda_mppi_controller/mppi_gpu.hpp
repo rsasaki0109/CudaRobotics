@@ -105,6 +105,9 @@ struct MppiParams
   // reversing the most recent valid sequence instead of immediately failing.
   bool enable_retreat = true;
   float retreat_scale = 0.5f;
+  // Reverse speed [m/s] the back-out may use even when v_min >= 0; otherwise a
+  // forward-only robot can only turn in place. 0 keeps the v_min clamp.
+  float retreat_reverse_speed = 0.0f;
 };
 
 struct MppiResult

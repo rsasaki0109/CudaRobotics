@@ -84,6 +84,9 @@ def default_mppi_params(*, reverse: bool = False) -> MppiParams:
     params.dynamic_obstacle_margin = 0.4
     params.dynamic_obstacle_robot_radius = 0.25
     params.dynamic_obstacle_growth = 0.1
+    # When every rollout collides, let the forward-only planner back out
+    # instead of only turning in place (see docs/cudanav_dynamic_obstacles.md).
+    params.retreat_reverse_speed = 0.2
     if reverse:
         params.backward_weight = 0.0
     return params

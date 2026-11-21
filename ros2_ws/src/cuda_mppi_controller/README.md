@@ -155,6 +155,7 @@ controller_server:
 | `consider_footprint` | false | polygon footprint collision check (needs inflation layer) |
 | `enable_retreat` | true | back out from the last valid sequence on all-colliding rollouts |
 | `retreat_scale` | 0.5 | scale applied when reversing the last valid controls |
+| `retreat_reverse_speed` | 0.0 | reverse speed [m/s] the back-out may use even when `v_min >= 0`; 0 keeps the `v_min` clamp |
 | `temperature` | 0.12 | MPPI softmin λ |
 | `goal_weight` | 20.0 | terminal local-goal distance (linear) |
 | `goal_yaw_weight` | 3.0 | terminal yaw error near the final goal |
