@@ -103,10 +103,6 @@ CallbackReturn CudaVoxelMapperNode::on_configure(const rclcpp_lifecycle::State &
       local_map_topic_, rclcpp::QoS(1).reliable().durability_volatile());
     diagnostic_publisher_ = create_publisher<diagnostic_msgs::msg::DiagnosticArray>(
       diagnostics_topic_, rclcpp::QoS(10).reliable().durability_volatile());
-    tf_buffer_ = std::make_unique<tf2_ros::Buffer>(get_clock());
-    tf_listener_ = std::make_shared<tf2_ros::TransformListener>(
-      *tf_buffer_, get_node_base_interface(), get_node_logging_interface(),
-      get_node_parameters_interface(), get_node_topics_interface(), true);
   } catch (const std::exception & exception) {
     RCLCPP_ERROR(get_logger(), "configure failed: %s", exception.what());
     release_runtime();
@@ -125,6 +121,14 @@ CallbackReturn CudaVoxelMapperNode::on_activate(const rclcpp_lifecycle::State &)
   }
   try {
     mapper_ = std::make_unique<cudarobotics::VoxelMapperGpu>(mapping_config_);
+    // The TF listener owns a spin thread. It is created on activate (the only
+    // state that looks up transforms) rather than configure: destroying a
+    // just-created listener can race its executor's start and hang the join,
+    // which made configure-then-cleanup lifecycle tests time out in CI.
+    tf_buffer_ = std::make_unique<tf2_ros::Buffer>(get_clock());
+    tf_listener_ = std::make_shared<tf2_ros::TransformListener>(
+      *tf_buffer_, get_node_base_interface(), get_node_logging_interface(),
+      get_node_parameters_interface(), get_node_topics_interface(), true);
     occupancy_publisher_->on_activate();
     local_map_publisher_->on_activate();
     diagnostic_publisher_->on_activate();
@@ -148,6 +152,8 @@ CallbackReturn CudaVoxelMapperNode::on_activate(const rclcpp_lifecycle::State &)
 CallbackReturn CudaVoxelMapperNode::on_deactivate(const rclcpp_lifecycle::State &)
 {
   points_subscription_.reset();
+  tf_listener_.reset();
+  tf_buffer_.reset();
   if (diagnostic_publisher_ && diagnostic_publisher_->is_activated()) {
     publish_diagnostic(
       runtime_fault_ ? diagnostic_msgs::msg::DiagnosticStatus::ERROR :
