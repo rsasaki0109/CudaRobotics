@@ -137,14 +137,17 @@ inline bool fit_line(const std::vector<Vec3>& points,
         : cross(*direction, Vec3{0.0f, 1.0f, 0.0f});
     normalize(&orthogonal);
     for (int iteration = 0; iteration < 32; ++iteration) {
-        const float projection = dot(*direction, orthogonal);
-        orthogonal = subtract(orthogonal, scale(*direction, projection));
-        const Vec3 value{
+        Vec3 value{
             covariance[0] * orthogonal.x + covariance[1] * orthogonal.y + covariance[2] * orthogonal.z,
             covariance[3] * orthogonal.x + covariance[4] * orthogonal.y + covariance[5] * orthogonal.z,
             covariance[6] * orthogonal.x + covariance[7] * orthogonal.y + covariance[8] * orthogonal.z};
+        // Deflate after multiplying: for near rank-1 covariances C*v is mostly
+        // rounding noise along the principal axis (it depends on FMA
+        // contraction), and normalizing it unprojected would turn the
+        // secondary estimate back into the principal one.
+        value = subtract(value, scale(*direction, dot(*direction, value)));
+        if (!normalize(&value)) break;
         orthogonal = value;
-        if (!normalize(&orthogonal)) break;
     }
     const Vec3 secondary{
         covariance[0] * orthogonal.x + covariance[1] * orthogonal.y + covariance[2] * orthogonal.z,
