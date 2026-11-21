@@ -356,7 +356,9 @@ Mid term — pick ONE based on which funnel converts after the release
   scan tracker. Then `--layout head_on|overtake|crowd`, a back-out checked
   against tracked obstacles and lethal cells, and clearing that spares walls:
   over 72 runs, goals went from 59 to 62 and collisions from 823 to 2.
-  Next: Nav2 obstacle input, GPU tracker. Head-on standoffs remain.
+  Then a Nav2 `TrackedObstacleArray` input, and batched GPU disc clearing with
+  grid-hashed clustering (scan-tracker frame p95: 34.6 ms to 8.0 ms). Next:
+  a ROS 2 tracker node; head-on standoffs remain.
 - **Jetson / aarch64** — compile-only CI landed (2026-11-21, aarch64 + sm_87,
   no hardware). Runtime validation waits for a device or concrete user demand.
 - **Broaden zero-copy inputs** — after costmap DLPack lands, consider path /

@@ -184,8 +184,26 @@ does the following:
 The confirmed tracks then go through the same path as `dynamic_obstacles`.
 `PipelineStep.tracks`, `track_ids` and `dynamic_point_count` expose the
 result. The tracker is NumPy code, and its occupancy-age update copies the
-grid to the host every frame. With it, the Python crossing loop runs at a
-frame p95 of about 25–35 ms, against 5–7 ms with the oracle.
+grid to the host every frame.
+
+Its frame cost used to come from two places other than the tracking itself:
+- clearing about 100–200 history discs per frame with one synchronising GPU
+  call each;
+- an all-pairs clustering, which took 8–12 ms on the first 2 s, when every
+  point is still a candidate.
+
+Two changes removed both:
+- `_CudaNavGridChain.clear_discs` clears all discs in one kernel launch;
+- the clustering compares only points in neighbouring grid cells, with
+  results identical to before.
+
+On the five-pedestrian crowd layout:
+
+| | Before | After |
+|---|---|---|
+| Frame p50 | 17.9 ms | 5.6 ms |
+| Frame p95 | 34.6 ms | 8.0 ms |
+| Tracker update p95 | 8.4 ms | 1.8 ms |
 
 ## Crossing evaluation
 
@@ -375,8 +393,8 @@ Closed-loop runs are not bit-reproducible:
   - a person who stands still for 2 s before ever moving becomes map
     structure;
   - one who stays in contact with a wall can merge into it;
-  - its NumPy implementation and per-frame grid copy cost about 20–30 ms per
-    frame.
+  - it is NumPy code on the host (about 1 ms per frame at p50); only the
+    map clearing runs on the GPU.
 - **Back-out.** The back-out is checked only against tracked obstacles and
   the costmap. An undetected person behind the robot is still at risk, which
   caused one contact with the scan tracker. The robot resolves standoffs by

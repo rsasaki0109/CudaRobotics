@@ -2,6 +2,7 @@
 
 #include <cuda_runtime.h>
 
+#include <algorithm>
 #include <climits>
 #include <cmath>
 #include <stdexcept>
@@ -56,6 +57,23 @@ __global__ void clear_footprint_kernel(
     const int row = index / grid.width;
     const int column = index - row * grid.width;
     if (inside_footprint(row, column, grid, x, y, radius)) occupancy[index] = 0;
+    if (occupancy[index] == 100) atomicAdd(occupied_count, 1u);
+}
+
+__global__ void clear_discs_kernel(
+    signed char* occupancy, CostmapGridGeometry grid,
+    const float* discs, int count, unsigned int* occupied_count)
+{
+    const int index = blockIdx.x * blockDim.x + threadIdx.x;
+    if (index >= grid.width * grid.height) return;
+    const int row = index / grid.width;
+    const int column = index - row * grid.width;
+    for (int i = 0; i < count; ++i) {
+        if (inside_footprint(row, column, grid, discs[3 * i], discs[3 * i + 1], discs[3 * i + 2])) {
+            occupancy[index] = 0;
+            break;
+        }
+    }
     if (occupancy[index] == 100) atomicAdd(occupied_count, 1u);
 }
 
@@ -147,8 +165,11 @@ struct CostmapBuilderGpu::Impl {
     {
         cudaFree(costmap);
         cudaFree(occupied_count);
+        cudaFree(discs);
         costmap = nullptr;
         occupied_count = nullptr;
+        discs = nullptr;
+        disc_capacity = 0;
     }
 
     CudaNavCostmapParams params;
@@ -156,6 +177,8 @@ struct CostmapBuilderGpu::Impl {
     int max_height = 0;
     unsigned char* costmap = nullptr;
     unsigned int* occupied_count = nullptr;
+    float* discs = nullptr;  // [disc_capacity * 3]
+    int disc_capacity = 0;
 };
 
 CostmapBuilderGpu::CostmapBuilderGpu(
@@ -183,6 +206,46 @@ std::size_t CostmapBuilderGpu::clear_footprint(
     COSTMAP_CUDA_CHECK(cudaMemset(impl_->occupied_count, 0, sizeof(unsigned int)));
     clear_footprint_kernel<<<(cells + 255) / 256, 256>>>(
         reinterpret_cast<signed char*>(device_occupancy), grid, x, y, radius,
+        impl_->occupied_count);
+    COSTMAP_CUDA_CHECK(cudaGetLastError());
+    unsigned int occupied = 0;
+    COSTMAP_CUDA_CHECK(cudaMemcpy(
+        &occupied, impl_->occupied_count, sizeof(occupied), cudaMemcpyDeviceToHost));
+    return occupied;
+}
+
+std::size_t CostmapBuilderGpu::clear_discs(
+    std::int8_t* device_occupancy,
+    const CostmapGridGeometry& grid,
+    const float* discs_xyr,
+    int count)
+{
+    if (!device_occupancy) throw std::invalid_argument("occupancy pointer must not be null");
+    validate_geometry(grid.width, grid.height, impl_->max_width, impl_->max_height);
+    if (!(grid.resolution > 0.0f) || !std::isfinite(grid.resolution))
+        throw std::invalid_argument("grid resolution must be positive and finite");
+    if (count < 0 || (count > 0 && !discs_xyr))
+        throw std::invalid_argument("discs must be a non-negative count with data");
+    for (int i = 0; i < 3 * count; ++i) {
+        if (!std::isfinite(discs_xyr[i])) throw std::invalid_argument("disc values must be finite");
+    }
+    if (count > impl_->disc_capacity) {
+        const int capacity = std::max(count, 2 * impl_->disc_capacity);
+        float* grown = nullptr;
+        COSTMAP_CUDA_CHECK(cudaMalloc(&grown, static_cast<std::size_t>(capacity) * 3 * sizeof(float)));
+        cudaFree(impl_->discs);
+        impl_->discs = grown;
+        impl_->disc_capacity = capacity;
+    }
+    if (count > 0) {
+        COSTMAP_CUDA_CHECK(cudaMemcpy(
+            impl_->discs, discs_xyr, static_cast<std::size_t>(count) * 3 * sizeof(float),
+            cudaMemcpyHostToDevice));
+    }
+    const int cells = grid.width * grid.height;
+    COSTMAP_CUDA_CHECK(cudaMemset(impl_->occupied_count, 0, sizeof(unsigned int)));
+    clear_discs_kernel<<<(cells + 255) / 256, 256>>>(
+        reinterpret_cast<signed char*>(device_occupancy), grid, impl_->discs, count,
         impl_->occupied_count);
     COSTMAP_CUDA_CHECK(cudaGetLastError());
     unsigned int occupied = 0;

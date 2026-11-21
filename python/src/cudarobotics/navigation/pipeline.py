@@ -570,8 +570,10 @@ class CudaNavPipeline:
             discs = _spare_structure(
                 [(frame.x, frame.y, self.footprint_clearing_radius)] + discs, self._occupancy_age
             )
-        for x, y, radius in discs:
-            occupied_cells = int(chain.clear_disc(x, y, radius))
+        if discs:
+            # One launch for every disc: the tracker's history alone can be
+            # hundreds of discs per frame.
+            occupied_cells = int(chain.clear_discs(np.asarray(discs, dtype=np.float32)))
         grid = projection["grid"]
         resolution = float(grid["resolution"])
         origin = (float(grid["origin_x"]), float(grid["origin_y"]))
