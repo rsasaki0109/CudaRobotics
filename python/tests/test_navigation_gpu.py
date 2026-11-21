@@ -201,3 +201,56 @@ def test_transform_points_matches_odometry_frame():
     frame = odometry.register(scans[0])
     world = transform_points(scans[0], frame.rotation, frame.translation)
     np.testing.assert_allclose(world, scans[0], atol=1e-5)  # first frame is the origin
+
+
+def test_planner_dynamic_obstacle_input_is_validated():
+    from cudarobotics import MppiPlanner
+    from cudarobotics.navigation import default_mppi_params
+
+    planner = MppiPlanner(default_mppi_params())
+    planner.set_dynamic_obstacles(np.asarray([[1.0, 0.0, -0.4, 0.0, 0.3]], dtype=np.float32))
+    assert planner.dynamic_obstacle_count == 1
+    planner.set_dynamic_obstacles(np.zeros((0, 5), dtype=np.float32))
+    assert planner.dynamic_obstacle_count == 0
+    with pytest.raises(ValueError):
+        planner.set_dynamic_obstacles(np.zeros((2, 4), dtype=np.float32))
+    with pytest.raises(ValueError):
+        planner.set_dynamic_obstacles(np.asarray([[np.nan, 0.0, 0.0, 0.0, 0.3]], dtype=np.float32))
+    with pytest.raises(ValueError):
+        planner.set_dynamic_obstacles(np.zeros((65, 5), dtype=np.float32))
+
+
+def test_tracked_obstacles_are_cleared_in_both_stage_chains():
+    path = interpolate_path()
+    _, scans = _straight_line_scans(count=2)
+    # Put a "tracked" obstacle on a wall cell so clearing is observable.
+    tracked = np.asarray([[1.0, -2.5, 0.0, 0.0, 0.4]], dtype=np.float32)
+    steps = {}
+    for chain in ("device", "host"):
+        nav = CudaNavPipeline(stage_chain=chain)
+        for scan in scans:
+            plain = nav.step(scan, path=path).materialize()
+        nav = CudaNavPipeline(stage_chain=chain)
+        for scan in scans:
+            cleared = nav.step(scan, path=path, dynamic_obstacles=tracked).materialize()
+        steps[chain] = (plain, cleared)
+        assert cleared.occupied_cells < plain.occupied_cells
+        grid = cleared.occupancy
+        xs, ys = grid.cell_centers()
+        inside = np.hypot(xs - 1.0, ys + 2.5) <= 0.4 + 0.15
+        assert not np.any(grid.data[inside] == 100)
+    np.testing.assert_array_equal(steps["device"][1].occupancy.data, steps["host"][1].occupancy.data)
+
+
+def test_crossing_predicted_beats_the_map_only_baseline():
+    from cudarobotics.navigation.dynamic_scenario import run_crossing
+
+    predicted = run_crossing(dynamic_mode="predicted", seed=0).summary
+    baseline = run_crossing(dynamic_mode="map", seed=0, maximum_steps=300).summary
+    assert predicted["quality_pass"], predicted["checks"]
+    assert predicted["dynamic_collisions"] == 0 and predicted["wall_collisions"] == 0
+    assert missing_summary_fields(predicted) == []
+    assert predicted["maximum_non_wall_occupied_cells"] == 0
+    # In the baseline the pedestrians stay in the voxel map as obstacles.
+    assert baseline["maximum_non_wall_occupied_cells"] > 20
+    assert not baseline["goal_reached"]

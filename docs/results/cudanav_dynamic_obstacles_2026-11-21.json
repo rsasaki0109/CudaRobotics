@@ -1,0 +1,477 @@
+{
+  "claims": {
+    "real_data": false,
+    "synthetic": true,
+    "tracker": "simulator_oracle"
+  },
+  "conditions": {
+    "map": {
+      "aggregate": {
+        "contact_frames": 0,
+        "dynamic_collisions": 0,
+        "goal_reached": 0,
+        "maximum_frame_ms_p95": 6.429781000065304,
+        "maximum_non_wall_occupied_cells": 108,
+        "median_retreats": 58,
+        "median_time_to_goal_s": null,
+        "median_yield_frames": 0,
+        "minimum_dynamic_clearance_m": 0.05423098214232491,
+        "quality_pass": 0,
+        "runs": 3,
+        "wall_collisions": 0
+      },
+      "dynamic_mode": "map",
+      "observation": {
+        "dropout_probability": 0.0,
+        "latency_frames": 0,
+        "position_noise_m": 0.0,
+        "source": "none",
+        "velocity_noise_mps": 0.0
+      },
+      "runs": [
+        {
+          "dynamic_mode": "map",
+          "observation": {
+            "dropout_probability": 0.0,
+            "latency_frames": 0,
+            "position_noise_m": 0.0,
+            "source": "none",
+            "velocity_noise_mps": 0.0
+          },
+          "run": "map_seed0",
+          "seed": 0,
+          "source_digest": null,
+          "summary": {
+            "all_colliding_evaluations": 33,
+            "contact_frames": 0,
+            "dynamic_collisions": 0,
+            "frame_ms_p95": 6.026110999982848,
+            "frames": 600,
+            "goal_reached": false,
+            "maximum_non_wall_occupied_cells": 92,
+            "minimum_dynamic_clearance_m": 0.054325006622388594,
+            "mppi_solve_ms_p95": 0.5861960000856925,
+            "odometry_drift_percent": 0.0985844999633298,
+            "pedestrian_yield_frames": 26,
+            "quality_pass": false,
+            "retreating_evaluations": 33,
+            "time_to_goal_s": null,
+            "wall_collisions": 0
+          }
+        },
+        {
+          "dynamic_mode": "map",
+          "observation": {
+            "dropout_probability": 0.0,
+            "latency_frames": 0,
+            "position_noise_m": 0.0,
+            "source": "none",
+            "velocity_noise_mps": 0.0
+          },
+          "run": "map_seed1",
+          "seed": 1,
+          "source_digest": null,
+          "summary": {
+            "all_colliding_evaluations": 58,
+            "contact_frames": 0,
+            "dynamic_collisions": 0,
+            "frame_ms_p95": 6.429781000065304,
+            "frames": 600,
+            "goal_reached": false,
+            "maximum_non_wall_occupied_cells": 91,
+            "minimum_dynamic_clearance_m": 0.05423098214232491,
+            "mppi_solve_ms_p95": 0.6321739999748388,
+            "odometry_drift_percent": 0.05048045939605138,
+            "pedestrian_yield_frames": 0,
+            "quality_pass": false,
+            "retreating_evaluations": 58,
+            "time_to_goal_s": null,
+            "wall_collisions": 0
+          }
+        },
+        {
+          "dynamic_mode": "map",
+          "observation": {
+            "dropout_probability": 0.0,
+            "latency_frames": 0,
+            "position_noise_m": 0.0,
+            "source": "none",
+            "velocity_noise_mps": 0.0
+          },
+          "run": "map_seed2",
+          "seed": 2,
+          "source_digest": null,
+          "summary": {
+            "all_colliding_evaluations": 156,
+            "contact_frames": 0,
+            "dynamic_collisions": 0,
+            "frame_ms_p95": 6.2942729999804214,
+            "frames": 600,
+            "goal_reached": false,
+            "maximum_non_wall_occupied_cells": 108,
+            "minimum_dynamic_clearance_m": 0.10435589996810646,
+            "mppi_solve_ms_p95": 0.5916379999462151,
+            "odometry_drift_percent": 0.08251361836487002,
+            "pedestrian_yield_frames": 0,
+            "quality_pass": false,
+            "retreating_evaluations": 156,
+            "time_to_goal_s": null,
+            "wall_collisions": 0
+          }
+        }
+      ]
+    },
+    "predicted": {
+      "aggregate": {
+        "contact_frames": 0,
+        "dynamic_collisions": 0,
+        "goal_reached": 3,
+        "maximum_frame_ms_p95": 6.96934899997359,
+        "maximum_non_wall_occupied_cells": 0,
+        "median_retreats": 13,
+        "median_time_to_goal_s": 24.3,
+        "median_yield_frames": 0,
+        "minimum_dynamic_clearance_m": 0.06107341078550044,
+        "quality_pass": 3,
+        "runs": 3,
+        "wall_collisions": 0
+      },
+      "dynamic_mode": "predicted",
+      "observation": {
+        "dropout_probability": 0.0,
+        "latency_frames": 0,
+        "position_noise_m": 0.0,
+        "source": "simulator_oracle",
+        "velocity_noise_mps": 0.0
+      },
+      "runs": [
+        {
+          "dynamic_mode": "predicted",
+          "observation": {
+            "dropout_probability": 0.0,
+            "latency_frames": 0,
+            "position_noise_m": 0.0,
+            "source": "simulator_oracle",
+            "velocity_noise_mps": 0.0
+          },
+          "run": "predicted_seed0",
+          "seed": 0,
+          "source_digest": null,
+          "summary": {
+            "all_colliding_evaluations": 13,
+            "contact_frames": 0,
+            "dynamic_collisions": 0,
+            "frame_ms_p95": 6.96934899997359,
+            "frames": 243,
+            "goal_reached": true,
+            "maximum_non_wall_occupied_cells": 0,
+            "minimum_dynamic_clearance_m": 0.08226193842950436,
+            "mppi_solve_ms_p95": 0.7448999999724037,
+            "odometry_drift_percent": 0.047783383944377956,
+            "pedestrian_yield_frames": 0,
+            "quality_pass": true,
+            "retreating_evaluations": 13,
+            "time_to_goal_s": 24.3,
+            "wall_collisions": 0
+          }
+        },
+        {
+          "dynamic_mode": "predicted",
+          "observation": {
+            "dropout_probability": 0.0,
+            "latency_frames": 0,
+            "position_noise_m": 0.0,
+            "source": "simulator_oracle",
+            "velocity_noise_mps": 0.0
+          },
+          "run": "predicted_seed1",
+          "seed": 1,
+          "source_digest": null,
+          "summary": {
+            "all_colliding_evaluations": 23,
+            "contact_frames": 0,
+            "dynamic_collisions": 0,
+            "frame_ms_p95": 5.913386999964132,
+            "frames": 264,
+            "goal_reached": true,
+            "maximum_non_wall_occupied_cells": 0,
+            "minimum_dynamic_clearance_m": 0.0863617868715334,
+            "mppi_solve_ms_p95": 0.6482150000692855,
+            "odometry_drift_percent": 0.07547118676541564,
+            "pedestrian_yield_frames": 0,
+            "quality_pass": true,
+            "retreating_evaluations": 23,
+            "time_to_goal_s": 26.400000000000002,
+            "wall_collisions": 0
+          }
+        },
+        {
+          "dynamic_mode": "predicted",
+          "observation": {
+            "dropout_probability": 0.0,
+            "latency_frames": 0,
+            "position_noise_m": 0.0,
+            "source": "simulator_oracle",
+            "velocity_noise_mps": 0.0
+          },
+          "run": "predicted_seed2",
+          "seed": 2,
+          "source_digest": null,
+          "summary": {
+            "all_colliding_evaluations": 13,
+            "contact_frames": 0,
+            "dynamic_collisions": 0,
+            "frame_ms_p95": 6.527296999934151,
+            "frames": 243,
+            "goal_reached": true,
+            "maximum_non_wall_occupied_cells": 0,
+            "minimum_dynamic_clearance_m": 0.06107341078550044,
+            "mppi_solve_ms_p95": 0.6879000000026281,
+            "odometry_drift_percent": 0.03896209684716992,
+            "pedestrian_yield_frames": 11,
+            "quality_pass": true,
+            "retreating_evaluations": 13,
+            "time_to_goal_s": 24.3,
+            "wall_collisions": 0
+          }
+        }
+      ]
+    },
+    "predicted_degraded": {
+      "aggregate": {
+        "contact_frames": 0,
+        "dynamic_collisions": 0,
+        "goal_reached": 3,
+        "maximum_frame_ms_p95": 6.690306999985296,
+        "maximum_non_wall_occupied_cells": 0,
+        "median_retreats": 105,
+        "median_time_to_goal_s": 39.300000000000004,
+        "median_yield_frames": 86,
+        "minimum_dynamic_clearance_m": 0.04590056463055325,
+        "quality_pass": 3,
+        "runs": 3,
+        "wall_collisions": 0
+      },
+      "dynamic_mode": "predicted",
+      "observation": {
+        "dropout_probability": 0.0,
+        "latency_frames": 2,
+        "position_noise_m": 0.05,
+        "source": "simulator_oracle",
+        "velocity_noise_mps": 0.1
+      },
+      "runs": [
+        {
+          "dynamic_mode": "predicted",
+          "observation": {
+            "dropout_probability": 0.0,
+            "latency_frames": 2,
+            "position_noise_m": 0.05,
+            "source": "simulator_oracle",
+            "velocity_noise_mps": 0.1
+          },
+          "run": "predicted_degraded_seed0",
+          "seed": 0,
+          "source_digest": null,
+          "summary": {
+            "all_colliding_evaluations": 34,
+            "contact_frames": 0,
+            "dynamic_collisions": 0,
+            "frame_ms_p95": 6.690306999985296,
+            "frames": 273,
+            "goal_reached": true,
+            "maximum_non_wall_occupied_cells": 0,
+            "minimum_dynamic_clearance_m": 0.05180671456210595,
+            "mppi_solve_ms_p95": 0.7076980000420008,
+            "odometry_drift_percent": 0.14340963511874041,
+            "pedestrian_yield_frames": 27,
+            "quality_pass": true,
+            "retreating_evaluations": 34,
+            "time_to_goal_s": 27.3,
+            "wall_collisions": 0
+          }
+        },
+        {
+          "dynamic_mode": "predicted",
+          "observation": {
+            "dropout_probability": 0.0,
+            "latency_frames": 2,
+            "position_noise_m": 0.05,
+            "source": "simulator_oracle",
+            "velocity_noise_mps": 0.1
+          },
+          "run": "predicted_degraded_seed1",
+          "seed": 1,
+          "source_digest": null,
+          "summary": {
+            "all_colliding_evaluations": 167,
+            "contact_frames": 0,
+            "dynamic_collisions": 0,
+            "frame_ms_p95": 5.479239000010239,
+            "frames": 479,
+            "goal_reached": true,
+            "maximum_non_wall_occupied_cells": 0,
+            "minimum_dynamic_clearance_m": 0.04590056463055325,
+            "mppi_solve_ms_p95": 0.5628220000062356,
+            "odometry_drift_percent": 0.03585082061387727,
+            "pedestrian_yield_frames": 153,
+            "quality_pass": true,
+            "retreating_evaluations": 167,
+            "time_to_goal_s": 47.900000000000006,
+            "wall_collisions": 0
+          }
+        },
+        {
+          "dynamic_mode": "predicted",
+          "observation": {
+            "dropout_probability": 0.0,
+            "latency_frames": 2,
+            "position_noise_m": 0.05,
+            "source": "simulator_oracle",
+            "velocity_noise_mps": 0.1
+          },
+          "run": "predicted_degraded_seed2",
+          "seed": 2,
+          "source_digest": null,
+          "summary": {
+            "all_colliding_evaluations": 105,
+            "contact_frames": 0,
+            "dynamic_collisions": 0,
+            "frame_ms_p95": 6.385646000012457,
+            "frames": 393,
+            "goal_reached": true,
+            "maximum_non_wall_occupied_cells": 0,
+            "minimum_dynamic_clearance_m": 0.056605469143404585,
+            "mppi_solve_ms_p95": 0.641671999915161,
+            "odometry_drift_percent": 0.04234665228329663,
+            "pedestrian_yield_frames": 86,
+            "quality_pass": true,
+            "retreating_evaluations": 105,
+            "time_to_goal_s": 39.300000000000004,
+            "wall_collisions": 0
+          }
+        }
+      ]
+    },
+    "tracked_static": {
+      "aggregate": {
+        "contact_frames": 0,
+        "dynamic_collisions": 0,
+        "goal_reached": 1,
+        "maximum_frame_ms_p95": 7.344092999915119,
+        "maximum_non_wall_occupied_cells": 0,
+        "median_retreats": 138,
+        "median_time_to_goal_s": 53.6,
+        "median_yield_frames": 186,
+        "minimum_dynamic_clearance_m": 0.03517533176888332,
+        "quality_pass": 1,
+        "runs": 3,
+        "wall_collisions": 0
+      },
+      "dynamic_mode": "tracked_static",
+      "observation": {
+        "dropout_probability": 0.0,
+        "latency_frames": 0,
+        "position_noise_m": 0.0,
+        "source": "simulator_oracle",
+        "velocity_noise_mps": 0.0
+      },
+      "runs": [
+        {
+          "dynamic_mode": "tracked_static",
+          "observation": {
+            "dropout_probability": 0.0,
+            "latency_frames": 0,
+            "position_noise_m": 0.0,
+            "source": "simulator_oracle",
+            "velocity_noise_mps": 0.0
+          },
+          "run": "tracked_static_seed0",
+          "seed": 0,
+          "source_digest": null,
+          "summary": {
+            "all_colliding_evaluations": 138,
+            "contact_frames": 0,
+            "dynamic_collisions": 0,
+            "frame_ms_p95": 7.344092999915119,
+            "frames": 600,
+            "goal_reached": false,
+            "maximum_non_wall_occupied_cells": 0,
+            "minimum_dynamic_clearance_m": 0.049332997843815174,
+            "mppi_solve_ms_p95": 0.7429060000276877,
+            "odometry_drift_percent": 0.140404307237695,
+            "pedestrian_yield_frames": 186,
+            "quality_pass": false,
+            "retreating_evaluations": 138,
+            "time_to_goal_s": null,
+            "wall_collisions": 0
+          }
+        },
+        {
+          "dynamic_mode": "tracked_static",
+          "observation": {
+            "dropout_probability": 0.0,
+            "latency_frames": 0,
+            "position_noise_m": 0.0,
+            "source": "simulator_oracle",
+            "velocity_noise_mps": 0.0
+          },
+          "run": "tracked_static_seed1",
+          "seed": 1,
+          "source_digest": null,
+          "summary": {
+            "all_colliding_evaluations": 342,
+            "contact_frames": 0,
+            "dynamic_collisions": 0,
+            "frame_ms_p95": 6.419128999937129,
+            "frames": 600,
+            "goal_reached": false,
+            "maximum_non_wall_occupied_cells": 0,
+            "minimum_dynamic_clearance_m": 0.03935187146756036,
+            "mppi_solve_ms_p95": 0.6852249999838023,
+            "odometry_drift_percent": 0.019020989012422666,
+            "pedestrian_yield_frames": 343,
+            "quality_pass": false,
+            "retreating_evaluations": 342,
+            "time_to_goal_s": null,
+            "wall_collisions": 0
+          }
+        },
+        {
+          "dynamic_mode": "tracked_static",
+          "observation": {
+            "dropout_probability": 0.0,
+            "latency_frames": 0,
+            "position_noise_m": 0.0,
+            "source": "simulator_oracle",
+            "velocity_noise_mps": 0.0
+          },
+          "run": "tracked_static_seed2",
+          "seed": 2,
+          "source_digest": null,
+          "summary": {
+            "all_colliding_evaluations": 136,
+            "contact_frames": 0,
+            "dynamic_collisions": 0,
+            "frame_ms_p95": 6.007567000096969,
+            "frames": 536,
+            "goal_reached": true,
+            "maximum_non_wall_occupied_cells": 0,
+            "minimum_dynamic_clearance_m": 0.03517533176888332,
+            "mppi_solve_ms_p95": 0.6401489999916521,
+            "odometry_drift_percent": 0.03970164563745101,
+            "pedestrian_yield_frames": 110,
+            "quality_pass": true,
+            "retreating_evaluations": 136,
+            "time_to_goal_s": 53.6,
+            "wall_collisions": 0
+          }
+        }
+      ]
+    }
+  },
+  "scenario": "cudanav_s_course_crossing",
+  "schema_version": 1,
+  "source_digests": [],
+  "total_runs": 12
+}

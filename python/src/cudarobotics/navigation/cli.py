@@ -46,6 +46,23 @@ def build_parser() -> argparse.ArgumentParser:
     sim.add_argument("--traversals", type=_positive_int, default=1)
     sim.add_argument("--max-steps", type=_positive_int, default=1800)
     sim.add_argument("--minimum-duration-s", type=float, default=0.0)
+    sim.add_argument(
+        "--scenario",
+        choices=("s_course", "crossing"),
+        default="s_course",
+        help="crossing: two pedestrians cross the corridors (one traversal)",
+    )
+    sim.add_argument(
+        "--dynamic-mode",
+        choices=("map", "tracked_static", "predicted"),
+        default="predicted",
+        help="crossing only: how moving obstacles reach the planner",
+    )
+    sim.add_argument("--seed", type=int, default=0, help="crossing only: pedestrian schedule seed")
+    sim.add_argument("--obs-latency-frames", type=int, default=0)
+    sim.add_argument("--obs-position-noise-m", type=float, default=0.0)
+    sim.add_argument("--obs-velocity-noise-mps", type=float, default=0.0)
+    sim.add_argument("--obs-dropout", type=float, default=0.0)
 
     seq = sub.add_parser("sequence", help="odometry + mapping + ESDF over a CRKICP1 file")
     seq.add_argument("sequence", type=Path)
@@ -110,6 +127,14 @@ def _plot(output: Path, step: Any, columns: Sequence[str], rows: Sequence[Sequen
     for axis, title in zip(axes, ("occupancy + trajectory", "ESDF (m)")):
         axis.plot(data[:, index[ref[0]]], data[:, index[ref[1]]], "g-", lw=1.5, label="reference")
         axis.plot(data[:, index[est[0]]], data[:, index[est[1]]], "r--", lw=1.2, label="estimated")
+        for obstacle in (0, 1):
+            if f"obstacle_{obstacle}_x" in index:
+                axis.plot(
+                    data[:, index[f"obstacle_{obstacle}_x"]],
+                    data[:, index[f"obstacle_{obstacle}_y"]],
+                    ":", color="tab:orange", lw=1.0,
+                    label="pedestrian" if obstacle == 0 else None,
+                )
         axis.set_title(title)
         axis.set_aspect("equal")
     axes[0].legend(loc="upper right")
@@ -165,9 +190,48 @@ def _finish(
     return EXIT_OK
 
 
+def _run_crossing(args: argparse.Namespace, argv: Sequence[str]) -> int:
+    from .dynamic_scenario import (
+        SCENARIO,
+        TRAJECTORY_COLUMNS,
+        ObservationModel,
+        run_crossing,
+    )
+    from .pipeline import CudaNavPipeline
+
+    observation = ObservationModel(
+        latency_frames=args.obs_latency_frames,
+        position_noise_m=args.obs_position_noise_m,
+        velocity_noise_mps=args.obs_velocity_noise_mps,
+        dropout_probability=args.obs_dropout,
+    )
+    result = run_crossing(
+        dynamic_mode=args.dynamic_mode,
+        seed=args.seed,
+        observation=observation,
+        maximum_steps=min(args.max_steps, 600),
+        pipeline=CudaNavPipeline(stage_chain=args.stage_chain),
+    )
+    parameters = {
+        "stage_chain": args.stage_chain,
+        "scenario": "crossing",
+        "dynamic_mode": args.dynamic_mode,
+        "seed": args.seed,
+        "observation": result.summary["observation"],
+        "max_steps": min(args.max_steps, 600),
+    }
+    return _finish(
+        args, argv, SCENARIO, parameters, result, TRAJECTORY_COLUMNS,
+        ("estimated_x", "estimated_y"), ("truth_x", "truth_y"),
+    )
+
+
 def _run_sim(args: argparse.Namespace, argv: Sequence[str]) -> int:
     from .closed_loop import SCENARIO, TRAJECTORY_COLUMNS, run_s_course
     from .pipeline import CudaNavPipeline
+
+    if args.scenario == "crossing":
+        return _run_crossing(args, argv)
 
     result = run_s_course(
         traversals=args.traversals,
@@ -228,6 +292,20 @@ def main(argv: Sequence[str] | None = None) -> int:
         args = parser.parse_args(argv)
     except SystemExit as error:
         return EXIT_OK if error.code == 0 else EXIT_USAGE
+    if args.command == "sim" and args.scenario == "crossing":
+        from .dynamic_scenario import ObservationModel
+
+        try:
+            ObservationModel(
+                latency_frames=args.obs_latency_frames,
+                position_noise_m=args.obs_position_noise_m,
+                velocity_noise_mps=args.obs_velocity_noise_mps,
+                dropout_probability=args.obs_dropout,
+            )
+        except ValueError as error:
+            parser.print_usage(sys.stderr)
+            print(f"cudarobotics-cudanav: {error}", file=sys.stderr)
+            return EXIT_USAGE
     if args.command == "sequence" and not args.sequence.is_file():
         parser.print_usage(sys.stderr)
         print(f"cudarobotics-cudanav: sequence file not found: {args.sequence}", file=sys.stderr)
@@ -235,7 +313,12 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     output: Path = args.output_dir
     output.mkdir(parents=True, exist_ok=True)
-    scenario = "cudanav_s_course" if args.command == "sim" else "cudanav_recorded_sequence"
+    if args.command == "sim":
+        scenario = (
+            "cudanav_s_course_crossing" if args.scenario == "crossing" else "cudanav_s_course"
+        )
+    else:
+        scenario = "cudanav_recorded_sequence"
     stage = "initialize"
     try:
         from .evidence import runtime_info

@@ -356,6 +356,30 @@ public:
     planner_.setSpeedLimit(v_max);
   }
 
+  // (N, 5) float32 rows of x, y, vx, vy, radius in the costmap frame; an
+  // empty array or None clears the predicted dynamic obstacles.
+  void setDynamicObstacles(nb::object obstacles)
+  {
+    if (obstacles.ptr() == Py_None) {
+      planner_.setDynamicObstacles(nullptr, 0);
+      return;
+    }
+    BufferView view(obstacles, 2, 5, 4, "obstacles");
+    const int count = view.dim(0);
+    const float * data = view.data<float>();
+    std::vector<cr::DynamicObstacle> rows(static_cast<std::size_t>(count));
+    for (int i = 0; i < count; ++i) {
+      rows[i] = cr::DynamicObstacle{
+        data[5 * i], data[5 * i + 1], data[5 * i + 2], data[5 * i + 3], data[5 * i + 4]};
+    }
+    planner_.setDynamicObstacles(rows.data(), count);
+  }
+
+  int dynamicObstacleCount() const
+  {
+    return planner_.dynamicObstacleCount();
+  }
+
   nb::tuple compute(
     nb::object state,
     nb::object costmap,
@@ -1036,6 +1060,7 @@ public:
     const std::size_t occupied = builder_.clear_footprint(
       projection.data, geometry, x, y, radius > 0.0f ? radius : -1.0f);
     occupancy_ = projection.data;
+    geometry_ = geometry;
     distances_ = nullptr;
     costmap_ = nullptr;
     width_ = projection.grid.width;
@@ -1062,6 +1087,18 @@ public:
     info["unknown_cells"] = result.unknown_cells;
     info["gpu_ms"] = result.gpu_ms;
     return info;
+  }
+
+  // Free the cells within `radius` of (x, y), for example under a tracked
+  // moving object that the planner handles through its predicted trajectory.
+  // Returns the occupied-cell count afterwards.
+  std::size_t clearDisc(float x, float y, float radius)
+  {
+    requireStage(occupancy_, "project");
+    if (distances_) {
+      throw std::runtime_error("call clear_disc() before distance() in this frame");
+    }
+    return builder_.clear_footprint(occupancy_, geometry_, x, y, radius);
   }
 
   void build()
@@ -1126,6 +1163,7 @@ private:
 
   reg::CostmapBuilderGpu builder_;
   std::int8_t * occupancy_ = nullptr;
+  reg::CostmapGridGeometry geometry_{};
   const float * distances_ = nullptr;
   const unsigned char * costmap_ = nullptr;
   int width_ = 0;
@@ -1229,6 +1267,10 @@ NB_MODULE(_cudarobotics, m)
     .def_rw("costmap_weight", &cr::MppiParams::costmap_weight)
     .def_rw("distance_field_weight", &cr::MppiParams::distance_field_weight)
     .def_rw("distance_field_cutoff", &cr::MppiParams::distance_field_cutoff)
+    .def_rw("dynamic_obstacle_weight", &cr::MppiParams::dynamic_obstacle_weight)
+    .def_rw("dynamic_obstacle_margin", &cr::MppiParams::dynamic_obstacle_margin)
+    .def_rw("dynamic_obstacle_robot_radius", &cr::MppiParams::dynamic_obstacle_robot_radius)
+    .def_rw("dynamic_obstacle_growth", &cr::MppiParams::dynamic_obstacle_growth)
     .def_rw("smoothness_weight", &cr::MppiParams::smoothness_weight)
     .def_rw("backward_weight", &cr::MppiParams::backward_weight)
     .def_rw("speed_weight", &cr::MppiParams::speed_weight)
@@ -1257,6 +1299,10 @@ NB_MODULE(_cudarobotics, m)
     .def(nb::init<const cr::MppiParams &>())
     .def("reset", &PyMppiPlanner::reset)
     .def("set_speed_limit", &PyMppiPlanner::setSpeedLimit, "v_max"_a)
+    .def(
+      "set_dynamic_obstacles", &PyMppiPlanner::setDynamicObstacles,
+      "obstacles"_a.none())
+    .def_prop_ro("dynamic_obstacle_count", &PyMppiPlanner::dynamicObstacleCount)
     .def(
       "compute", &PyMppiPlanner::compute,
       "state"_a, "costmap"_a, "path"_a, "goal"_a,
@@ -1427,6 +1473,7 @@ NB_MODULE(_cudarobotics, m)
     .def(
       "distance", &PyCudaNavGridChain::distance,
       "esdf"_a, "resolution"_a, "max_distance"_a)
+    .def("clear_disc", &PyCudaNavGridChain::clearDisc, "x"_a, "y"_a, "radius"_a)
     .def("build", &PyCudaNavGridChain::build)
     .def(
       "plan", &PyCudaNavGridChain::plan,
