@@ -15,6 +15,8 @@
 #include "tf2/utils.h"
 #include "tf2_geometry_msgs/tf2_geometry_msgs.hpp"
 
+#include "cuda_mppi_controller/dynamic_obstacle_input.hpp"
+
 namespace cuda_mppi_controller
 {
 
@@ -115,6 +117,11 @@ void validateControllerParams(const MppiParams & params, double lookahead_dist,
   requireNonNegative("retreat_scale", params.retreat_scale);
   requireNonNegative("retreat_reverse_speed", params.retreat_reverse_speed);
   requireNonNegative("retreat_check_horizon", params.retreat_check_horizon);
+  requireNonNegative("dynamic_obstacle_weight", params.dynamic_obstacle_weight);
+  requireNonNegative("dynamic_obstacle_margin", params.dynamic_obstacle_margin);
+  requireNonNegative("dynamic_obstacle_robot_radius", params.dynamic_obstacle_robot_radius);
+  requireNonNegative("dynamic_obstacle_growth", params.dynamic_obstacle_growth);
+  requireNonNegative("dynamic_obstacle_overlap_allowance", params.dynamic_obstacle_overlap_allowance);
 
   requirePositive("lookahead_dist", lookahead_dist);
   requireNonNegative("transform_tolerance", transform_tolerance);
@@ -202,6 +209,16 @@ bool applyControllerParameter(const std::string & key, const rclcpp::Parameter &
     params.retreat_avoid_lethal_cells = parameter.as_bool();
   } else if (key == "retreat_check_horizon") {
     params.retreat_check_horizon = static_cast<float>(parameter.as_double());
+  } else if (key == "dynamic_obstacle_weight") {
+    params.dynamic_obstacle_weight = static_cast<float>(parameter.as_double());
+  } else if (key == "dynamic_obstacle_margin") {
+    params.dynamic_obstacle_margin = static_cast<float>(parameter.as_double());
+  } else if (key == "dynamic_obstacle_robot_radius") {
+    params.dynamic_obstacle_robot_radius = static_cast<float>(parameter.as_double());
+  } else if (key == "dynamic_obstacle_growth") {
+    params.dynamic_obstacle_growth = static_cast<float>(parameter.as_double());
+  } else if (key == "dynamic_obstacle_overlap_allowance") {
+    params.dynamic_obstacle_overlap_allowance = static_cast<float>(parameter.as_double());
   } else if (key == "lookahead_dist") {
     lookahead_dist = parameter.as_double();
   } else if (key == "transform_tolerance") {
@@ -266,6 +283,11 @@ bool CudaMppiController::updateParamsFromNode(
   bool retreat_avoid_dynamic_obstacles = next.retreat_avoid_dynamic_obstacles;
   bool retreat_avoid_lethal_cells = next.retreat_avoid_lethal_cells;
   double retreat_check_horizon = next.retreat_check_horizon;
+  double dynamic_obstacle_weight = next.dynamic_obstacle_weight;
+  double dynamic_obstacle_margin = next.dynamic_obstacle_margin;
+  double dynamic_obstacle_robot_radius = next.dynamic_obstacle_robot_radius;
+  double dynamic_obstacle_growth = next.dynamic_obstacle_growth;
+  double dynamic_obstacle_overlap_allowance = next.dynamic_obstacle_overlap_allowance;
 
   node->get_parameter(name_ + ".batch_size", batch_size);
   node->get_parameter(name_ + ".time_steps", time_steps);
@@ -304,6 +326,11 @@ bool CudaMppiController::updateParamsFromNode(
   node->get_parameter(name_ + ".retreat_avoid_dynamic_obstacles", retreat_avoid_dynamic_obstacles);
   node->get_parameter(name_ + ".retreat_avoid_lethal_cells", retreat_avoid_lethal_cells);
   node->get_parameter(name_ + ".retreat_check_horizon", retreat_check_horizon);
+  node->get_parameter(name_ + ".dynamic_obstacle_weight", dynamic_obstacle_weight);
+  node->get_parameter(name_ + ".dynamic_obstacle_margin", dynamic_obstacle_margin);
+  node->get_parameter(name_ + ".dynamic_obstacle_robot_radius", dynamic_obstacle_robot_radius);
+  node->get_parameter(name_ + ".dynamic_obstacle_growth", dynamic_obstacle_growth);
+  node->get_parameter(name_ + ".dynamic_obstacle_overlap_allowance", dynamic_obstacle_overlap_allowance);
   node->get_parameter(name_ + ".lookahead_dist", next_lookahead_dist);
   node->get_parameter(name_ + ".transform_tolerance", next_transform_tolerance);
   node->get_parameter(name_ + ".diagnostics_log_period", next_diagnostics_log_period);
@@ -346,6 +373,11 @@ bool CudaMppiController::updateParamsFromNode(
   next.retreat_avoid_dynamic_obstacles = retreat_avoid_dynamic_obstacles;
   next.retreat_avoid_lethal_cells = retreat_avoid_lethal_cells;
   next.retreat_check_horizon = static_cast<float>(retreat_check_horizon);
+  next.dynamic_obstacle_weight = static_cast<float>(dynamic_obstacle_weight);
+  next.dynamic_obstacle_margin = static_cast<float>(dynamic_obstacle_margin);
+  next.dynamic_obstacle_robot_radius = static_cast<float>(dynamic_obstacle_robot_radius);
+  next.dynamic_obstacle_growth = static_cast<float>(dynamic_obstacle_growth);
+  next.dynamic_obstacle_overlap_allowance = static_cast<float>(dynamic_obstacle_overlap_allowance);
 
   validateControllerParams(
     next, next_lookahead_dist, next_transform_tolerance, next_diagnostics_log_period);
@@ -417,6 +449,11 @@ void CudaMppiController::configure(
   declare_param("retreat_avoid_dynamic_obstacles", params_.retreat_avoid_dynamic_obstacles);
   declare_param("retreat_avoid_lethal_cells", params_.retreat_avoid_lethal_cells);
   declare_param("retreat_check_horizon", static_cast<double>(params_.retreat_check_horizon));
+  declare_param("dynamic_obstacle_weight", static_cast<double>(params_.dynamic_obstacle_weight));
+  declare_param("dynamic_obstacle_margin", static_cast<double>(params_.dynamic_obstacle_margin));
+  declare_param("dynamic_obstacle_robot_radius", static_cast<double>(params_.dynamic_obstacle_robot_radius));
+  declare_param("dynamic_obstacle_growth", static_cast<double>(params_.dynamic_obstacle_growth));
+  declare_param("dynamic_obstacle_overlap_allowance", static_cast<double>(params_.dynamic_obstacle_overlap_allowance));
   declare_param("lookahead_dist", lookahead_dist_);
   declare_param("transform_tolerance", transform_tolerance_);
   declare_param("diagnostics_log_period", diagnostics_log_period_);
@@ -424,6 +461,29 @@ void CudaMppiController::configure(
 
   updateParamsFromNode(node);
   diagnostics_csv_ = openDiagnosticsCsv(diagnostics_csv_path_);
+
+  // Tracked moving obstacles for the dynamic-obstacle critic (configure-time only).
+  declare_param("dynamic_obstacles_topic", std::string());
+  declare_param("dynamic_obstacles_timeout", dynamic_obstacles_timeout_);
+  node->get_parameter(name_ + ".dynamic_obstacles_topic", dynamic_obstacles_topic_);
+  node->get_parameter(name_ + ".dynamic_obstacles_timeout", dynamic_obstacles_timeout_);
+  requirePositive("dynamic_obstacles_timeout", dynamic_obstacles_timeout_);
+  dynamic_obstacles_sub_.reset();
+  latest_dynamic_obstacles_.reset();
+  if (!dynamic_obstacles_topic_.empty()) {
+    dynamic_obstacles_sub_ =
+      node->create_subscription<cuda_robotics_msgs::msg::TrackedObstacleArray>(
+      dynamic_obstacles_topic_, rclcpp::SensorDataQoS(),
+      [this](cuda_robotics_msgs::msg::TrackedObstacleArray::ConstSharedPtr msg) {
+        std::lock_guard<std::mutex> lock(dynamic_obstacles_mutex_);
+        latest_dynamic_obstacles_ = std::move(msg);
+      });
+    if (params_.dynamic_obstacle_weight <= 0.0f) {
+      RCLCPP_WARN(
+        logger_, "%s.dynamic_obstacles_topic is set but dynamic_obstacle_weight is 0: "
+        "tracked obstacles will be ignored", name_.c_str());
+    }
+  }
 
   optimizer_ = std::make_unique<MppiGpu>(params_);
 
@@ -494,6 +554,11 @@ void CudaMppiController::configure(
 void CudaMppiController::cleanup()
 {
   param_callback_.reset();
+  dynamic_obstacles_sub_.reset();
+  {
+    std::lock_guard<std::mutex> lock(dynamic_obstacles_mutex_);
+    latest_dynamic_obstacles_.reset();
+  }
   optimizer_.reset();
   diagnostics_csv_ = DiagnosticsCsv{};
 }
@@ -674,6 +739,8 @@ geometry_msgs::msg::TwistStamped CudaMppiController::computeVelocityCommands(
     }
   }
 
+  updateDynamicObstacles(pose);
+
   nav2_costmap_2d::Costmap2D * costmap = costmap_ros_->getCostmap();
   MppiResult result;
   int costmap_size_x = 0;
@@ -717,6 +784,50 @@ geometry_msgs::msg::TwistStamped CudaMppiController::computeVelocityCommands(
   }
   cmd.twist.angular.z = result.w;
   return cmd;
+}
+
+void CudaMppiController::updateDynamicObstacles(const geometry_msgs::msg::PoseStamped & robot_pose)
+{
+  if (!dynamic_obstacles_sub_) {
+    return;
+  }
+  cuda_robotics_msgs::msg::TrackedObstacleArray::ConstSharedPtr msg;
+  {
+    std::lock_guard<std::mutex> lock(dynamic_obstacles_mutex_);
+    msg = latest_dynamic_obstacles_;
+  }
+  std::vector<DynamicObstacle> obstacles;
+  auto node = node_.lock();
+  if (msg && node) {
+    const rclcpp::Time now = node->now();
+    const double age =
+      (now - rclcpp::Time(msg->header.stamp, now.get_clock_type())).seconds();
+    if (age <= dynamic_obstacles_timeout_) {
+      try {
+        const auto tf = tf_->lookupTransform(
+          costmap_ros_->getGlobalFrameID(), msg->header.frame_id, tf2::TimePointZero);
+        const PlanarTransform transform{
+          tf.transform.translation.x, tf.transform.translation.y,
+          tf2::getYaw(tf.transform.rotation)};
+        std::vector<TrackedDisc> discs;
+        discs.reserve(msg->obstacles.size());
+        for (const auto & o : msg->obstacles) {
+          discs.push_back(
+            {o.position.x, o.position.y, o.velocity.x, o.velocity.y,
+              static_cast<double>(o.radius)});
+        }
+        obstacles = toDynamicObstacles(
+          discs, transform, age, robot_pose.pose.position.x, robot_pose.pose.position.y);
+      } catch (const tf2::TransformException & ex) {
+        RCLCPP_WARN_THROTTLE(
+          logger_, *node->get_clock(), 2000,
+          "Ignoring tracked obstacles: no transform %s -> %s: %s",
+          msg->header.frame_id.c_str(), costmap_ros_->getGlobalFrameID().c_str(), ex.what());
+      }
+    }
+  }
+  optimizer_->setDynamicObstacles(
+    obstacles.empty() ? nullptr : obstacles.data(), static_cast<int>(obstacles.size()));
 }
 
 void CudaMppiController::setSpeedLimit(const double & speed_limit, const bool & percentage)

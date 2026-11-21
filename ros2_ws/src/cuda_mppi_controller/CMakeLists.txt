@@ -24,6 +24,7 @@ find_package(pluginlib REQUIRED)
 find_package(tf2 REQUIRED)
 find_package(tf2_ros REQUIRED)
 find_package(tf2_geometry_msgs REQUIRED)
+find_package(cuda_robotics_msgs REQUIRED)
 find_package(CUDAToolkit REQUIRED)
 
 set(CUDAROBOTICS_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../../..")
@@ -41,6 +42,7 @@ set(ROS_DEPS
   tf2
   tf2_ros
   tf2_geometry_msgs
+  cuda_robotics_msgs
 )
 
 add_library(${PROJECT_NAME} SHARED
@@ -82,6 +84,12 @@ add_executable(parameter_validation_test test/parameter_validation_test.cpp)
 target_link_libraries(parameter_validation_test ${PROJECT_NAME})
 ament_target_dependencies(parameter_validation_test ${ROS_DEPS})
 
+# Tracked-obstacle conversion for the dynamic-obstacle input (no ROS runtime
+# or GPU needed).
+add_executable(dynamic_obstacle_input_test test/dynamic_obstacle_input_test.cpp)
+target_include_directories(dynamic_obstacle_input_test PRIVATE
+  ${CMAKE_CURRENT_SOURCE_DIR}/include ${CUDAROBOTICS_ROOT}/include)
+
 # Closed-loop CPU (nav2_mppi_controller) vs GPU head-to-head benchmark.
 add_executable(controller_benchmark test/controller_benchmark.cpp)
 ament_target_dependencies(controller_benchmark ${ROS_DEPS})
@@ -92,6 +100,7 @@ install(TARGETS ${PROJECT_NAME}
   RUNTIME DESTINATION bin
 )
 install(TARGETS mppi_gpu_standalone plugin_load_test parameter_validation_test controller_benchmark
+  dynamic_obstacle_input_test
   RUNTIME DESTINATION lib/${PROJECT_NAME}
 )
 install(DIRECTORY include/ DESTINATION include)

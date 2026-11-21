@@ -2,6 +2,7 @@
 #define CUDA_MPPI_CONTROLLER__CUDA_MPPI_CONTROLLER_HPP_
 
 #include <memory>
+#include <mutex>
 #include <fstream>
 #include <string>
 #include <vector>
@@ -9,6 +10,7 @@
 #include "nav2_core/controller.hpp"
 #include "nav2_costmap_2d/costmap_2d_ros.hpp"
 #include "nav_msgs/msg/path.hpp"
+#include "cuda_robotics_msgs/msg/tracked_obstacle_array.hpp"
 #include "rclcpp_lifecycle/lifecycle_node.hpp"
 #include "tf2_ros/buffer.h"
 
@@ -62,6 +64,11 @@ private:
     const geometry_msgs::msg::PoseStamped & robot_pose,
     float & goal_x, float & goal_y, float & goal_yaw, bool & goal_is_final);
 
+  // Hand the latest tracked obstacles (transformed into the costmap frame and
+  // extrapolated to now) to the optimizer, or clear them when there is no
+  // fresh message.
+  void updateDynamicObstacles(const geometry_msgs::msg::PoseStamped & robot_pose);
+
   DiagnosticsCsv openDiagnosticsCsv(const std::string & path) const;
   void emitDiagnostics(
     const MppiResult & result, double solve_ms, int path_points,
@@ -84,6 +91,12 @@ private:
   DiagnosticsCsv diagnostics_csv_;
   rclcpp::Time last_diagnostics_log_time_{0, 0, RCL_ROS_TIME};
   bool has_diagnostics_log_time_ = false;
+  std::string dynamic_obstacles_topic_;
+  double dynamic_obstacles_timeout_ = 0.5;
+  rclcpp::Subscription<cuda_robotics_msgs::msg::TrackedObstacleArray>::SharedPtr
+    dynamic_obstacles_sub_;
+  std::mutex dynamic_obstacles_mutex_;
+  cuda_robotics_msgs::msg::TrackedObstacleArray::ConstSharedPtr latest_dynamic_obstacles_;
   rclcpp::node_interfaces::OnSetParametersCallbackHandle::SharedPtr param_callback_;
   bool updateParamsFromNode(const rclcpp_lifecycle::LifecycleNode::SharedPtr & node);
 };

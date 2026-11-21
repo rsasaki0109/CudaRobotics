@@ -180,6 +180,13 @@ controller_server:
 | `transform_tolerance` | 0.1 | [s] TF lookup tolerance |
 | `diagnostics_log_period` | 0.0 | [s] periodic one-line solve/valid-rollout logging; 0 disables |
 | `diagnostics_csv_path` | `""` | optional per-cycle diagnostics CSV path |
+| `dynamic_obstacles_topic` | `""` | `cuda_robotics_msgs/TrackedObstacleArray` topic of tracked moving objects; empty disables (configure time only) |
+| `dynamic_obstacles_timeout` | 0.5 | [s] ignore a tracked-obstacle message older than this |
+| `dynamic_obstacle_weight` | 0.0 | soft cost inside the margin of a predicted obstacle; 0 disables the dynamic-obstacle critic |
+| `dynamic_obstacle_margin` | 0.4 | [m] clearance below which the soft cost applies |
+| `dynamic_obstacle_robot_radius` | 0.25 | [m] robot disc used against the obstacles |
+| `dynamic_obstacle_growth` | 0.1 | [m/s] obstacle radius growth over the prediction horizon |
+| `dynamic_obstacle_overlap_allowance` | 0.0 | [m] tolerated existing overlap with a tracked disc |
 
 Parameters above are validated at configure time and during live ROS parameter
 updates. Invalid values, such as zero horizon length, non-positive model step,
@@ -199,6 +206,33 @@ python3 scripts/render_cuda_mppi_diagnostics.py \
   /tmp/cuda_mppi_diagnostics.csv \
   --output-stem docs/results/cuda_mppi_diagnostics_run
 ```
+
+### Tracked moving obstacles
+
+Set `dynamic_obstacles_topic` and a positive `dynamic_obstacle_weight` to avoid
+the predicted paths of moving objects, not only what the costmap shows:
+
+```yaml
+    FollowPath:
+      plugin: "cuda_mppi_controller::CudaMppiController"
+      dynamic_obstacles_topic: "/tracked_obstacles"
+      dynamic_obstacle_weight: 25.0
+      retreat_reverse_speed: 0.2
+```
+
+Every control cycle the plugin takes the latest
+`cuda_robotics_msgs/TrackedObstacleArray` (sensor-data QoS). If it is no older
+than `dynamic_obstacles_timeout`, the plugin:
+- transforms each disc into the costmap global frame, using the latest TF;
+- moves it along its velocity by the message age;
+- passes the 64 discs nearest the robot to the GPU critic.
+
+A stale or missing message, or a missing transform, clears the obstacles
+(the transform failure is logged, throttled). The critic, the checked
+back-out and the simulated evaluation are described in
+[`docs/cudanav_dynamic_obstacles.md`](../../../docs/cudanav_dynamic_obstacles.md).
+Keep the tracked objects out of the costmap's obstacle layers as well;
+otherwise they are avoided twice and leave trails.
 
 For bag replay or live-stack evaluation, use
 [`docs/cuda_mppi_bag_eval.md`](../../../docs/cuda_mppi_bag_eval.md) and
