@@ -23,6 +23,7 @@ controller_server:
       consider_footprint: false # polygon footprint check (needs inflation layer)
       enable_retreat: true       # recover by backing out from last valid sequence
       retreat_scale: 0.5         # fraction of last valid controls to reverse
+      retreat_reverse_speed: 0.0 # m/s a forward-only robot may reverse while backing out
       temperature: 0.12         # MPPI softmin lambda
       goal_weight: 20.0         # terminal local-goal distance (linear)
       goal_yaw_weight: 3.0

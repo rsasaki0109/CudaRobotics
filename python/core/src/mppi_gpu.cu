@@ -878,8 +878,11 @@ MppiResult MppiGpu::computeInternal(
       const int retreat_step = std::min(im.consecutive_all_colliding - 1, T - 1);
       const int offset = retreat_step * kCtrlDim;
       const float retreat_scale = std::max(0.0f, mp.retreat_scale);
+      const float retreat_v_min = mp.retreat_reverse_speed > 0.0f
+        ? std::min(dp.v_min, -mp.retreat_reverse_speed)
+        : dp.v_min;
       res.v = std::min(
-        std::max(-retreat_scale * im.h_last_valid_nominal[offset + 0], dp.v_min),
+        std::max(-retreat_scale * im.h_last_valid_nominal[offset + 0], retreat_v_min),
         dp.v_max);
       res.vy = std::min(
         std::max(-retreat_scale * im.h_last_valid_nominal[offset + 1], -mp.vy_max),

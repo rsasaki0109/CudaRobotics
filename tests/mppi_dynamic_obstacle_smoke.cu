@@ -147,6 +147,32 @@ void overlap_allowance_tolerates_a_small_existing_overlap()
           "a penetration deeper than the cap is still a collision");
 }
 
+// Plan freely, then drop a disc onto the robot so every rollout collides and
+// the back-out takes over; returns the first back-out command.
+MppiResult retreat_after_blocking(MppiParams p)
+{
+    MppiGpu planner(p);
+    plan(planner, 3);
+    const DynamicObstacle on_robot{0.0f, 0.0f, 0.0f, 0.0f, 0.5f};
+    planner.setDynamicObstacles(&on_robot, 1);
+    return plan(planner, 1).back();
+}
+
+void retreat_reverse_speed_lets_a_forward_only_robot_back_out()
+{
+    // Forward-only (v_min = 0): by default the back-out is clamped to v = 0.
+    const MppiResult clamped = retreat_after_blocking(params(25.0f));
+    check(clamped.all_colliding && clamped.retreating, "a blocked robot backs out");
+    check(clamped.v == 0.0f, "without retreat_reverse_speed the back-out keeps v_min");
+
+    MppiParams p = params(25.0f);
+    p.retreat_reverse_speed = 0.2f;
+    const MppiResult reversing = retreat_after_blocking(p);
+    std::printf("retreat: clamped v=%.3f | reverse v=%.3f\n", clamped.v, reversing.v);
+    check(reversing.retreating && reversing.v < 0.0f && reversing.v >= -0.2f - 1.0e-6f,
+          "retreat_reverse_speed allows a bounded reverse back-out");
+}
+
 void invalid_input_is_rejected()
 {
     MppiGpu planner(params(25.0f));
@@ -176,6 +202,7 @@ int main()
     head_on_mover_changes_the_command();
     co_located_obstacle_invalidates_every_rollout();
     overlap_allowance_tolerates_a_small_existing_overlap();
+    retreat_reverse_speed_lets_a_forward_only_robot_back_out();
     invalid_input_is_rejected();
     std::printf("mppi_dynamic_obstacle_smoke: OK\n");
     return 0;
