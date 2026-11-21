@@ -52,6 +52,14 @@
       "host": "NVIDIA driver >= 525 and NVIDIA Container Toolkit",
       "mode": "cudanav"
     },
+    "jetson": {
+      "status": "experimental_compile_only",
+      "platform": "Linux aarch64 (Ubuntu 22.04, JetPack 6 baseline)",
+      "cuda_toolkit": "12.6 (NVIDIA sbsa repository, not the L4T toolchain)",
+      "cuda_architectures": "87",
+      "ci": ".github/workflows/jetson-aarch64.yml",
+      "runtime_tested": false
+    },
     "colab": {
       "url": "https://colab.research.google.com/github/rsasaki0109/CudaRobotics/blob/v0.4.2/examples/colab/cudarobotics_quickstart.ipynb",
       "scope": "Python MPPI and registration GPU quickstart",
