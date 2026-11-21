@@ -1271,6 +1271,8 @@ NB_MODULE(_cudarobotics, m)
     .def_rw("dynamic_obstacle_margin", &cr::MppiParams::dynamic_obstacle_margin)
     .def_rw("dynamic_obstacle_robot_radius", &cr::MppiParams::dynamic_obstacle_robot_radius)
     .def_rw("dynamic_obstacle_growth", &cr::MppiParams::dynamic_obstacle_growth)
+    .def_rw(
+      "dynamic_obstacle_overlap_allowance", &cr::MppiParams::dynamic_obstacle_overlap_allowance)
     .def_rw("smoothness_weight", &cr::MppiParams::smoothness_weight)
     .def_rw("backward_weight", &cr::MppiParams::backward_weight)
     .def_rw("speed_weight", &cr::MppiParams::speed_weight)

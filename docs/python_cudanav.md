@@ -127,8 +127,11 @@ there. That is an expectation, not a result.
 Pass tracked moving objects as `step(..., dynamic_obstacles=rows)`, with rows
 of `(x, y, vx, vy, radius)` in the map frame. Their cells are cleared from the
 occupancy grid, and CUDA MPPI avoids their constant-velocity predictions.
-Remove their points from the scan as well. The critic and an evaluation are
-described in [`cudanav_dynamic_obstacles.md`](cudanav_dynamic_obstacles.md).
+Remove their points from the scan as well. Alternatively,
+`CudaNavPipeline(tracker=ScanObjectTracker())` finds and tracks moving objects
+in the scan itself (`step.tracks`), with no external tracker. The critic, the
+tracker and an evaluation are described in
+[`cudanav_dynamic_obstacles.md`](cudanav_dynamic_obstacles.md).
 
 Configuration objects (`KissIcpConfig`, `VoxelMappingConfig`, `Esdf2DConfig`,
 `MppiParams`) are accepted by every constructor. Keyword overrides are checked

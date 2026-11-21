@@ -360,3 +360,107 @@ def test_crossing_cli_usage_errors(tmp_path, capsys):
     assert cli.main(base + ["--obs-dropout", "1.5"]) == cli.EXIT_USAGE
     assert cli.main(base + ["--obs-latency-frames", "-1"]) == cli.EXIT_USAGE
     capsys.readouterr()
+
+
+# --- scan-based moving-object tracker ----------------------------------------
+
+
+def _blob(cx, cy, radius=0.25, rays=9, sensor=(0.0, 0.0)):
+    """Near-side arc of a disc as seen from ``sensor`` (three height layers)."""
+    facing = math.atan2(sensor[1] - cy, sensor[0] - cx)
+    angles = facing + np.linspace(-1.2, 1.2, rays)
+    xy = np.stack([cx + radius * np.cos(angles), cy + radius * np.sin(angles)], axis=1)
+    return np.repeat(xy, 3, axis=0)
+
+
+def test_tracker_confirms_a_walking_object_with_its_velocity():
+    from cudarobotics.navigation.tracking import ScanObjectTracker
+
+    tracker = ScanObjectTracker()
+    for frame in range(12):
+        xy = _blob(3.0 + 0.05 * frame, 1.0)
+        result = tracker.update(xy, np.ones(xy.shape[0], bool), 0.1 * frame, sensor_xy=(0.0, 0.0))
+    assert result.tracks.shape == (1, 5)
+    x, y, vx, vy, radius = result.tracks[0]
+    assert x == pytest.approx(3.55, abs=0.08) and y == pytest.approx(1.0, abs=0.08)
+    assert vx == pytest.approx(0.5, abs=0.15) and abs(vy) < 0.15
+    assert 0.2 <= radius <= 0.35
+    assert result.dynamic_mask.all()
+    assert result.history.shape[1] == 3 and result.history.shape[0] >= 1
+
+
+def test_tracker_releases_still_objects_and_rejects_walls():
+    from cudarobotics.navigation.tracking import ScanObjectTracker, TrackerConfig
+
+    tracker = ScanObjectTracker(TrackerConfig(commit_seconds=1.0))
+    wall = np.repeat(np.stack([np.linspace(0.0, 2.0, 21), np.full(21, -1.0)], axis=1), 3, axis=0)
+    for frame in range(15):
+        still = _blob(2.0, 1.0)
+        xy = np.concatenate([still, wall])
+        result = tracker.update(xy, np.ones(xy.shape[0], bool), 0.1 * frame)
+        if frame == 5:
+            # Seen three times but not moving: reported as a static object and
+            # kept out of the map while it might still start moving.
+            assert result.tracks.shape[0] == 0 and result.static_objects.shape[0] == 1
+            assert result.dynamic_mask[: still.shape[0]].all()
+    # After commit_seconds it is static: released to the map, no longer reported.
+    assert result.tracks.shape[0] == 0 and result.static_objects.shape[0] == 0
+    assert not result.dynamic_mask.any()  # the 2 m wall is never a detection
+
+
+def test_tracker_deletes_a_lost_track_and_validates_input():
+    from cudarobotics.navigation.tracking import ScanObjectTracker, TrackerConfig
+
+    tracker = ScanObjectTracker()
+    for frame in range(10):
+        xy = _blob(1.0, 0.05 * frame - 2.0)
+        result = tracker.update(xy, np.ones(xy.shape[0], bool), 0.1 * frame)
+    assert result.tracks.shape[0] == 1
+    empty = np.zeros((0, 2))
+    for frame in range(10, 17):
+        result = tracker.update(empty, np.zeros(0, bool), 0.1 * frame)
+    assert result.tracks.shape[0] == 0 and tracker.live_tracks == 0
+    with pytest.raises(ValueError):
+        tracker.update(np.zeros((3, 2)), np.ones(2, bool), 2.0)
+    with pytest.raises(ValueError):
+        tracker.update(np.zeros((0, 2)), np.zeros(0, bool), 0.5)  # time went backwards
+    with pytest.raises(ValueError):
+        TrackerConfig(gate=0.0)
+
+
+def test_tracker_corrects_the_near_side_bias_of_the_centre():
+    from cudarobotics.navigation.tracking import ScanObjectTracker
+
+    tracker = ScanObjectTracker()
+    xy = _blob(4.0, 0.0)
+    for frame in range(4):
+        tracker.update(xy, np.ones(xy.shape[0], bool), 0.1 * frame, sensor_xy=(0.0, 0.0))
+    # Not confirmed (it does not move), but the static object sits near the
+    # true centre rather than on the visible arc 0.25 m closer to the sensor.
+    result = tracker.update(xy, np.ones(xy.shape[0], bool), 0.4, sensor_xy=(0.0, 0.0))
+    assert result.static_objects[0, 0] == pytest.approx(4.0, abs=0.07)
+
+
+def test_occupancy_age_separates_structure_from_new_objects():
+    from cudarobotics.navigation.tracking import OccupancyAge
+
+    data = np.zeros((20, 20), dtype=np.int8)
+    data[10, :] = 100  # a wall along row 10 (y in [1.0, 1.1))
+    grid = OccupancyGrid(data=data, resolution=0.1, origin=(0.0, 0.0))
+    age = OccupancyAge()
+    points = np.asarray([[0.55, 1.05], [0.55, 0.98], [0.55, 0.45]], dtype=np.float32)
+    candidates, structure = age.classify(points, 20)
+    assert candidates.all() and not structure.any()  # before any map: all candidates
+    for _ in range(5):
+        age.update(grid)
+    candidates, structure = age.classify(points, 20)
+    assert candidates.all()  # the wall is still young
+    for _ in range(20):
+        age.update(grid)
+    candidates, structure = age.classify(points, 20)
+    assert structure.tolist() == [True, True, False]  # wall and the cell in front of it
+    assert candidates.tolist() == [False, False, True]
+    # Rolling the grid by one cell keeps each cell's age.
+    shifted = OccupancyGrid(data=np.roll(data, -1, axis=1), resolution=0.1, origin=(0.1, 0.0))
+    age.update(shifted)
+    assert age.classify(points, 20)[1].tolist() == [True, True, False]

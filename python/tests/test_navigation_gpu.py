@@ -254,3 +254,34 @@ def test_crossing_predicted_beats_the_map_only_baseline():
     # In the baseline the pedestrians stay in the voxel map as obstacles.
     assert baseline["maximum_non_wall_occupied_cells"] > 20
     assert not baseline["goal_reached"]
+
+
+def test_scan_tracker_drives_the_crossing_without_an_oracle():
+    from cudarobotics.navigation.dynamic_scenario import run_crossing
+
+    # Seed 2 is the quickest crossing; the voxel map's clamped float atomics
+    # make runs differ by a few frames, so only the outcome is checked.
+    summary = run_crossing(dynamic_mode="tracked_scan", seed=2).summary
+    assert summary["observation"]["source"] == "scan_tracker"
+    assert summary["dynamic_collisions"] == 0 and summary["wall_collisions"] == 0
+    tracking = summary["tracking"]
+    assert tracking["recall"] > 0.8
+    assert tracking["position_rmse_m"] < 0.2
+    assert summary["goal_reached"], summary["checks"]
+    with pytest.raises(ValueError, match="tracker"):
+        run_crossing(dynamic_mode="tracked_scan", pipeline=CudaNavPipeline(enable_planner=False))
+
+
+def test_pipeline_with_a_tracker_reports_tracks():
+    from cudarobotics.navigation.tracking import ScanObjectTracker
+
+    nav = CudaNavPipeline(tracker=ScanObjectTracker())
+    # A tracker turns on the planner's overlap allowance; without one it stays off.
+    assert nav.mppi_params.dynamic_obstacle_overlap_allowance == pytest.approx(0.1)
+    assert CudaNavPipeline(enable_planner=False).mppi_params.dynamic_obstacle_overlap_allowance == 0.0
+    path = interpolate_path()
+    _, scans = _straight_line_scans(count=3)
+    for scan in scans:
+        step = nav.step(scan, path=path)
+    assert step.tracks is not None and step.tracks.shape[1] == 5
+    assert step.dynamic_point_count >= 0 and step.command is not None

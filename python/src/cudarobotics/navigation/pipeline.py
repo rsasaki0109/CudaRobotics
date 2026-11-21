@@ -18,6 +18,7 @@ from .._cudarobotics import (
     UnknownSpacePolicy,
     VoxelMappingConfig,
 )
+from .tracking import OccupancyAge, ScanObjectTracker, TrackerResult
 from .core import (
     DistanceField,
     Esdf2D,
@@ -136,6 +137,26 @@ STAGE_CHAINS = ("device", "host")
 DYNAMIC_CLEARING_MARGIN = 0.15
 
 
+def _clearing_discs(
+    dynamic: np.ndarray | None, history: np.ndarray | None
+) -> list[tuple[float, float, float]]:
+    """Occupancy discs to clear: tracked objects (with margin) and their recent path."""
+    discs = [
+        (float(x), float(y), float(radius) + DYNAMIC_CLEARING_MARGIN)
+        for x, y, _vx, _vy, radius in ([] if dynamic is None else dynamic)
+    ]
+    discs += [(float(x), float(y), float(radius)) for x, y, radius in ([] if history is None else history)]
+    return discs
+
+
+def _annotate(step: "PipelineStep", tracked: TrackerResult | None) -> "PipelineStep":
+    if tracked is not None:
+        step.tracks = tracked.tracks
+        step.track_ids = tracked.track_ids
+        step.dynamic_point_count = int(tracked.dynamic_mask.sum())
+    return step
+
+
 def _dynamic_rows(dynamic_obstacles: Any) -> np.ndarray | None:
     if dynamic_obstacles is None:
         return None
@@ -180,6 +201,10 @@ class PipelineStep:
         self.planner = planner
         self.timings_ms = timings_ms
         self.stage_chain = stage_chain
+        # Scan tracker outputs (None when no tracker ran this frame).
+        self.tracks: np.ndarray | None = None
+        self.track_ids: np.ndarray | None = None
+        self.dynamic_point_count = 0
         self._grids: dict[str, Any] = {
             "occupancy": occupancy,
             "distance_field": distance_field,
@@ -286,6 +311,8 @@ class CudaNavPipeline:
         footprint_clearing_radius: float = 0.30,
         enable_planner: bool = True,
         stage_chain: str = "device",
+        tracker: ScanObjectTracker | None = None,
+        scan_period: float = 0.1,
     ) -> None:
         if stage_chain not in STAGE_CHAINS:
             raise ValueError(f"stage_chain must be one of {STAGE_CHAINS}")
@@ -296,6 +323,11 @@ class CudaNavPipeline:
         self.esdf = Esdf2D(default_esdf_config(voxel_config) if esdf is None else esdf)
         self.esdf_max_distance = float(esdf_max_distance)
         self.footprint_clearing_radius = float(footprint_clearing_radius)
+        # Optional scan-based moving-object tracker; see step().
+        self.tracker = tracker
+        self.scan_period = float(scan_period)
+        self._frames = 0
+        self._occupancy_age = OccupancyAge()
         self._chain = (
             _CudaNavGridChain(int(voxel_config.width), int(voxel_config.height))
             if stage_chain == "device"
@@ -305,6 +337,14 @@ class CudaNavPipeline:
             False: default_mppi_params() if mppi is None else mppi,
             True: default_mppi_params(reverse=True) if reverse_mppi is None else reverse_mppi,
         }
+        if tracker is not None:
+            # Tracked discs carry position error; let the planner tolerate a
+            # small existing overlap instead of freezing (see TrackerConfig).
+            for params in self._mppi_params.values():
+                if params.dynamic_obstacle_overlap_allowance <= 0.0:
+                    params.dynamic_obstacle_overlap_allowance = (
+                        tracker.config.planner_overlap_allowance
+                    )
         self._planners: dict[bool, MppiPlanner] = {}
         if enable_planner:
             self._planner(False)
@@ -332,6 +372,7 @@ class CudaNavPipeline:
         path: Any = None,
         reverse: bool = False,
         dynamic_obstacles: Any = None,
+        stamp: float | None = None,
     ) -> PipelineStep:
         """Process one scan.
 
@@ -339,8 +380,16 @@ class CudaNavPipeline:
         radius`` in the map frame (tracked moving objects). Their cells are
         cleared from the occupancy grid and MPPI avoids their constant-velocity
         predictions instead; leave it ``None`` to treat everything as static.
+
+        With a ``tracker`` and no ``dynamic_obstacles``, the pipeline finds the
+        moving objects itself: points that land in previously free cells are
+        tracked, kept out of the voxel map, and their confirmed tracks (plus
+        their recent path) are handled like ``dynamic_obstacles``. ``stamp``
+        is the scan time in seconds (default: frame index * ``scan_period``).
         """
         dynamic = _dynamic_rows(dynamic_obstacles)
+        stamp = self._frames * self.scan_period if stamp is None else float(stamp)
+        self._frames += 1
         timings: dict[str, float] = {}
         started = time.perf_counter()
 
@@ -353,19 +402,42 @@ class CudaNavPipeline:
         stage = time.perf_counter()
         scan = frame.deskewed_points if frame.deskewed and frame.deskewed_points.size else points
         world = transform_points(scan, frame.rotation, frame.translation)
+        tracked: TrackerResult | None = None
+        if self.tracker is not None and dynamic is None:
+            candidates, structure = self._occupancy_age.classify(
+                world[:, :2], self.tracker.config.static_frames
+            )
+            tracked = self.tracker.update(
+                world[:, :2],
+                candidates,
+                stamp,
+                structure,
+                sensor_xy=(float(frame.translation[0]), float(frame.translation[1])),
+            )
+            static = world[~tracked.dynamic_mask]
+            # Keep the moving objects' returns out of the map (if every point is
+            # dynamic, map them anyway rather than skip the frame).
+            if static.shape[0]:
+                world = static
+            # Moving tracks with their velocity, plus still objects that are
+            # not in the map yet (as stationary obstacles).
+            objects = np.concatenate([tracked.tracks, tracked.static_objects])
+            dynamic = objects if objects.shape[0] else None
+        discs = _clearing_discs(dynamic, None if tracked is None else tracked.history)
         mapping = self.voxel_map.integrate(world, frame.translation)
         if self._chain is not None:
-            return self._step_device(
-                frame, mapping, path, reverse, dynamic, timings, stage, started
+            result = self._step_device(
+                frame, mapping, path, reverse, dynamic, discs, timings, stage, started
             )
+            return _annotate(result, tracked)
 
         occupancy = clear_footprint(
             self.voxel_map.occupancy(), frame.x, frame.y, self.footprint_clearing_radius
         )
-        for x, y, _vx, _vy, radius in [] if dynamic is None else dynamic:
-            occupancy = clear_footprint(
-                occupancy, float(x), float(y), float(radius) + DYNAMIC_CLEARING_MARGIN
-            )
+        if self.tracker is not None:
+            self._occupancy_age.update(occupancy)
+        for x, y, radius in discs:
+            occupancy = clear_footprint(occupancy, x, y, radius)
         timings["mapping"] = _ms(stage)
 
         stage = time.perf_counter()
@@ -395,7 +467,7 @@ class CudaNavPipeline:
             planner = dict(planner)
             timings["mppi"] = _ms(stage)
         timings["total"] = _ms(started)
-        return PipelineStep(
+        return _annotate(PipelineStep(
             odometry=frame,
             mapping=mapping,
             occupied_cells=occupancy.occupied_cells,
@@ -406,7 +478,7 @@ class CudaNavPipeline:
             occupancy=occupancy,
             distance_field=distance_field,
             costmap=costmap,
-        )
+        ), tracked)
 
     def _step_device(
         self,
@@ -415,6 +487,7 @@ class CudaNavPipeline:
         path: Any,
         reverse: bool,
         dynamic: np.ndarray | None,
+        discs: list[tuple[float, float, float]],
         timings: dict[str, float],
         stage: float,
         started: float,
@@ -424,10 +497,17 @@ class CudaNavPipeline:
             self.voxel_map._mapper, frame.x, frame.y, self.footprint_clearing_radius
         )
         occupied_cells = int(projection["occupied_cells"])
-        for x, y, _vx, _vy, radius in [] if dynamic is None else dynamic:
-            occupied_cells = int(
-                chain.clear_disc(float(x), float(y), float(radius) + DYNAMIC_CLEARING_MARGIN)
+        if self.tracker is not None:
+            grid = projection["grid"]
+            self._occupancy_age.update(
+                OccupancyGrid(
+                    data=np.asarray(chain.occupancy()),
+                    resolution=float(grid["resolution"]),
+                    origin=(float(grid["origin_x"]), float(grid["origin_y"])),
+                )
             )
+        for x, y, radius in discs:
+            occupied_cells = int(chain.clear_disc(x, y, radius))
         grid = projection["grid"]
         resolution = float(grid["resolution"])
         origin = (float(grid["origin_x"]), float(grid["origin_y"]))
