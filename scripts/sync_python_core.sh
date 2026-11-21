@@ -10,7 +10,7 @@ INC="${ROOT}/include"
 mkdir -p "${CORE}/src" "${CORE}/include/cuda_mppi_controller" "${CORE}/include/cudarobotics"
 
 for cu in mppi_gpu filterreg_gpu sinkhorn_gpu fgr_gpu bcpd_gpu robust_treg_gpu robust_p2plane_gpu \
-  gpu_kiss_icp voxel_mapping_gpu esdf_2d_gpu; do
+  gpu_kiss_icp voxel_mapping_gpu esdf_2d_gpu cudanav_costmap_gpu; do
   install -m 0644 "${SRC}/${cu}.cu" "${CORE}/src/${cu}.cu"
 done
 

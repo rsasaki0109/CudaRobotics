@@ -558,6 +558,7 @@ target_link_libraries(cudanav_gpu_closed_loop_s_course
   cudarobotics_kiss_icp_gpu
   cudarobotics_voxel_mapping_gpu
   cudarobotics_esdf_2d_gpu
+  cudarobotics_cudanav_costmap_gpu
   cudarobotics_mppi_gpu)
 target_compile_options(cudanav_gpu_closed_loop_s_course PRIVATE
   $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
@@ -581,6 +582,19 @@ set_target_properties(cudarobotics_esdf_2d_gpu PROPERTIES
 
 add_executable(esdf_2d_gpu_smoke tests/esdf_2d_gpu_smoke.cu)
 target_link_libraries(esdf_2d_gpu_smoke cudarobotics_esdf_2d_gpu)
+
+add_library(cudarobotics_cudanav_costmap_gpu STATIC src/cudanav_costmap_gpu.cu)
+add_library(CudaRobotics::cudanav_costmap_gpu ALIAS cudarobotics_cudanav_costmap_gpu)
+target_include_directories(cudarobotics_cudanav_costmap_gpu
+  PUBLIC ${CMAKE_SOURCE_DIR}/include)
+set_target_properties(cudarobotics_cudanav_costmap_gpu PROPERTIES
+  POSITION_INDEPENDENT_CODE ON)
+
+add_executable(cudanav_costmap_gpu_smoke tests/cudanav_costmap_gpu_smoke.cu)
+target_link_libraries(cudanav_costmap_gpu_smoke
+  cudarobotics_cudanav_costmap_gpu
+  cudarobotics_esdf_2d_gpu
+  cudarobotics_voxel_mapping_gpu)
 
 cudabot_demo(mppi_reduction_smoke tests/mppi_reduction_smoke.cu)
 
@@ -781,6 +795,12 @@ add_test(NAME esdf_2d_gpu_smoke
 set_tests_properties(esdf_2d_gpu_smoke PROPERTIES
   TIMEOUT 60
   LABELS "gpu;mapping;esdf;reference")
+
+add_test(NAME cudanav_costmap_gpu_smoke
+  COMMAND $<TARGET_FILE:cudanav_costmap_gpu_smoke>)
+set_tests_properties(cudanav_costmap_gpu_smoke PROPERTIES
+  TIMEOUT 60
+  LABELS "gpu;mapping;esdf;costmap;reference")
 
 add_test(NAME mppi_reduction_smoke
   COMMAND $<TARGET_FILE:mppi_reduction_smoke>)

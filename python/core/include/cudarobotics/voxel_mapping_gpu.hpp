@@ -54,6 +54,17 @@ struct OccupancyProjection {
     float gpu_ms = 0.0f;
 };
 
+// Result of VoxelMapperGpu::occupancy_projection_device. `data` is a device
+// pointer to width * height row-major int8 cells (-1 unknown, 0 free, 100
+// occupied) owned by the mapper. It stays valid until the next
+// integrate_scan, reset, or projection call on that mapper. Callers may
+// modify the cells (for example footprint clearing) before the next call.
+struct OccupancyProjectionDevice {
+    VoxelGridInfo grid;
+    std::int8_t* data = nullptr;
+    float gpu_ms = 0.0f;
+};
+
 struct VoxelGridSnapshot {
     VoxelGridInfo grid;
     std::vector<float> log_odds;
@@ -84,6 +95,8 @@ public:
     const VoxelMappingConfig& config() const noexcept;
     VoxelGridInfo grid_info() const noexcept;
     OccupancyProjection occupancy_projection();
+    // Projects on the GPU without copying the grid to the host.
+    OccupancyProjectionDevice occupancy_projection_device();
     VoxelGridSnapshot snapshot() const;
 
 private:

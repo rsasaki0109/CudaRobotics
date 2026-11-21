@@ -72,6 +72,56 @@ The stages can also be used on their own:
 - `CudaNavPipeline(enable_planner=False).step(points)` runs odometry, mapping
   and ESDF without MPPI, for recorded data.
 
+### Stage chain
+
+`CudaNavPipeline(stage_chain="device")` is the default. In this mode the
+occupancy, ESDF and costmap never leave the GPU between the voxel projection
+and MPPI:
+
+1. `VoxelMapperGpu::occupancy_projection_device`
+2. GPU footprint clearing (`CostmapBuilderGpu`)
+3. `Esdf2DGpu::compute_device`
+4. the GPU costmap kernel
+5. `MppiGpu::computeWithDeviceCostmap`
+
+Only the occupied-cell count comes back to the host each frame. The step's
+`occupancy`, `distance_field` and `costmap` are copied to NumPy the first time
+they are read, and they stay readable only until the next `step()` call, which
+overwrites the GPU buffers. Call `step.materialize()` to keep a step's grids.
+`step.occupied_cells` is always available.
+
+`stage_chain="host"` is the original path. It copies each product to NumPy and
+builds the costmap with `costmap_from_esdf`. The two chains produce the same
+occupancy and distances. Costmaps can differ by one step in the exponential
+band, because device and host `expf` round differently.
+
+The CLI selects the mode with `--stage-chain device|host`, and records it in
+`summary.json` and `manifest.json`.
+
+Measured by running `cudarobotics-cudanav sim` three times per mode on an
+NVIDIA consumer GPU (CUDA 13.3 build). Values are the median p50 / p95 in
+milliseconds:
+
+| Stage | host | device |
+|---|---|---|
+| mapping (integrate + projection + footprint) | 0.82 / 1.35 | 0.51 / 0.85 |
+| ESDF | 0.81 / 1.01 | 0.66 / 0.78 |
+| costmap | 0.15 / 0.21 | 0.01 / 0.03 |
+| MPPI | 0.43 / 0.77 | 0.36 / 0.60 |
+| whole frame | 3.95 / 7.09 | 3.33 / 5.61 |
+
+Both modes passed the smoke gate in every run. The frame and drift values were
+the same in both modes: 227–230 frames and 0.22–0.24% drift. The native tool
+`cudanav_gpu_closed_loop_s_course --stage-chain device|host` shows the same
+direction with a smaller gain, because its host chain does no NumPy work. Its
+mapping, ESDF, costmap and MPPI stages together take 1.72 ms at p50 on the
+host chain and 1.53 ms on the device chain. Odometry dominates the frame time,
+and the KISS-ICP map still lives on the host.
+
+No Jetson measurement exists. On Jetson, the CPU and GPU share memory and the
+CPU is weaker, so avoiding host round trips and NumPy work should matter more
+there. That is an expectation, not a result.
+
 Configuration objects (`KissIcpConfig`, `VoxelMappingConfig`, `Esdf2DConfig`,
 `MppiParams`) are accepted by every constructor. Keyword overrides are checked
 against the field names, and invalid values are rejected by the C++

@@ -35,6 +35,7 @@ nanobind_add_module(_cudarobotics
   ${CUDAROBOTICS_ROOT}/src/gpu_kiss_icp.cu
   ${CUDAROBOTICS_ROOT}/src/voxel_mapping_gpu.cu
   ${CUDAROBOTICS_ROOT}/src/esdf_2d_gpu.cu
+  ${CUDAROBOTICS_ROOT}/src/cudanav_costmap_gpu.cu
 )
 
 # The KISS-ICP source doubles as a standalone OpenCV demo; the core-only build

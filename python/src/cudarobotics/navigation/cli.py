@@ -62,6 +62,12 @@ def build_parser() -> argparse.ArgumentParser:
             help="exit 2 when the run completes but its quality gate fails",
         )
         command.add_argument("--no-plot", action="store_true", help="skip overview.png")
+        command.add_argument(
+            "--stage-chain",
+            choices=("device", "host"),
+            default="device",
+            help="keep occupancy/ESDF/costmap on the GPU (device) or copy them between stages (host)",
+        )
     return parser
 
 
@@ -135,6 +141,7 @@ def _finish(
         if plot:
             outputs["overview"] = plot
     summary = dict(result.summary)
+    summary["stage_chain"] = args.stage_chain
     summary["stage_latency_ms"] = result.stage_latency_ms
     write_json(output / "summary.json", summary)
     write_json(
@@ -160,13 +167,16 @@ def _finish(
 
 def _run_sim(args: argparse.Namespace, argv: Sequence[str]) -> int:
     from .closed_loop import SCENARIO, TRAJECTORY_COLUMNS, run_s_course
+    from .pipeline import CudaNavPipeline
 
     result = run_s_course(
         traversals=args.traversals,
         maximum_steps=args.max_steps,
         minimum_duration_s=args.minimum_duration_s,
+        pipeline=CudaNavPipeline(stage_chain=args.stage_chain),
     )
     parameters = {
+        "stage_chain": args.stage_chain,
         "traversals": args.traversals,
         "max_steps": args.max_steps,
         "minimum_duration_s": args.minimum_duration_s,
@@ -179,15 +189,23 @@ def _run_sim(args: argparse.Namespace, argv: Sequence[str]) -> int:
 
 def _run_sequence(args: argparse.Namespace, argv: Sequence[str]) -> int:
     from .evidence import SequenceGate, sha256_file
-    from .sequence import SEQUENCE_COLUMNS, run_sequence
+    from .pipeline import CudaNavPipeline
+    from .sequence import SEQUENCE_COLUMNS, run_sequence, sequence_header
 
     gate = SequenceGate(
         maximum_ate_rmse_m=args.max_ate_m,
         maximum_final_drift_percent=args.max_drift_percent,
         minimum_inliers=args.min_inliers,
     )
-    result = run_sequence(args.sequence, maximum_frames=args.max_frames, gate=gate)
+    sequence_header(args.sequence)  # reject malformed input before allocating GPU state
+    result = run_sequence(
+        args.sequence,
+        maximum_frames=args.max_frames,
+        gate=gate,
+        pipeline=CudaNavPipeline(enable_planner=False, stage_chain=args.stage_chain),
+    )
     parameters = {
+        "stage_chain": args.stage_chain,
         "max_frames": args.max_frames,
         "max_ate_m": args.max_ate_m,
         "max_drift_percent": args.max_drift_percent,

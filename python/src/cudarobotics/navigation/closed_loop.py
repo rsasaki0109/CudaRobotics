@@ -134,7 +134,7 @@ def run_s_course(
         error = math.hypot(odom.x - truth.x, odom.y - truth.y)
         squared_error += error * error
         final_observed_voxels = int(result.mapping["observed_voxels"])
-        occupied = result.occupancy.occupied_cells
+        occupied = result.occupied_cells
         maximum_occupied_cells = max(maximum_occupied_cells, occupied)
         for name, value in result.timings_ms.items():
             stage_ms.setdefault(name, []).append(value)
