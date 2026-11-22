@@ -183,6 +183,10 @@ controller_server:
 | `diagnostics_csv_path` | `""` | optional per-cycle diagnostics CSV path |
 | `dynamic_obstacles_topic` | `""` | `cuda_robotics_msgs/TrackedObstacleArray` topic of tracked moving objects; empty disables (configure time only) |
 | `dynamic_obstacles_timeout` | 0.5 | [s] ignore a tracked-obstacle message older than this |
+| `dynamic_obstacles_clear_costmap` | false | clear the tracked obstacles and their recent positions from the costmap copy the rollouts use (configure time only) |
+| `dynamic_obstacles_clear_margin` | 0.1 | [m] cleared beyond each obstacle radius plus `dynamic_obstacle_robot_radius` |
+| `dynamic_obstacles_clear_history` | 1.0 | [s] how long past positions keep being cleared |
+| `dynamic_obstacles_structure_cycles` | 50 | control cycles a cell must stay lethal to count as structure, which clearing spares |
 | `dynamic_obstacle_weight` | 0.0 | soft cost inside the margin of a predicted obstacle; 0 disables the dynamic-obstacle critic |
 | `dynamic_obstacle_margin` | 0.4 | [m] clearance below which the soft cost applies |
 | `dynamic_obstacle_robot_radius` | 0.25 | [m] robot disc used against the obstacles |
@@ -234,6 +238,20 @@ back-out and the simulated evaluation are described in
 [`docs/cudanav_dynamic_obstacles.md`](../../../docs/cudanav_dynamic_obstacles.md).
 Keep the tracked objects out of the costmap's obstacle layers as well;
 otherwise they are avoided twice and leave trails.
+
+When that is not possible, for example with an obstacle layer fed by the raw
+scan, set `dynamic_obstacles_clear_costmap: true`. Each cycle the plugin then
+copies the costmap and sets to free the cells within each obstacle's radius
+plus `dynamic_obstacle_robot_radius` plus `dynamic_obstacles_clear_margin`,
+around its current position and the positions of the last
+`dynamic_obstacles_clear_history` seconds. Cells that have been lethal for
+`dynamic_obstacles_structure_cycles` consecutive cycles count as structure.
+A disc is shrunk to stay `dynamic_obstacle_robot_radius` plus one cell away
+from them, so a person next to a wall erases neither the wall nor the band
+the robot keeps from it; such a person may stay partly in the costmap.
+Unknown cells are never cleared. The Nav2 costmap itself is not modified.
+The clearing logic is tested without ROS or a GPU (`costmap_clearing_test`);
+it has not been evaluated in a closed loop.
 [`cuda_nav_tracking`](../cuda_nav_tracking/README.md) publishes the message from
 LiDAR scans and also outputs the scan without the tracked objects, for the
 mapper.

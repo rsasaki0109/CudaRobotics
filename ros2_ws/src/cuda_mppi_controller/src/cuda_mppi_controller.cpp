@@ -475,6 +475,28 @@ void CudaMppiController::configure(
   node->get_parameter(name_ + ".dynamic_obstacles_topic", dynamic_obstacles_topic_);
   node->get_parameter(name_ + ".dynamic_obstacles_timeout", dynamic_obstacles_timeout_);
   requirePositive("dynamic_obstacles_timeout", dynamic_obstacles_timeout_);
+  declare_param("dynamic_obstacles_clear_costmap", dynamic_obstacles_clear_costmap_);
+  declare_param("dynamic_obstacles_clear_margin", dynamic_obstacles_clear_margin_);
+  declare_param("dynamic_obstacles_clear_history", dynamic_obstacles_clear_history_);
+  declare_param("dynamic_obstacles_structure_cycles", dynamic_obstacles_structure_cycles_);
+  node->get_parameter(name_ + ".dynamic_obstacles_clear_costmap", dynamic_obstacles_clear_costmap_);
+  node->get_parameter(name_ + ".dynamic_obstacles_clear_margin", dynamic_obstacles_clear_margin_);
+  node->get_parameter(name_ + ".dynamic_obstacles_clear_history", dynamic_obstacles_clear_history_);
+  node->get_parameter(
+    name_ + ".dynamic_obstacles_structure_cycles", dynamic_obstacles_structure_cycles_);
+  requireNonNegative("dynamic_obstacles_clear_margin", dynamic_obstacles_clear_margin_);
+  requireNonNegative("dynamic_obstacles_clear_history", dynamic_obstacles_clear_history_);
+  requireParam(
+    dynamic_obstacles_structure_cycles_ >= 1, "dynamic_obstacles_structure_cycles",
+    "must be at least 1");
+  costmap_clearing_.reset();
+  if (dynamic_obstacles_clear_costmap_ && !dynamic_obstacles_topic_.empty()) {
+    // Spare structure plus the robot radius, so a person next to a wall
+    // cannot erase the wall or the band the robot must keep from it.
+    costmap_clearing_ = std::make_unique<TrackedObstacleClearing>(
+      dynamic_obstacles_structure_cycles_, dynamic_obstacles_clear_history_,
+      static_cast<double>(params_.dynamic_obstacle_robot_radius));
+  }
   dynamic_obstacles_sub_.reset();
   latest_dynamic_obstacles_.reset();
   if (!dynamic_obstacles_topic_.empty()) {
@@ -562,6 +584,8 @@ void CudaMppiController::cleanup()
 {
   param_callback_.reset();
   dynamic_obstacles_sub_.reset();
+  costmap_clearing_.reset();
+  cleared_costmap_.clear();
   {
     std::lock_guard<std::mutex> lock(dynamic_obstacles_mutex_);
     latest_dynamic_obstacles_.reset();
@@ -746,7 +770,7 @@ geometry_msgs::msg::TwistStamped CudaMppiController::computeVelocityCommands(
     }
   }
 
-  updateDynamicObstacles(pose);
+  const std::vector<DynamicObstacle> obstacles = updateDynamicObstacles(pose);
 
   nav2_costmap_2d::Costmap2D * costmap = costmap_ros_->getCostmap();
   MppiResult result;
@@ -757,12 +781,31 @@ geometry_msgs::msg::TwistStamped CudaMppiController::computeVelocityCommands(
     std::unique_lock<nav2_costmap_2d::Costmap2D::mutex_t> lock(*costmap->getMutex());
     costmap_size_x = static_cast<int>(costmap->getSizeInCellsX());
     costmap_size_y = static_cast<int>(costmap->getSizeInCellsY());
+    const unsigned char * rollout_costmap = costmap->getCharMap();
+    if (costmap_clearing_) {
+      // Age every cycle so structure is known before a person shows up.
+      costmap_clearing_->update(
+        rollout_costmap, costmap_size_x, costmap_size_y,
+        costmap->getOriginX(), costmap->getOriginY(), costmap->getResolution());
+      std::vector<ClearingDisc> discs;
+      discs.reserve(obstacles.size());
+      const double extra = params_.dynamic_obstacle_robot_radius + dynamic_obstacles_clear_margin_;
+      for (const DynamicObstacle & o : obstacles) {
+        discs.push_back({o.x, o.y, o.radius + extra});
+      }
+      auto node = node_.lock();
+      costmap_clearing_->remember(discs, node ? node->now().seconds() : 0.0);
+      if (costmap_clearing_->hasDiscs()) {
+        costmap_clearing_->apply(rollout_costmap, cleared_costmap_);
+        rollout_costmap = cleared_costmap_.data();
+      }
+    }
     const auto solve_start = std::chrono::steady_clock::now();
     result = optimizer_->compute(
       static_cast<float>(pose.pose.position.x),
       static_cast<float>(pose.pose.position.y),
       static_cast<float>(tf2::getYaw(pose.pose.orientation)),
-      costmap->getCharMap(),
+      rollout_costmap,
       costmap_size_x,
       costmap_size_y,
       static_cast<float>(costmap->getOriginX()),
@@ -793,10 +836,11 @@ geometry_msgs::msg::TwistStamped CudaMppiController::computeVelocityCommands(
   return cmd;
 }
 
-void CudaMppiController::updateDynamicObstacles(const geometry_msgs::msg::PoseStamped & robot_pose)
+std::vector<DynamicObstacle> CudaMppiController::updateDynamicObstacles(
+  const geometry_msgs::msg::PoseStamped & robot_pose)
 {
   if (!dynamic_obstacles_sub_) {
-    return;
+    return {};
   }
   cuda_robotics_msgs::msg::TrackedObstacleArray::ConstSharedPtr msg;
   {
@@ -835,6 +879,7 @@ void CudaMppiController::updateDynamicObstacles(const geometry_msgs::msg::PoseSt
   }
   optimizer_->setDynamicObstacles(
     obstacles.empty() ? nullptr : obstacles.data(), static_cast<int>(obstacles.size()));
+  return obstacles;
 }
 
 void CudaMppiController::setSpeedLimit(const double & speed_limit, const bool & percentage)
