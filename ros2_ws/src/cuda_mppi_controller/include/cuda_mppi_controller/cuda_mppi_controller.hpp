@@ -14,6 +14,7 @@
 #include "rclcpp_lifecycle/lifecycle_node.hpp"
 #include "tf2_ros/buffer.h"
 
+#include "cuda_mppi_controller/costmap_clearing.hpp"
 #include "cuda_mppi_controller/mppi_gpu.hpp"
 
 namespace cuda_mppi_controller
@@ -66,8 +67,9 @@ private:
 
   // Hand the latest tracked obstacles (transformed into the costmap frame and
   // extrapolated to now) to the optimizer, or clear them when there is no
-  // fresh message.
-  void updateDynamicObstacles(const geometry_msgs::msg::PoseStamped & robot_pose);
+  // fresh message. Returns the obstacles handed over.
+  std::vector<DynamicObstacle> updateDynamicObstacles(
+    const geometry_msgs::msg::PoseStamped & robot_pose);
 
   DiagnosticsCsv openDiagnosticsCsv(const std::string & path) const;
   void emitDiagnostics(
@@ -97,6 +99,13 @@ private:
     dynamic_obstacles_sub_;
   std::mutex dynamic_obstacles_mutex_;
   cuda_robotics_msgs::msg::TrackedObstacleArray::ConstSharedPtr latest_dynamic_obstacles_;
+  // Optional clearing of the tracked obstacles from a costmap copy.
+  bool dynamic_obstacles_clear_costmap_ = false;
+  double dynamic_obstacles_clear_margin_ = 0.1;
+  double dynamic_obstacles_clear_history_ = 1.0;
+  int dynamic_obstacles_structure_cycles_ = 50;
+  std::unique_ptr<TrackedObstacleClearing> costmap_clearing_;
+  std::vector<unsigned char> cleared_costmap_;
   rclcpp::node_interfaces::OnSetParametersCallbackHandle::SharedPtr param_callback_;
   bool updateParamsFromNode(const rclcpp_lifecycle::LifecycleNode::SharedPtr & node);
 };

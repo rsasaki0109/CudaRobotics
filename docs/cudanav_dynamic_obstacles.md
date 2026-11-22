@@ -106,6 +106,14 @@ plugin:
 - extrapolates them by the message age;
 - hands the 64 nearest to `setDynamicObstacles`.
 
+With `dynamic_obstacles_clear_costmap` (default off), the plugin also clears
+the obstacles and their positions over the last second from the copy of the
+costmap the rollouts use. This mirrors CudaNav's clearing for costmaps whose
+obstacle layers still see the people. Cells that have been lethal for 50
+cycles count as structure, and a disc stops short of them by the robot
+radius. This clearing is unit-tested (`costmap_clearing_test`) but has not
+been evaluated in a closed loop.
+
 The `dynamic_obstacle_*` critic parameters and the back-out parameters are
 ROS parameters of the plugin. See the
 [plugin README](../ros2_ws/src/cuda_mppi_controller/README.md#tracked-moving-obstacles).
