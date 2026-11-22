@@ -21,18 +21,13 @@ namespace {
         }                                                                       \
     } while (0)
 
-__device__ void atomic_add_clamped(float* address, float delta, float low, float high)
-{
-    int* address_bits = reinterpret_cast<int*>(address);
-    int old_bits = *address_bits;
-    while (true) {
-        const int assumed_bits = old_bits;
-        const float old_value = __int_as_float(assumed_bits);
-        const float updated = fminf(high, fmaxf(low, old_value + delta));
-        old_bits = atomicCAS(address_bits, assumed_bits, __float_as_int(updated));
-        if (old_bits == assumed_bits) return;
-    }
-}
+// A scan is integrated in two passes so the result does not depend on the
+// order in which rays reach a voxel. Rays count their free and occupied
+// updates per voxel in one 64-bit word (free in the low half, occupied in the
+// high half); integer addition commutes, so the counts are exact. A second
+// pass then applies all of a voxel's updates for the scan at once and clamps.
+constexpr unsigned long long kOccupiedHit = 1ULL << 32;
+constexpr unsigned long long kFreeHit = 1ULL;
 
 __global__ void clear_grid_kernel(float* log_odds, unsigned int* observed, int cells)
 {
@@ -92,12 +87,7 @@ __global__ void raycast_kernel(
     int depth,
     float min_range,
     float max_range,
-    float occupied_delta,
-    float free_delta,
-    float log_min,
-    float log_max,
-    float* log_odds,
-    unsigned int* observed,
+    unsigned long long* hits,
     unsigned int* integrated_count)
 {
     const int ray = blockIdx.x * blockDim.x + threadIdx.x;
@@ -164,8 +154,7 @@ __global__ void raycast_kernel(
             break;
         }
         const int index = (z * height + y) * width + x;
-        atomicExch(&observed[index], 1u);
-        atomic_add_clamped(&log_odds[index], free_delta, log_min, log_max);
+        atomicAdd(&hits[index], kFreeHit);
         const float next = fminf(next_x, fminf(next_y, next_z));
         if (next >= distance) break;
         if (next_x <= next_y && next_x <= next_z) {
@@ -185,10 +174,31 @@ __global__ void raycast_kernel(
     {
         const int hit_index =
             (hit_z_index * height + hit_y_index) * width + hit_x_index;
-        atomicExch(&observed[hit_index], 1u);
-        atomic_add_clamped(
-            &log_odds[hit_index], occupied_delta, log_min, log_max);
+        atomicAdd(&hits[hit_index], kOccupiedHit);
     }
+}
+
+__global__ void apply_hits_kernel(
+    unsigned long long* hits,
+    int cells,
+    float occupied_delta,
+    float free_delta,
+    float log_min,
+    float log_max,
+    float* log_odds,
+    unsigned int* observed)
+{
+    const int index = blockIdx.x * blockDim.x + threadIdx.x;
+    if (index >= cells) return;
+    const unsigned long long count = hits[index];
+    if (count == 0) return;
+    hits[index] = 0;  // ready for the next scan
+    const float free_hits = static_cast<float>(count & 0xffffffffULL);
+    const float occupied_hits = static_cast<float>(count >> 32);
+    const float updated =
+        log_odds[index] + free_hits * free_delta + occupied_hits * occupied_delta;
+    log_odds[index] = fminf(log_max, fmaxf(log_min, updated));
+    observed[index] = 1u;
 }
 
 __global__ void project_occupancy_kernel(
@@ -283,6 +293,8 @@ struct VoxelMapperGpu::Impl {
             VOXEL_CUDA_CHECK(cudaMalloc(&scratch_observed, cell_count * sizeof(unsigned int)));
             VOXEL_CUDA_CHECK(cudaMalloc(
                 &projection, config.width * config.height * sizeof(signed char)));
+            VOXEL_CUDA_CHECK(cudaMalloc(&hits, cell_count * sizeof(unsigned long long)));
+            VOXEL_CUDA_CHECK(cudaMemset(hits, 0, cell_count * sizeof(unsigned long long)));
             VOXEL_CUDA_CHECK(cudaMalloc(&observed_count, sizeof(unsigned int)));
             VOXEL_CUDA_CHECK(cudaMalloc(&integrated_count, sizeof(unsigned int)));
             VOXEL_CUDA_CHECK(cudaEventCreate(&event_start));
@@ -306,12 +318,14 @@ struct VoxelMapperGpu::Impl {
         cudaFree(scratch_log_odds);
         cudaFree(scratch_observed);
         cudaFree(projection);
+        cudaFree(hits);
         cudaFree(observed_count);
         cudaFree(integrated_count);
         event_start = event_stop = nullptr;
         points = log_odds = scratch_log_odds = nullptr;
         observed = scratch_observed = nullptr;
         projection = nullptr;
+        hits = nullptr;
         observed_count = nullptr;
         integrated_count = nullptr;
     }
@@ -400,10 +414,11 @@ struct VoxelMapperGpu::Impl {
             sensor_origin[0], sensor_origin[1], sensor_origin[2],
             origin_x, origin_y, config.origin_z, config.resolution,
             config.width, config.height, config.depth,
-            config.min_range, config.max_range,
-            config.log_odds_occupied, config.log_odds_free,
-            config.log_odds_min, config.log_odds_max,
-            log_odds, observed, integrated_count);
+            config.min_range, config.max_range, hits, integrated_count);
+        VOXEL_CUDA_CHECK(cudaGetLastError());
+        apply_hits_kernel<<<(cell_count + 255) / 256, 256>>>(
+            hits, cell_count, config.log_odds_occupied, config.log_odds_free,
+            config.log_odds_min, config.log_odds_max, log_odds, observed);
         VOXEL_CUDA_CHECK(cudaGetLastError());
         VOXEL_CUDA_CHECK(cudaEventRecord(event_stop));
         VOXEL_CUDA_CHECK(cudaEventSynchronize(event_stop));
@@ -448,6 +463,7 @@ struct VoxelMapperGpu::Impl {
     unsigned int* observed = nullptr;
     unsigned int* scratch_observed = nullptr;
     signed char* projection = nullptr;
+    unsigned long long* hits = nullptr;  // per-scan update counts, zero between scans
     unsigned int* observed_count = nullptr;
     unsigned int* integrated_count = nullptr;
     cudaEvent_t event_start = nullptr;

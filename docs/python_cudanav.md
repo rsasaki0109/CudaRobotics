@@ -192,12 +192,14 @@ exit 2.
 - The simulator uses no randomness.
 - CUDA MPPI uses its fixed cuRAND seed (42), which is recorded in the manifest.
 - Stages given the same input are repeatable.
-- A full closed loop is not bit-identical from run to run. The voxel map
-  combines log-odds updates to the same voxel with clamped float atomics, so
-  their order can change an occupancy cell. That changes the costmap, and the
-  mission can then differ by a few frames. The ROS 2 and native stacks share
-  this core, and the tests therefore check the gate outcome rather than
-  bitwise trajectories.
+- A full closed loop is bit-identical from run to run, apart from the
+  wall-clock timing columns, and the `device` and `host` stage chains drive
+  the same mission. The voxel map used to combine log-odds updates to the
+  same voxel with clamped float atomics, so their order could change an
+  occupancy cell and the mission could differ by a few frames. It now counts
+  each scan's updates per voxel in integers and applies them in a second
+  pass (see `docs/voxel_mapping_gpu_core.md`).
+  `python/tests/test_navigation_gpu.py` checks both properties.
 
 ## Reference result
 
@@ -207,7 +209,7 @@ to the retained native result in
 
 | Run | Frames | Drift | ATE | Goal distance | Collisions | Frame p95 |
 |---|---|---|---|---|---|---|
-| Python `cudarobotics-cudanav sim` | 227–230 | 0.22–0.24% | 0.013–0.014 m | 0.28 m | 0 | 6.1 ms |
+| Python `cudarobotics-cudanav sim` | 233 | 0.22% | 0.014 m | 0.26 m | 0 | 5.3 ms |
 | Native `cudanav_gpu_closed_loop_s_course` (retained) | 225 | 0.22% | 0.013 m | 0.28 m | 0 | 4.7 ms |
 
 These are synthetic smoke results, not release evidence.

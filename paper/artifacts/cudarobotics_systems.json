@@ -1158,7 +1158,7 @@
         {
           "path": "src/voxel_mapping_gpu.cu",
           "normalization": "text_lf",
-          "sha256": "422e71e874f465355b280d28aa7bd82396b13430efce115fb1d96789ff9aaf19"
+          "sha256": "48ac78db736754830a12424db67e358cad819a6d8d3ce8dede0abeea4435cf22"
         },
         {
           "path": "ros2_ws/src/cuda_nav_bringup/launch/cudanav_recorded_shadow.launch.py",

@@ -199,7 +199,7 @@ def main() -> int:
         "shift_grid_kernel",
         "project_occupancy_kernel",
         "!any_observed ? -1 : (occupied ? 100 : 0)",
-        "atomic_add_clamped",
+        "apply_hits_kernel",
     ):
         assert term in mapping_core
 
