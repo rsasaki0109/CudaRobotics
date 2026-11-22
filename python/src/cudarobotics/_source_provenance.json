@@ -1,7 +1,7 @@
 {
   "algorithm": "sha256-text-lf",
   "schema_version": 1,
-  "source_digest": "2b656f71318e5985627d592388d8778ea8c96a6cad29900ec332de8b9db596b5",
+  "source_digest": "c0b6acd0f1506f6bfdfc0cdad8590a700aa12aa10e33d4b0f19de1634e780138",
   "sources": {
     "CMakeLists.txt": "6f410e315ca5afaa83143c4af3c868a6371e12bf2887f8d08140a426034ddb92",
     "README.md": "9986e9ee05284c9f21ed2fda71251858acaaaa677359232b0a9efb1f9f971213",
@@ -49,7 +49,7 @@
     "core/src/robust_p2plane_gpu.cu": "636086b0cf6c3d0c9fc78e8f1798df6dc79a22e86af06e8836b6ffdeaea63545",
     "core/src/robust_treg_gpu.cu": "d28246e367a2a34cc3cafd8136415e01be697b93a98d93073544dd00c3d6daa9",
     "core/src/sinkhorn_gpu.cu": "7866ff758b09e9a6f3115dc14f1b638db0fb550982b76602bde0b1159e716411",
-    "core/src/voxel_mapping_gpu.cu": "422e71e874f465355b280d28aa7bd82396b13430efce115fb1d96789ff9aaf19",
+    "core/src/voxel_mapping_gpu.cu": "48ac78db736754830a12424db67e358cad819a6d8d3ce8dede0abeea4435cf22",
     "pyproject.toml": "a1dfb1c6ad2cf4c321b3676ef76e8f8c781a49da4ca548427b2ac0e01a3ccd29",
     "src/cudarobotics/__init__.py": "59d0142001a3f187fcfedfa8a1e94360aab90e102ad87cd06eef5cf5d28462dd",
     "src/cudarobotics/bindings.cpp": "166bd6435880699ce98ee30a8242e36454d0037c8e644d82dafff4ec3a38cf45",

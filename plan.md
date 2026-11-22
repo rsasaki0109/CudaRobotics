@@ -362,7 +362,9 @@ Mid term — pick ONE based on which funnel converts after the release
   `evade_min_collision_time` (1.0 s: head-on 13 to 17 of 18, but collisions 2
   to 7-9; off by default) and `cuda_nav_tracking/scan_tracker_node`
   (PointCloud2 + OccupancyGrid to TrackedObstacleArray; tested in-process
-  only).
+  only). Then a deterministic voxel map (per-scan integer hit counts, then one
+  clamped update per voxel): closed-loop reruns are now bit-identical; the
+  72-run layout sweep, rerun, gives 65/72 goals and 5 collisions.
 - **Jetson / aarch64** — compile-only CI landed (2026-11-21, aarch64 + sm_87,
   no hardware). Runtime validation waits for a device or concrete user demand.
 - **Broaden zero-copy inputs** — after costmap DLPack lands, consider path /

@@ -627,12 +627,12 @@
         "contact_frames": 0,
         "dynamic_collisions": 0,
         "goal_reached": 6,
-        "maximum_frame_ms_p95": 14.097947000038857,
+        "maximum_frame_ms_p95": 16.434435999997277,
         "maximum_non_wall_occupied_cells": 0,
-        "median_retreats": 47.0,
-        "median_time_to_goal_s": 30.35,
-        "median_yield_frames": 8.0,
-        "minimum_dynamic_clearance_m": 0.016756089098877047,
+        "median_retreats": 36.0,
+        "median_time_to_goal_s": 29.0,
+        "median_yield_frames": 5.0,
+        "minimum_dynamic_clearance_m": 0.04792474077248854,
         "per_seed": [
           {
             "collisions": 0,
@@ -674,63 +674,14 @@
       },
       "predicted_degraded": {
         "contact_frames": 0,
-        "dynamic_collisions": 1,
-        "goal_reached": 6,
-        "maximum_frame_ms_p95": 14.12264100002858,
-        "maximum_non_wall_occupied_cells": 0,
-        "median_retreats": 55.0,
-        "median_time_to_goal_s": 32.8,
-        "median_yield_frames": 25.0,
-        "minimum_dynamic_clearance_m": 0.005012836091067119,
-        "per_seed": [
-          {
-            "collisions": 1,
-            "goal": true,
-            "seed": 0
-          },
-          {
-            "collisions": 0,
-            "goal": true,
-            "seed": 1
-          },
-          {
-            "collisions": 0,
-            "goal": true,
-            "seed": 2
-          },
-          {
-            "collisions": 0,
-            "goal": true,
-            "seed": 3
-          },
-          {
-            "collisions": 0,
-            "goal": true,
-            "seed": 4
-          },
-          {
-            "collisions": 0,
-            "goal": true,
-            "seed": 5
-          }
-        ],
-        "quality_pass": 5,
-        "retreat_blocked": 25,
-        "runs": 6,
-        "tracking": null,
-        "turnarounds": 0,
-        "wall_collisions": 0
-      },
-      "tracked_scan": {
-        "contact_frames": 0,
         "dynamic_collisions": 0,
         "goal_reached": 6,
-        "maximum_frame_ms_p95": 44.628160000002026,
-        "maximum_non_wall_occupied_cells": 51,
-        "median_retreats": 58.5,
-        "median_time_to_goal_s": 33.05,
-        "median_yield_frames": 31.0,
-        "minimum_dynamic_clearance_m": 0.0509029390570761,
+        "maximum_frame_ms_p95": 15.06044499996051,
+        "maximum_non_wall_occupied_cells": 0,
+        "median_retreats": 55.0,
+        "median_time_to_goal_s": 32.7,
+        "median_yield_frames": 31.5,
+        "minimum_dynamic_clearance_m": 0.0058324949683493665,
         "per_seed": [
           {
             "collisions": 0,
@@ -764,13 +715,62 @@
           }
         ],
         "quality_pass": 6,
-        "retreat_blocked": 51,
+        "retreat_blocked": 30,
+        "runs": 6,
+        "tracking": null,
+        "turnarounds": 0,
+        "wall_collisions": 0
+      },
+      "tracked_scan": {
+        "contact_frames": 0,
+        "dynamic_collisions": 0,
+        "goal_reached": 6,
+        "maximum_frame_ms_p95": 16.679666000015914,
+        "maximum_non_wall_occupied_cells": 54,
+        "median_retreats": 74.0,
+        "median_time_to_goal_s": 35.1,
+        "median_yield_frames": 37.0,
+        "minimum_dynamic_clearance_m": 0.05331659315620141,
+        "per_seed": [
+          {
+            "collisions": 0,
+            "goal": true,
+            "seed": 0
+          },
+          {
+            "collisions": 0,
+            "goal": true,
+            "seed": 1
+          },
+          {
+            "collisions": 0,
+            "goal": true,
+            "seed": 2
+          },
+          {
+            "collisions": 0,
+            "goal": true,
+            "seed": 3
+          },
+          {
+            "collisions": 0,
+            "goal": true,
+            "seed": 4
+          },
+          {
+            "collisions": 0,
+            "goal": true,
+            "seed": 5
+          }
+        ],
+        "quality_pass": 6,
+        "retreat_blocked": 48,
         "runs": 6,
         "tracking": {
-          "false_tracks_per_frame": 1.1539641943734016,
-          "median_position_rmse_m": 0.10425153200130832,
-          "median_velocity_rmse_mps": 0.27391586082690683,
-          "recall": 0.8693259972489684
+          "false_tracks_per_frame": 1.132453567937439,
+          "median_position_rmse_m": 0.10385605285244773,
+          "median_velocity_rmse_mps": 0.27096992791249874,
+          "recall": 0.881664499349805
         },
         "turnarounds": 0,
         "wall_collisions": 0
@@ -780,13 +780,111 @@
       "predicted": {
         "contact_frames": 0,
         "dynamic_collisions": 0,
-        "goal_reached": 5,
-        "maximum_frame_ms_p95": 14.922625999986394,
+        "goal_reached": 6,
+        "maximum_frame_ms_p95": 13.764686999934383,
         "maximum_non_wall_occupied_cells": 0,
-        "median_retreats": 100.5,
-        "median_time_to_goal_s": 37.4,
-        "median_yield_frames": 28.5,
-        "minimum_dynamic_clearance_m": 0.03218624404111148,
+        "median_retreats": 111.5,
+        "median_time_to_goal_s": 38.0,
+        "median_yield_frames": 21.5,
+        "minimum_dynamic_clearance_m": 0.046069467124264074,
+        "per_seed": [
+          {
+            "collisions": 0,
+            "goal": true,
+            "seed": 0
+          },
+          {
+            "collisions": 0,
+            "goal": true,
+            "seed": 1
+          },
+          {
+            "collisions": 0,
+            "goal": true,
+            "seed": 2
+          },
+          {
+            "collisions": 0,
+            "goal": true,
+            "seed": 3
+          },
+          {
+            "collisions": 0,
+            "goal": true,
+            "seed": 4
+          },
+          {
+            "collisions": 0,
+            "goal": true,
+            "seed": 5
+          }
+        ],
+        "quality_pass": 6,
+        "retreat_blocked": 99,
+        "runs": 6,
+        "tracking": null,
+        "turnarounds": 3,
+        "wall_collisions": 0
+      },
+      "predicted_degraded": {
+        "contact_frames": 0,
+        "dynamic_collisions": 1,
+        "goal_reached": 6,
+        "maximum_frame_ms_p95": 13.88785899996492,
+        "maximum_non_wall_occupied_cells": 0,
+        "median_retreats": 84.0,
+        "median_time_to_goal_s": 38.55,
+        "median_yield_frames": 9.0,
+        "minimum_dynamic_clearance_m": 0.0030222675445111258,
+        "per_seed": [
+          {
+            "collisions": 0,
+            "goal": true,
+            "seed": 0
+          },
+          {
+            "collisions": 0,
+            "goal": true,
+            "seed": 1
+          },
+          {
+            "collisions": 0,
+            "goal": true,
+            "seed": 2
+          },
+          {
+            "collisions": 1,
+            "goal": true,
+            "seed": 3
+          },
+          {
+            "collisions": 0,
+            "goal": true,
+            "seed": 4
+          },
+          {
+            "collisions": 0,
+            "goal": true,
+            "seed": 5
+          }
+        ],
+        "quality_pass": 5,
+        "retreat_blocked": 105,
+        "runs": 6,
+        "tracking": null,
+        "turnarounds": 0,
+        "wall_collisions": 0
+      },
+      "tracked_scan": {
+        "contact_frames": 0,
+        "dynamic_collisions": 0,
+        "goal_reached": 4,
+        "maximum_frame_ms_p95": 17.437080000036076,
+        "maximum_non_wall_occupied_cells": 229,
+        "median_retreats": 92.0,
+        "median_time_to_goal_s": 31.05,
+        "median_yield_frames": 62.0,
+        "minimum_dynamic_clearance_m": 0.003888513747749678,
         "per_seed": [
           {
             "collisions": 0,
@@ -801,6 +899,62 @@
           {
             "collisions": 0,
             "goal": false,
+            "seed": 2
+          },
+          {
+            "collisions": 0,
+            "goal": false,
+            "seed": 3
+          },
+          {
+            "collisions": 0,
+            "goal": true,
+            "seed": 4
+          },
+          {
+            "collisions": 0,
+            "goal": true,
+            "seed": 5
+          }
+        ],
+        "quality_pass": 4,
+        "retreat_blocked": 126,
+        "runs": 6,
+        "tracking": {
+          "false_tracks_per_frame": 0.6278330019880716,
+          "median_position_rmse_m": 0.12121080397013331,
+          "median_velocity_rmse_mps": 0.2625384265099356,
+          "recall": 0.7509770204783492
+        },
+        "turnarounds": 1,
+        "wall_collisions": 0
+      }
+    },
+    "head_on": {
+      "predicted": {
+        "contact_frames": 0,
+        "dynamic_collisions": 0,
+        "goal_reached": 5,
+        "maximum_frame_ms_p95": 13.720592000026954,
+        "maximum_non_wall_occupied_cells": 0,
+        "median_retreats": 145.0,
+        "median_time_to_goal_s": 40.900000000000006,
+        "median_yield_frames": 34.0,
+        "minimum_dynamic_clearance_m": 0.02290073471356424,
+        "per_seed": [
+          {
+            "collisions": 0,
+            "goal": false,
+            "seed": 0
+          },
+          {
+            "collisions": 0,
+            "goal": true,
+            "seed": 1
+          },
+          {
+            "collisions": 0,
+            "goal": true,
             "seed": 2
           },
           {
@@ -820,22 +974,71 @@
           }
         ],
         "quality_pass": 5,
-        "retreat_blocked": 152,
+        "retreat_blocked": 145,
         "runs": 6,
         "tracking": null,
-        "turnarounds": 4,
+        "turnarounds": 0,
         "wall_collisions": 0
       },
       "predicted_degraded": {
         "contact_frames": 0,
+        "dynamic_collisions": 3,
+        "goal_reached": 5,
+        "maximum_frame_ms_p95": 13.719896999987213,
+        "maximum_non_wall_occupied_cells": 0,
+        "median_retreats": 82.5,
+        "median_time_to_goal_s": 36.0,
+        "median_yield_frames": 16.5,
+        "minimum_dynamic_clearance_m": 0.002451501540466472,
+        "per_seed": [
+          {
+            "collisions": 0,
+            "goal": true,
+            "seed": 0
+          },
+          {
+            "collisions": 0,
+            "goal": true,
+            "seed": 1
+          },
+          {
+            "collisions": 0,
+            "goal": true,
+            "seed": 2
+          },
+          {
+            "collisions": 0,
+            "goal": true,
+            "seed": 3
+          },
+          {
+            "collisions": 3,
+            "goal": false,
+            "seed": 4
+          },
+          {
+            "collisions": 0,
+            "goal": true,
+            "seed": 5
+          }
+        ],
+        "quality_pass": 5,
+        "retreat_blocked": 39,
+        "runs": 6,
+        "tracking": null,
+        "turnarounds": 0,
+        "wall_collisions": 0
+      },
+      "tracked_scan": {
+        "contact_frames": 0,
         "dynamic_collisions": 0,
         "goal_reached": 6,
-        "maximum_frame_ms_p95": 15.162572999997792,
-        "maximum_non_wall_occupied_cells": 0,
-        "median_retreats": 87.5,
-        "median_time_to_goal_s": 37.95,
-        "median_yield_frames": 8.5,
-        "minimum_dynamic_clearance_m": 0.032233941504308916,
+        "maximum_frame_ms_p95": 16.771098000049278,
+        "maximum_non_wall_occupied_cells": 10,
+        "median_retreats": 69.0,
+        "median_time_to_goal_s": 33.650000000000006,
+        "median_yield_frames": 33.0,
+        "minimum_dynamic_clearance_m": 0.05053851373063423,
         "per_seed": [
           {
             "collisions": 0,
@@ -869,216 +1072,13 @@
           }
         ],
         "quality_pass": 6,
-        "retreat_blocked": 152,
-        "runs": 6,
-        "tracking": null,
-        "turnarounds": 1,
-        "wall_collisions": 0
-      },
-      "tracked_scan": {
-        "contact_frames": 0,
-        "dynamic_collisions": 0,
-        "goal_reached": 4,
-        "maximum_frame_ms_p95": 68.96279099998992,
-        "maximum_non_wall_occupied_cells": 234,
-        "median_retreats": 50.5,
-        "median_time_to_goal_s": 29.200000000000003,
-        "median_yield_frames": 4.5,
-        "minimum_dynamic_clearance_m": 0.033694862281542726,
-        "per_seed": [
-          {
-            "collisions": 0,
-            "goal": true,
-            "seed": 0
-          },
-          {
-            "collisions": 0,
-            "goal": true,
-            "seed": 1
-          },
-          {
-            "collisions": 0,
-            "goal": false,
-            "seed": 2
-          },
-          {
-            "collisions": 0,
-            "goal": false,
-            "seed": 3
-          },
-          {
-            "collisions": 0,
-            "goal": true,
-            "seed": 4
-          },
-          {
-            "collisions": 0,
-            "goal": true,
-            "seed": 5
-          }
-        ],
-        "quality_pass": 4,
-        "retreat_blocked": 159,
+        "retreat_blocked": 118,
         "runs": 6,
         "tracking": {
-          "false_tracks_per_frame": 0.8080978490088571,
-          "median_position_rmse_m": 0.11325360073261856,
-          "median_velocity_rmse_mps": 0.2560060978493305,
-          "recall": 0.7013931888544892
-        },
-        "turnarounds": 0,
-        "wall_collisions": 0
-      }
-    },
-    "head_on": {
-      "predicted": {
-        "contact_frames": 0,
-        "dynamic_collisions": 0,
-        "goal_reached": 3,
-        "maximum_frame_ms_p95": 13.715786000034313,
-        "maximum_non_wall_occupied_cells": 0,
-        "median_retreats": 194.0,
-        "median_time_to_goal_s": 42.6,
-        "median_yield_frames": 83.5,
-        "minimum_dynamic_clearance_m": 0.018707045098341535,
-        "per_seed": [
-          {
-            "collisions": 0,
-            "goal": false,
-            "seed": 0
-          },
-          {
-            "collisions": 0,
-            "goal": true,
-            "seed": 1
-          },
-          {
-            "collisions": 0,
-            "goal": false,
-            "seed": 2
-          },
-          {
-            "collisions": 0,
-            "goal": false,
-            "seed": 3
-          },
-          {
-            "collisions": 0,
-            "goal": true,
-            "seed": 4
-          },
-          {
-            "collisions": 0,
-            "goal": true,
-            "seed": 5
-          }
-        ],
-        "quality_pass": 3,
-        "retreat_blocked": 91,
-        "runs": 6,
-        "tracking": null,
-        "turnarounds": 1,
-        "wall_collisions": 0
-      },
-      "predicted_degraded": {
-        "contact_frames": 0,
-        "dynamic_collisions": 0,
-        "goal_reached": 4,
-        "maximum_frame_ms_p95": 13.97321400003193,
-        "maximum_non_wall_occupied_cells": 0,
-        "median_retreats": 99.0,
-        "median_time_to_goal_s": 37.0,
-        "median_yield_frames": 30.0,
-        "minimum_dynamic_clearance_m": 0.0043803953654577565,
-        "per_seed": [
-          {
-            "collisions": 0,
-            "goal": false,
-            "seed": 0
-          },
-          {
-            "collisions": 0,
-            "goal": true,
-            "seed": 1
-          },
-          {
-            "collisions": 0,
-            "goal": true,
-            "seed": 2
-          },
-          {
-            "collisions": 0,
-            "goal": true,
-            "seed": 3
-          },
-          {
-            "collisions": 0,
-            "goal": true,
-            "seed": 4
-          },
-          {
-            "collisions": 0,
-            "goal": false,
-            "seed": 5
-          }
-        ],
-        "quality_pass": 4,
-        "retreat_blocked": 33,
-        "runs": 6,
-        "tracking": null,
-        "turnarounds": 0,
-        "wall_collisions": 0
-      },
-      "tracked_scan": {
-        "contact_frames": 0,
-        "dynamic_collisions": 0,
-        "goal_reached": 6,
-        "maximum_frame_ms_p95": 65.30715799999598,
-        "maximum_non_wall_occupied_cells": 7,
-        "median_retreats": 58.0,
-        "median_time_to_goal_s": 40.150000000000006,
-        "median_yield_frames": 28.0,
-        "minimum_dynamic_clearance_m": 0.021808104064186096,
-        "per_seed": [
-          {
-            "collisions": 0,
-            "goal": true,
-            "seed": 0
-          },
-          {
-            "collisions": 0,
-            "goal": true,
-            "seed": 1
-          },
-          {
-            "collisions": 0,
-            "goal": true,
-            "seed": 2
-          },
-          {
-            "collisions": 0,
-            "goal": true,
-            "seed": 3
-          },
-          {
-            "collisions": 0,
-            "goal": true,
-            "seed": 4
-          },
-          {
-            "collisions": 0,
-            "goal": true,
-            "seed": 5
-          }
-        ],
-        "quality_pass": 6,
-        "retreat_blocked": 113,
-        "runs": 6,
-        "tracking": {
-          "false_tracks_per_frame": 0.8642439431913116,
-          "median_position_rmse_m": 0.086273348395867,
-          "median_velocity_rmse_mps": 0.15598812399052653,
-          "recall": 0.9649122807017544
+          "false_tracks_per_frame": 1.0525291828793775,
+          "median_position_rmse_m": 0.08666554376174906,
+          "median_velocity_rmse_mps": 0.15337387775973574,
+          "recall": 0.9521770164168452
         },
         "turnarounds": 3,
         "wall_collisions": 0
@@ -1088,86 +1088,37 @@
       "predicted": {
         "contact_frames": 33,
         "dynamic_collisions": 0,
-        "goal_reached": 6,
-        "maximum_frame_ms_p95": 14.765122000028441,
-        "maximum_non_wall_occupied_cells": 0,
-        "median_retreats": 197.0,
-        "median_time_to_goal_s": 44.75,
-        "median_yield_frames": 271.0,
-        "minimum_dynamic_clearance_m": -0.17706166744232177,
-        "per_seed": [
-          {
-            "collisions": 0,
-            "goal": true,
-            "seed": 0
-          },
-          {
-            "collisions": 0,
-            "goal": true,
-            "seed": 1
-          },
-          {
-            "collisions": 0,
-            "goal": true,
-            "seed": 2
-          },
-          {
-            "collisions": 0,
-            "goal": true,
-            "seed": 3
-          },
-          {
-            "collisions": 0,
-            "goal": true,
-            "seed": 4
-          },
-          {
-            "collisions": 0,
-            "goal": true,
-            "seed": 5
-          }
-        ],
-        "quality_pass": 6,
-        "retreat_blocked": 956,
-        "runs": 6,
-        "tracking": null,
-        "turnarounds": 14,
-        "wall_collisions": 0
-      },
-      "predicted_degraded": {
-        "contact_frames": 33,
-        "dynamic_collisions": 0,
         "goal_reached": 4,
-        "maximum_frame_ms_p95": 14.549532000046383,
-        "maximum_non_wall_occupied_cells": 0,
-        "median_retreats": 165.5,
-        "median_time_to_goal_s": 39.05,
-        "median_yield_frames": 253.0,
+        "maximum_frame_ms_p95": 14.789788000030057,
+        "maximum_non_wall_occupied_cells": 1,
+        "median_retreats": 188.0,
+        "median_time_to_goal_s": 42.900000000000006,
+        "median_yield_frames": 270.0,
         "minimum_dynamic_clearance_m": -0.17706166744232177,
         "per_seed": [
-          {
-            "collisions": 0,
-            "goal": true,
-            "seed": 0
-          },
-          {
-            "collisions": 0,
-            "goal": true,
-            "seed": 1
-          },
-          {
-            "collisions": 0,
-            "goal": true,
-            "seed": 2
-          },
-          {
-            "collisions": 0,
-            "goal": true,
-            "seed": 3
-          },
           {
             "collisions": 0,
             "goal": false,
+            "seed": 0
+          },
+          {
+            "collisions": 0,
+            "goal": true,
+            "seed": 1
+          },
+          {
+            "collisions": 0,
+            "goal": true,
+            "seed": 2
+          },
+          {
+            "collisions": 0,
+            "goal": true,
+            "seed": 3
+          },
+          {
+            "collisions": 0,
+            "goal": true,
             "seed": 4
           },
           {
@@ -1177,21 +1128,70 @@
           }
         ],
         "quality_pass": 4,
-        "retreat_blocked": 895,
+        "retreat_blocked": 913,
         "runs": 6,
         "tracking": null,
-        "turnarounds": 9,
+        "turnarounds": 16,
+        "wall_collisions": 0
+      },
+      "predicted_degraded": {
+        "contact_frames": 33,
+        "dynamic_collisions": 0,
+        "goal_reached": 5,
+        "maximum_frame_ms_p95": 14.31987500006926,
+        "maximum_non_wall_occupied_cells": 0,
+        "median_retreats": 138.5,
+        "median_time_to_goal_s": 36.6,
+        "median_yield_frames": 240.0,
+        "minimum_dynamic_clearance_m": -0.17706166744232177,
+        "per_seed": [
+          {
+            "collisions": 0,
+            "goal": true,
+            "seed": 0
+          },
+          {
+            "collisions": 0,
+            "goal": true,
+            "seed": 1
+          },
+          {
+            "collisions": 0,
+            "goal": true,
+            "seed": 2
+          },
+          {
+            "collisions": 0,
+            "goal": true,
+            "seed": 3
+          },
+          {
+            "collisions": 0,
+            "goal": false,
+            "seed": 4
+          },
+          {
+            "collisions": 0,
+            "goal": true,
+            "seed": 5
+          }
+        ],
+        "quality_pass": 5,
+        "retreat_blocked": 936,
+        "runs": 6,
+        "tracking": null,
+        "turnarounds": 4,
         "wall_collisions": 0
       },
       "tracked_scan": {
         "contact_frames": 25,
         "dynamic_collisions": 1,
         "goal_reached": 6,
-        "maximum_frame_ms_p95": 77.32237400000486,
-        "maximum_non_wall_occupied_cells": 80,
-        "median_retreats": 134.5,
-        "median_time_to_goal_s": 40.650000000000006,
-        "median_yield_frames": 143.0,
+        "maximum_frame_ms_p95": 19.80661900006453,
+        "maximum_non_wall_occupied_cells": 57,
+        "median_retreats": 106.5,
+        "median_time_to_goal_s": 36.650000000000006,
+        "median_yield_frames": 136.5,
         "minimum_dynamic_clearance_m": -0.17706166744232177,
         "per_seed": [
           {
@@ -1226,15 +1226,15 @@
           }
         ],
         "quality_pass": 5,
-        "retreat_blocked": 518,
+        "retreat_blocked": 521,
         "runs": 6,
         "tracking": {
-          "false_tracks_per_frame": 1.1320973348783314,
-          "median_position_rmse_m": 0.1471245320710462,
-          "median_velocity_rmse_mps": 0.3032774874441286,
-          "recall": 0.8745279780295229
+          "false_tracks_per_frame": 1.0732777534006144,
+          "median_position_rmse_m": 0.14663676522578167,
+          "median_velocity_rmse_mps": 0.30408183402390715,
+          "recall": 0.9035157810627247
         },
-        "turnarounds": 15,
+        "turnarounds": 14,
         "wall_collisions": 0
       }
     }

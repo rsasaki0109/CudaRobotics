@@ -6,17 +6,17 @@ the tracker is a simulator oracle except in the scan-tracker condition. See `doc
 
 | Condition | Goal | Robot-caused collisions | Median time to goal | Min clearance | Median pedestrian yields | Median retreats | Max non-wall cells |
 |---|---|---|---|---|---|---|---|
-| Map only (no prediction) | 0/6 | 0 | - | 0.03 m | 10 | 4 | 106 |
-| Tracked, zero velocity | 2/6 | 0 | 50.7 s | 0.03 m | 24 | 174 | 0 |
-| Tracked + CV prediction (oracle) | 6/6 | 0 | 31.0 s | 0.04 m | 13 | 46 | 0 |
-| Tracked + CV prediction (2-frame delay, noise) | 6/6 | 0 | 31.9 s | 0.01 m | 33 | 47 | 0 |
-| Scan tracker (no oracle) + CV prediction | 6/6 | 0 | 33.5 s | 0.03 m | 30 | 56 | 46 |
+| Map only (no prediction) | 0/6 | 0 | - | 0.05 m | 9 | 6 | 108 |
+| Tracked, zero velocity | 1/6 | 0 | 58.2 s | 0.03 m | 22 | 174 | 0 |
+| Tracked + CV prediction (oracle) | 6/6 | 0 | 29.0 s | 0.05 m | 5 | 36 | 0 |
+| Tracked + CV prediction (2-frame delay, noise) | 6/6 | 0 | 32.7 s | 0.01 m | 32 | 55 | 0 |
+| Scan tracker (no oracle) + CV prediction | 6/6 | 0 | 35.1 s | 0.05 m | 37 | 74 | 54 |
 
 Tracking accuracy against the true pedestrians (visible = hit by at least 3 rays; tracked = a confirmed track within 0.5 m; false = a confirmed track more than 0.7 m from every pedestrian):
 
 | Condition | Recall | Median position RMSE | Median velocity RMSE | False tracks per frame |
 |---|---|---|---|---|
-| Scan tracker (no oracle) + CV prediction | 90.2% | 0.11 m | 0.29 m/s | 1.10 |
+| Scan tracker (no oracle) + CV prediction | 88.2% | 0.10 m | 0.27 m/s | 1.13 |
 
 - Goal: runs that reached the goal within 60 s (600 frames).
 - Robot-caused collisions: wall contacts plus moves that deepen a pedestrian contact.
@@ -27,33 +27,33 @@ Per-run results:
 
 | Run | Goal | Time | Collisions | Min clearance | Yields | Retreats | Frame p95 |
 |---|---|---|---|---|---|---|---|
-| map_seed0 | False | - | 0 | 0.03 m | 32 | 0 | 15.4 ms |
-| map_seed1 | False | - | 0 | 0.05 m | 20 | 1 | 13.8 ms |
-| map_seed2 | False | - | 0 | 0.09 m | 0 | 58 | 14.8 ms |
-| map_seed3 | False | - | 0 | 0.08 m | 0 | 0 | 15.1 ms |
-| map_seed4 | False | - | 0 | 0.03 m | 39 | 6 | 10.1 ms |
-| map_seed5 | False | - | 0 | 0.09 m | 0 | 239 | 10.8 ms |
-| tracked_static_seed0 | False | - | 0 | 0.04 m | 44 | 141 | 17.6 ms |
-| tracked_static_seed1 | False | - | 0 | 0.03 m | 23 | 235 | 15.4 ms |
-| tracked_static_seed2 | True | 44.1 s | 0 | 0.05 m | 26 | 88 | 17.0 ms |
-| tracked_static_seed3 | False | - | 0 | 0.04 m | 38 | 207 | 15.1 ms |
-| tracked_static_seed4 | False | - | 0 | 0.04 m | 19 | 234 | 11.3 ms |
-| tracked_static_seed5 | True | 57.3 s | 0 | 0.05 m | 22 | 117 | 9.6 ms |
-| predicted_seed0 | True | 25.1 s | 0 | 0.08 m | 0 | 8 | 16.9 ms |
-| predicted_seed1 | True | 34.9 s | 0 | 0.05 m | 28 | 72 | 15.2 ms |
-| predicted_seed2 | True | 31.5 s | 0 | 0.06 m | 0 | 55 | 17.9 ms |
-| predicted_seed3 | True | 32.4 s | 0 | 0.06 m | 14 | 51 | 16.3 ms |
-| predicted_seed4 | True | 30.4 s | 0 | 0.05 m | 12 | 41 | 15.9 ms |
-| predicted_seed5 | True | 26.5 s | 0 | 0.04 m | 16 | 23 | 16.7 ms |
-| predicted_degraded_seed0 | True | 30.9 s | 0 | 0.01 m | 35 | 46 | 17.9 ms |
-| predicted_degraded_seed1 | True | 29.1 s | 0 | 0.04 m | 36 | 37 | 17.1 ms |
-| predicted_degraded_seed2 | True | 32.9 s | 0 | 0.05 m | 14 | 48 | 16.2 ms |
-| predicted_degraded_seed3 | True | 33.1 s | 0 | 0.04 m | 31 | 57 | 16.3 ms |
-| predicted_degraded_seed4 | True | 39.3 s | 0 | 0.02 m | 63 | 103 | 16.0 ms |
-| predicted_degraded_seed5 | True | 31.0 s | 0 | 0.01 m | 22 | 45 | 14.8 ms |
-| tracked_scan_seed0 | True | 29.3 s | 0 | 0.05 m | 18 | 33 | 19.8 ms |
-| tracked_scan_seed1 | True | 27.7 s | 0 | 0.07 m | 7 | 22 | 19.3 ms |
-| tracked_scan_seed2 | True | 39.1 s | 0 | 0.05 m | 42 | 110 | 25.6 ms |
-| tracked_scan_seed3 | True | 36.5 s | 0 | 0.03 m | 41 | 78 | 22.5 ms |
-| tracked_scan_seed4 | True | 30.4 s | 0 | 0.05 m | 18 | 33 | 23.8 ms |
-| tracked_scan_seed5 | True | 40.2 s | 0 | 0.03 m | 50 | 95 | 20.7 ms |
+| map_seed0 | False | - | 0 | 0.05 m | 18 | 0 | 14.7 ms |
+| map_seed1 | False | - | 0 | 0.06 m | 0 | 165 | 15.9 ms |
+| map_seed2 | False | - | 0 | 0.09 m | 0 | 0 | 15.6 ms |
+| map_seed3 | False | - | 0 | 0.07 m | 0 | 11 | 13.2 ms |
+| map_seed4 | False | - | 0 | 0.05 m | 18 | 0 | 10.2 ms |
+| map_seed5 | False | - | 0 | 0.05 m | 18 | 35 | 10.0 ms |
+| tracked_static_seed0 | False | - | 0 | 0.04 m | 9 | 175 | 16.4 ms |
+| tracked_static_seed1 | True | 58.2 s | 0 | 0.03 m | 57 | 183 | 17.2 ms |
+| tracked_static_seed2 | False | - | 0 | 0.06 m | 11 | 215 | 16.5 ms |
+| tracked_static_seed3 | False | - | 0 | 0.05 m | 41 | 174 | 11.1 ms |
+| tracked_static_seed4 | False | - | 0 | 0.04 m | 18 | 160 | 11.5 ms |
+| tracked_static_seed5 | False | - | 0 | 0.06 m | 25 | 170 | 10.7 ms |
+| predicted_seed0 | True | 23.8 s | 0 | 0.08 m | 0 | 10 | 17.0 ms |
+| predicted_seed1 | True | 26.4 s | 0 | 0.05 m | 10 | 17 | 16.4 ms |
+| predicted_seed2 | True | 31.2 s | 0 | 0.06 m | 0 | 56 | 16.4 ms |
+| predicted_seed3 | True | 32.9 s | 0 | 0.06 m | 14 | 55 | 15.5 ms |
+| predicted_seed4 | True | 30.0 s | 0 | 0.05 m | 12 | 41 | 17.8 ms |
+| predicted_seed5 | True | 28.0 s | 0 | 0.12 m | 0 | 31 | 17.2 ms |
+| predicted_degraded_seed0 | True | 25.3 s | 0 | 0.05 m | 7 | 14 | 16.7 ms |
+| predicted_degraded_seed1 | True | 35.0 s | 0 | 0.02 m | 53 | 72 | 16.4 ms |
+| predicted_degraded_seed2 | True | 32.9 s | 0 | 0.01 m | 30 | 58 | 17.5 ms |
+| predicted_degraded_seed3 | True | 32.5 s | 0 | 0.06 m | 25 | 50 | 17.8 ms |
+| predicted_degraded_seed4 | True | 38.3 s | 0 | 0.01 m | 57 | 93 | 15.3 ms |
+| predicted_degraded_seed5 | True | 31.3 s | 0 | 0.04 m | 33 | 52 | 14.7 ms |
+| tracked_scan_seed0 | True | 34.1 s | 0 | 0.06 m | 22 | 59 | 8.8 ms |
+| tracked_scan_seed1 | True | 28.0 s | 0 | 0.06 m | 12 | 27 | 9.0 ms |
+| tracked_scan_seed2 | True | 33.6 s | 0 | 0.06 m | 35 | 73 | 8.7 ms |
+| tracked_scan_seed3 | True | 36.6 s | 0 | 0.06 m | 42 | 79 | 7.8 ms |
+| tracked_scan_seed4 | True | 36.2 s | 0 | 0.05 m | 52 | 78 | 8.1 ms |
+| tracked_scan_seed5 | True | 36.1 s | 0 | 0.06 m | 39 | 75 | 8.5 ms |

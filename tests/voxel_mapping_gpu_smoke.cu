@@ -1,5 +1,6 @@
 #include "cudarobotics/voxel_mapping_gpu.hpp"
 
+#include <cmath>
 #include <cstdio>
 #include <stdexcept>
 #include <vector>
@@ -114,6 +115,51 @@ int main()
     if (!rejected_bad_shape) {
         std::fprintf(stderr, "malformed XYZ input was accepted\n");
         return 8;
+    }
+
+    // Integration must not depend on ray order: many rays share voxels near
+    // the sensor and some end in the same voxel, so a clamped per-ray update
+    // would race. Reversing the scan must give a bit-identical map.
+    VoxelMappingConfig order_config = config;
+    order_config.max_scan_points = 512;
+    order_config.log_odds_max = 1.0f;  // reached within one scan
+    std::vector<float> fan;
+    for (int i = 0; i < 400; ++i) {
+        const float angle = 0.0025f * static_cast<float>(i % 200);
+        const float range = (i % 3 == 0) ? 4.3f : 6.6f;
+        fan.push_back(range * std::cos(angle));
+        fan.push_back(range * std::sin(angle));
+        fan.push_back(0.0f);
+    }
+    std::vector<float> reversed;
+    for (int i = static_cast<int>(fan.size()) / 3 - 1; i >= 0; --i) {
+        reversed.insert(reversed.end(), fan.begin() + 3 * i, fan.begin() + 3 * i + 3);
+    }
+    VoxelMapperGpu forward_mapper(order_config);
+    VoxelMapperGpu reverse_mapper(order_config);
+    forward_mapper.reset(0.0f, 0.0f);
+    reverse_mapper.reset(0.0f, 0.0f);
+    for (int repeat = 0; repeat < 3; ++repeat) {
+        forward_mapper.integrate_scan(fan, origin);
+        reverse_mapper.integrate_scan(reversed, origin);
+    }
+    const VoxelGridSnapshot forward = forward_mapper.snapshot();
+    const VoxelGridSnapshot backward = reverse_mapper.snapshot();
+    if (forward.log_odds != backward.log_odds || forward.observed != backward.observed) {
+        std::fprintf(stderr, "voxel map depends on the order of the rays\n");
+        return 9;
+    }
+    bool reached_max = false;
+    for (const float value : forward.log_odds) {
+        if (value > order_config.log_odds_max || value < order_config.log_odds_min) {
+            std::fprintf(stderr, "log-odds left the clamp range\n");
+            return 10;
+        }
+        reached_max = reached_max || value == order_config.log_odds_max;
+    }
+    if (!reached_max) {
+        std::fprintf(stderr, "repeated hits never reached log_odds_max\n");
+        return 11;
     }
 
     std::printf("GPU rolling voxel mapping smoke: PASS\n");

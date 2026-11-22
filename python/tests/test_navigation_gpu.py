@@ -141,9 +141,20 @@ def test_closed_loop_passes_the_smoke_gate_with_both_stage_chains():
         assert summary["collision_count"] == 0
         assert summary["odometry_drift_percent"] < 5.0
         assert missing_summary_fields(summary) == []
-    # Voxel log-odds use clamped float atomics, so frames are not bit-identical
-    # across runs; the mission outcome must still agree closely.
-    assert abs(first.summary["frames"] - second.summary["frames"]) <= 0.1 * first.summary["frames"]
+    # The voxel map integrates each scan independently of ray order, so the
+    # two stage chains drive the same mission.
+    assert first.summary["frames"] == second.summary["frames"]
+    assert first.summary["odometry_ate_rmse_m"] == second.summary["odometry_ate_rmse_m"]
+
+
+def test_closed_loop_reruns_are_identical():
+    def trajectory(result):
+        # Drop the trailing wall-clock timing columns.
+        return [row[:-2] for row in result.rows]
+
+    first = run_s_course()
+    second = run_s_course()
+    assert trajectory(first) == trajectory(second)
 
 
 def _write_synthetic_sequence(path):
