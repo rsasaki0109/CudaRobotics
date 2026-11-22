@@ -159,6 +159,7 @@ controller_server:
 | `retreat_check_horizon` | 1.0 | seconds the back-out command is checked ahead; 0 disables the checks below |
 | `retreat_avoid_lethal_cells` | true | drop the back-out translation if it would enter a lethal cell costlier than the start cell |
 | `retreat_avoid_dynamic_obstacles` | true | same for predicted dynamic obstacles (when the dynamic-obstacle critic is active) |
+| `evade_min_collision_time` | 0.0 | [s] when every rollout collides but one stays clear this long, steer on instead of backing out; 0 disables |
 | `temperature` | 0.12 | MPPI softmin λ |
 | `goal_weight` | 20.0 | terminal local-goal distance (linear) |
 | `goal_yaw_weight` | 3.0 | terminal yaw error near the final goal |
@@ -233,6 +234,9 @@ back-out and the simulated evaluation are described in
 [`docs/cudanav_dynamic_obstacles.md`](../../../docs/cudanav_dynamic_obstacles.md).
 Keep the tracked objects out of the costmap's obstacle layers as well;
 otherwise they are avoided twice and leave trails.
+[`cuda_nav_tracking`](../cuda_nav_tracking/README.md) publishes the message from
+LiDAR scans and also outputs the scan without the tracked objects, for the
+mapper.
 
 For bag replay or live-stack evaluation, use
 [`docs/cuda_mppi_bag_eval.md`](../../../docs/cuda_mppi_bag_eval.md) and

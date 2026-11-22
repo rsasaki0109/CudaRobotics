@@ -117,6 +117,7 @@ void validateControllerParams(const MppiParams & params, double lookahead_dist,
   requireNonNegative("retreat_scale", params.retreat_scale);
   requireNonNegative("retreat_reverse_speed", params.retreat_reverse_speed);
   requireNonNegative("retreat_check_horizon", params.retreat_check_horizon);
+  requireNonNegative("evade_min_collision_time", params.evade_min_collision_time);
   requireNonNegative("dynamic_obstacle_weight", params.dynamic_obstacle_weight);
   requireNonNegative("dynamic_obstacle_margin", params.dynamic_obstacle_margin);
   requireNonNegative("dynamic_obstacle_robot_radius", params.dynamic_obstacle_robot_radius);
@@ -209,6 +210,8 @@ bool applyControllerParameter(const std::string & key, const rclcpp::Parameter &
     params.retreat_avoid_lethal_cells = parameter.as_bool();
   } else if (key == "retreat_check_horizon") {
     params.retreat_check_horizon = static_cast<float>(parameter.as_double());
+  } else if (key == "evade_min_collision_time") {
+    params.evade_min_collision_time = static_cast<float>(parameter.as_double());
   } else if (key == "dynamic_obstacle_weight") {
     params.dynamic_obstacle_weight = static_cast<float>(parameter.as_double());
   } else if (key == "dynamic_obstacle_margin") {
@@ -283,6 +286,7 @@ bool CudaMppiController::updateParamsFromNode(
   bool retreat_avoid_dynamic_obstacles = next.retreat_avoid_dynamic_obstacles;
   bool retreat_avoid_lethal_cells = next.retreat_avoid_lethal_cells;
   double retreat_check_horizon = next.retreat_check_horizon;
+  double evade_min_collision_time = next.evade_min_collision_time;
   double dynamic_obstacle_weight = next.dynamic_obstacle_weight;
   double dynamic_obstacle_margin = next.dynamic_obstacle_margin;
   double dynamic_obstacle_robot_radius = next.dynamic_obstacle_robot_radius;
@@ -326,6 +330,7 @@ bool CudaMppiController::updateParamsFromNode(
   node->get_parameter(name_ + ".retreat_avoid_dynamic_obstacles", retreat_avoid_dynamic_obstacles);
   node->get_parameter(name_ + ".retreat_avoid_lethal_cells", retreat_avoid_lethal_cells);
   node->get_parameter(name_ + ".retreat_check_horizon", retreat_check_horizon);
+  node->get_parameter(name_ + ".evade_min_collision_time", evade_min_collision_time);
   node->get_parameter(name_ + ".dynamic_obstacle_weight", dynamic_obstacle_weight);
   node->get_parameter(name_ + ".dynamic_obstacle_margin", dynamic_obstacle_margin);
   node->get_parameter(name_ + ".dynamic_obstacle_robot_radius", dynamic_obstacle_robot_radius);
@@ -373,6 +378,7 @@ bool CudaMppiController::updateParamsFromNode(
   next.retreat_avoid_dynamic_obstacles = retreat_avoid_dynamic_obstacles;
   next.retreat_avoid_lethal_cells = retreat_avoid_lethal_cells;
   next.retreat_check_horizon = static_cast<float>(retreat_check_horizon);
+  next.evade_min_collision_time = static_cast<float>(evade_min_collision_time);
   next.dynamic_obstacle_weight = static_cast<float>(dynamic_obstacle_weight);
   next.dynamic_obstacle_margin = static_cast<float>(dynamic_obstacle_margin);
   next.dynamic_obstacle_robot_radius = static_cast<float>(dynamic_obstacle_robot_radius);
@@ -449,6 +455,7 @@ void CudaMppiController::configure(
   declare_param("retreat_avoid_dynamic_obstacles", params_.retreat_avoid_dynamic_obstacles);
   declare_param("retreat_avoid_lethal_cells", params_.retreat_avoid_lethal_cells);
   declare_param("retreat_check_horizon", static_cast<double>(params_.retreat_check_horizon));
+  declare_param("evade_min_collision_time", static_cast<double>(params_.evade_min_collision_time));
   declare_param("dynamic_obstacle_weight", static_cast<double>(params_.dynamic_obstacle_weight));
   declare_param("dynamic_obstacle_margin", static_cast<double>(params_.dynamic_obstacle_margin));
   declare_param("dynamic_obstacle_robot_radius", static_cast<double>(params_.dynamic_obstacle_robot_radius));
@@ -770,7 +777,7 @@ geometry_msgs::msg::TwistStamped CudaMppiController::computeVelocityCommands(
   emitDiagnostics(
     result, solve_ms, static_cast<int>(path_xy.size() / 2), costmap_size_x, costmap_size_y);
 
-  if (result.all_colliding && !result.retreating) {
+  if (result.all_colliding && !result.retreating && !result.evading) {
     throw NoValidControl(
             "CudaMppiController: all sampled trajectories are in collision");
   }

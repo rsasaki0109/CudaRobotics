@@ -119,6 +119,10 @@ struct MppiParams
   bool retreat_avoid_dynamic_obstacles = true;
   bool retreat_avoid_lethal_cells = true;
   float retreat_check_horizon = 1.0f;  // [s]
+  // When every rollout collides but at least one stays collision-free for
+  // this long [s], follow the optimizer (steer away) instead of backing out;
+  // MppiResult::evading is set. 0 (default) always backs out.
+  float evade_min_collision_time = 0.0f;
 };
 
 struct MppiResult
@@ -134,6 +138,8 @@ struct MppiResult
   bool all_colliding = false;
   bool retreating = false;   // true when command is a recovery back-out action
   bool retreat_blocked = false;  // back-out translation dropped for a dynamic obstacle
+  bool evading = false;  // all rollouts collide, but the command steers on (see evade_min_collision_time)
+  float time_to_collision = 0.0f;  // [s] latest first collision over the rollouts (set when evading is checked)
 };
 
 class MppiGpu

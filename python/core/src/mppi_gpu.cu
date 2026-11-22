@@ -230,6 +230,7 @@ __global__ void rollout_kernel(
   const float * __restrict__ nominal,     // [T * kCtrlDim]
   float * __restrict__ perturbed,         // [K * T * kCtrlDim]
   float * __restrict__ costs,             // [K]
+  int * __restrict__ first_hits,          // [K] first colliding step (T if none)
   curandState * rng_states)
 {
   const int k = blockIdx.x * blockDim.x + threadIdx.x;
@@ -242,6 +243,7 @@ __global__ void rollout_kernel(
   float y = p.start_y;
   float yaw = p.start_yaw;
   float cost = 0.0f;
+  int first_hit = p.T;
   float prev_v = nominal[0];
   float prev_vy = nominal[1];
   float prev_w = nominal[2];
@@ -302,12 +304,14 @@ __global__ void rollout_kernel(
             footprint_sweep_collides(costmap, p, prev_x, prev_y, prev_yaw, x, y, yaw)))
           {
             cost += p.collision_cost;
+            first_hit = min(first_hit, t);
           } else {
             const float cn = static_cast<float>(c) / 252.0f;
             cost += p.costmap_w * cn * cn * p.dt;
           }
         } else if (c >= p.lethal_threshold) {
           cost += p.collision_cost;
+          first_hit = min(first_hit, t);
         } else {
           const float cn = static_cast<float>(c) / 252.0f;
           cost += p.costmap_w * cn * cn * p.dt;
@@ -350,6 +354,7 @@ __global__ void rollout_kernel(
         }
         if (collides) {
           cost += p.collision_cost;
+          first_hit = min(first_hit, t);
         } else if (clearance < p.dynamic_margin) {
           const float q = p.dynamic_margin - clearance;
           cost += p.dynamic_w * q * q * p.dt;
@@ -452,6 +457,7 @@ __global__ void rollout_kernel(
   }
 
   costs[k] = cost;
+  first_hits[k] = first_hit;
   rng_states[k] = rng;
 }
 
@@ -597,6 +603,10 @@ struct MppiGpu::Impl
   float * d_weight_sum = nullptr;
   float * d_cost_sum = nullptr;
   int * d_valid_rollouts = nullptr;
+  int * d_first_hits = nullptr;        // [K]
+  int * d_latest_first_hit = nullptr;
+  void * d_max_temp = nullptr;
+  size_t max_temp_bytes = 0;
   DeviceDiagnostics * d_diagnostics = nullptr;
   void * d_reduce_temp = nullptr;
   size_t reduce_temp_bytes = 0;
@@ -630,6 +640,10 @@ struct MppiGpu::Impl
     CUDA_CHECK(cudaMalloc(&d_weight_sum, sizeof(float)));
     CUDA_CHECK(cudaMalloc(&d_cost_sum, sizeof(float)));
     CUDA_CHECK(cudaMalloc(&d_valid_rollouts, sizeof(int)));
+    CUDA_CHECK(cudaMalloc(&d_first_hits, K * sizeof(int)));
+    CUDA_CHECK(cudaMalloc(&d_latest_first_hit, sizeof(int)));
+    CUDA_CHECK(cub::DeviceReduce::Max(nullptr, max_temp_bytes, d_first_hits, d_latest_first_hit, K));
+    CUDA_CHECK(cudaMalloc(&d_max_temp, max_temp_bytes));
     CUDA_CHECK(cudaMalloc(&d_diagnostics, sizeof(DeviceDiagnostics)));
     size_t min_bytes = 0, sum_bytes = 0;
     CUDA_CHECK(cub::DeviceReduce::Min(nullptr, min_bytes, d_costs, d_min_cost, K));
@@ -662,6 +676,9 @@ struct MppiGpu::Impl
     cudaFree(d_weight_sum);
     cudaFree(d_cost_sum);
     cudaFree(d_valid_rollouts);
+    cudaFree(d_first_hits);
+    cudaFree(d_latest_first_hit);
+    cudaFree(d_max_temp);
     cudaFree(d_diagnostics);
     cudaFree(d_reduce_temp);
     cudaFree(d_path);
@@ -901,7 +918,7 @@ MppiResult MppiGpu::computeInternal(
     rollout_kernel<<<rollout_blocks, threads>>>(
       dp, rollout_costmap, rollout_distance_field, im.d_dynamic_obstacles, im.d_path,
       im.d_nominal, im.d_perturbed,
-      im.d_costs, im.d_rng);
+      im.d_costs, im.d_first_hits, im.d_rng);
     CUDA_CHECK(cudaGetLastError());
     CUDA_CHECK(cub::DeviceReduce::Min(
         im.d_reduce_temp, im.reduce_temp_bytes, im.d_costs, im.d_min_cost, K));
@@ -953,7 +970,22 @@ MppiResult MppiGpu::computeInternal(
   res.valid_rollout_ratio = static_cast<float>(diagnostics.valid_rollouts) / static_cast<float>(K);
   res.all_colliding = diagnostics.min_cost >= mp.collision_cost;
 
-  if (res.all_colliding) {
+  if (res.all_colliding && mp.evade_min_collision_time > 0.0f) {
+    // Every rollout collides, but if some rollout stays clear for long enough
+    // there is still time to steer away: follow the optimizer instead of
+    // backing out, and replan next cycle.
+    CUDA_CHECK(cub::DeviceReduce::Max(
+        im.d_max_temp, im.max_temp_bytes, im.d_first_hits, im.d_latest_first_hit, K));
+    int latest_first_hit = 0;
+    CUDA_CHECK(cudaMemcpy(
+        &latest_first_hit, im.d_latest_first_hit, sizeof(int), cudaMemcpyDeviceToHost));
+    res.time_to_collision = static_cast<float>(latest_first_hit + 1) * mp.model_dt;
+    if (res.time_to_collision >= mp.evade_min_collision_time) {
+      res.evading = true;
+    }
+  }
+
+  if (res.all_colliding && !res.evading) {
     ++im.consecutive_all_colliding;
     if (mp.enable_retreat && im.has_last_valid_nominal) {
       const int retreat_step = std::min(im.consecutive_all_colliding - 1, T - 1);
@@ -1005,9 +1037,13 @@ MppiResult MppiGpu::computeInternal(
     return res;
   }
 
-  im.consecutive_all_colliding = 0;
-  im.h_last_valid_nominal = im.h_nominal;
-  im.has_last_valid_nominal = true;
+  if (!res.evading) {
+    // An evading plan still collides later, so it is not a valid sequence to
+    // back out along.
+    im.consecutive_all_colliding = 0;
+    im.h_last_valid_nominal = im.h_nominal;
+    im.has_last_valid_nominal = true;
+  }
 
   res.v = std::min(std::max(im.h_nominal[0], dp.v_min), dp.v_max);
   res.vy = std::min(std::max(im.h_nominal[1], -mp.vy_max), mp.vy_max);
