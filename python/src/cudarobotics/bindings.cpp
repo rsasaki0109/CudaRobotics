@@ -504,6 +504,7 @@ private:
     info["all_colliding"] = result.all_colliding;
     info["retreating"] = result.retreating;
     info["retreat_blocked"] = result.retreat_blocked;
+    info["evading"] = result.evading;
     return nb::make_tuple(result.v, result.vy, result.w, info);
   }
 
@@ -1298,7 +1299,8 @@ NB_MODULE(_cudarobotics, m)
     .def_rw("retreat_reverse_speed", &cr::MppiParams::retreat_reverse_speed)
     .def_rw("retreat_avoid_dynamic_obstacles", &cr::MppiParams::retreat_avoid_dynamic_obstacles)
     .def_rw("retreat_avoid_lethal_cells", &cr::MppiParams::retreat_avoid_lethal_cells)
-    .def_rw("retreat_check_horizon", &cr::MppiParams::retreat_check_horizon);
+    .def_rw("retreat_check_horizon", &cr::MppiParams::retreat_check_horizon)
+    .def_rw("evade_min_collision_time", &cr::MppiParams::evade_min_collision_time);
 
   nb::class_<cr::MppiResult>(m, "MppiResult")
     .def(nb::init<>())
@@ -1312,7 +1314,9 @@ NB_MODULE(_cudarobotics, m)
     .def_rw("valid_rollout_ratio", &cr::MppiResult::valid_rollout_ratio)
     .def_rw("all_colliding", &cr::MppiResult::all_colliding)
     .def_rw("retreating", &cr::MppiResult::retreating)
-    .def_rw("retreat_blocked", &cr::MppiResult::retreat_blocked);
+    .def_rw("retreat_blocked", &cr::MppiResult::retreat_blocked)
+    .def_rw("evading", &cr::MppiResult::evading)
+    .def_rw("time_to_collision", &cr::MppiResult::time_to_collision);
 
   nb::class_<PyMppiPlanner>(m, "_MppiPlanner")
     .def(nb::init<const cr::MppiParams &>())

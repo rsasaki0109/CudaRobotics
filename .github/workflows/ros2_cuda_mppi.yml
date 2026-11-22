@@ -177,6 +177,7 @@ jobs:
             python3-matplotlib \
             python3-pil \
             python3-colcon-common-extensions \
+            python3-pytest \
             ros-jazzy-ros-base \
             ros-jazzy-nav2-core \
             ros-jazzy-nav2-controller \
@@ -196,7 +197,7 @@ jobs:
           source /opt/ros/jazzy/setup.bash
           cd ros2_ws
           colcon build \
-            --packages-select cuda_robotics_msgs cuda_robotics_common cuda_kiss_icp cuda_voxel_mapping cuda_esdf cuda_voxel_costmap_layer cuda_mppi_controller cuda_nav_bringup \
+            --packages-select cuda_robotics_msgs cuda_robotics_common cuda_kiss_icp cuda_voxel_mapping cuda_esdf cuda_voxel_costmap_layer cuda_mppi_controller cuda_nav_bringup cuda_nav_tracking \
             --cmake-args \
               -DCMAKE_BUILD_TYPE=Release \
               -DCMAKE_CUDA_ARCHITECTURES=75
@@ -236,7 +237,7 @@ jobs:
           export ROS_DOMAIN_ID=73
           export ROS_AUTOMATIC_DISCOVERY_RANGE=LOCALHOST
           colcon test --executor sequential \
-            --packages-select cuda_robotics_common cuda_kiss_icp cuda_voxel_mapping cuda_esdf cuda_voxel_costmap_layer \
+            --packages-select cuda_robotics_common cuda_kiss_icp cuda_voxel_mapping cuda_esdf cuda_voxel_costmap_layer cuda_nav_tracking \
             --event-handlers console_direct+
           colcon test-result --verbose
 

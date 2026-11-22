@@ -461,3 +461,54 @@ class OccupancyAge:
         touching[inside] = near_structure[r, c]
         return result, touching
 
+
+
+@dataclass(frozen=True)
+class _GridView:
+    data: Any
+    resolution: float
+    origin: tuple[float, float]
+
+
+class ScanTrackingFrontend:
+    """Middleware-free adapter around :class:`ScanObjectTracker` (for ROS nodes).
+
+    Feed it the latest occupancy grid with :meth:`update_grid` (values -1/0/100
+    in the tracking frame, as ``nav_msgs/OccupancyGrid`` uses) and each scan,
+    already in the same frame, with :meth:`process`. ``static_frames`` in the
+    tracker config then counts grid updates. The grid should be built from the
+    static points that :meth:`process` returns, so tracked objects stay out of
+    it.
+    """
+
+    def __init__(self, tracker: ScanObjectTracker | None = None) -> None:
+        self.tracker = ScanObjectTracker() if tracker is None else tracker
+        self.age = OccupancyAge()
+
+    def update_grid(self, data: Any, resolution: float, origin: tuple[float, float]) -> None:
+        """``data`` is a row-major ``(height, width)`` int8 grid; ``origin`` is cell (0, 0)'s corner."""
+        grid = np.asarray(data, dtype=np.int8)
+        if grid.ndim != 2 or not resolution > 0.0:
+            raise ValueError("grid must be 2-D with a positive resolution")
+        self.age.update(_GridView(grid, float(resolution), (float(origin[0]), float(origin[1]))))
+
+    def process(
+        self, points_xy: Any, time_s: float, sensor_xy: tuple[float, float] | None = None
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """Track one frame-aligned scan.
+
+        Returns ``(obstacles, ids, static_mask)``: ``(N, 5)`` rows of ``x, y,
+        vx, vy, radius`` (moving tracks, then still objects not yet released
+        to the map, with id -1), their ids, and the points to keep in the map.
+        """
+        xy = np.asarray(points_xy, dtype=np.float32).reshape(-1, 2)
+        candidates, structure = self.age.classify(xy, self.tracker.config.static_frames)
+        result = self.tracker.update(xy, candidates, time_s, structure, sensor_xy=sensor_xy)
+        obstacles = np.concatenate([result.tracks, result.static_objects]).astype(np.float32)
+        ids = np.concatenate(
+            [
+                np.asarray(result.track_ids, dtype=np.int64),
+                np.full(result.static_objects.shape[0], -1, dtype=np.int64),
+            ]
+        )
+        return obstacles, ids, ~np.asarray(result.dynamic_mask, dtype=bool)

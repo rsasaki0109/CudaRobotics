@@ -363,6 +363,7 @@ def run_crossing(
     frames = wall_collisions = dynamic_collisions = contact_frames = yield_frames = 0
     invalid_commands = all_colliding = retreating = 0
     retreat_blocked = 0
+    evading = 0
     minimum_clearance = math.inf
     maximum_ghosts = 0
     ghost_samples: list[int] = []
@@ -427,6 +428,7 @@ def run_crossing(
         all_colliding += int(bool(planner.get("all_colliding", False)))
         retreating += int(bool(planner.get("retreating", False)))
         retreat_blocked += int(bool(planner.get("retreat_blocked", False)))
+        evading += int(bool(planner.get("evading", False)))
         valid_ratio = float(planner.get("valid_rollout_ratio", 0.0))
         if (
             not math.isfinite(command_v)
@@ -543,6 +545,7 @@ def run_crossing(
         "all_colliding_evaluations": all_colliding,
         "retreating_evaluations": retreating,
         "retreat_blocked_evaluations": retreat_blocked,
+        "evading_evaluations": evading,
         "maximum_non_wall_occupied_cells": maximum_ghosts,
         "final_non_wall_occupied_cells": ghost_samples[-1] if ghost_samples else 0,
         "tracking": _tracking_summary(tracking) if scan_mode else None,

@@ -468,6 +468,28 @@ def test_tracker_confirms_a_walking_object_with_its_velocity():
     assert result.history.shape[1] == 3 and result.history.shape[0] >= 1
 
 
+def test_scan_tracking_frontend_tracks_a_walker_beside_a_wall():
+    from cudarobotics.navigation.tracking import ScanTrackingFrontend
+
+    frontend = ScanTrackingFrontend()
+    # A 4 m x 4 m grid at 0.05 m with a wall along y = 2.0 (row 40).
+    grid = np.zeros((80, 80), dtype=np.int8)
+    grid[60, :] = 100
+    wall = np.stack([np.linspace(0.2, 3.8, 40), np.full(40, 3.025)], axis=1)
+    for frame in range(30):
+        frontend.update_grid(grid, 0.05, (0.0, 0.0))
+        walker = _blob(1.0 + 0.05 * frame, 1.0)
+        points = np.concatenate([np.repeat(wall, 3, axis=0), walker])
+        obstacles, ids, static = frontend.process(points, 0.1 * frame, sensor_xy=(0.0, 0.0))
+    assert obstacles.shape == (1, 5) and ids.shape == (1,) and ids[0] >= 0
+    x, y, vx, vy, radius = obstacles[0]
+    assert x == pytest.approx(2.45, abs=0.1) and vx == pytest.approx(0.5, abs=0.15)
+    assert static[: wall.shape[0] * 3].all()  # the wall stays in the map
+    assert not static[wall.shape[0] * 3 :].any()  # the walker does not
+    with pytest.raises(ValueError):
+        frontend.update_grid(np.zeros(4, dtype=np.int8), 0.05, (0.0, 0.0))
+
+
 def test_tracker_releases_still_objects_and_rejects_walls():
     from cudarobotics.navigation.tracking import ScanObjectTracker, TrackerConfig
 

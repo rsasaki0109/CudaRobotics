@@ -237,6 +237,32 @@ void back_out_does_not_reverse_into_a_wall()
           "with the lethal-cell check off the back-out reverses regardless");
 }
 
+void evading_replaces_the_back_out_when_the_collision_is_far()
+{
+    // A large disc rushing head-on: every rollout eventually collides, but
+    // not within the first second.
+    const DynamicObstacle rushing{4.0f, 0.0f, -1.5f, 0.0f, 1.2f};
+    auto run = [&](float evade_time) {
+        MppiParams p = params(25.0f);
+        p.retreat_reverse_speed = 0.2f;
+        p.evade_min_collision_time = evade_time;
+        MppiGpu planner(p);
+        plan(planner, 3);
+        planner.setDynamicObstacles(&rushing, 1);
+        return plan(planner, 1).back();
+    };
+    const MppiResult backs_out = run(0.0f);
+    check(backs_out.all_colliding && backs_out.retreating && !backs_out.evading,
+          "with evading off an all-colliding cycle backs out");
+    const MppiResult evades = run(0.5f);
+    std::printf("evading: ttc=%.2f s v=%.3f w=%.3f\n", evades.time_to_collision, evades.v, evades.w);
+    check(evades.all_colliding && evades.evading && !evades.retreating,
+          "a distant collision is evaded instead of backed out of");
+    check(evades.time_to_collision >= 0.5f, "time_to_collision reports the latest first collision");
+    const MppiResult too_close = run(10.0f);
+    check(too_close.retreating && !too_close.evading, "a nearer collision still backs out");
+}
+
 void invalid_input_is_rejected()
 {
     MppiGpu planner(params(25.0f));
@@ -269,6 +295,7 @@ int main()
     retreat_reverse_speed_lets_a_forward_only_robot_back_out();
     back_out_does_not_reverse_into_an_obstacle();
     back_out_does_not_reverse_into_a_wall();
+    evading_replaces_the_back_out_when_the_collision_is_far();
     invalid_input_is_rejected();
     std::printf("mppi_dynamic_obstacle_smoke: OK\n");
     return 0;
