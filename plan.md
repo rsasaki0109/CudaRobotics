@@ -358,7 +358,11 @@ Mid term — pick ONE based on which funnel converts after the release
   over 72 runs, goals went from 59 to 62 and collisions from 823 to 2.
   Then a Nav2 `TrackedObstacleArray` input, and batched GPU disc clearing with
   grid-hashed clustering (scan-tracker frame p95: 34.6 ms to 8.0 ms). Next:
-  a ROS 2 tracker node; head-on standoffs remain.
+  a ROS 2 tracker node; head-on standoffs remain. Then opt-in
+  `evade_min_collision_time` (1.0 s: head-on 13 to 17 of 18, but collisions 2
+  to 7-9; off by default) and `cuda_nav_tracking/scan_tracker_node`
+  (PointCloud2 + OccupancyGrid to TrackedObstacleArray; tested in-process
+  only).
 - **Jetson / aarch64** — compile-only CI landed (2026-11-21, aarch64 + sm_87,
   no hardware). Runtime validation waits for a device or concrete user demand.
 - **Broaden zero-copy inputs** — after costmap DLPack lands, consider path /

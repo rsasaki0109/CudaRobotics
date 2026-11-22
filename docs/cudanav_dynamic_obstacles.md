@@ -117,8 +117,20 @@ The conversion is tested without ROS or a GPU
 - input validation;
 - keeping the nearest discs.
 
-The plugin has not been run against a live tracker yet. No ROS 2 node
-publishes the scan tracker's tracks so far.
+`cuda_nav_tracking/scan_tracker_node` publishes the scan tracker's tracks
+as `TrackedObstacleArray`:
+- **Inputs:** `PointCloud2` scans and a `nav_msgs/OccupancyGrid`, for
+  example from `cuda_voxel_mapping`.
+- **Outputs:** the tracks, plus the scan without the tracked objects' points.
+  Feed that scan to the mapper so moving objects stay out of the map.
+
+The node wraps `cudarobotics.navigation.tracking.ScanTrackingFrontend`, a
+middleware-free adapter that is unit-tested in `python/tests`. An in-process
+test publishes synthetic TF, grid and scans and checks the published track
+and static points. It ran locally with ROS 2 Lyrical. In CI the test is
+skipped, because the ROS image has no `cudarobotics` package. The node has
+not been run on a robot or against Nav2 end to end. See the
+[package README](../ros2_ws/src/cuda_nav_tracking/README.md).
 
 ## CudaNav integration
 
@@ -378,6 +390,41 @@ Two other changes were tried and not adopted:
   count from 6/6 to 4/6. A pedestrian who stood still leaves cells that live
   for more than 5 s, and they then could not be cleared from under the robot.
 
+### Steering away instead of backing out (opt-in)
+
+In the failed head-on runs the same cycle repeats:
+1. The robot drives along the corridor towards a pedestrian coming the
+   other way.
+2. Once every rollout collides with the prediction, it backs off at 0.2 m/s.
+3. The pedestrian follows at 0.4 m/s and pushes it back about 1.5 m.
+4. The robot never moves aside.
+
+`evade_min_collision_time` (s, default 0 = off) changes the decision when
+every rollout collides:
+- the kernel records each rollout's first colliding step;
+- if the latest first collision is at least this far ahead, the core follows
+  the optimizer's plan, which steers away, instead of backing out;
+- the result reports `evading` and `time_to_collision`;
+- that plan is not stored as a valid sequence to back out along.
+
+The costs themselves do not change, unlike the collision horizon above.
+
+72 runs per setting:
+
+| `evade_min_collision_time` | Goal reached | Head-on goals | Robot-caused collisions |
+|---|---|---|---|
+| 0 (off) | 62/72, 61/72 (two sweeps) | 13/18, 13/18 | 2, 2 |
+| 0.5 s | 61/72 | 18/18 | 10 |
+| 1.0 s | 64/72, 64/72 (two sweeps) | 17/18, 17/18 | 9, 7 |
+| 1.5 s | 62/72 | 16/18 | 11 |
+
+At 1.0 s it fixes most head-on standoffs, at a cost:
+- robot-caused collisions rise from 2 to 7–9;
+- `overtake` with the scan tracker drops from 5–6/6 to 3/6.
+
+It therefore stays off by default, in the core and in CudaNav. The Python
+binding and the Nav2 plugin expose it.
+
 Closed-loop runs are not bit-reproducible:
 - GPU float atomics in the voxel map and in MPPI make reruns of the same
   seed diverge.
@@ -399,13 +446,16 @@ Closed-loop runs are not bit-reproducible:
   the costmap. An undetected person behind the robot is still at risk, which
   caused one contact with the scan tracker. The robot resolves standoffs by
   giving way, which costs time; nothing reasons about who should go first.
-- **Head-on encounters.** A pedestrian walking towards the robot along a
-  corridor still makes every rollout collide with its prediction for many
-  frames. Half of the oracle head-on runs time out.
+- **Head-on encounters.** By default, a pedestrian walking towards the robot
+  along a corridor still makes every rollout collide with its prediction for
+  many frames, and about a quarter of the head-on runs time out.
+  `evade_min_collision_time = 1.0` fixes most of them, but more contacts
+  occur (see above).
 - **Simple motion model.** The prediction is constant velocity, and the
   pedestrians move in straight lines with turnarounds.
 - **Small clearances.** Minimum clearances stay around 0.05 m in every
   condition, partly because the pedestrians pause at 0.05 m.
-- **Nav2 input not exercised end to end.** The plugin accepts
-  `TrackedObstacleArray`, but no ROS 2 tracker node publishes it yet, and the
+- **ROS 2 path tested in pieces only.** `cuda_nav_tracking` publishes
+  `TrackedObstacleArray`, and the plugin consumes it. However, the tracker
+  node has only been tested in-process with synthetic messages, and the
   closed-loop results above come from the Python pipeline, not from Nav2.
