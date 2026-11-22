@@ -10,6 +10,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <limits>
 #include <random>
 #include <stdexcept>
 #include <vector>
@@ -132,6 +133,44 @@ void footprint_matches_cpu_reference()
     }
 }
 
+void batched_discs_match_sequential_clearing()
+{
+    const CostmapGridGeometry grid{97, 83, -3.1f, 2.05f, 0.05f};
+    std::vector<std::int8_t> occupancy(grid.width * grid.height);
+    std::mt19937 random(11);
+    std::uniform_int_distribution<int> sample(0, 3);
+    for (auto& value : occupancy) value = sample(random) == 0 ? 100 : (sample(random) == 0 ? -1 : 0);
+    std::uniform_real_distribution<float> x(-3.5f, 2.0f), y(1.8f, 6.5f), r(0.0f, 0.5f);
+    CostmapBuilderGpu builder(grid.width, grid.height);
+    // Growing counts exercise the buffer reallocation; 0 only counts.
+    for (const int count : {0, 1, 7, 300, 40}) {
+        std::vector<float> discs;
+        std::vector<std::int8_t> cpu = occupancy;
+        for (int i = 0; i < count; ++i) {
+            discs.insert(discs.end(), {x(random), y(random), r(random)});
+            clear_footprint_cpu(cpu, grid, discs[3 * i], discs[3 * i + 1], discs[3 * i + 2]);
+        }
+        std::int8_t* device = upload(occupancy);
+        const std::size_t occupied = builder.clear_discs(device, grid, discs.data(), count);
+        const auto gpu = download(device, occupancy.size());
+        cuda(cudaFree(device));
+        check(gpu == cpu, "batched disc clearing differs from sequential clearing");
+        std::size_t expected = 0;
+        for (const auto value : cpu) expected += value == 100 ? 1 : 0;
+        check(occupied == expected, "occupied count after batched clearing is wrong");
+    }
+    bool rejected = false;
+    const float bad[3] = {0.0f, std::numeric_limits<float>::quiet_NaN(), 0.2f};
+    std::int8_t* device = upload(occupancy);
+    try {
+        builder.clear_discs(device, grid, bad, 1);
+    } catch (const std::invalid_argument&) {
+        rejected = true;
+    }
+    cuda(cudaFree(device));
+    check(rejected, "a non-finite disc must be rejected");
+}
+
 void esdf_device_input_matches_host_input()
 {
     const int width = 61;
@@ -220,6 +259,7 @@ int main()
     costmap_matches_cpu_reference(37, 29, 2);
     costmap_matches_cpu_reference(256, 256, 3);
     footprint_matches_cpu_reference();
+    batched_discs_match_sequential_clearing();
     esdf_device_input_matches_host_input();
     voxel_device_projection_matches_host();
 

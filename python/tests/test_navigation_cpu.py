@@ -394,6 +394,25 @@ def test_polyline_walker_and_layouts():
         layout_obstacles("stampede", 0)
 
 
+def test_grid_hashed_pairs_match_brute_force():
+    from cudarobotics.navigation.tracking import _close_pairs, _clusters
+
+    rng = np.random.default_rng(3)
+    for size in (0, 1, 5, 200):
+        xy = rng.uniform(-2.0, 3.0, size=(size, 2)).astype(np.float32)
+        # Some points exactly one distance apart on the grid and duplicates.
+        xy = np.concatenate([xy, np.round(xy[: size // 2] / 0.3) * np.float32(0.3), xy[:3]])
+        first, second = _close_pairs(xy, 0.3)
+        found = {(int(i), int(j)) for i, j in zip(first, second)}
+        delta = xy[:, None, :] - xy[None, :, :]
+        close = (delta[..., 0] * delta[..., 0] + delta[..., 1] * delta[..., 1]) <= np.float32(0.09)
+        expected = {(i, j) for i, j in zip(*np.nonzero(np.triu(close, k=1)))}
+        assert found == expected
+        components = _clusters(xy, 0.3)
+        assert sorted(np.concatenate(components).tolist()) == list(range(xy.shape[0])) if xy.size else components == []
+        assert [int(part[0]) for part in components] == sorted(int(part[0]) for part in components)
+
+
 def test_clearing_discs_spare_long_standing_structure():
     from cudarobotics.navigation.pipeline import STRUCTURE_PROTECT_FRAMES, _spare_structure
     from cudarobotics.navigation.tracking import OccupancyAge

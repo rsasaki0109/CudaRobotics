@@ -1,7 +1,7 @@
 {
   "algorithm": "sha256-text-lf",
   "schema_version": 1,
-  "source_digest": "5b3bcd2e536f09e7d016b83f7912cd0e3c946da98e3c253a0c27ce6aac163fcd",
+  "source_digest": "1d9c967f12cef071a97d84ee1048ba759e1ab9b7d666bc8160b80e78a441354a",
   "sources": {
     "CMakeLists.txt": "6f410e315ca5afaa83143c4af3c868a6371e12bf2887f8d08140a426034ddb92",
     "README.md": "9986e9ee05284c9f21ed2fda71251858acaaaa677359232b0a9efb1f9f971213",
@@ -10,7 +10,7 @@
     "core/include/cudarobotics/bal_io.hpp": "dd3a2140119294af09676bb77a7618c392b99ae7d5bcb1cc4696f583d9cf1ef8",
     "core/include/cudarobotics/bcpd_gpu.hpp": "daaf27328f65b42c67288c5387041acfda50c0a4dd0bb2883dd6807b203d4537",
     "core/include/cudarobotics/bundle_adjustment.hpp": "446bf554beb5cdd167fe1eef7f37de6cb14b8c3eff036e0cfea69a370f887e24",
-    "core/include/cudarobotics/cudanav_costmap_gpu.hpp": "f0164385d70929ab2cfa6390e733fd6149b24583d1bb6228884364f73fd3013e",
+    "core/include/cudarobotics/cudanav_costmap_gpu.hpp": "34591ce48f24a2b440c9b9cc44e613d6f680fd40467ed33a5b5e426e4d7a56fd",
     "core/include/cudarobotics/esdf_2d_gpu.hpp": "eda5f2b3e878204774528c1564fe0117ca9eea080e85764716eac32c3d090af2",
     "core/include/cudarobotics/fgr_gpu.hpp": "3216716f6d27d21f071b39db9002bad0afea21339575b9fef97660f5ebe42816",
     "core/include/cudarobotics/filterreg_gpu.hpp": "2d36917f9c9f433cde22944172b7cf106fa7a76583b0e4c9d72db863c069e78f",
@@ -40,7 +40,7 @@
     "core/include/kiss_icp_reduction.cuh": "52c2b40f3af3c3cf5e7b964637c54d6f9def241acebff2206b63b988138f63a0",
     "core/include/kiss_icp_spatial.cuh": "24d74f471a6c1dcc6bdc0a105ab8dd766842e86108f335f67f37e785ecbc682a",
     "core/src/bcpd_gpu.cu": "6f2354e24ff01437013c1f1a9c19a20f31fba11889a8dcb7be212d0d498828af",
-    "core/src/cudanav_costmap_gpu.cu": "d2cd9e52d139b5fbfc066c5cef8f67044a0a2aa3d6f87f365d83635d834da2a8",
+    "core/src/cudanav_costmap_gpu.cu": "87f0297166b8b40533a3e50e4420eb6e4f6c95bf8ae1ce1d17a00e982d1cc282",
     "core/src/esdf_2d_gpu.cu": "faaa958744f80c0ceadf769ef41c47d747e10db41c60f0691890531ca82d5b5a",
     "core/src/fgr_gpu.cu": "8a7def8fcf2e7dce0cf949b5b928ff81a9d89f5bc11ce9bd2b81e6ee8c0c92aa",
     "core/src/filterreg_gpu.cu": "fb5995d2d80c1df5709e49e825d7a1bd0d07f9d7c399a131a375112ce540773e",
@@ -52,17 +52,17 @@
     "core/src/voxel_mapping_gpu.cu": "422e71e874f465355b280d28aa7bd82396b13430efce115fb1d96789ff9aaf19",
     "pyproject.toml": "a1dfb1c6ad2cf4c321b3676ef76e8f8c781a49da4ca548427b2ac0e01a3ccd29",
     "src/cudarobotics/__init__.py": "59d0142001a3f187fcfedfa8a1e94360aab90e102ad87cd06eef5cf5d28462dd",
-    "src/cudarobotics/bindings.cpp": "10ab1d8969f08ee9cc63f38c15fdee306d1cc0621c6884a78024cdc1ae46e62b",
+    "src/cudarobotics/bindings.cpp": "59120ed07f98604692ef318c3c008d24e010fc8c9dc30168a695560fa0b82650",
     "src/cudarobotics/navigation/__init__.py": "73734979a89d9106219dcf35fad4c2aabc074128aa15c1bdc08735a12f149ae0",
     "src/cudarobotics/navigation/cli.py": "56a467731c5e5980802ae46931c5f057c522f3781cd616e93b9b2a1482a68c4b",
     "src/cudarobotics/navigation/closed_loop.py": "f4e824542d5363fec0ee2afb8df99d7af93a069700e38cf204d49e218ffdfbf4",
     "src/cudarobotics/navigation/core.py": "eb6f60b8451227758217ce09598db1a15b5d82883973347c30f2acbda0df2929",
     "src/cudarobotics/navigation/dynamic_scenario.py": "fa5701cc1f7d2a17f5ef28e2a82b49e584453c6bc01d28ac42e852b8f49e3f55",
     "src/cudarobotics/navigation/evidence.py": "6709d4e068d4dc93d82d66fb5053ef1ca28e3e74beca14593734c5629fd06e9e",
-    "src/cudarobotics/navigation/pipeline.py": "e6402b4a3ae29adf81f827c0545bee5f8bcd4960a18b99b0917218a31d9dda12",
+    "src/cudarobotics/navigation/pipeline.py": "b3417bb43b47d9866da1023cca88088da57c0f54bc7fb127c29e275680a22ccc",
     "src/cudarobotics/navigation/sequence.py": "0e502e8f62e7e3921f8dec35234980336171609be526e3306918efbbe34e30c9",
     "src/cudarobotics/navigation/simulation.py": "1831501768936383a7d48cb2f83c79d3b954ee3fcab57113eb131eee44817289",
-    "src/cudarobotics/navigation/tracking.py": "8bf9a3be90cd20672666e76c2ecb543128aa2aa33a10443ef3facdadbdd82aac",
+    "src/cudarobotics/navigation/tracking.py": "cfa09cb419168859f11596a76b9ee0b10a8056e2c129bcc6c3c132590abed8c2",
     "src/cudarobotics/registration/__init__.py": "f01e0602ce4c90c163a01eb03f68bcb14040084b8740d07a63677ba08ec9a6fb"
   }
 }

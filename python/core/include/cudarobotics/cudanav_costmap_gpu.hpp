@@ -76,6 +76,15 @@ public:
         float y,
         float radius);
 
+    // Clears `count` discs in one launch: `discs_xyr` is host memory holding
+    // (x, y, radius) triples. Equivalent to clear_footprint per disc; returns
+    // the number of cells equal to 100 afterwards. count == 0 only counts.
+    std::size_t clear_discs(
+        std::int8_t* device_occupancy,
+        const CostmapGridGeometry& grid,
+        const float* discs_xyr,
+        int count);
+
     CostmapBuildResult build(
         const std::int8_t* device_occupancy,
         const float* device_distances,

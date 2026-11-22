@@ -122,29 +122,66 @@ class TrackerResult:
     tentative: int               # live tracks not yet confirmed
 
 
+def _close_pairs(xy: np.ndarray, distance: float) -> tuple[np.ndarray, np.ndarray]:
+    """Index pairs ``i < j`` of points no farther apart than ``distance``.
+
+    Points are hashed into square cells slightly larger than ``distance``, so
+    only points in the same or a neighbouring cell are compared, instead of
+    all pairs.
+    """
+    count = xy.shape[0]
+    if count == 0:
+        return np.zeros(0, dtype=np.int64), np.zeros(0, dtype=np.int64)
+    cell = np.floor(xy / np.float32(distance * 1.001)).astype(np.int64)
+    cell -= cell.min(axis=0)
+    span = int(cell[:, 1].max()) + 3
+    key = (cell[:, 0] + 1) * span + (cell[:, 1] + 1)
+    order = np.argsort(key, kind="stable")
+    sorted_key = key[order]
+    limit = np.float32(distance) * np.float32(distance)
+    firsts, seconds = [], []
+    for dx, dy in ((0, 0), (0, 1), (1, -1), (1, 0), (1, 1)):  # each neighbour pair once
+        target = key + dx * span + dy
+        low = np.searchsorted(sorted_key, target, side="left")
+        high = np.searchsorted(sorted_key, target, side="right")
+        counts = high - low
+        total = int(counts.sum())
+        if total == 0:
+            continue
+        i = np.repeat(np.arange(count), counts)
+        offsets = np.arange(total) - np.repeat(np.cumsum(counts) - counts, counts)
+        j = order[np.repeat(low, counts) + offsets]
+        delta = xy[i] - xy[j]
+        close = (delta[:, 0] * delta[:, 0] + delta[:, 1] * delta[:, 1]) <= limit
+        keep = close & (i != j)
+        firsts.append(np.minimum(i[keep], j[keep]))
+        seconds.append(np.maximum(i[keep], j[keep]))
+    if not firsts:
+        return np.zeros(0, dtype=np.int64), np.zeros(0, dtype=np.int64)
+    return np.concatenate(firsts), np.concatenate(seconds)
+
+
 def _clusters(xy: np.ndarray, distance: float) -> list[np.ndarray]:
     """Connected components of points closer than ``distance`` (index arrays)."""
     count = xy.shape[0]
     if count == 0:
         return []
-    deltas = xy[:, None, :] - xy[None, :, :]
-    adjacent = np.einsum("ijk,ijk->ij", deltas, deltas) <= distance * distance
-    labels = np.full(count, -1, dtype=np.int64)
-    components = []
-    for seed in range(count):
-        if labels[seed] >= 0:
-            continue
-        stack = [seed]
-        labels[seed] = len(components)
-        members = []
-        while stack:
-            node = stack.pop()
-            members.append(node)
-            for neighbour in np.flatnonzero(adjacent[node] & (labels < 0)):
-                labels[neighbour] = len(components)
-                stack.append(int(neighbour))
-        components.append(np.asarray(sorted(members), dtype=np.int64))
-    return components
+    first, second = _close_pairs(xy, distance)
+    # Each point's label converges to the smallest index in its component:
+    # propagate minima along the edges, then jump pointers, until stable.
+    labels = np.arange(count, dtype=np.int64)
+    while True:
+        previous = labels.copy()
+        np.minimum.at(labels, first, labels[second])
+        np.minimum.at(labels, second, labels[first])
+        labels = labels[labels]
+        if np.array_equal(labels, previous):
+            break
+    # Components in order of their smallest index, members sorted, as a
+    # depth-first search seeded in index order would produce.
+    order = np.argsort(labels, kind="stable")
+    roots, starts = np.unique(labels[order], return_index=True)
+    return [np.sort(part) for part in np.split(order, starts[1:])]
 
 
 class ScanObjectTracker:

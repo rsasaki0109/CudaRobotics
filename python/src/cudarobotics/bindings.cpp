@@ -1102,6 +1102,17 @@ public:
     return builder_.clear_footprint(occupancy_, geometry_, x, y, radius);
   }
 
+  // clearDisc for (N, 3) float32 rows of x, y, radius, in one kernel launch.
+  std::size_t clearDiscs(nb::object discs)
+  {
+    requireStage(occupancy_, "project");
+    if (distances_) {
+      throw std::runtime_error("call clear_discs() before distance() in this frame");
+    }
+    BufferView view(discs, 2, 3, 4, "discs");
+    return builder_.clear_discs(occupancy_, geometry_, view.data<float>(), view.dim(0));
+  }
+
   void build()
   {
     requireStage(distances_, "distance");
@@ -1482,6 +1493,7 @@ NB_MODULE(_cudarobotics, m)
       "distance", &PyCudaNavGridChain::distance,
       "esdf"_a, "resolution"_a, "max_distance"_a)
     .def("clear_disc", &PyCudaNavGridChain::clearDisc, "x"_a, "y"_a, "radius"_a)
+    .def("clear_discs", &PyCudaNavGridChain::clearDiscs, "discs"_a)
     .def("build", &PyCudaNavGridChain::build)
     .def(
       "plan", &PyCudaNavGridChain::plan,
