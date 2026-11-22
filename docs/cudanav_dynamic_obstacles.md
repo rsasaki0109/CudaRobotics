@@ -415,22 +415,38 @@ every rollout collides:
 
 The costs themselves do not change, unlike the collision horizon above.
 
-72 runs per setting, measured with the old order-dependent voxel map (see
-[Reproducibility](#reproducibility)):
+With the old order-dependent voxel map (see
+[Reproducibility](#reproducibility)), 1.0 s seemed to fix most head-on
+standoffs: head-on goals rose from 13/18 to 17/18 in two sweeps each, while
+robot-caused collisions rose from 2 to 7–9.
 
-| `evade_min_collision_time` | Goal reached | Head-on goals | Robot-caused collisions |
+Rerun with the deterministic map, the default already reaches 16 of the 18
+head-on goals, and evading no longer pays. Two variants of the evading
+command were also tried:
+- executing the sampled rollout whose first collision comes latest, instead
+  of the softmin average, which can blend rollouts that dodge to opposite
+  sides;
+- capping the evading speed at 0.25 m/s.
+
+72 runs per setting:
+
+| Setting | Goal reached | Head-on goals | Robot-caused collisions |
 |---|---|---|---|
-| 0 (off) | 62/72, 61/72 (two sweeps) | 13/18, 13/18 | 2, 2 |
-| 0.5 s | 61/72 | 18/18 | 10 |
-| 1.0 s | 64/72, 64/72 (two sweeps) | 17/18, 17/18 | 9, 7 |
-| 1.5 s | 62/72 | 16/18 | 11 |
+| Off (default) | 65/72 | 16/18 | 5 |
+| `evade_min_collision_time = 1.0` | 62/72 | 16/18 | 35 |
+| 1.0 s, latest rollout | 59/72 | 16/18 | 20 |
+| 1.0 s, latest rollout, 0.25 m/s cap | 66/72 | 17/18 | 17 |
+| 1.0 s, 0.25 m/s cap | 62/72 | 16/18 | 24 |
 
-At 1.0 s it fixes most head-on standoffs, at a cost:
-- robot-caused collisions rise from 2 to 7–9;
-- `overtake` with the scan tracker drops from 5–6/6 to 3/6.
+- Every evading setting adds collisions.
+- Most of them come from `overtake` with the scan tracker, where the robot
+  steers on with a pedestrian close behind it, and from one degraded crowd
+  run (30 collisions).
+- The best setting gains one goal for 12 more collisions.
 
-It therefore stays off by default, in the core and in CudaNav. The Python
-binding and the Nav2 plugin expose it.
+Evasion therefore stays off by default, in the core and in CudaNav, and the
+two variants were not added. The Python binding and the Nav2 plugin expose
+`evade_min_collision_time`.
 
 ## Reproducibility
 
@@ -476,9 +492,9 @@ seed, and its reductions (CUB) and rollouts use no float atomics.
   giving way, which costs time; nothing reasons about who should go first.
 - **Head-on encounters.** By default, a pedestrian walking towards the robot
   along a corridor still makes every rollout collide with its prediction for
-  many frames, and 2 of the 18 head-on runs time out.
-  `evade_min_collision_time = 1.0` fixes most of them, but more contacts
-  occur (see above).
+  many frames, and 2 of the 18 head-on runs time out. Steering on instead
+  of backing out (`evade_min_collision_time`) does not help: it gains at
+  most one goal and adds collisions (see above).
 - **Simple motion model.** The prediction is constant velocity, and the
   pedestrians move in straight lines with turnarounds.
 - **Small clearances.** Minimum clearances stay around 0.05 m in every
