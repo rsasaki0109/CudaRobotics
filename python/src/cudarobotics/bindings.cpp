@@ -1300,7 +1300,8 @@ NB_MODULE(_cudarobotics, m)
     .def_rw("retreat_avoid_dynamic_obstacles", &cr::MppiParams::retreat_avoid_dynamic_obstacles)
     .def_rw("retreat_avoid_lethal_cells", &cr::MppiParams::retreat_avoid_lethal_cells)
     .def_rw("retreat_check_horizon", &cr::MppiParams::retreat_check_horizon)
-    .def_rw("evade_min_collision_time", &cr::MppiParams::evade_min_collision_time);
+    .def_rw("evade_min_collision_time", &cr::MppiParams::evade_min_collision_time)
+    .def_rw("dynamic_obstacle_yield_distance", &cr::MppiParams::dynamic_obstacle_yield_distance);
 
   nb::class_<cr::MppiResult>(m, "MppiResult")
     .def(nb::init<>())

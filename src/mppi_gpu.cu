@@ -49,6 +49,7 @@ struct DeviceParams
   float distance_field_w, distance_field_cutoff;
   float dynamic_w, dynamic_margin, dynamic_robot_radius, dynamic_growth;
   float dynamic_overlap_allowance;
+  float dynamic_yield_distance;  // < 0 disables yielding obstacles
   int dynamic_count;  // 0 disables the dynamic-obstacle critic
   float speed_w, angular_w;
   int follow_offset;   // path index offset for the path-follow cost
@@ -154,6 +155,30 @@ __global__ void build_distance_field_kernel(
 
 // Sample the footprint polygon edges at costmap resolution and report
 // whether any cell under them is lethal.
+// Time at which an obstacle on its constant-velocity course first comes within
+// `reach` of (sx, sy); 0 when it is already that close, +inf when it never
+// gets there or is not approaching.
+__host__ __device__ inline float yield_stop_time(
+  float ox, float oy, float vx, float vy, float sx, float sy, float reach)
+{
+  const float px = ox - sx;
+  const float py = oy - sy;
+  const float b = px * vx + py * vy;
+  if (b >= 0.0f) {
+    return INFINITY;  // not approaching
+  }
+  const float c = px * px + py * py - reach * reach;
+  if (c <= 0.0f) {
+    return 0.0f;
+  }
+  const float a = vx * vx + vy * vy;
+  const float disc = b * b - a * c;
+  if (disc < 0.0f) {
+    return INFINITY;  // passes by
+  }
+  return c / (-b + sqrtf(disc));  // smaller root, stable form of (-b - sqrt) / a
+}
+
 __device__ bool footprint_collides(
   const unsigned char * __restrict__ costmap, const DeviceParams & p,
   float x, float y, float yaw)
@@ -332,10 +357,16 @@ __global__ void rollout_kernel(
     // predicted dynamic obstacles: constant-velocity discs whose radius grows
     // with the prediction horizon
     if (p.dynamic_count > 0) {
-      const float tau = (t + 1) * p.dt;
-      const float growth = p.dynamic_growth * tau;
+      const float step_tau = (t + 1) * p.dt;
       for (int i = 0; i < p.dynamic_count; ++i) {
         const DynamicObstacle o = dynamic_obstacles[i];
+        // A yielding obstacle stops where it would reach the robot's start disc.
+        const float tau = p.dynamic_yield_distance >= 0.0f
+          ? fminf(step_tau, yield_stop_time(
+              o.x, o.y, o.vx, o.vy, p.start_x, p.start_y,
+              o.radius + p.dynamic_robot_radius + p.dynamic_yield_distance))
+          : step_tau;
+        const float growth = p.dynamic_growth * tau;
         const float dx = x - (o.x + o.vx * tau);
         const float dy = y - (o.y + o.vy * tau);
         const float clearance =
@@ -881,6 +912,7 @@ MppiResult MppiGpu::computeInternal(
   dp.dynamic_robot_radius = mp.dynamic_obstacle_robot_radius;
   dp.dynamic_growth = mp.dynamic_obstacle_growth;
   dp.dynamic_overlap_allowance = std::max(0.0f, mp.dynamic_obstacle_overlap_allowance);
+  dp.dynamic_yield_distance = mp.dynamic_obstacle_yield_distance;
   dp.dynamic_count = mp.dynamic_obstacle_weight > 0.0f ? im.dynamic_count : 0;
   dp.smooth_w = mp.smoothness_weight;
   dp.backward_w = mp.backward_weight;

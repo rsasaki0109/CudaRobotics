@@ -376,8 +376,11 @@ Mid term — pick ONE based on which funnel converts after the release
   tracks stall nothing, and ghosts account for 9.6 s. 4 of the 5 collisions
   are full-speed forward commands into a yielding pedestrian 0.01-0.04 m
   away, under noisy tracks. Turning in place instead of backing out is worse
-  (partial sweep). Next: handle close-range oncoming pedestrians (yield-aware
-  prediction, or a gap-scaled speed limit for the contacts), not the tracker.
+  (partial sweep). Then opt-in `dynamic_obstacle_yield_distance` (the CV
+  prediction of an approaching obstacle stops short of the robot's start
+  disc). At 0.05 m it gives 69/72 goals but 13 collisions (oracle: 23/24
+  with 0); off by default. An approach-speed limit and a 1 m/s^2 acceleration
+  limit were worse. Open: contacts under noisy tracks at near-zero gaps.
 - **Jetson / aarch64** — compile-only CI landed (2026-11-21, aarch64 + sm_87,
   no hardware). Runtime validation waits for a device or concrete user demand.
 - **Broaden zero-copy inputs** — after costmap DLPack lands, consider path /

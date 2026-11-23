@@ -263,6 +263,34 @@ void evading_replaces_the_back_out_when_the_collision_is_far()
     check(too_close.retreating && !too_close.evading, "a nearer collision still backs out");
 }
 
+void yielding_obstacle_stops_short_of_the_robot()
+{
+    // A pedestrian 0.2 m from contact, walking straight at the robot.
+    const DynamicObstacle oncoming{0.7f, 0.0f, -0.45f, 0.0f, 0.25f};
+    auto run = [&](float yield_distance, const DynamicObstacle& obstacle) {
+        MppiParams p = params(25.0f);
+        p.enable_retreat = false;
+        p.dynamic_obstacle_robot_radius = 0.25f;
+        p.dynamic_obstacle_yield_distance = yield_distance;
+        MppiGpu planner(p);
+        planner.setDynamicObstacles(&obstacle, 1);
+        return plan(planner, 3).back();
+    };
+    const MppiResult constant_velocity = run(-1.0f, oncoming);
+    check(constant_velocity.all_colliding,
+          "without yielding, an oncoming pedestrian at close range collides with every rollout");
+    const MppiResult yielding = run(0.05f, oncoming);
+    std::printf("yielding: v=%.3f w=%.3f valid=%.3f\n", yielding.v, yielding.w, yielding.valid_rollout_ratio);
+    check(!yielding.all_colliding && yielding.valid_rollouts > 0,
+          "a pedestrian predicted to stop short of the robot leaves valid rollouts");
+    check(yielding.v < 0.25f, "the robot must not drive into the stopped pedestrian");
+
+    // Obstacles that move away are unchanged.
+    const DynamicObstacle receding{0.9f, 0.0f, 0.45f, 0.0f, 0.25f};
+    check(identical(run(-1.0f, receding), run(0.05f, receding)),
+          "yielding must not change the prediction of a receding obstacle");
+}
+
 void invalid_input_is_rejected()
 {
     MppiGpu planner(params(25.0f));
@@ -296,6 +324,7 @@ int main()
     back_out_does_not_reverse_into_an_obstacle();
     back_out_does_not_reverse_into_a_wall();
     evading_replaces_the_back_out_when_the_collision_is_far();
+    yielding_obstacle_stops_short_of_the_robot();
     invalid_input_is_rejected();
     std::printf("mppi_dynamic_obstacle_smoke: OK\n");
     return 0;

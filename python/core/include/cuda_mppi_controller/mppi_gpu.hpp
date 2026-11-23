@@ -82,6 +82,17 @@ struct MppiParams
   // places just inside a disc from seeing every rollout collide. 0 (default)
   // keeps the hard check above.
   float dynamic_obstacle_overlap_allowance = 0.0f;  // [m]
+  // Yielding obstacles. With a distance d >= 0, an obstacle approaching the
+  // robot is predicted to stop where it first comes within d of the robot's
+  // disc at the start pose: its constant-velocity prediction, and its growth,
+  // run only until
+  //   t_stop = min { t >= 0 : |p_i + v_i t - start| <= r_i + robot_radius + d }
+  // (0 if it is already that close). Obstacles that move away or pass by are
+  // unchanged. This models people who stop or step aside rather than walk into
+  // a standing robot. Without it, a person walking towards the robot at close
+  // range makes every rollout collide, standing still included, and the robot
+  // can only back out. Negative (default) disables it.
+  float dynamic_obstacle_yield_distance = -1.0f;  // [m]
   float smoothness_weight = 0.2f;    // stage (du)^2 between consecutive steps
   float backward_weight = 0.5f;      // stage penalty on v < 0
   // stage penalty on (v_max - v): counters the softmin saturation bias
