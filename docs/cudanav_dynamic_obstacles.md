@@ -456,6 +456,74 @@ Evasion therefore stays off by default, in the core and in CudaNav, and the
 two variants were not added. The Python binding and the Nav2 plugin expose
 `evade_min_collision_time`.
 
+### Where the remaining failures come from
+
+Because the loop is deterministic, `scripts/analyze_cudanav_layout_failures.py`
+can replay all 72 default runs exactly (same goals and collisions) with
+per-frame instrumentation
+([`results/cudanav_layout_failures_2026-11-23.md`](results/cudanav_layout_failures_2026-11-23.md)).
+
+A frame is *stalled* when the robot gains less than 0.10 m of route over the
+next 2 s. Each stalled frame is labelled by its likely cause. With a
+pedestrian within 0.6 m of the robot's edge:
+- `wait`: the planner still has collision-free rollouts;
+- `pushed_back`: every rollout collides and the pedestrian advances at least
+  0.10 m against the robot's heading;
+- `backout`: every rollout collides otherwise.
+
+Without a pedestrian nearby: `ghost` (non-wall occupied cells within 1 m),
+`false_track` (a planner obstacle that no pedestrian explains) or `other`.
+
+Stalled seconds over the 18 runs of each layout:
+
+| Layout | pushed_back | backout | wait | ghost | false_track | other |
+|---|---|---|---|---|---|---|
+| Crossing | 14.2 | 25.6 | 6.2 | 0.0 | 0.0 | 1.2 |
+| Head-on | 111.5 | 37.4 | 35.7 | 0.0 | 0.0 | 26.8 |
+| Overtake | 31.4 | 73.8 | 21.8 | 0.0 | 0.0 | 0.3 |
+| Crowd | 79.8 | 56.0 | 44.4 | 9.6 | 0.0 | 23.6 |
+| All | 236.9 | 192.8 | 108.1 | 9.6 | 0.0 | 51.9 |
+
+- **Stalls near pedestrians.** 90% of the stalled time has a pedestrian
+  within 0.6 m. Most of it (80%) is spent with every rollout colliding:
+  - with a forward-only planner, an approaching constant-velocity prediction
+    leaves no collision-free rollout at close range;
+  - the robot then backs out at 0.2 m/s;
+  - the pedestrian follows, because it only pauses while its next step would
+    touch the robot;
+  - since the robot keeps making room, the pedestrian never waits the 3 s
+    after which it would turn around.
+
+  Of the 7 missed goals:
+  - the four in head-on and crowd have no pedestrian turnarounds and
+    reverse 3.9–4.8 m in total;
+  - in crowd seed 2 (scan tracker), the robot never gets past 1.4 m of its
+    12.5 m route after the first 5 s;
+  - the three in overtake are slower losses: 3–5 turnarounds and 0.8–2.3 m
+    of reversing, ending at 9.6–12.1 m.
+- **Map and tracker errors are not the cause.** False tracks never stall the
+  robot. Ghost cells account for 9.6 s, all in two crowd runs with the scan
+  tracker, and even there a pedestrian is the main cause.
+- **Collisions.** Four of the five robot-caused collisions are the same event:
+  - the input is delayed and noisy;
+  - the robot is 0.01–0.04 m from a pedestrian who has stopped to yield;
+  - noise in the reported position (0.04–0.10 m) briefly leaves some
+    rollouts collision-free;
+  - the softmin command is then full speed (0.55 m/s) forward, which closes
+    the gap within one frame.
+
+  The fifth is a back-out with the scan tracker, into a pedestrian behind the
+  robot whose track was merged with a neighbour and placed 0.39 m away.
+
+Not backing out at all is worse. With `retreat_reverse_speed = 0` the robot
+only turns in place when every rollout collides. A partial sweep, stopped
+after 35 of the 72 runs, gave:
+- crossing: 11/18 goals and 8 collisions, against 18/18 and 0;
+- head-on: 12/17 goals, against 15/17 for the same runs by default.
+
+Reducing false tracks would therefore not change these results. What remains
+is how the robot deals with a pedestrian who comes towards it at close range.
+
 ## Reproducibility
 
 Closed-loop runs used not to be bit-reproducible:

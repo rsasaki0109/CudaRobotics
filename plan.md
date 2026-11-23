@@ -367,7 +367,17 @@ Mid term — pick ONE based on which funnel converts after the release
   72-run layout sweep, rerun, gives 65/72 goals and 5 collisions. Rerun
   deterministically, evasion no longer pays (head-on is already 16/18; every
   evading variant, including following the latest-colliding rollout and a
-  0.25 m/s cap, adds 12-30 collisions), so it stays off.
+  0.25 m/s cap, adds 12-30 collisions), so it stays off. The Nav2 plugin can
+  clear tracked discs from its rollout costmap copy (opt-in). 2026-11-23:
+  `scripts/analyze_cudanav_layout_failures.py` replays the 72 runs exactly
+  with per-frame labels. 90% of the stalled time has a pedestrian within
+  0.6 m, mostly with every rollout colliding: the robot backs out and the
+  pedestrian follows, so it never waits long enough to turn around. False
+  tracks stall nothing, and ghosts account for 9.6 s. 4 of the 5 collisions
+  are full-speed forward commands into a yielding pedestrian 0.01-0.04 m
+  away, under noisy tracks. Turning in place instead of backing out is worse
+  (partial sweep). Next: handle close-range oncoming pedestrians (yield-aware
+  prediction, or a gap-scaled speed limit for the contacts), not the tracker.
 - **Jetson / aarch64** — compile-only CI landed (2026-11-21, aarch64 + sm_87,
   no hardware). Runtime validation waits for a device or concrete user demand.
 - **Broaden zero-copy inputs** — after costmap DLPack lands, consider path /
