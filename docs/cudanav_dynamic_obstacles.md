@@ -524,6 +524,54 @@ after 35 of the 72 runs, gave:
 Reducing false tracks would therefore not change these results. What remains
 is how the robot deals with a pedestrian who comes towards it at close range.
 
+### Yielding obstacles (opt-in)
+
+`dynamic_obstacle_yield_distance` (m, default −1 = off) changes the
+prediction of an obstacle that approaches the robot. Its constant-velocity
+prediction, and its uncertainty growth, stop at the moment it first comes
+within this distance of the robot's disc at the start pose. Obstacles that
+move away or pass by are unchanged. This models a person who stops or steps
+aside instead of walking into a standing robot. Standing still, or stepping
+aside, is then collision-free, so the robot no longer has to back out.
+
+72 runs per setting (the default row is the sweep above):
+
+| Setting | Crossing | Head-on | Overtake | Crowd | All goals | Robot-caused collisions | Stalled time |
+|---|---|---|---|---|---|---|---|
+| Default | 18/18 | 16/18 | 15/18 | 16/18 | 65/72 | 5 | 599 s |
+| Yield distance 0.05 m | 18/18 | 17/18 | 17/18 | 17/18 | 69/72 | 13 | 440 s |
+
+By tracker:
+
+| Tracks | Default: goals, collisions | Yield 0.05 m: goals, collisions |
+|---|---|---|
+| Oracle | 21/24, 0 | 23/24, 0 |
+| Delayed + noisy | 22/24, 4 | 24/24, 8 |
+| Scan tracker | 22/24, 1 | 22/24, 5 |
+
+- **Oracle tracks.** Yielding gains two goals and adds no collisions.
+- **Noisy or scanned tracks.** The added collisions are again mostly
+  full-speed forward commands into a pedestrian a few centimetres away,
+  and one scan-tracker run where the pedestrian was not tracked (its track
+  was 0.8–1.3 m away).
+- **Larger distance.** 0.15 m was worse on the two layouts measured: head-on
+  15/18 with 7 collisions, crowd 17/18 with 3.
+
+Yielding therefore stays off by default. The core and the Python binding
+expose it; the Nav2 plugin does not yet.
+
+Two other fixes for the contacts were tried and not adopted. Both reduce
+the speed near pedestrians, which keeps the robot in their way for longer:
+- **Approach-speed limit.** Capping the command's speed towards each
+  obstacle in proportion to the gap:
+  - 2 /s with a 0.1 m buffer: crossing 10/18 with 67 collisions, head-on
+    14/18;
+  - 4 /s with 0.03 m: crossing 17/18 with 5 collisions, head-on 12/18.
+- **Acceleration limit.** Limiting the executed speed change to 1 m/s², on
+  top of yielding (the planner still assumes instant changes): 66/72 goals
+  and 31 collisions. Head-on improves to 18/18 with no collision, but crowd
+  drops to 13/18.
+
 ## Reproducibility
 
 Closed-loop runs used not to be bit-reproducible:
@@ -570,7 +618,13 @@ seed, and its reductions (CUB) and rollouts use no float atomics.
   along a corridor still makes every rollout collide with its prediction for
   many frames, and 2 of the 18 head-on runs time out. Steering on instead
   of backing out (`evade_min_collision_time`) does not help: it gains at
-  most one goal and adds collisions (see above).
+  most one goal and adds collisions (see above). Predicting that the
+  pedestrian yields (`dynamic_obstacle_yield_distance`) gains goals. With
+  noisy tracks, however, it also adds contacts.
+- **Contacts under noisy tracks.** With tracks a few centimetres off, the
+  planner can briefly see room in front of a pedestrian it is almost
+  touching, and drive forward at full speed. Speed or acceleration limits
+  did not fix this without costing goals.
 - **Simple motion model.** The prediction is constant velocity, and the
   pedestrians move in straight lines with turnarounds.
 - **Small clearances.** Minimum clearances stay around 0.05 m in every
